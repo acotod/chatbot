@@ -1,7 +1,7 @@
 'use strict';
 const express = require('express');
 const bcrypt = require('bcryptjs');
-const { PrismaClient } = require('@prisma/client');
+const { PrismaClient, Prisma } = require('@prisma/client');
 const requireJwt = require('../middleware/requireJwt');
 const requirePermiso = require('../middleware/requirePermiso');
 const { audit } = require('../services/audit');
@@ -14,6 +14,20 @@ router.use(requireJwt);
 // Helper — true when the caller is scoped to a single tenant (not global superAdmin)
 function callerTenant(req) {
   return req.admin.superAdmin ? null : (req.admin.tenantId ?? null);
+}
+
+function handlePrismaWriteError(err, res) {
+  if (!(err instanceof Prisma.PrismaClientKnownRequestError)) return false;
+
+  if (err.code === 'P2002') {
+    return res.status(409).json({ error: 'Resource already exists' });
+  }
+
+  if (err.code === 'P2003') {
+    return res.status(400).json({ error: 'Invalid relation reference' });
+  }
+
+  return false;
 }
 
 // ── Permisos ──────────────────────────────────────────────────────────────────
@@ -165,7 +179,10 @@ router.post('/users', requirePermiso('MANAGE_ROLES'), async (req, res, next) => 
     });
     audit({ adminUserId: req.admin.adminUserId, accion: 'CREATE_ADMIN_USER', entidad: 'admin_user', entidadId: user.id, metadata: { email } });
     res.status(201).json(user);
-  } catch (err) { next(err); }
+  } catch (err) {
+    if (handlePrismaWriteError(err, res)) return;
+    next(err);
+  }
 });
 
 // PATCH /rbac/users/:id
@@ -209,7 +226,10 @@ router.patch('/users/:id', requirePermiso('MANAGE_ROLES'), async (req, res, next
     });
     audit({ adminUserId: req.admin.adminUserId, accion: 'UPDATE_ADMIN_USER', entidad: 'admin_user', entidadId: userId });
     res.json(user);
-  } catch (err) { next(err); }
+  } catch (err) {
+    if (handlePrismaWriteError(err, res)) return;
+    next(err);
+  }
 });
 
 // DELETE /rbac/users/:id
