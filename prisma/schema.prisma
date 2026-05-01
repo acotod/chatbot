@@ -41,7 +41,7 @@ model User {
   solicitudes         Solicitud[]
   eventosFlujo        EventoFlujo[]
   mensajes            Mensaje[]
-  conversationContext ConversationContext?
+  conversationContexts ConversationContext[]
 
   @@unique([tenantId, phone])
   @@map("users")
