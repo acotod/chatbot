@@ -27,6 +27,10 @@ function handlePrismaWriteError(err, res) {
     return res.status(400).json({ error: 'Invalid relation reference' });
   }
 
+  if (err.code === 'P2023') {
+    return res.status(400).json({ error: 'Invalid field format' });
+  }
+
   return false;
 }
 
