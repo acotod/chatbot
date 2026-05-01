@@ -70,8 +70,9 @@ router.post('/tenants', requirePermiso('MANAGE_TENANTS'), async (req, res, next)
     }
 });
 
-// GET /admin/tenants — list tenants (superAdmin: all; TenantAdmin: own only)
-router.get('/tenants', requirePermiso('MANAGE_TENANTS'), async (req, res, next) => {
+// GET /admin/tenants — list accessible tenants for the authenticated user
+// superAdmin: all; tenant-scoped users: only their own tenant; others: empty list
+router.get('/tenants', async (req, res, next) => {
     try {
         if (req.admin.superAdmin) {
             const tenants = await db.listTenants();
