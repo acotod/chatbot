@@ -207,7 +207,7 @@ module.exports = router;
 // ---------------------------------------------------------------------------
 
 // POST /admin/tenants — create a new tenant
-router.post('/tenants', requireAdminKey, async (req, res, next) => {
+router.post('/tenants', async (req, res, next) => {
     try {
         const { nombre, slug, plan } = req.body;
         if (!nombre || !slug) {
@@ -222,7 +222,7 @@ router.post('/tenants', requireAdminKey, async (req, res, next) => {
 });
 
 // GET /admin/tenants — list all tenants
-router.get('/tenants', requireAdminKey, async (req, res, next) => {
+router.get('/tenants', async (req, res, next) => {
     try {
         const tenants = await db.listTenants();
         res.json(tenants);
@@ -232,7 +232,7 @@ router.get('/tenants', requireAdminKey, async (req, res, next) => {
 });
 
 // PATCH /admin/tenants/:slug/deactivate
-router.patch('/tenants/:slug/deactivate', requireAdminKey, async (req, res, next) => {
+router.patch('/tenants/:slug/deactivate', async (req, res, next) => {
     try {
         const tenant = await db.setTenantActive(req.params.slug, false);
         res.json(tenant);
@@ -242,7 +242,7 @@ router.patch('/tenants/:slug/deactivate', requireAdminKey, async (req, res, next
 });
 
 // PATCH /admin/tenants/:slug/activate
-router.patch('/tenants/:slug/activate', requireAdminKey, async (req, res, next) => {
+router.patch('/tenants/:slug/activate', async (req, res, next) => {
     try {
         const tenant = await db.setTenantActive(req.params.slug, true);
         res.json(tenant);
@@ -256,7 +256,7 @@ router.patch('/tenants/:slug/activate', requireAdminKey, async (req, res, next) 
 // ---------------------------------------------------------------------------
 
 // GET /admin/tenants/:slug/agentes
-router.get('/tenants/:slug/agentes', requireAdminKey, async (req, res, next) => {
+router.get('/tenants/:slug/agentes', async (req, res, next) => {
     try {
         const tenant = await db.findTenantBySlug(req.params.slug);
         if (!tenant) return res.status(404).json({ error: 'Tenant not found' });
@@ -268,7 +268,7 @@ router.get('/tenants/:slug/agentes', requireAdminKey, async (req, res, next) => 
 });
 
 // POST /admin/tenants/:slug/agentes
-router.post('/tenants/:slug/agentes', requireAdminKey, async (req, res, next) => {
+router.post('/tenants/:slug/agentes', async (req, res, next) => {
     try {
         const tenant = await db.findTenantBySlug(req.params.slug);
         if (!tenant) return res.status(404).json({ error: 'Tenant not found' });
@@ -284,7 +284,7 @@ router.post('/tenants/:slug/agentes', requireAdminKey, async (req, res, next) =>
 });
 
 // PATCH /admin/tenants/:slug/agentes/:id/estado
-router.patch('/tenants/:slug/agentes/:id/estado', requireAdminKey, async (req, res, next) => {
+router.patch('/tenants/:slug/agentes/:id/estado', async (req, res, next) => {
     try {
         const tenant = await db.findTenantBySlug(req.params.slug);
         if (!tenant) return res.status(404).json({ error: 'Tenant not found' });
@@ -302,7 +302,7 @@ router.patch('/tenants/:slug/agentes/:id/estado', requireAdminKey, async (req, r
 // ---------------------------------------------------------------------------
 
 // PUT /admin/tenants/:slug/config/:clave
-router.put('/tenants/:slug/config/:clave', requireAdminKey, async (req, res, next) => {
+router.put('/tenants/:slug/config/:clave', async (req, res, next) => {
     try {
         const tenant = await db.findTenantBySlug(req.params.slug);
         if (!tenant) return res.status(404).json({ error: 'Tenant not found' });
@@ -316,7 +316,7 @@ router.put('/tenants/:slug/config/:clave', requireAdminKey, async (req, res, nex
 });
 
 // GET /admin/tenants/:slug/config/:clave
-router.get('/tenants/:slug/config/:clave', requireAdminKey, async (req, res, next) => {
+router.get('/tenants/:slug/config/:clave', async (req, res, next) => {
     try {
         const tenant = await db.findTenantBySlug(req.params.slug);
         if (!tenant) return res.status(404).json({ error: 'Tenant not found' });
