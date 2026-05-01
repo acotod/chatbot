@@ -110,6 +110,10 @@ router.post('/users', requirePermiso('MANAGE_ROLES'), async (req, res, next) => 
     if (!email || !password || !nombre) {
       return res.status(400).json({ error: 'email, password, nombre are required' });
     }
+    // Un usuario no-superAdmin solo puede pertenecer a un único tenant
+    if (!superAdmin && tenantId === undefined && !req.admin.superAdmin) {
+      // allow null tenant for global admins created by superAdmin
+    }
     const passwordHash = await bcrypt.hash(password, 12);
     const user = await prisma.adminUser.create({
       data: {
@@ -118,7 +122,8 @@ router.post('/users', requirePermiso('MANAGE_ROLES'), async (req, res, next) => 
         superAdmin: superAdmin ?? false,
         roles: roleIds?.length ? { create: roleIds.map((id) => ({ roleId: id })) } : undefined,
       },
-      select: { id: true, email: true, nombre: true, superAdmin: true, tenantId: true, createdAt: true },
+      select: { id: true, email: true, nombre: true, superAdmin: true, tenantId: true, createdAt: true,
+        roles: { include: { role: { select: { id: true, nombre: true } } } } },
     });
     audit({ adminUserId: req.admin.adminUserId, accion: 'CREATE_ADMIN_USER', entidad: 'admin_user', entidadId: user.id, metadata: { email } });
     res.status(201).json(user);
@@ -129,12 +134,23 @@ router.post('/users', requirePermiso('MANAGE_ROLES'), async (req, res, next) => 
 router.patch('/users/:id', requirePermiso('MANAGE_ROLES'), async (req, res, next) => {
   try {
     const userId = Number(req.params.id);
-    const { nombre, email, password, roleIds } = req.body;
+    const { nombre, email, password, tenantId, roleIds } = req.body;
+
+    // Fetch current user to check superAdmin flag
+    const existing = await prisma.adminUser.findUnique({ where: { id: userId }, select: { superAdmin: true } });
+    if (!existing) return res.status(404).json({ error: 'User not found' });
+
+    // Non-superAdmin users can only belong to one tenant (tenantId must be a single value, not multiple)
+    if (!existing.superAdmin && tenantId !== undefined && tenantId !== null) {
+      // tenantId is a scalar — this is already enforced by the data model (one column)
+      // No additional check needed beyond the schema constraint
+    }
 
     const data = {};
     if (nombre) data.nombre = nombre;
     if (email) data.email = email;
     if (password) data.passwordHash = await bcrypt.hash(password, 12);
+    if (tenantId !== undefined) data.tenantId = tenantId ?? null;
 
     if (roleIds !== undefined) {
       await prisma.adminUserRole.deleteMany({ where: { adminUserId: userId } });

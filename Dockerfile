@@ -50,6 +50,10 @@ COPY package.json ./
 
 # Non-root user for security
 RUN groupadd --system app && useradd --system --gid app app
+
+# Pre-create uploads dir with correct ownership so the volume mount is writable
+RUN mkdir -p /app/uploads/logos && chown -R app:app /app/uploads
+
 USER app
 
 EXPOSE 3000
