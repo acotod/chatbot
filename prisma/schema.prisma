@@ -44,6 +44,7 @@ model Solicitud {
   id               Int      @id @default(autoincrement())
   tenantId         String   @map("tenant_id") @db.Uuid
   userId           Int?     @map("user_id")
+  agenteId         Int?     @map("agente_id")
   nombre           String?  @db.VarChar(100)
   telefonoContacto String?  @db.VarChar(20)   @map("telefono_contacto")
   horario          String?  @db.VarChar(20)
@@ -51,6 +52,7 @@ model Solicitud {
   createdAt        DateTime @default(now()) @map("created_at")
   tenant           Tenant   @relation(fields: [tenantId], references: [id])
   user             User?    @relation(fields: [userId], references: [id])
+  agente           Agente?  @relation(fields: [agenteId], references: [id])
 
   @@map("solicitudes")
 }
@@ -69,13 +71,14 @@ model EventoFlujo {
 }
 
 model Agente {
-  id        Int      @id @default(autoincrement())
-  tenantId  String   @map("tenant_id") @db.Uuid
-  nombre    String   @db.VarChar(100)
-  email     String   @db.VarChar(150)
-  estado    String   @default("activo") @db.VarChar(20)
-  createdAt DateTime @default(now()) @map("created_at")
-  tenant    Tenant   @relation(fields: [tenantId], references: [id])
+  id          Int         @id @default(autoincrement())
+  tenantId    String      @map("tenant_id") @db.Uuid
+  nombre      String      @db.VarChar(100)
+  email       String      @db.VarChar(150)
+  estado      String      @default("activo") @db.VarChar(20)
+  createdAt   DateTime    @default(now()) @map("created_at")
+  tenant      Tenant      @relation(fields: [tenantId], references: [id])
+  solicitudes Solicitud[]
 
   @@map("agentes")
 }

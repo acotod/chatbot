@@ -3,6 +3,7 @@ const logger = require('../utils/logger');
 const { webhookValidationRules, validate } = require('../middleware/validate');
 const { getNextScreen } = require('../services/flowNavigation');
 const db = require('../services/database');
+const { getRedisClient } = require('../services/redis');
 
 const router = express.Router();
 
@@ -37,6 +38,17 @@ router.post('/', webhookValidationRules, validate, async (req, res, next) => {
     if (nextScreen === null) {
       logger.warn('Navigation failed: unknown screen or option', { tenantId, screen, data });
       return res.status(400).json({ error: `Unknown screen or option for screen: ${screen}` });
+    }
+
+    // Enqueue urgencia for async processing
+    if (screen === 'URGENCIA' || nextScreen === 'URGENCIA') {
+      const redis = getRedisClient();
+      if (redis) {
+        await redis.lpush('queue:urgencias', JSON.stringify({
+          tenantId, userId, screen, nextScreen, data, timestamp: Date.now(),
+        }));
+        logger.info('Urgencia enqueued', { tenantId, userId });
+      }
     }
 
     logger.info('Navigation decision', { tenantId, from: screen, to: nextScreen });

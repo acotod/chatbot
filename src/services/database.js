@@ -135,6 +135,64 @@ async function setAgenteEstado(id, tenantId, estado) {
   return client.agente.updateMany({ where: { id, tenantId }, data: { estado } });
 }
 
+// ---------------------------------------------------------------------------
+// Solicitud helpers (scoped to tenant)
+// ---------------------------------------------------------------------------
+
+async function listSolicitudes(tenantId, { estado, page = 1, limit = 20 } = {}) {
+  const client = getPrismaClient();
+  if (!client) return [];
+  const where = { tenantId, ...(estado ? { estado } : {}) };
+  return client.solicitud.findMany({
+    where,
+    orderBy: { createdAt: 'desc' },
+    skip: (page - 1) * limit,
+    take: limit,
+    include: { agente: true, user: true },
+  });
+}
+
+async function countSolicitudesByEstado(tenantId) {
+  const client = getPrismaClient();
+  if (!client) return {};
+  const groups = await client.solicitud.groupBy({
+    by: ['estado'],
+    where: { tenantId },
+    _count: { id: true },
+  });
+  const result = {};
+  for (const g of groups) result[g.estado ?? 'sin_estado'] = g._count.id;
+  return result;
+}
+
+async function updateSolicitudEstado(id, tenantId, estado) {
+  const client = getPrismaClient();
+  if (!client) return null;
+  return client.solicitud.updateMany({ where: { id, tenantId }, data: { estado } });
+}
+
+async function assignAgenteToSolicitud(id, tenantId, agenteId) {
+  const client = getPrismaClient();
+  if (!client) return null;
+  return client.solicitud.updateMany({ where: { id, tenantId }, data: { agenteId } });
+}
+
+// ---------------------------------------------------------------------------
+// Metrics helpers
+// ---------------------------------------------------------------------------
+
+async function getMetrics(tenantId) {
+  const client = getPrismaClient();
+  if (!client) return {};
+  const [solicitudesPorEstado, totalUsers, totalEventos, urgencias] = await Promise.all([
+    countSolicitudesByEstado(tenantId),
+    client.user.count({ where: { tenantId } }),
+    client.eventoFlujo.count({ where: { tenantId } }),
+    client.eventoFlujo.count({ where: { tenantId, screen: 'URGENCIA' } }),
+  ]);
+  return { solicitudesPorEstado, totalUsers, totalEventos, urgencias };
+}
+
 module.exports = {
   getPrismaClient,
   // tenant
@@ -155,5 +213,12 @@ module.exports = {
   listAgentes,
   createAgente,
   setAgenteEstado,
+  // solicitudes
+  listSolicitudes,
+  countSolicitudesByEstado,
+  updateSolicitudEstado,
+  assignAgenteToSolicitud,
+  // metrics
+  getMetrics,
 };
 
