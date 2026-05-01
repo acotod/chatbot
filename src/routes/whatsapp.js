@@ -7,6 +7,7 @@
  * GET  /whatsapp/mensajes     — Full message history for a user (admin panel)
  */
 
+const crypto = require('crypto');
 const express = require('express');
 const logger = require('../utils/logger');
 const db = require('../services/database');
@@ -15,6 +16,42 @@ const wa = require('../services/whatsapp');
 const requireJwt = require('../middleware/requireJwt');
 
 const router = express.Router();
+
+// ── Meta Webhook Signature Verification ─────────────────────────────────────
+// Validates X-Hub-Signature-256 sent by Meta on every POST.
+// Requires WA_APP_SECRET env var. If not set, skips verification (dev mode).
+function verifyMetaSignature(req, res, next) {
+  const appSecret = process.env.WA_APP_SECRET;
+  if (!appSecret) {
+    // Secret not configured — allow through but warn once
+    logger.warn('WA_APP_SECRET not set: webhook signature verification is disabled');
+    return next();
+  }
+
+  const sig = req.headers['x-hub-signature-256'];
+  if (!sig) {
+    return res.status(401).json({ error: 'Missing webhook signature' });
+  }
+
+  if (!req.rawBody) {
+    logger.error('rawBody unavailable — ensure express.json verify is configured');
+    return res.status(400).json({ error: 'Raw body unavailable for signature check' });
+  }
+
+  const expected = 'sha256=' +
+    crypto.createHmac('sha256', appSecret).update(req.rawBody).digest('hex');
+
+  try {
+    if (!crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expected))) {
+      logger.warn('WhatsApp webhook signature mismatch');
+      return res.status(401).json({ error: 'Invalid webhook signature' });
+    }
+  } catch {
+    return res.status(401).json({ error: 'Invalid webhook signature' });
+  }
+
+  next();
+}
 
 // ── GET: Meta webhook verification ──────────────────────────────────────────
 
@@ -33,7 +70,7 @@ router.get('/', (req, res) => {
 
 // ── POST: incoming events ────────────────────────────────────────────────────
 
-router.post('/', async (req, res) => {
+router.post('/', verifyMetaSignature, async (req, res) => {
   // Always acknowledge immediately — Meta expects 200 within 20 s
   res.sendStatus(200);
 

@@ -161,7 +161,7 @@ router.post('/tenants/:slug/logo', requirePermiso('MANAGE_TENANTS'), logoUpload.
 // Agentes (per-tenant, admin-managed)
 
 // GET /admin/tenants/:slug/agentes
-router.get('/tenants/:slug/agentes', async (req, res, next) => {
+router.get('/tenants/:slug/agentes', requirePermiso('VIEW_AGENTES'), async (req, res, next) => {
     try {
         const tenant = await db.findTenantBySlug(req.params.slug);
         if (!tenant) return res.status(404).json({ error: 'Tenant not found' });
@@ -173,7 +173,7 @@ router.get('/tenants/:slug/agentes', async (req, res, next) => {
 });
 
 // POST /admin/tenants/:slug/agentes
-router.post('/tenants/:slug/agentes', async (req, res, next) => {
+router.post('/tenants/:slug/agentes', requirePermiso('EDIT_AGENTES'), async (req, res, next) => {
     try {
         const tenant = await db.findTenantBySlug(req.params.slug);
         if (!tenant) return res.status(404).json({ error: 'Tenant not found' });
@@ -189,7 +189,7 @@ router.post('/tenants/:slug/agentes', async (req, res, next) => {
 });
 
 // PATCH /admin/tenants/:slug/agentes/:id/estado
-router.patch('/tenants/:slug/agentes/:id/estado', async (req, res, next) => {
+router.patch('/tenants/:slug/agentes/:id/estado', requirePermiso('EDIT_AGENTES'), async (req, res, next) => {
     try {
         const tenant = await db.findTenantBySlug(req.params.slug);
         if (!tenant) return res.status(404).json({ error: 'Tenant not found' });
@@ -207,7 +207,7 @@ router.patch('/tenants/:slug/agentes/:id/estado', async (req, res, next) => {
 // ---------------------------------------------------------------------------
 
 // GET /admin/tenants/:slug/solicitudes?estado=pendiente&page=1&limit=20
-router.get('/tenants/:slug/solicitudes', async (req, res, next) => {
+router.get('/tenants/:slug/solicitudes', requirePermiso('VIEW_SOLICITUDES'), async (req, res, next) => {
     try {
         const tenant = await db.findTenantBySlug(req.params.slug);
         if (!tenant) return res.status(404).json({ error: 'Tenant not found' });
@@ -225,7 +225,7 @@ router.get('/tenants/:slug/solicitudes', async (req, res, next) => {
 });
 
 // PATCH /admin/tenants/:slug/solicitudes/:id/estado
-router.patch('/tenants/:slug/solicitudes/:id/estado', async (req, res, next) => {
+router.patch('/tenants/:slug/solicitudes/:id/estado', requirePermiso('EDIT_SOLICITUDES'), async (req, res, next) => {
     try {
         const tenant = await db.findTenantBySlug(req.params.slug);
         if (!tenant) return res.status(404).json({ error: 'Tenant not found' });
@@ -243,7 +243,7 @@ router.patch('/tenants/:slug/solicitudes/:id/estado', async (req, res, next) => 
 });
 
 // PATCH /admin/tenants/:slug/solicitudes/:id/agente
-router.patch('/tenants/:slug/solicitudes/:id/agente', async (req, res, next) => {
+router.patch('/tenants/:slug/solicitudes/:id/agente', requirePermiso('EDIT_SOLICITUDES'), async (req, res, next) => {
     try {
         const tenant = await db.findTenantBySlug(req.params.slug);
         if (!tenant) return res.status(404).json({ error: 'Tenant not found' });
@@ -265,7 +265,7 @@ router.patch('/tenants/:slug/solicitudes/:id/agente', async (req, res, next) => 
 // ---------------------------------------------------------------------------
 
 // GET /admin/tenants/:slug/metrics
-router.get('/tenants/:slug/metrics', async (req, res, next) => {
+router.get('/tenants/:slug/metrics', requirePermiso('VIEW_METRICS'), async (req, res, next) => {
     try {
         const tenant = await db.findTenantBySlug(req.params.slug);
         if (!tenant) return res.status(404).json({ error: 'Tenant not found' });
@@ -282,7 +282,7 @@ router.get('/tenants/:slug/metrics', async (req, res, next) => {
 // ---------------------------------------------------------------------------
 
 // PUT /admin/tenants/:slug/config/:clave
-router.put('/tenants/:slug/config/:clave', async (req, res, next) => {
+router.put('/tenants/:slug/config/:clave', requirePermiso('MANAGE_TENANTS'), async (req, res, next) => {
     try {
         const tenant = await db.findTenantBySlug(req.params.slug);
         if (!tenant) return res.status(404).json({ error: 'Tenant not found' });
@@ -297,7 +297,7 @@ router.put('/tenants/:slug/config/:clave', async (req, res, next) => {
 });
 
 // GET /admin/tenants/:slug/config/:clave
-router.get('/tenants/:slug/config/:clave', async (req, res, next) => {
+router.get('/tenants/:slug/config/:clave', requirePermiso('MANAGE_TENANTS'), async (req, res, next) => {
     try {
         const tenant = await db.findTenantBySlug(req.params.slug);
         if (!tenant) return res.status(404).json({ error: 'Tenant not found' });

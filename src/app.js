@@ -54,7 +54,12 @@ const corsOptions = {
 app.use(cors(corsOptions));
 app.options('*', cors(corsOptions));
 
-app.use(express.json());
+// Capture raw body buffer for HMAC signature verification (Meta webhooks)
+app.use(express.json({
+  verify: (_req, _res, buf) => {
+    _req.rawBody = buf;
+  },
+}));
 
 // Health check (no auth required)
 app.get('/health', (_req, res) => res.json({ status: 'ok' }));
