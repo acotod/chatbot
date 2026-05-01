@@ -140,7 +140,8 @@ router.delete('/roles/:id', requirePermiso('MANAGE_ROLES'), async (req, res, nex
 router.get('/users', requirePermiso('MANAGE_ROLES'), async (req, res, next) => {
   try {
     const tenant = callerTenant(req);
-    const where = tenant ? { tenantId: tenant } : {};
+    // Tenant admins cannot see superAdmin users
+    const where = tenant ? { tenantId: tenant, superAdmin: false } : {};
     const users = await prisma.adminUser.findMany({
       where,
       select: { id: true, email: true, nombre: true, superAdmin: true, tenantId: true, createdAt: true,
@@ -200,6 +201,8 @@ router.patch('/users/:id', requirePermiso('MANAGE_ROLES'), async (req, res, next
 
     const tenant = callerTenant(req);
     if (tenant) {
+      // Tenant admins cannot modify superAdmin users
+      if (existing.superAdmin) return res.status(403).json({ error: 'Cannot modify superAdmin users' });
       // Tenant admins can only edit users from their own tenant
       if (existing.tenantId !== tenant) return res.status(403).json({ error: 'Cannot modify users from a different tenant' });
       // Cannot move a user out of the tenant
@@ -242,8 +245,9 @@ router.delete('/users/:id', requirePermiso('MANAGE_ROLES'), async (req, res, nex
     const userId = Number(req.params.id);
     const tenant = callerTenant(req);
     if (tenant) {
-      const existing = await prisma.adminUser.findUnique({ where: { id: userId }, select: { tenantId: true } });
+      const existing = await prisma.adminUser.findUnique({ where: { id: userId }, select: { tenantId: true, superAdmin: true } });
       if (!existing) return res.status(404).json({ error: 'User not found' });
+      if (existing.superAdmin) return res.status(403).json({ error: 'Cannot delete superAdmin users' });
       if (existing.tenantId !== tenant) return res.status(403).json({ error: 'Cannot delete users from a different tenant' });
     }
     await prisma.adminUser.delete({ where: { id: userId } });
