@@ -1,14 +1,10 @@
 'use strict';
 /**
- * POST /whatsapp  — WhatsApp Cloud API webhook (incoming messages & status)
- * GET  /whatsapp  — Meta webhook verification
- *
- * Tenant resolution: the phone_number_id in the webhook payload is matched
- * to a tenant via the "wa_credentials" config key.
- *
- * Per-tenant config shape (stored in configuraciones):
- *   clave: "wa_credentials"
- *   valor: { phoneNumberId: "...", accessToken: "..." }
+ * GET  /whatsapp              — Meta webhook verification
+ * POST /whatsapp              — WhatsApp Cloud API incoming webhook
+ * POST /whatsapp/send         — Send outbound text (admin panel)
+ * GET  /whatsapp/conversaciones — List conversation threads (admin panel)
+ * GET  /whatsapp/mensajes     — Full message history for a user (admin panel)
  */
 
 const express = require('express');
@@ -16,6 +12,7 @@ const logger = require('../utils/logger');
 const db = require('../services/database');
 const socketService = require('../services/socketService');
 const wa = require('../services/whatsapp');
+const requireJwt = require('../middleware/requireJwt');
 
 const router = express.Router();
 
@@ -208,6 +205,47 @@ router.post('/send', async (req, res, next) => {
     });
 
     return res.json({ ok: true, mensajeId: mensaje.id, waResponse: waResp });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ── Admin: list conversation threads ─────────────────────────────────────────
+
+/**
+ * GET /whatsapp/conversaciones?tenantId=
+ * Returns the latest message per unique user (conversation thread list).
+ * Requires JWT.
+ */
+router.get('/conversaciones', requireJwt, async (req, res, next) => {
+  try {
+    const { tenantId } = req.query;
+    if (!tenantId) return res.status(400).json({ error: 'tenantId is required' });
+    const threads = await db.listConversaciones(tenantId);
+    return res.json({ data: threads });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ── Admin: message history for one user ──────────────────────────────────────
+
+/**
+ * GET /whatsapp/mensajes?tenantId=&userId=&page=
+ * Returns paginated message history for a user in a tenant.
+ * Requires JWT.
+ */
+router.get('/mensajes', requireJwt, async (req, res, next) => {
+  try {
+    const { tenantId, userId, page } = req.query;
+    if (!tenantId || !userId) {
+      return res.status(400).json({ error: 'tenantId and userId are required' });
+    }
+    const mensajes = await db.listMensajes(tenantId, Number(userId), {
+      page: page ? Number(page) : 1,
+      limit: 50,
+    });
+    return res.json({ data: mensajes });
   } catch (err) {
     next(err);
   }

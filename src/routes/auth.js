@@ -1,57 +1,184 @@
+'use strict';
 const express = require('express');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
+const crypto = require('crypto');
+const rateLimit = require('express-rate-limit');
+const { ipKeyGenerator } = require('express-rate-limit');
 const { PrismaClient } = require('@prisma/client');
 const { audit } = require('../services/audit');
+const { getRedisClient } = require('../services/redis');
+const requireJwt = require('../middleware/requireJwt');
 
 const prisma = new PrismaClient();
 const router = express.Router();
 
-/**
- * POST /auth/login
- * Body: { email, password }
- * Supports two modes:
- *   1. Env-var super admin (ADMIN_EMAIL / ADMIN_PASSWORD)
- *   2. DB-backed admin users (admin_users table)
- */
-router.post('/login', async (req, res) => {
+// ── helpers ───────────────────────────────────────────────────────────────────
+
+const ACCESS_TTL  = parseInt(process.env.ACCESS_TOKEN_TTL  || '900',  10); // 15 min
+const REFRESH_TTL = parseInt(process.env.REFRESH_TOKEN_TTL || '604800', 10); // 7 days
+const MAX_ATTEMPTS    = parseInt(process.env.LOGIN_MAX_ATTEMPTS    || '5',  10);
+const LOCKOUT_MINUTES = parseInt(process.env.LOGIN_LOCKOUT_MINUTES || '15', 10);
+
+function hashToken(raw) {
+  return crypto.createHash('sha256').update(raw).digest('hex');
+}
+
+async function issueRefreshToken(adminUserId) {
+  const raw  = crypto.randomBytes(40).toString('hex');
+  const hash = hashToken(raw);
+  const expiresAt = new Date(Date.now() + REFRESH_TTL * 1000);
+  await prisma.refreshToken.create({ data: { adminUserId, tokenHash: hash, expiresAt } });
+  return raw;
+}
+
+function signAccess(payload, secret) {
+  const jti = crypto.randomBytes(16).toString('hex');
+  return {
+    token: jwt.sign({ ...payload, jti }, secret, { expiresIn: ACCESS_TTL }),
+    jti,
+  };
+}
+
+// ── Rate limiter: 5 login attempts per IP per 15 min ─────────────────────────
+const loginRateLimiter = rateLimit({
+  windowMs: LOCKOUT_MINUTES * 60 * 1000,
+  max: MAX_ATTEMPTS + 1, // +1 so account lockout can trigger before IP block
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => ipKeyGenerator(req),
+  handler: (_req, res) =>
+    res.status(429).json({ error: 'Too many login attempts. Try again later.' }),
+});
+
+// ── POST /auth/login ──────────────────────────────────────────────────────────
+router.post('/login', loginRateLimiter, async (req, res) => {
   const { email, password } = req.body;
   const jwtSecret = process.env.JWT_SECRET;
+  const ip        = req.ip;
+  const userAgent = req.headers['user-agent'] || '';
 
-  if (!jwtSecret) {
-    return res.status(503).json({ error: 'JWT_SECRET not configured' });
-  }
-  if (!email || !password) {
-    return res.status(400).json({ error: 'email and password are required' });
-  }
+  if (!jwtSecret) return res.status(503).json({ error: 'JWT_SECRET not configured' });
+  if (!email || !password) return res.status(400).json({ error: 'email and password are required' });
 
-  // 1. Check env-var super admin
-  const adminEmail = process.env.ADMIN_EMAIL;
+  // 1. Env-var super admin (legacy) — no lockout tracking
+  const adminEmail    = process.env.ADMIN_EMAIL;
   const adminPassword = process.env.ADMIN_PASSWORD;
   if (adminEmail && adminPassword && email === adminEmail && password === adminPassword) {
-    const token = jwt.sign({ sub: 'admin', email }, jwtSecret, { expiresIn: '8h' });
-    audit({ accion: 'LOGIN', entidad: 'admin', metadata: { email, via: 'env' } });
-    return res.json({ token, expiresIn: '8h', superAdmin: true });
+    const { token } = signAccess({ sub: 'admin', email }, jwtSecret);
+    audit({ accion: 'LOGIN', entidad: 'admin', ip, userAgent, metadata: { email, via: 'env' } });
+    return res.json({ accessToken: token, expiresIn: ACCESS_TTL, superAdmin: true });
   }
 
-  // 2. Check DB admin user
+  // 2. DB-backed admin user
   try {
     const user = await prisma.adminUser.findUnique({ where: { email } });
-    if (!user) return res.status(401).json({ error: 'Invalid credentials' });
 
-    const valid = await bcrypt.compare(password, user.passwordHash);
-    if (!valid) return res.status(401).json({ error: 'Invalid credentials' });
+    // Generic invalid-credentials response (timing-safe: always run bcrypt)
+    const dummyHash = '$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy';
+    const passwordToCheck = user ? user.passwordHash : dummyHash;
+    const valid = await bcrypt.compare(password, passwordToCheck);
 
-    const token = jwt.sign(
+    if (!user || !valid) {
+      // Increment failedAttempts and maybe lock the account
+      if (user) {
+        const newAttempts = user.failedAttempts + 1;
+        const lockedUntil = newAttempts >= MAX_ATTEMPTS
+          ? new Date(Date.now() + LOCKOUT_MINUTES * 60 * 1000)
+          : null;
+        await prisma.adminUser.update({
+          where: { id: user.id },
+          data: { failedAttempts: newAttempts, ...(lockedUntil ? { lockedUntil } : {}) },
+        });
+      }
+      audit({ accion: 'LOGIN_FAILED', entidad: 'admin_user', ip, userAgent, metadata: { email } });
+      return res.status(401).json({ error: 'Invalid credentials' });
+    }
+
+    // Check account lockout
+    if (user.lockedUntil && user.lockedUntil > new Date()) {
+      audit({ accion: 'LOGIN_BLOCKED', entidad: 'admin_user', ip, userAgent, metadata: { email } });
+      return res.status(423).json({ error: 'Account temporarily locked. Try again later.' });
+    }
+
+    // Success — reset lockout counters
+    await prisma.adminUser.update({
+      where: { id: user.id },
+      data: { failedAttempts: 0, lockedUntil: null },
+    });
+
+    const { token: accessToken } = signAccess(
       { adminUserId: user.id, email: user.email, superAdmin: user.superAdmin },
       jwtSecret,
-      { expiresIn: '8h' }
     );
-    audit({ adminUserId: user.id, tenantId: user.tenantId, accion: 'LOGIN', entidad: 'admin_user', entidadId: user.id });
-    return res.json({ token, expiresIn: '8h', superAdmin: user.superAdmin });
+    const refreshToken = await issueRefreshToken(user.id);
+
+    audit({ adminUserId: user.id, tenantId: user.tenantId, accion: 'LOGIN', entidad: 'admin_user', entidadId: user.id, ip, userAgent });
+    return res.json({ accessToken, refreshToken, expiresIn: ACCESS_TTL, superAdmin: user.superAdmin });
   } catch (err) {
     return res.status(500).json({ error: 'Auth error' });
   }
+});
+
+// ── POST /auth/refresh ────────────────────────────────────────────────────────
+router.post('/refresh', async (req, res) => {
+  const { refreshToken } = req.body;
+  if (!refreshToken) return res.status(400).json({ error: 'refreshToken is required' });
+
+  const jwtSecret = process.env.JWT_SECRET;
+  if (!jwtSecret) return res.status(503).json({ error: 'JWT_SECRET not configured' });
+
+  try {
+    const hash = hashToken(refreshToken);
+    const stored = await prisma.refreshToken.findUnique({
+      where: { tokenHash: hash },
+      include: { adminUser: true },
+    });
+
+    if (!stored || stored.revoked || stored.expiresAt < new Date()) {
+      return res.status(401).json({ error: 'Invalid or expired refresh token' });
+    }
+
+    const user = stored.adminUser;
+    const { token: accessToken } = signAccess(
+      { adminUserId: user.id, email: user.email, superAdmin: user.superAdmin },
+      jwtSecret,
+    );
+
+    return res.json({ accessToken, expiresIn: ACCESS_TTL });
+  } catch (err) {
+    return res.status(500).json({ error: 'Token refresh failed' });
+  }
+});
+
+// ── POST /auth/logout ─────────────────────────────────────────────────────────
+router.post('/logout', requireJwt, async (req, res) => {
+  const { refreshToken } = req.body;
+
+  // Revoke refresh token if provided
+  if (refreshToken) {
+    try {
+      const hash = hashToken(refreshToken);
+      await prisma.refreshToken.updateMany({
+        where: { tokenHash: hash },
+        data: { revoked: true },
+      });
+    } catch (_) { /* best effort */ }
+  }
+
+  // Blacklist the current access token in Redis (TTL = remaining seconds)
+  try {
+    const redis = getRedisClient();
+    if (redis && req.admin._jti && req.admin._exp) {
+      const ttl = req.admin._exp - Math.floor(Date.now() / 1000);
+      if (ttl > 0) {
+        await redis.set(`jwt:bl:${req.admin._jti}`, '1', 'EX', ttl);
+      }
+    }
+  } catch (_) { /* best effort */ }
+
+  audit({ adminUserId: req.admin.adminUserId, tenantId: req.admin.tenantId, accion: 'LOGOUT', entidad: 'admin_user', ip: req.ip, userAgent: req.headers['user-agent'] });
+  return res.json({ message: 'Logged out successfully' });
 });
 
 module.exports = router;

@@ -1,5 +1,7 @@
 require('dotenv').config();
 const express = require('express');
+const helmet = require('helmet');
+const cors = require('cors');
 const webhookRouter = require('./routes/webhook');
 const adminRouter = require('./routes/admin');
 const authRouter = require('./routes/auth');
@@ -12,6 +14,42 @@ const createRateLimiter = require('./middleware/rateLimiter');
 const errorHandler = require('./middleware/errorHandler');
 
 const app = express();
+
+// Security headers
+app.use(helmet());
+
+// CORS — restrict to whitelisted origins
+const defaultAllowedOrigins = [
+  'http://localhost:3000',
+  'http://localhost:3001',
+  'http://127.0.0.1:3000',
+  'http://127.0.0.1:3001',
+  'http://localhost:5173',
+  'http://127.0.0.1:5173',
+];
+
+const configuredAllowedOrigins = (process.env.ALLOWED_ORIGINS || '')
+  .split(',')
+  .map((o) => o.trim())
+  .filter(Boolean);
+
+const allowedOrigins = configuredAllowedOrigins.length > 0
+  ? configuredAllowedOrigins
+  : defaultAllowedOrigins;
+
+const corsOptions = {
+  origin: (origin, cb) => {
+    // Allow requests with no origin (e.g. curl, server-to-server)
+    if (!origin || allowedOrigins.includes(origin)) return cb(null, true);
+    cb(new Error('Not allowed by CORS'));
+  },
+  methods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'x-api-key'],
+  credentials: true,
+};
+
+app.use(cors(corsOptions));
+app.options('*', cors(corsOptions));
 
 app.use(express.json());
 

@@ -1,5 +1,7 @@
+'use strict';
 const jwt = require('jsonwebtoken');
 const { PrismaClient } = require('@prisma/client');
+const { getRedisClient } = require('../services/redis');
 
 const prisma = new PrismaClient();
 
@@ -18,9 +20,20 @@ async function requireJwt(req, res, next) {
     return res.status(401).json({ error: 'Invalid or expired token' });
   }
 
+  // Check Redis blacklist (populated by POST /auth/logout)
+  if (payload.jti) {
+    try {
+      const redis = getRedisClient();
+      if (redis) {
+        const blocked = await redis.get(`jwt:bl:${payload.jti}`);
+        if (blocked) return res.status(401).json({ error: 'Token has been revoked' });
+      }
+    } catch (_) { /* Redis unavailable — allow through */ }
+  }
+
   // Legacy env-var-based super admin token (sub === 'admin')
   if (payload.sub === 'admin' && !payload.adminUserId) {
-    req.admin = { superAdmin: true, permissions: [], email: process.env.ADMIN_EMAIL };
+    req.admin = { superAdmin: true, permissions: [], email: process.env.ADMIN_EMAIL, _jti: payload.jti, _exp: payload.exp };
     return next();
   }
 
@@ -59,6 +72,8 @@ async function requireJwt(req, res, next) {
         tenantId: user.tenantId,
         superAdmin: user.superAdmin,
         permissions,
+        _jti: payload.jti,
+        _exp: payload.exp,
       };
       return next();
     } catch (err) {

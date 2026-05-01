@@ -101,15 +101,18 @@ model Configuracion {
 // ── RBAC ──────────────────────────────────────────────────────────────────────
 
 model AdminUser {
-  id           Int            @id @default(autoincrement())
-  tenantId     String?        @map("tenant_id") @db.Uuid
-  email        String         @unique @db.VarChar(150)
-  passwordHash String         @map("password_hash") @db.VarChar(255)
-  nombre       String         @db.VarChar(100)
-  superAdmin   Boolean        @default(false) @map("super_admin")
-  createdAt    DateTime       @default(now()) @map("created_at")
-  roles        AdminUserRole[]
-  auditLogs    AuditLog[]
+  id              Int            @id @default(autoincrement())
+  tenantId        String?        @map("tenant_id") @db.Uuid
+  email           String         @unique @db.VarChar(150)
+  passwordHash    String         @map("password_hash") @db.VarChar(255)
+  nombre          String         @db.VarChar(100)
+  superAdmin      Boolean        @default(false) @map("super_admin")
+  failedAttempts  Int            @default(0) @map("failed_attempts")
+  lockedUntil     DateTime?      @map("locked_until")
+  createdAt       DateTime       @default(now()) @map("created_at")
+  roles           AdminUserRole[]
+  auditLogs       AuditLog[]
+  refreshTokens   RefreshToken[]
 
   @@map("admin_users")
 }
@@ -155,6 +158,19 @@ model AdminUserRole {
 
 // ── Auditoría ─────────────────────────────────────────────────────────────────
 
+model RefreshToken {
+  id          Int       @id @default(autoincrement())
+  adminUserId Int       @map("admin_user_id")
+  tokenHash   String    @unique @map("token_hash") @db.VarChar(64)
+  expiresAt   DateTime  @map("expires_at")
+  revoked     Boolean   @default(false)
+  createdAt   DateTime  @default(now()) @map("created_at")
+  adminUser   AdminUser @relation(fields: [adminUserId], references: [id], onDelete: Cascade)
+
+  @@index([adminUserId])
+  @@map("refresh_tokens")
+}
+
 model AuditLog {
   id          Int        @id @default(autoincrement())
   tenantId    String?    @map("tenant_id") @db.Uuid
@@ -162,6 +178,8 @@ model AuditLog {
   accion      String     @db.VarChar(100)
   entidad     String     @db.VarChar(100)
   entidadId   String?    @map("entidad_id") @db.VarChar(100)
+  ip          String?    @db.VarChar(45)
+  userAgent   String?    @map("user_agent") @db.VarChar(500)
   metadata    Json?
   createdAt   DateTime   @default(now()) @map("created_at")
   adminUser   AdminUser? @relation(fields: [adminUserId], references: [id])

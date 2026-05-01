@@ -54,6 +54,7 @@ services:
     environment:
       DATABASE_URL: postgresql://chatbot:chatbot@postgres:5432/chatbot
       REDIS_URL: redis://redis:6379
+      JWT_SECRET: "${JWT_SECRET:-dev-local-jwt-secret-change-this-1234567890}"
       NODE_ENV: production
       PORT: "3000"
     ports:
