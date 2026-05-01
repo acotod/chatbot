@@ -1,10 +1,10 @@
-Diseñar y desarrollar una interfaz de usuario (UI) y experiencia de usuario (UX) profesional para una plataforma SaaS multitenant enfocada en gestión de chatbots de WhatsApp (Meta Cloud API) orientados a apoyo emocional.
+Diseñar y desarrollar una interfaz de usuario (UI) y experiencia de usuario (UX) profesional para una plataforma SaaS multitenant enfocada en gestión de chatbots de WhatsApp (Meta Cloud API) orientados a distintos casos de uso de negocio.
 
 🎯 OBJETIVO UX
 Crear una experiencia:
 Intuitiva (sin curva de aprendizaje)
 Rápida (acciones en ≤ 2 clics)
-Empática (alineada al contexto emocional)
+Contextual (alineada al tipo de caso de uso)
 Escalable (multi-tenant)
 Moderna (nivel startup SaaS tipo Stripe / Notion / Intercom)
 
@@ -14,7 +14,7 @@ Acciones visibles y rápidas
 Jerarquía visual fuerte
 Consistencia total
 Feedback inmediato
-Diseño emocional (no frío)
+Diseño contextual (no frío ni robótico)
 
 🧩 ARQUITECTURA DE LA UI
 Layout principal
@@ -154,7 +154,7 @@ Inputs simples
 Badges de estado
 Modales ligeros
 
-💙 UX EMOCIONAL (DIFERENCIAL CLAVE)
+🧩 UX CONTEXTUAL (DIFERENCIAL CLAVE)
 Este sistema NO es un CRM frío.
 Debe:
 transmitir calma
@@ -196,19 +196,19 @@ prototipo navegable
 Una plataforma SaaS con:
 experiencia profesional
 facilidad de uso extrema
-diferenciación emocional
+diferenciación por experiencia contextual
 lista para escalar y vender
 
 🧠 NOTA FINAL
 El valor del producto NO está solo en la tecnología,
 sino en qué tan fácil y humano se siente usarlo.
-Diseñar y desarrollar una interfaz de usuario (UI) y experiencia de usuario (UX) profesional para una plataforma SaaS multitenant enfocada en gestión de chatbots de WhatsApp (Meta Cloud API) orientados a apoyo emocional.
+Diseñar y desarrollar una interfaz de usuario (UI) y experiencia de usuario (UX) profesional para una plataforma SaaS multitenant enfocada en gestión de chatbots de WhatsApp (Meta Cloud API) orientados a distintos casos de uso de negocio.
 
 🎯 OBJETIVO UX
 Crear una experiencia:
 Intuitiva (sin curva de aprendizaje)
 Rápida (acciones en ≤ 2 clics)
-Empática (alineada al contexto emocional)
+Contextual (alineada al tipo de caso de uso)
 Escalable (multi-tenant)
 Moderna (nivel startup SaaS tipo Stripe / Notion / Intercom)
 
@@ -218,7 +218,7 @@ Acciones visibles y rápidas
 Jerarquía visual fuerte
 Consistencia total
 Feedback inmediato
-Diseño emocional (no frío)
+Diseño contextual (no frío ni robótico)
 
 🧩 ARQUITECTURA DE LA UI
 Layout principal
@@ -358,7 +358,7 @@ Inputs simples
 Badges de estado
 Modales ligeros
 
-💙 UX EMOCIONAL (DIFERENCIAL CLAVE)
+🧩 UX CONTEXTUAL (DIFERENCIAL CLAVE)
 Este sistema NO es un CRM frío.
 Debe:
 transmitir calma
@@ -400,7 +400,7 @@ prototipo navegable
 Una plataforma SaaS con:
 experiencia profesional
 facilidad de uso extrema
-diferenciación emocional
+diferenciación por experiencia contextual
 lista para escalar y vender
 
 🧠 NOTA FINAL
@@ -452,7 +452,7 @@ import { Home, MessageCircle, Calendar, Users, Settings } from "lucide-react";
 export function Sidebar() {
  return (
    <div className="w-64 bg-white border-r p-4">
-     <h1 className="text-xl font-semibold mb-6">PMC SaaS</h1>
+     <h1 className="text-xl font-semibold mb-6">Zentra Bot</h1>
 
      <nav className="space-y-2">
        <SidebarItem icon={<Home />} label="Dashboard" />
@@ -593,7 +593,7 @@ cards: bg-white + shadow-sm
 bordes: rounded-xl
 spacing amplio (no apretado)
 
-💙 13. MICROCOPY (UX EMOCIONAL)
+🧩 13. MICROCOPY (UX CONTEXTUAL)
 Cambiá esto:
 ❌ “Guardado correctamente”
  ✅ “Listo, ya quedó agendado 💙”
@@ -676,7 +676,7 @@ notificaciones
 estados
 
 WebSocket básico:
-const socket = new WebSocket("wss://api.pmc-dev.com");
+const socket = new WebSocket("wss://api.zentrabot.com");
 
 socket.onmessage = (event) => {
  console.log("Nuevo mensaje", event.data);

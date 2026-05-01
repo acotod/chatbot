@@ -1,4 +1,4 @@
-Desarrollar una plataforma SaaS multitenant para gestión de flujos conversacionales en WhatsApp (Meta Cloud API), orientada a servicios de apoyo emocional, con backend robusto, seguridad por tenant, almacenamiento en PostgreSQL, experiencia de usuario profesional y despliegue en infraestructura propia con dominio y HTTPS.
+Desarrollar una plataforma SaaS multitenant para gestión de flujos conversacionales en WhatsApp (Meta Cloud API), orientada a casos de uso conversacionales en distintos sectores, con backend robusto, seguridad por tenant, almacenamiento en PostgreSQL, experiencia de usuario profesional y despliegue en infraestructura propia con dominio y HTTPS.
 
 ---
 
@@ -24,9 +24,9 @@ Construir un sistema SaaS que permita a múltiples empresas (tenants):
 * Infraestructura: VPS + Nginx + HTTPS (Let's Encrypt)
 * Dominio:
 
-  * api.pmc-dev.com → backend
-  * pmc-dev.com → landing
-  * admin.pmc-dev.com → panel
+  * api.zentrabot.com → backend
+  * zentrabot.com → landing
+  * admin.zentrabot.com → panel
 
 ---
 
@@ -227,7 +227,7 @@ Configurar:
 ### Nginx reverse proxy
 
 server {
-server_name api.pmc-dev.com;
+server_name api.zentrabot.com;
 
 ```
 location / {
@@ -243,7 +243,7 @@ location / {
 
 Usar Let's Encrypt:
 
-certbot --nginx -d api.pmc-dev.com
+certbot --nginx -d api.zentrabot.com
 
 ---
 
@@ -262,7 +262,7 @@ certbot --nginx -d api.pmc-dev.com
 * Nginx expone HTTPS
 * URL final:
 
-https://api.pmc-dev.com/webhook
+https://api.zentrabot.com/webhook
 
 ---
 
