@@ -11,6 +11,11 @@ const router = express.Router();
 
 router.use(requireJwt);
 
+// Helper — true when the caller is scoped to a single tenant (not global superAdmin)
+function callerTenant(req) {
+  return req.admin.superAdmin ? null : (req.admin.tenantId ?? null);
+}
+
 // ── Permisos ──────────────────────────────────────────────────────────────────
 
 // GET /rbac/permisos
@@ -26,7 +31,8 @@ router.get('/permisos', requirePermiso('MANAGE_ROLES'), async (_req, res, next) 
 // GET /rbac/roles
 router.get('/roles', requirePermiso('MANAGE_ROLES'), async (req, res, next) => {
   try {
-    const where = req.admin.tenantId ? { tenantId: req.admin.tenantId } : {};
+    const tenant = callerTenant(req);
+    const where = tenant ? { tenantId: tenant } : {};
     const roles = await prisma.role.findMany({
       where,
       include: { permisos: { include: { permiso: true } } },
@@ -42,10 +48,17 @@ router.post('/roles', requirePermiso('MANAGE_ROLES'), async (req, res, next) => 
     const { nombre, tenantId, permisoIds } = req.body;
     if (!nombre) return res.status(400).json({ error: 'nombre is required' });
 
+    const tenant = callerTenant(req);
+    // Tenant admins can only create roles for their own tenant
+    const effectiveTenantId = tenant ?? tenantId ?? null;
+    if (tenant && tenantId && tenantId !== tenant) {
+      return res.status(403).json({ error: 'Cannot create roles for a different tenant' });
+    }
+
     const role = await prisma.role.create({
       data: {
         nombre,
-        tenantId: tenantId ?? req.admin.tenantId ?? null,
+        tenantId: effectiveTenantId,
         permisos: permisoIds?.length
           ? { create: permisoIds.map((id) => ({ permisoId: id })) }
           : undefined,
@@ -62,6 +75,13 @@ router.patch('/roles/:id', requirePermiso('MANAGE_ROLES'), async (req, res, next
   try {
     const roleId = Number(req.params.id);
     const { nombre, permisoIds } = req.body;
+
+    const tenant = callerTenant(req);
+    if (tenant) {
+      const existing = await prisma.role.findUnique({ where: { id: roleId }, select: { tenantId: true } });
+      if (!existing) return res.status(404).json({ error: 'Role not found' });
+      if (existing.tenantId !== tenant) return res.status(403).json({ error: 'Cannot modify roles from a different tenant' });
+    }
 
     await prisma.rolePermiso.deleteMany({ where: { roleId } });
 
@@ -83,8 +103,15 @@ router.patch('/roles/:id', requirePermiso('MANAGE_ROLES'), async (req, res, next
 // DELETE /rbac/roles/:id
 router.delete('/roles/:id', requirePermiso('MANAGE_ROLES'), async (req, res, next) => {
   try {
-    await prisma.role.delete({ where: { id: Number(req.params.id) } });
-    audit({ adminUserId: req.admin.adminUserId, accion: 'DELETE_ROLE', entidad: 'role', entidadId: req.params.id });
+    const roleId = Number(req.params.id);
+    const tenant = callerTenant(req);
+    if (tenant) {
+      const existing = await prisma.role.findUnique({ where: { id: roleId }, select: { tenantId: true } });
+      if (!existing) return res.status(404).json({ error: 'Role not found' });
+      if (existing.tenantId !== tenant) return res.status(403).json({ error: 'Cannot delete roles from a different tenant' });
+    }
+    await prisma.role.delete({ where: { id: roleId } });
+    audit({ adminUserId: req.admin.adminUserId, accion: 'DELETE_ROLE', entidad: 'role', entidadId: roleId });
     res.status(204).end();
   } catch (err) { next(err); }
 });
@@ -92,9 +119,12 @@ router.delete('/roles/:id', requirePermiso('MANAGE_ROLES'), async (req, res, nex
 // ── Admin Users ───────────────────────────────────────────────────────────────
 
 // GET /rbac/users
-router.get('/users', requirePermiso('MANAGE_ROLES'), async (_req, res, next) => {
+router.get('/users', requirePermiso('MANAGE_ROLES'), async (req, res, next) => {
   try {
+    const tenant = callerTenant(req);
+    const where = tenant ? { tenantId: tenant } : {};
     const users = await prisma.adminUser.findMany({
+      where,
       select: { id: true, email: true, nombre: true, superAdmin: true, tenantId: true, createdAt: true,
         roles: { include: { role: { select: { id: true, nombre: true } } } } },
       orderBy: { createdAt: 'desc' },
@@ -110,16 +140,24 @@ router.post('/users', requirePermiso('MANAGE_ROLES'), async (req, res, next) => 
     if (!email || !password || !nombre) {
       return res.status(400).json({ error: 'email, password, nombre are required' });
     }
-    // Un usuario no-superAdmin solo puede pertenecer a un único tenant
-    if (!superAdmin && tenantId === undefined && !req.admin.superAdmin) {
-      // allow null tenant for global admins created by superAdmin
+
+    const tenant = callerTenant(req);
+    if (tenant) {
+      // Tenant admins can only create users in their own tenant and cannot elevate to superAdmin
+      if (tenantId && tenantId !== tenant) {
+        return res.status(403).json({ error: 'Cannot create users for a different tenant' });
+      }
+      if (superAdmin) {
+        return res.status(403).json({ error: 'Cannot create superAdmin users' });
+      }
     }
+
     const passwordHash = await bcrypt.hash(password, 12);
     const user = await prisma.adminUser.create({
       data: {
         email, passwordHash, nombre,
-        tenantId: tenantId ?? null,
-        superAdmin: superAdmin ?? false,
+        tenantId: tenant ?? tenantId ?? null,
+        superAdmin: tenant ? false : (superAdmin ?? false),
         roles: roleIds?.length ? { create: roleIds.map((id) => ({ roleId: id })) } : undefined,
       },
       select: { id: true, email: true, nombre: true, superAdmin: true, tenantId: true, createdAt: true,
@@ -136,21 +174,25 @@ router.patch('/users/:id', requirePermiso('MANAGE_ROLES'), async (req, res, next
     const userId = Number(req.params.id);
     const { nombre, email, password, tenantId, roleIds } = req.body;
 
-    // Fetch current user to check superAdmin flag
-    const existing = await prisma.adminUser.findUnique({ where: { id: userId }, select: { superAdmin: true } });
+    const existing = await prisma.adminUser.findUnique({ where: { id: userId }, select: { superAdmin: true, tenantId: true } });
     if (!existing) return res.status(404).json({ error: 'User not found' });
 
-    // Non-superAdmin users can only belong to one tenant (tenantId must be a single value, not multiple)
-    if (!existing.superAdmin && tenantId !== undefined && tenantId !== null) {
-      // tenantId is a scalar — this is already enforced by the data model (one column)
-      // No additional check needed beyond the schema constraint
+    const tenant = callerTenant(req);
+    if (tenant) {
+      // Tenant admins can only edit users from their own tenant
+      if (existing.tenantId !== tenant) return res.status(403).json({ error: 'Cannot modify users from a different tenant' });
+      // Cannot move a user out of the tenant
+      if (tenantId !== undefined && tenantId !== tenant) {
+        return res.status(403).json({ error: 'Cannot reassign users to a different tenant' });
+      }
     }
 
     const data = {};
     if (nombre) data.nombre = nombre;
     if (email) data.email = email;
     if (password) data.passwordHash = await bcrypt.hash(password, 12);
-    if (tenantId !== undefined) data.tenantId = tenantId ?? null;
+    // Only superAdmin callers can change tenantId
+    if (tenantId !== undefined && !tenant) data.tenantId = tenantId ?? null;
 
     if (roleIds !== undefined) {
       await prisma.adminUserRole.deleteMany({ where: { adminUserId: userId } });
@@ -173,8 +215,15 @@ router.patch('/users/:id', requirePermiso('MANAGE_ROLES'), async (req, res, next
 // DELETE /rbac/users/:id
 router.delete('/users/:id', requirePermiso('MANAGE_ROLES'), async (req, res, next) => {
   try {
-    await prisma.adminUser.delete({ where: { id: Number(req.params.id) } });
-    audit({ adminUserId: req.admin.adminUserId, accion: 'DELETE_ADMIN_USER', entidad: 'admin_user', entidadId: req.params.id });
+    const userId = Number(req.params.id);
+    const tenant = callerTenant(req);
+    if (tenant) {
+      const existing = await prisma.adminUser.findUnique({ where: { id: userId }, select: { tenantId: true } });
+      if (!existing) return res.status(404).json({ error: 'User not found' });
+      if (existing.tenantId !== tenant) return res.status(403).json({ error: 'Cannot delete users from a different tenant' });
+    }
+    await prisma.adminUser.delete({ where: { id: userId } });
+    audit({ adminUserId: req.admin.adminUserId, accion: 'DELETE_ADMIN_USER', entidad: 'admin_user', entidadId: userId });
     res.status(204).end();
   } catch (err) { next(err); }
 });

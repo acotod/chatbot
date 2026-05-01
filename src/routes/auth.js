@@ -108,7 +108,7 @@ router.post('/login', loginRateLimiter, async (req, res) => {
     });
 
     const { token: accessToken } = signAccess(
-      { adminUserId: user.id, email: user.email, superAdmin: user.superAdmin },
+      { adminUserId: user.id, email: user.email, superAdmin: user.superAdmin, tenantId: user.tenantId ?? null },
       jwtSecret,
     );
     const refreshToken = await issueRefreshToken(user.id);
@@ -141,7 +141,7 @@ router.post('/refresh', async (req, res) => {
 
     const user = stored.adminUser;
     const { token: accessToken } = signAccess(
-      { adminUserId: user.id, email: user.email, superAdmin: user.superAdmin },
+      { adminUserId: user.id, email: user.email, superAdmin: user.superAdmin, tenantId: user.tenantId ?? null },
       jwtSecret,
     );
 
