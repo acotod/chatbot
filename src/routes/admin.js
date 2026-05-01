@@ -2,6 +2,8 @@ const express = require('express');
 const crypto = require('crypto');
 const db = require('../services/database');
 const requireJwt = require('../middleware/requireJwt');
+const { audit } = require('../services/audit');
+const socketService = require('../services/socketService');
 
 const router = express.Router();
 
@@ -132,6 +134,9 @@ router.patch('/tenants/:slug/solicitudes/:id/estado', async (req, res, next) => 
         const { estado } = req.body;
         if (!estado) return res.status(400).json({ error: 'estado is required' });
         const result = await db.updateSolicitudEstado(Number(req.params.id), tenant.id, estado);
+        // Audit + real-time
+        audit({ adminUserId: req.admin?.adminUserId, tenantId: tenant.id, accion: 'UPDATE_SOLICITUD_ESTADO', entidad: 'solicitud', entidadId: req.params.id, metadata: { estado } });
+        socketService.emit(tenant.id, 'STATUS_UPDATED', { solicitudId: Number(req.params.id), estado });
         res.json(result);
     } catch (err) {
         next(err);
@@ -146,6 +151,9 @@ router.patch('/tenants/:slug/solicitudes/:id/agente', async (req, res, next) => 
         const { agenteId } = req.body;
         if (!agenteId) return res.status(400).json({ error: 'agenteId is required' });
         const result = await db.assignAgenteToSolicitud(Number(req.params.id), tenant.id, Number(agenteId));
+        // Audit + real-time
+        audit({ adminUserId: req.admin?.adminUserId, tenantId: tenant.id, accion: 'ASSIGN_AGENTE', entidad: 'solicitud', entidadId: req.params.id, metadata: { agenteId } });
+        socketService.emit(tenant.id, 'AGENT_ASSIGNED', { solicitudId: Number(req.params.id), agenteId: Number(agenteId) });
         res.json(result);
     } catch (err) {
         next(err);

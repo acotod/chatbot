@@ -5,24 +5,24 @@ const db = require('../services/database');
  * Attaches `req.tenant` on success.
  */
 async function resolveTenant(req, res, next) {
-  const apiKey = req.headers['x-api-key'];
+    const apiKey = req.headers['x-api-key'];
 
-  if (!apiKey) {
-    return res.status(401).json({ error: 'Missing x-api-key header' });
-  }
+    if (!apiKey) {
+        return res.status(401).json({ error: 'Missing x-api-key header' });
+    }
 
-  const tenant = await db.findTenantByApiKey(apiKey);
+    const tenant = await db.findTenantByApiKey(apiKey);
 
-  if (!tenant) {
-    return res.status(401).json({ error: 'Invalid API key' });
-  }
+    if (!tenant) {
+        return res.status(401).json({ error: 'Invalid API key' });
+    }
 
-  if (!tenant.activo) {
-    return res.status(403).json({ error: 'Tenant is inactive' });
-  }
+    if (!tenant.activo) {
+        return res.status(403).json({ error: 'Tenant is inactive' });
+    }
 
-  req.tenant = tenant;
-  next();
+    req.tenant = tenant;
+    next();
 }
 
 module.exports = resolveTenant;
