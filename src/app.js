@@ -16,8 +16,10 @@ const errorHandler = require('./middleware/errorHandler');
 
 const app = express();
 
-// Security headers
-app.use(helmet());
+// Security headers (allow cross-origin resource embedding for public uploaded assets)
+app.use(helmet({
+  crossOriginResourcePolicy: { policy: 'cross-origin' },
+}));
 
 // CORS — restrict to whitelisted origins
 const defaultAllowedOrigins = [
