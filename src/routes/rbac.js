@@ -125,6 +125,35 @@ router.post('/users', requirePermiso('MANAGE_ROLES'), async (req, res, next) => 
   } catch (err) { next(err); }
 });
 
+// PATCH /rbac/users/:id
+router.patch('/users/:id', requirePermiso('MANAGE_ROLES'), async (req, res, next) => {
+  try {
+    const userId = Number(req.params.id);
+    const { nombre, email, password, roleIds } = req.body;
+
+    const data = {};
+    if (nombre) data.nombre = nombre;
+    if (email) data.email = email;
+    if (password) data.passwordHash = await bcrypt.hash(password, 12);
+
+    if (roleIds !== undefined) {
+      await prisma.adminUserRole.deleteMany({ where: { adminUserId: userId } });
+      data.roles = roleIds?.length
+        ? { create: roleIds.map((id) => ({ roleId: id })) }
+        : undefined;
+    }
+
+    const user = await prisma.adminUser.update({
+      where: { id: userId },
+      data,
+      select: { id: true, email: true, nombre: true, superAdmin: true, tenantId: true, createdAt: true,
+        roles: { include: { role: { select: { id: true, nombre: true } } } } },
+    });
+    audit({ adminUserId: req.admin.adminUserId, accion: 'UPDATE_ADMIN_USER', entidad: 'admin_user', entidadId: userId });
+    res.json(user);
+  } catch (err) { next(err); }
+});
+
 // DELETE /rbac/users/:id
 router.delete('/users/:id', requirePermiso('MANAGE_ROLES'), async (req, res, next) => {
   try {
