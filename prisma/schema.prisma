@@ -17,6 +17,7 @@ model Tenant {
   apiKey          String          @unique @db.VarChar(64) @map("api_key")
   activo          Boolean         @default(true)
   plan            String          @default("free") @db.VarChar(20)
+  logoUrl         String?         @db.VarChar(500) @map("logo_url")
   createdAt       DateTime        @default(now()) @map("created_at")
   users           User[]
   solicitudes     Solicitud[]

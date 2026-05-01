@@ -1,5 +1,6 @@
 require('dotenv').config();
 const express = require('express');
+const path = require('path');
 const helmet = require('helmet');
 const cors = require('cors');
 const webhookRouter = require('./routes/webhook');
@@ -55,6 +56,9 @@ app.use(express.json());
 
 // Health check (no auth required)
 app.get('/health', (_req, res) => res.json({ status: 'ok' }));
+
+// Serve uploaded files (logos, etc.)
+app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
 
 // Auth (no auth required)
 app.use('/auth', authRouter);

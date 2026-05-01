@@ -1,11 +1,38 @@
 const express = require('express');
 const crypto = require('crypto');
+const path = require('path');
+const fs = require('fs');
+const multer = require('multer');
 const { PrismaClient } = require('@prisma/client');
 const db = require('../services/database');
 const requireJwt = require('../middleware/requireJwt');
 const requirePermiso = require('../middleware/requirePermiso');
 const { audit } = require('../services/audit');
 const socketService = require('../services/socketService');
+
+// Multer: store logos under /app/uploads/logos (persisted volume in prod)
+const UPLOADS_DIR = path.join(process.cwd(), 'uploads', 'logos');
+fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+
+const logoStorage = multer.diskStorage({
+  destination: (_req, _file, cb) => cb(null, UPLOADS_DIR),
+  filename: (req, file, cb) => {
+    const ext = path.extname(file.originalname).toLowerCase();
+    cb(null, `${req.params.slug}-${Date.now()}${ext}`);
+  },
+});
+
+const logoUpload = multer({
+  storage: logoStorage,
+  limits: { fileSize: 2 * 1024 * 1024 }, // 2 MB
+  fileFilter: (_req, file, cb) => {
+    if (/^image\/(png|jpeg|jpg|gif|webp|svg\+xml)$/.test(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error('Solo se permiten imágenes (png, jpg, gif, webp, svg)'));
+    }
+  },
+});
 
 const prisma = new PrismaClient();
 const router = express.Router();
@@ -104,9 +131,33 @@ router.post('/tenants/:slug/rotate-api-key', requirePermiso('MANAGE_TENANTS'), a
     }
 });
 
+// POST /admin/tenants/:slug/logo — upload/replace logo (max 2 MB image)
+router.post('/tenants/:slug/logo', requirePermiso('MANAGE_TENANTS'), logoUpload.single('logo'), async (req, res, next) => {
+    try {
+        const tenant = await db.findTenantBySlug(req.params.slug);
+        if (!tenant) return res.status(404).json({ error: 'Tenant not found' });
+        if (denyIfWrongTenant(req, res, tenant.id)) return;
+        if (!req.file) return res.status(400).json({ error: 'No se recibió ningún archivo' });
+
+        // Delete previous logo file if it exists
+        if (tenant.logoUrl) {
+            const prevPath = path.join(process.cwd(), tenant.logoUrl.replace(/^\//, ''));
+            fs.unlink(prevPath, () => {}); // fire-and-forget
+        }
+
+        const logoUrl = `/uploads/logos/${req.file.filename}`;
+        const updated = await prisma.tenant.update({
+            where: { id: tenant.id },
+            data: { logoUrl },
+        });
+        audit({ adminUserId: req.admin.adminUserId, tenantId: tenant.id, accion: 'UPDATE_LOGO', entidad: 'tenant', entidadId: tenant.id, ip: req.ip, userAgent: req.headers['user-agent'] });
+        res.json({ id: updated.id, slug: updated.slug, logoUrl: updated.logoUrl });
+    } catch (err) {
+        next(err);
+    }
+});
 // ---------------------------------------------------------------------------
 // Agentes (per-tenant, admin-managed)
-// ---------------------------------------------------------------------------
 
 // GET /admin/tenants/:slug/agentes
 router.get('/tenants/:slug/agentes', async (req, res, next) => {
