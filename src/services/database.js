@@ -193,6 +193,76 @@ async function getMetrics(tenantId) {
   return { solicitudesPorEstado, totalUsers, totalEventos, urgencias };
 }
 
+// ---------------------------------------------------------------------------
+// WhatsApp Business helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Find a tenant whose wa_credentials config contains the given phoneNumberId.
+ * This performs a JSON contains query.
+ */
+async function findTenantByWaPhoneNumberId(phoneNumberId) {
+  const client = getPrismaClient();
+  if (!client) return null;
+  const config = await client.configuracion.findFirst({
+    where: {
+      clave: 'wa_credentials',
+      valor: { path: ['phoneNumberId'], equals: phoneNumberId },
+    },
+    include: { tenant: true },
+  });
+  return config?.tenant ?? null;
+}
+
+/**
+ * Persist a WhatsApp message (inbound or outbound).
+ */
+async function saveMensaje({ tenantId, userId, waMsgId, direccion, tipo, contenido }) {
+  const client = getPrismaClient();
+  if (!client) return null;
+  return client.mensaje.create({
+    data: {
+      tenantId,
+      userId:    userId ?? null,
+      waMsgId:   waMsgId ?? null,
+      direccion,
+      tipo,
+      contenido,
+    },
+  });
+}
+
+/**
+ * List messages for a tenant/user conversation (latest-first).
+ */
+async function listMensajes(tenantId, userId, { page = 1, limit = 50 } = {}) {
+  const client = getPrismaClient();
+  if (!client) return [];
+  return client.mensaje.findMany({
+    where:    { tenantId, userId: userId ? Number(userId) : undefined },
+    orderBy:  { createdAt: 'desc' },
+    skip:     (page - 1) * limit,
+    take:     limit,
+    include:  { user: true },
+  });
+}
+
+/**
+ * List the most recent conversation thread (one row per unique user/phone).
+ */
+async function listConversaciones(tenantId, { limit = 30 } = {}) {
+  const client = getPrismaClient();
+  if (!client) return [];
+  // Use raw groupBy to get the latest message per user
+  return client.mensaje.findMany({
+    where:    { tenantId },
+    distinct: ['userId'],
+    orderBy:  { createdAt: 'desc' },
+    take:     limit,
+    include:  { user: true },
+  });
+}
+
 module.exports = {
   getPrismaClient,
   // tenant
@@ -220,5 +290,10 @@ module.exports = {
   assignAgenteToSolicitud,
   // metrics
   getMetrics,
+  // whatsapp
+  findTenantByWaPhoneNumberId,
+  saveMensaje,
+  listMensajes,
+  listConversaciones,
 };
 

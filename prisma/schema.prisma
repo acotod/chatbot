@@ -24,6 +24,7 @@ model Tenant {
   agentes         Agente[]
   configuraciones Configuracion[]
   flows           Flow[]
+  mensajes        Mensaje[]
 
   @@map("tenants")
 }
@@ -36,6 +37,7 @@ model User {
   tenant       Tenant        @relation(fields: [tenantId], references: [id])
   solicitudes  Solicitud[]
   eventosFlujo EventoFlujo[]
+  mensajes     Mensaje[]
 
   @@unique([tenantId, phone])
   @@map("users")
@@ -212,4 +214,26 @@ model FlowEdge {
   targetNode   FlowNode @relation("TargetNode", fields: [targetNodeId], references: [id], onDelete: Cascade)
 
   @@map("flow_edges")
+}
+
+// ── WhatsApp Business Cloud API ───────────────────────────────────────────────
+
+model Mensaje {
+  id        Int      @id @default(autoincrement())
+  tenantId  String   @map("tenant_id") @db.Uuid
+  userId    Int?     @map("user_id")
+  waMsgId   String?  @unique @map("wa_msg_id") @db.VarChar(100)
+  /// "entrada" | "salida"
+  direccion String   @db.VarChar(10)
+  /// "text" | "interactive" | "image" | "audio" | "document" | "template"
+  tipo      String   @db.VarChar(30)
+  contenido Json
+  leido     Boolean  @default(false)
+  createdAt DateTime @default(now()) @map("created_at")
+  tenant    Tenant   @relation(fields: [tenantId], references: [id])
+  user      User?    @relation(fields: [userId], references: [id])
+
+  @@index([tenantId, userId])
+  @@index([tenantId, createdAt])
+  @@map("mensajes")
 }

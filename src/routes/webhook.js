@@ -7,6 +7,23 @@ const { getRedisClient } = require('../services/redis');
 
 const router = express.Router();
 
+// ── GET: Meta Flows webhook verification ─────────────────────────────────────
+
+router.get('/', (req, res) => {
+  const mode      = req.query['hub.mode'];
+  const token     = req.query['hub.verify_token'];
+  const challenge = req.query['hub.challenge'];
+
+  if (mode === 'subscribe' && token === process.env.WA_VERIFY_TOKEN) {
+    logger.info('Flows webhook verified');
+    return res.status(200).send(challenge);
+  }
+  logger.warn('Flows webhook verification failed', { mode, token });
+  return res.sendStatus(403);
+});
+
+// ── POST: WhatsApp Flows data_exchange ───────────────────────────────────────
+
 router.post('/', webhookValidationRules, validate, async (req, res, next) => {
   const { screen, data } = req.body;
   const tenantId = req.tenant.id;
