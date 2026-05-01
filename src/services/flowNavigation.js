@@ -1,9 +1,11 @@
 /**
  * Flow navigation logic for WhatsApp Flows.
  * No database dependencies — pure screen/option mapping.
+ * Pass a custom `navigationOverride` (from tenant's configuraciones) to use
+ * per-tenant routing; falls back to DEFAULT_NAVIGATION.
  */
 
-const NAVIGATION = {
+const DEFAULT_NAVIGATION = {
   INICIO: {
     opcion_inicio: {
       hablar_alguien: 'HABLAR_ALGUIEN',
@@ -35,12 +37,14 @@ const NAVIGATION = {
 
 /**
  * Determine the next screen based on the current screen and request data.
- * @param {string} screen - Current screen name
- * @param {object} data   - Request data payload
+ * @param {string} screen              - Current screen name
+ * @param {object} data                - Request data payload
+ * @param {object} [navigationOverride] - Tenant-specific navigation config (optional)
  * @returns {string|null} Next screen name, or null if not found
  */
-function getNextScreen(screen, data) {
-  const screenConfig = NAVIGATION[screen];
+function getNextScreen(screen, data, navigationOverride) {
+  const navigation = navigationOverride || DEFAULT_NAVIGATION;
+  const screenConfig = navigation[screen];
   if (!screenConfig) return null;
 
   for (const field of Object.keys(screenConfig)) {
@@ -54,4 +58,5 @@ function getNextScreen(screen, data) {
   return null;
 }
 
-module.exports = { getNextScreen };
+module.exports = { getNextScreen, DEFAULT_NAVIGATION };
+

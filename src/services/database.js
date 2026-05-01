@@ -15,48 +15,75 @@ function getPrismaClient() {
   return prisma;
 }
 
-/**
- * Find an existing user by phone or create a new one.
- * @param {string} phone
- * @returns {Promise<object|null>}
- */
-async function findOrCreateUser(phone) {
+// ---------------------------------------------------------------------------
+// Tenant helpers
+// ---------------------------------------------------------------------------
+
+async function findTenantByApiKey(apiKey) {
+  const client = getPrismaClient();
+  if (!client) return null;
+  return client.tenant.findUnique({ where: { apiKey } });
+}
+
+async function findTenantBySlug(slug) {
+  const client = getPrismaClient();
+  if (!client) return null;
+  return client.tenant.findUnique({ where: { slug } });
+}
+
+async function createTenant({ nombre, slug, apiKey, plan }) {
+  const client = getPrismaClient();
+  if (!client) return null;
+  return client.tenant.create({ data: { nombre, slug, apiKey, plan: plan || 'free' } });
+}
+
+async function listTenants() {
+  const client = getPrismaClient();
+  if (!client) return [];
+  return client.tenant.findMany({ orderBy: { createdAt: 'asc' } });
+}
+
+async function setTenantActive(slug, activo) {
+  const client = getPrismaClient();
+  if (!client) return null;
+  return client.tenant.update({ where: { slug }, data: { activo } });
+}
+
+// ---------------------------------------------------------------------------
+// User helpers (scoped to tenant)
+// ---------------------------------------------------------------------------
+
+async function findOrCreateUser(phone, tenantId) {
   const client = getPrismaClient();
   if (!client) return null;
 
-  let user = await client.user.findFirst({ where: { phone } });
+  let user = await client.user.findFirst({ where: { phone, tenantId } });
   if (!user) {
-    user = await client.user.create({ data: { phone } });
+    user = await client.user.create({ data: { phone, tenantId } });
   }
   return user;
 }
 
-/**
- * Save a flow event to eventos_flujo.
- * @param {number|null} userId
- * @param {string} screen
- * @param {object} data
- */
-async function saveEvent(userId, screen, data) {
+// ---------------------------------------------------------------------------
+// Event / solicitud helpers (scoped to tenant)
+// ---------------------------------------------------------------------------
+
+async function saveEvent(userId, screen, data, tenantId) {
   const client = getPrismaClient();
   if (!client) return null;
 
   return client.eventoFlujo.create({
-    data: { userId: userId || null, screen, data },
+    data: { tenantId, userId: userId || null, screen, data },
   });
 }
 
-/**
- * Save a solicitud record with estado='pendiente'.
- * @param {number|null} userId
- * @param {object} data
- */
-async function saveSolicitud(userId, data) {
+async function saveSolicitud(userId, data, tenantId) {
   const client = getPrismaClient();
   if (!client) return null;
 
   return client.solicitud.create({
     data: {
+      tenantId,
       userId: userId || null,
       nombre: data.nombre || null,
       telefonoContacto: data.telefono_contacto || null,
@@ -66,4 +93,67 @@ async function saveSolicitud(userId, data) {
   });
 }
 
-module.exports = { findOrCreateUser, saveEvent, saveSolicitud, getPrismaClient };
+// ---------------------------------------------------------------------------
+// Configuracion helpers (dynamic flow engine)
+// ---------------------------------------------------------------------------
+
+async function getConfig(tenantId, clave) {
+  const client = getPrismaClient();
+  if (!client) return null;
+  return client.configuracion.findUnique({ where: { tenantId_clave: { tenantId, clave } } });
+}
+
+async function setConfig(tenantId, clave, valor) {
+  const client = getPrismaClient();
+  if (!client) return null;
+  return client.configuracion.upsert({
+    where: { tenantId_clave: { tenantId, clave } },
+    update: { valor },
+    create: { tenantId, clave, valor },
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Agente helpers (scoped to tenant)
+// ---------------------------------------------------------------------------
+
+async function listAgentes(tenantId) {
+  const client = getPrismaClient();
+  if (!client) return [];
+  return client.agente.findMany({ where: { tenantId }, orderBy: { createdAt: 'asc' } });
+}
+
+async function createAgente({ tenantId, nombre, email }) {
+  const client = getPrismaClient();
+  if (!client) return null;
+  return client.agente.create({ data: { tenantId, nombre, email } });
+}
+
+async function setAgenteEstado(id, tenantId, estado) {
+  const client = getPrismaClient();
+  if (!client) return null;
+  return client.agente.updateMany({ where: { id, tenantId }, data: { estado } });
+}
+
+module.exports = {
+  getPrismaClient,
+  // tenant
+  findTenantByApiKey,
+  findTenantBySlug,
+  createTenant,
+  listTenants,
+  setTenantActive,
+  // user
+  findOrCreateUser,
+  // events
+  saveEvent,
+  saveSolicitud,
+  // config
+  getConfig,
+  setConfig,
+  // agentes
+  listAgentes,
+  createAgente,
+  setAgenteEstado,
+};
+
