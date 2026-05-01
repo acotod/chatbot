@@ -1,10 +1,12 @@
 'use strict';
 /**
- * GET  /whatsapp              — Meta webhook verification
- * POST /whatsapp              — WhatsApp Cloud API incoming webhook
- * POST /whatsapp/send         — Send outbound text (admin panel)
- * GET  /whatsapp/conversaciones — List conversation threads (admin panel)
- * GET  /whatsapp/mensajes     — Full message history for a user (admin panel)
+ * GET  /whatsapp                    — Meta webhook verification
+ * POST /whatsapp                    — WhatsApp Cloud API incoming webhook
+ * POST /whatsapp/send               — Send outbound text (admin panel)
+ * GET  /whatsapp/conversaciones     — List conversation threads (admin panel)
+ * GET  /whatsapp/mensajes           — Full message history for a user (admin panel)
+ * GET  /whatsapp/flows              — Meta Flows webhook verification
+ * POST /whatsapp/flows              — Meta Flows data_exchange endpoint
  */
 
 const crypto = require('crypto');
@@ -13,7 +15,10 @@ const logger = require('../utils/logger');
 const db = require('../services/database');
 const socketService = require('../services/socketService');
 const wa = require('../services/whatsapp');
+const chatbotRouter = require('../services/chatbotRouter');
 const requireJwt = require('../middleware/requireJwt');
+const { getRedisClient } = require('../services/redis');
+const { getNextScreen } = require('../services/flowNavigation');
 
 const router = express.Router();
 
@@ -23,7 +28,6 @@ const router = express.Router();
 function verifyMetaSignature(req, res, next) {
   const appSecret = process.env.WA_APP_SECRET;
   if (!appSecret) {
-    // Secret not configured — allow through but warn once
     logger.warn('WA_APP_SECRET not set: webhook signature verification is disabled');
     return next();
   }
@@ -125,23 +129,46 @@ router.post('/', verifyMetaSignature, async (req, res) => {
 // ── Private ──────────────────────────────────────────────────────────────────
 
 async function _handleIncomingMessage(msg, contacts, tenant, phoneNumberId, accessToken) {
-  const phone    = msg.from;
-  const waMsgId  = msg.id;
-  const tipo     = msg.type;
+  const phone   = msg.from;
+  const waMsgId = msg.id;
+  const tipo    = msg.type;
+
+  // ── Idempotency: skip if already processed (Meta may redeliver) ──────────
+  if (waMsgId) {
+    const existing = await db.findMensajeByWaMsgId(waMsgId);
+    if (existing) {
+      logger.info('Duplicate WhatsApp message ignored', { waMsgId });
+      return;
+    }
+  }
 
   // Resolve / create user
   const user   = await db.findOrCreateUser(phone, tenant.id);
   const userId = user?.id ?? null;
 
-  // Build contenido based on type
+  // ── Build contenido + extract chatbot input ──────────────────────────────
   let contenido;
+  let userInput = null;
+
   switch (tipo) {
     case 'text':
       contenido = { text: msg.text?.body };
+      userInput = msg.text?.body ?? null;
       break;
     case 'interactive': {
-      const reply = msg.interactive?.button_reply ?? msg.interactive?.list_reply;
-      contenido = { interactive: { type: msg.interactive?.type, reply } };
+      const iType = msg.interactive?.type;
+      if (iType === 'nfm_reply') {
+        // WhatsApp Flows (Native Flow Message) completion
+        const nfm = msg.interactive.nfm_reply ?? {};
+        let formData = {};
+        try { formData = JSON.parse(nfm.response_json ?? '{}'); } catch {}
+        contenido = { interactive: { type: 'nfm_reply', data: formData } };
+        userInput = nfm.response_json ?? null;
+      } else {
+        const reply = msg.interactive?.button_reply ?? msg.interactive?.list_reply;
+        contenido = { interactive: { type: iType, reply } };
+        userInput = reply?.id ?? null;
+      }
       break;
     }
     case 'image':
@@ -194,6 +221,153 @@ async function _handleIncomingMessage(msg, contacts, tenant, phoneNumberId, acce
     wa.markAsRead(phoneNumberId, waMsgId, accessToken).catch((err) => {
       logger.warn('Could not mark message as read', { waMsgId, message: err.message });
     });
+  }
+
+  // ── Chatbot engine ───────────────────────────────────────────────────────
+  if (userId !== null && userInput !== null && accessToken) {
+    _runChatbot({ tenant, userId, phone, userInput, phoneNumberId, accessToken })
+      .catch((err) => logger.error('_runChatbot error', { tenantId: tenant.id, message: err.message }));
+  }
+}
+
+// ── Chatbot dispatcher ────────────────────────────────────────────────────────
+
+async function _runChatbot({ tenant, userId, phone, userInput, phoneNumberId, accessToken }) {
+  const { response, fallbackToHuman } = await chatbotRouter.routeMessage({
+    tenantId: tenant.id,
+    userId,
+    input: userInput,
+  });
+
+  if (fallbackToHuman) {
+    await _handleFallbackToHuman({ tenant, userId, phone, response, phoneNumberId, accessToken });
+  } else if (response) {
+    await _sendChatbotResponse({ tenant, userId, phone, phoneNumberId, accessToken, response });
+  }
+}
+
+async function _handleFallbackToHuman({ tenant, userId, phone, response, phoneNumberId, accessToken }) {
+  // Send handoff message to user if provided
+  if (response?.text) {
+    await _sendText(phoneNumberId, phone, response.text, accessToken, tenant, userId);
+  }
+
+  // Create solicitud for human agent follow-up (avoid duplicates)
+  const openSolicitud = await db.findOpenSolicitudForUser(userId, tenant.id);
+  if (!openSolicitud) {
+    await db.saveSolicitud(userId, {}, tenant.id);
+    logger.info('Solicitud created for human handoff', { tenantId: tenant.id, userId, phone });
+  }
+
+  // Emit real-time handoff event to admin panel
+  socketService.emit(tenant.id, 'chatbot_handoff', {
+    userId,
+    phone,
+    tenantId: tenant.id,
+  });
+}
+
+async function _sendChatbotResponse({ tenant, userId, phone, phoneNumberId, accessToken, response }) {
+  const type = response?.type ?? 'text';
+
+  try {
+    let waResp;
+    if (type === 'buttons') {
+      const buttons = (response.buttons ?? []).slice(0, 3);
+      waResp = await wa.sendButtonMessage(phoneNumberId, phone, response.text ?? '', buttons, accessToken);
+    } else {
+      // text or end
+      waResp = await wa.sendTextMessage(phoneNumberId, phone, response.text ?? '', accessToken);
+    }
+
+    // Persist outbound message
+    const outboundMsg = await db.saveMensaje({
+      tenantId:  tenant.id,
+      userId,
+      waMsgId:   waResp?.messages?.[0]?.id ?? null,
+      direccion: 'salida',
+      tipo:      type === 'buttons' ? 'interactive' : 'text',
+      contenido: response,
+    });
+
+    socketService.emit(tenant.id, 'nuevo_mensaje', {
+      id:        outboundMsg.id,
+      userId,
+      phone,
+      tipo:      outboundMsg.tipo,
+      contenido: response,
+      waMsgId:   outboundMsg.waMsgId,
+      createdAt: outboundMsg.createdAt,
+      direccion: 'salida',
+    });
+  } catch (err) {
+    logger.error('_sendChatbotResponse failed, enqueueing retry', {
+      tenantId: tenant.id,
+      phone,
+      message: err.message,
+    });
+
+    // Enqueue for retry
+    const redis = getRedisClient();
+    if (redis) {
+      const queuePayload = {
+        tenantId: tenant.id,
+        phone,
+        messagePayload: type === 'buttons'
+          ? _buildButtonPayload(phone, response)
+          : _buildTextPayload(phone, response.text ?? ''),
+        attempts: 0,
+      };
+      await redis.lpush('queue:wa_send', JSON.stringify(queuePayload));
+    }
+  }
+}
+
+function _buildTextPayload(to, text) {
+  return {
+    messaging_product: 'whatsapp',
+    recipient_type:    'individual',
+    to,
+    type:              'text',
+    text:              { preview_url: false, body: text },
+  };
+}
+
+function _buildButtonPayload(to, response) {
+  const buttons = (response.buttons ?? []).slice(0, 3);
+  return {
+    messaging_product: 'whatsapp',
+    recipient_type:    'individual',
+    to,
+    type:              'interactive',
+    interactive: {
+      type: 'button',
+      body: { text: response.text ?? '' },
+      action: {
+        buttons: buttons.map((b) => ({ type: 'reply', reply: { id: b.id, title: b.title } })),
+      },
+    },
+  };
+}
+
+async function _sendText(phoneNumberId, phone, text, accessToken, tenant, userId) {
+  try {
+    const waResp = await wa.sendTextMessage(phoneNumberId, phone, text, accessToken);
+    const msg = await db.saveMensaje({
+      tenantId:  tenant.id,
+      userId,
+      waMsgId:   waResp?.messages?.[0]?.id ?? null,
+      direccion: 'salida',
+      tipo:      'text',
+      contenido: { text },
+    });
+    socketService.emit(tenant.id, 'nuevo_mensaje', {
+      id: msg.id, userId, phone,
+      tipo: 'text', contenido: { text }, waMsgId: msg.waMsgId,
+      createdAt: msg.createdAt, direccion: 'salida',
+    });
+  } catch (err) {
+    logger.warn('_sendText failed', { tenantId: tenant.id, phone, message: err.message });
   }
 }
 
@@ -283,6 +457,103 @@ router.get('/mensajes', requireJwt, async (req, res, next) => {
       limit: 50,
     });
     return res.json({ data: mensajes });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ── Meta Flows: data_exchange endpoint (Fase 5) ──────────────────────────────
+// GET /whatsapp/flows  — Meta Flows webhook verification
+// POST /whatsapp/flows — Meta Flows data_exchange (screen navigation)
+//
+// Tenant resolution: by flow_token stored in configuraciones
+//   { clave: "flow_token", valor: { token: "..." } }
+// OR fallback: resolves by WA_VERIFY_TOKEN (single tenant setups).
+// Meta sends X-Hub-Signature-256 — validated by verifyMetaSignature.
+
+router.get('/flows', (req, res) => {
+  const mode      = req.query['hub.mode'];
+  const token     = req.query['hub.verify_token'];
+  const challenge = req.query['hub.challenge'];
+
+  if (mode === 'subscribe' && token === process.env.WA_VERIFY_TOKEN) {
+    logger.info('Meta Flows webhook verified');
+    return res.status(200).send(challenge);
+  }
+  logger.warn('Meta Flows webhook verification failed', { mode, token });
+  return res.sendStatus(403);
+});
+
+router.post('/flows', verifyMetaSignature, async (req, res, next) => {
+  try {
+    const { flow_token, action, screen, data = {} } = req.body;
+
+    // Ping health check from Meta
+    if (action === 'ping') {
+      return res.json({ data: { status: 'active' } });
+    }
+
+    if (!screen) {
+      return res.status(400).json({ error: 'screen is required' });
+    }
+
+    // Resolve tenant
+    let tenant = null;
+    if (flow_token) {
+      tenant = await db.findTenantByFlowToken(flow_token);
+    }
+    if (!tenant) {
+      logger.warn('Meta Flows: tenant not resolved', { flow_token });
+      return res.status(400).json({ error: 'Cannot resolve tenant from flow_token' });
+    }
+
+    if (!tenant.activo) {
+      return res.status(403).json({ error: 'Tenant is inactive' });
+    }
+
+    // Resolve user if phone is in data
+    let userId = null;
+    if (data.phone) {
+      const user = await db.findOrCreateUser(data.phone, tenant.id);
+      userId = user?.id ?? null;
+    }
+
+    // Persist event
+    await db.saveEvent(userId, screen, data, tenant.id);
+
+    // Persist solicitud when applicable
+    if (screen === 'SOLICITUD_ESPACIO') {
+      await db.saveSolicitud(userId, data, tenant.id);
+    }
+
+    // Load tenant flow config override (fallback to default)
+    const flowConfig = await db.getConfig(tenant.id, 'flow_navigation');
+    const navigationOverride = flowConfig ? flowConfig.valor : null;
+
+    const nextScreen = getNextScreen(screen, data, navigationOverride);
+    if (nextScreen === null) {
+      logger.warn('Meta Flows navigation failed', { tenantId: tenant.id, screen });
+      return res.status(400).json({ error: `Unknown screen or option for screen: ${screen}` });
+    }
+
+    // Enqueue urgencia async processing
+    if (screen === 'URGENCIA' || nextScreen === 'URGENCIA') {
+      const redis = getRedisClient();
+      if (redis) {
+        await redis.lpush('queue:urgencias', JSON.stringify({
+          tenantId: tenant.id, userId, screen, nextScreen, data, timestamp: Date.now(),
+        }));
+      }
+    }
+
+    logger.info('Meta Flows navigation', { tenantId: tenant.id, from: screen, to: nextScreen });
+
+    // Load screen templates for the next screen
+    const templatesCfg = await db.getConfig(tenant.id, 'screen_templates');
+    const templates = templatesCfg?.valor ?? {};
+    const screenData = templates[nextScreen] ?? {};
+
+    return res.json({ screen: nextScreen, data: screenData });
   } catch (err) {
     next(err);
   }

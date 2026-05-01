@@ -24,8 +24,10 @@ model Tenant {
   eventosFlujo    EventoFlujo[]
   agentes         Agente[]
   configuraciones Configuracion[]
-  flows           Flow[]
-  mensajes        Mensaje[]
+  flows                Flow[]
+  mensajes             Mensaje[]
+  conversationContexts ConversationContext[]
+  waSendQueue          WaSendQueue[]
 
   @@map("tenants")
 }
@@ -36,9 +38,10 @@ model User {
   phone        String?       @db.VarChar(20)
   createdAt    DateTime      @default(now()) @map("created_at")
   tenant       Tenant        @relation(fields: [tenantId], references: [id])
-  solicitudes  Solicitud[]
-  eventosFlujo EventoFlujo[]
-  mensajes     Mensaje[]
+  solicitudes         Solicitud[]
+  eventosFlujo        EventoFlujo[]
+  mensajes            Mensaje[]
+  conversationContext ConversationContext?
 
   @@unique([tenantId, phone])
   @@map("users")
@@ -80,6 +83,7 @@ model Agente {
   nombre      String      @db.VarChar(100)
   email       String      @db.VarChar(150)
   estado      String      @default("activo") @db.VarChar(20)
+  lastSeenAt  DateTime?   @map("last_seen_at")
   createdAt   DateTime    @default(now()) @map("created_at")
   tenant      Tenant      @relation(fields: [tenantId], references: [id])
   solicitudes Solicitud[]
@@ -255,4 +259,38 @@ model Mensaje {
   @@index([tenantId, userId])
   @@index([tenantId, createdAt])
   @@map("mensajes")
+}
+
+// ── Chatbot state ─────────────────────────────────────────────────────────────
+
+model ConversationContext {
+  id            Int      @id @default(autoincrement())
+  tenantId      String   @map("tenant_id") @db.Uuid
+  userId        Int      @map("user_id")
+  currentNodeId Int?     @map("current_node_id")
+  engine        String   @default("flow_engine") @db.VarChar(30)
+  variables     Json     @default("{}")
+  updatedAt     DateTime @default(now()) @updatedAt @map("updated_at")
+  tenant        Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, userId])
+  @@index([tenantId])
+  @@map("conversation_contexts")
+}
+
+model WaSendQueue {
+  id          Int      @id @default(autoincrement())
+  tenantId    String   @map("tenant_id") @db.Uuid
+  phone       String   @db.VarChar(20)
+  payload     Json
+  status      String   @default("pending") @db.VarChar(20)
+  attempts    Int      @default(0)
+  lastError   String?  @map("last_error") @db.Text
+  scheduledAt DateTime @default(now()) @map("scheduled_at")
+  createdAt   DateTime @default(now()) @map("created_at")
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([status, scheduledAt])
+  @@map("wa_send_queue")
 }

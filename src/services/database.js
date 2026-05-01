@@ -263,6 +263,109 @@ async function listConversaciones(tenantId, { limit = 30 } = {}) {
   });
 }
 
+// ---------------------------------------------------------------------------
+// Idempotency helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Find a persisted WhatsApp message by its Meta message ID.
+ * Used to skip duplicate incoming webhook events.
+ */
+async function findMensajeByWaMsgId(waMsgId) {
+  const client = getPrismaClient();
+  if (!client || !waMsgId) return null;
+  return client.mensaje.findUnique({ where: { waMsgId } });
+}
+
+// ---------------------------------------------------------------------------
+// Conversation context helpers (chatbot state per user/tenant)
+// ---------------------------------------------------------------------------
+
+async function getConversationContext(tenantId, userId) {
+  const client = getPrismaClient();
+  if (!client) return null;
+  try {
+    return await client.conversationContext.findUnique({
+      where: { tenantId_userId: { tenantId, userId } },
+    });
+  } catch (err) {
+    logger.warn('getConversationContext failed', { message: err.message });
+    return null;
+  }
+}
+
+async function setConversationContext(tenantId, userId, { currentNodeId }) {
+  const client = getPrismaClient();
+  if (!client) return null;
+  try {
+    return await client.conversationContext.upsert({
+      where:  { tenantId_userId: { tenantId, userId } },
+      update: { currentNodeId: currentNodeId ?? null, updatedAt: new Date() },
+      create: { tenantId, userId, currentNodeId: currentNodeId ?? null },
+    });
+  } catch (err) {
+    logger.warn('setConversationContext failed', { message: err.message });
+    return null;
+  }
+}
+
+async function clearConversationContext(tenantId, userId) {
+  const client = getPrismaClient();
+  if (!client) return;
+  try {
+    await client.conversationContext.deleteMany({ where: { tenantId, userId } });
+  } catch (err) {
+    logger.warn('clearConversationContext failed', { message: err.message });
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Agent presence helpers
+// ---------------------------------------------------------------------------
+
+async function setAgenteLastSeen(id, tenantId) {
+  const client = getPrismaClient();
+  if (!client) return null;
+  try {
+    await client.agente.updateMany({
+      where: { id, tenantId },
+      data:  { lastSeenAt: new Date() },
+    });
+  } catch (err) {
+    logger.warn('setAgenteLastSeen failed', { message: err.message });
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Solicitud helpers — find open request for a user
+// ---------------------------------------------------------------------------
+
+async function findOpenSolicitudForUser(userId, tenantId) {
+  const client = getPrismaClient();
+  if (!client || !userId) return null;
+  return client.solicitud.findFirst({
+    where: { userId, tenantId, estado: { in: ['pendiente', 'urgente'] } },
+    orderBy: { createdAt: 'desc' },
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Meta Flows — tenant resolution by flow_token
+// ---------------------------------------------------------------------------
+
+async function findTenantByFlowToken(flowToken) {
+  const client = getPrismaClient();
+  if (!client) return null;
+  const config = await client.configuracion.findFirst({
+    where: {
+      clave: 'flow_token',
+      valor: { path: ['token'], equals: flowToken },
+    },
+    include: { tenant: true },
+  });
+  return config?.tenant ?? null;
+}
+
 module.exports = {
   getPrismaClient,
   // tenant
@@ -283,17 +386,25 @@ module.exports = {
   listAgentes,
   createAgente,
   setAgenteEstado,
+  setAgenteLastSeen,
   // solicitudes
   listSolicitudes,
   countSolicitudesByEstado,
   updateSolicitudEstado,
   assignAgenteToSolicitud,
+  findOpenSolicitudForUser,
   // metrics
   getMetrics,
   // whatsapp
   findTenantByWaPhoneNumberId,
+  findTenantByFlowToken,
+  findMensajeByWaMsgId,
   saveMensaje,
   listMensajes,
   listConversaciones,
+  // chatbot context
+  getConversationContext,
+  setConversationContext,
+  clearConversationContext,
 };
 

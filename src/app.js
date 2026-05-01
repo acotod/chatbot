@@ -13,6 +13,7 @@ const whatsappRouter = require('./routes/whatsapp');
 const resolveTenant = require('./middleware/resolveTenant');
 const createRateLimiter = require('./middleware/rateLimiter');
 const errorHandler = require('./middleware/errorHandler');
+const correlationId = require('./middleware/correlationId');
 
 const app = express();
 
@@ -54,12 +55,14 @@ const corsOptions = {
 app.use(cors(corsOptions));
 app.options('*', cors(corsOptions));
 
-// Capture raw body buffer for HMAC signature verification (Meta webhooks)
 app.use(express.json({
   verify: (_req, _res, buf) => {
     _req.rawBody = buf;
   },
 }));
+
+// Correlation ID — must run before routes
+app.use(correlationId);
 
 // Health check (no auth required)
 app.get('/health', (_req, res) => res.json({ status: 'ok' }));

@@ -202,6 +202,29 @@ router.patch('/tenants/:slug/agentes/:id/estado', requirePermiso('EDIT_AGENTES')
     }
 });
 
+// PATCH /admin/tenants/:slug/agentes/:id/presencia
+// Body: { online: true|false }
+// Called by the admin UI when an agent connects/disconnects from the panel.
+router.patch('/tenants/:slug/agentes/:id/presencia', requirePermiso('EDIT_AGENTES'), async (req, res, next) => {
+    try {
+        const tenant = await db.findTenantBySlug(req.params.slug);
+        if (!tenant) return res.status(404).json({ error: 'Tenant not found' });
+        const agenteId = Number(req.params.id);
+        const { online } = req.body;
+        if (typeof online !== 'boolean') return res.status(400).json({ error: 'online (boolean) is required' });
+
+        if (online) await db.setAgenteLastSeen(agenteId, tenant.id);
+
+        // Emit real-time presence event
+        socketService.emit(tenant.id, 'agent_presence', { agenteId, online, lastSeenAt: online ? new Date() : null });
+        audit({ adminUserId: req.admin?.adminUserId, tenantId: tenant.id, accion: 'AGENTE_PRESENCIA', entidad: 'agente', entidadId: String(agenteId), metadata: { online } });
+
+        return res.json({ ok: true, agenteId, online });
+    } catch (err) {
+        next(err);
+    }
+});
+
 // ---------------------------------------------------------------------------
 // Solicitudes (per-tenant)
 // ---------------------------------------------------------------------------
