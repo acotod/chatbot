@@ -20,6 +20,17 @@ const REFRESH_TTL = parseInt(process.env.REFRESH_TOKEN_TTL || '604800', 10); // 
 const MAX_ATTEMPTS    = parseInt(process.env.LOGIN_MAX_ATTEMPTS    || '5',  10);
 const LOCKOUT_MINUTES = parseInt(process.env.LOGIN_LOCKOUT_MINUTES || '15', 10);
 
+// ── Legacy env-admin: lazy bcrypt hash cached per process lifetime ────────────
+// ADMIN_PASSWORD in .env is plain text for ease of config; we hash it once at
+// first use so subsequent compares use constant-time bcrypt.compare.
+let _cachedAdminPasswordHash = null;
+async function getAdminPasswordHash() {
+  if (!_cachedAdminPasswordHash && process.env.ADMIN_PASSWORD) {
+    _cachedAdminPasswordHash = await bcrypt.hash(process.env.ADMIN_PASSWORD, 12);
+  }
+  return _cachedAdminPasswordHash;
+}
+
 function hashToken(raw) {
   return crypto.createHash('sha256').update(raw).digest('hex');
 }
@@ -124,13 +135,16 @@ router.post('/login', loginRateLimiter, async (req, res) => {
   if (!jwtSecret) return res.status(503).json({ error: 'JWT_SECRET not configured' });
   if (!email || !password) return res.status(400).json({ error: 'email and password are required' });
 
-  // 1. Env-var super admin (legacy) — no lockout tracking
-  const adminEmail    = process.env.ADMIN_EMAIL;
-  const adminPassword = process.env.ADMIN_PASSWORD;
-  if (adminEmail && adminPassword && email === adminEmail && password === adminPassword) {
-    const { token } = signAccess({ sub: 'admin', email }, jwtSecret);
-    audit({ accion: 'LOGIN', entidad: 'admin', ip, userAgent, metadata: { email, via: 'env' } });
-    return res.json({ accessToken: token, expiresIn: ACCESS_TTL, superAdmin: true });
+  // 1. Env-var super admin (legacy) — bcrypt compare against cached hash
+  const adminEmail = process.env.ADMIN_EMAIL;
+  const adminPasswordHash = await getAdminPasswordHash();
+  if (adminEmail && adminPasswordHash && email === adminEmail) {
+    const valid = await bcrypt.compare(password, adminPasswordHash);
+    if (valid) {
+      const { token } = signAccess({ sub: 'admin', email }, jwtSecret);
+      audit({ accion: 'LOGIN', entidad: 'admin', ip, userAgent, metadata: { email, via: 'env' } });
+      return res.json({ accessToken: token, expiresIn: ACCESS_TTL, superAdmin: true });
+    }
   }
 
   // 2. DB-backed admin user

@@ -10,7 +10,8 @@
 
 const logger = require('../utils/logger');
 
-const GRAPH_URL = 'https://graph.facebook.com/v19.0';
+const GRAPH_VERSION = process.env.FACEBOOK_GRAPH_VERSION || 'v22.0';
+const GRAPH_URL = `https://graph.facebook.com/${GRAPH_VERSION}`;
 
 /**
  * Send a text message to a WhatsApp user.

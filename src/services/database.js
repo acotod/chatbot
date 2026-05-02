@@ -1,4 +1,5 @@
 const { PrismaClient } = require('@prisma/client');
+const crypto = require('crypto');
 const logger = require('../utils/logger');
 
 let prisma;
@@ -19,10 +20,16 @@ function getPrismaClient() {
 // Tenant helpers
 // ---------------------------------------------------------------------------
 
+// API keys are stored as SHA-256 hashes. The raw key is only ever returned
+// to the caller at creation time and never persisted in plain text.
+function _hashApiKey(rawKey) {
+  return crypto.createHash('sha256').update(rawKey).digest('hex');
+}
+
 async function findTenantByApiKey(apiKey) {
   const client = getPrismaClient();
   if (!client) return null;
-  return client.tenant.findUnique({ where: { apiKey } });
+  return client.tenant.findUnique({ where: { apiKey: _hashApiKey(apiKey) } });
 }
 
 async function findTenantBySlug(slug) {
@@ -34,7 +41,8 @@ async function findTenantBySlug(slug) {
 async function createTenant({ nombre, slug, apiKey, plan }) {
   const client = getPrismaClient();
   if (!client) return null;
-  return client.tenant.create({ data: { nombre, slug, apiKey, plan: plan || 'free' } });
+  // Store only the hash; raw key is returned to caller from admin route
+  return client.tenant.create({ data: { nombre, slug, apiKey: _hashApiKey(apiKey), plan: plan || 'free' } });
 }
 
 async function listTenants() {

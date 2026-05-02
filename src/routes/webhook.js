@@ -1,4 +1,5 @@
 const express = require('express');
+const crypto = require('crypto');
 const logger = require('../utils/logger');
 const { webhookValidationRules, validate } = require('../middleware/validate');
 const { getNextScreen } = require('../services/flowNavigation');
@@ -6,6 +7,32 @@ const db = require('../services/database');
 const { getRedisClient } = require('../services/redis');
 
 const router = express.Router();
+
+// ── Meta HMAC-SHA256 signature verification (same pattern as /whatsapp) ──────────
+function verifyFlowsSignature(req, res, next) {
+  const appSecret = process.env.WA_APP_SECRET;
+  if (!appSecret) {
+    logger.warn('WA_APP_SECRET not set: Flows webhook signature verification is disabled');
+    return next();
+  }
+  const sig = req.headers['x-hub-signature-256'];
+  if (!sig) return res.status(401).json({ error: 'Missing webhook signature' });
+  if (!req.rawBody) {
+    logger.error('rawBody unavailable for Flows webhook signature check');
+    return res.status(400).json({ error: 'Raw body unavailable for signature check' });
+  }
+  const expected = 'sha256=' +
+    crypto.createHmac('sha256', appSecret).update(req.rawBody).digest('hex');
+  try {
+    if (!crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expected))) {
+      logger.warn('Flows webhook signature mismatch');
+      return res.status(401).json({ error: 'Invalid webhook signature' });
+    }
+  } catch {
+    return res.status(401).json({ error: 'Invalid webhook signature' });
+  }
+  next();
+}
 
 // ── GET: Meta Flows webhook verification ─────────────────────────────────────
 
@@ -24,11 +51,11 @@ router.get('/', (req, res) => {
 
 // ── POST: WhatsApp Flows data_exchange ───────────────────────────────────────
 
-router.post('/', webhookValidationRules, validate, async (req, res, next) => {
+router.post('/', verifyFlowsSignature, webhookValidationRules, validate, async (req, res, next) => {
   const { screen, data } = req.body;
   const tenantId = req.tenant.id;
 
-  logger.info('Incoming webhook request', { tenantId, method: req.method, path: req.path, body: req.body });
+  logger.info('Incoming webhook request', { tenantId, screen });
 
   try {
     // Resolve user if phone provided

@@ -12,6 +12,19 @@ const socketService = require('../services/socketService');
 
 // Multer: store logos under /app/uploads/logos (persisted volume in prod)
 const UPLOADS_DIR = path.join(process.cwd(), 'uploads', 'logos');
+
+// Validate real image type via magic bytes (defends against MIME spoofing)
+function validateImageMagicBytes(buf) {
+  if (!buf || buf.length < 4) return false;
+  if (buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4E && buf[3] === 0x47) return true; // PNG
+  if (buf[0] === 0xFF && buf[1] === 0xD8 && buf[2] === 0xFF) return true;                    // JPEG
+  if (buf[0] === 0x47 && buf[1] === 0x49 && buf[2] === 0x46 && buf[3] === 0x38) return true; // GIF
+  if (buf.length >= 12 && buf[0] === 0x52 && buf[1] === 0x49 && buf[2] === 0x46 && buf[3] === 0x46 &&
+      buf[8] === 0x57 && buf[9] === 0x45 && buf[10] === 0x42 && buf[11] === 0x50) return true; // WebP
+  const start = buf.slice(0, 200).toString('utf8').trimStart();
+  if (start.startsWith('<svg') || start.startsWith('<?xml')) return true; // SVG
+  return false;
+}
 try { fs.mkdirSync(UPLOADS_DIR, { recursive: true }); } catch (_) { /* pre-created in Docker image */ }
 
 const logoStorage = multer.diskStorage({
@@ -64,7 +77,8 @@ router.post('/tenants', requirePermiso('MANAGE_TENANTS'), async (req, res, next)
         const apiKey = crypto.randomBytes(32).toString('hex');
         const tenant = await db.createTenant({ nombre, slug, apiKey, plan });
         audit({ adminUserId: req.admin.adminUserId, accion: 'CREATE_TENANT', entidad: 'tenant', entidadId: tenant.id, ip: req.ip, userAgent: req.headers['user-agent'], metadata: { slug } });
-        res.status(201).json(tenant);
+        // Return raw apiKey only at creation time — stored as hash in DB
+        res.status(201).json({ ...tenant, apiKey });
     } catch (err) {
         next(err);
     }
@@ -139,6 +153,13 @@ router.post('/tenants/:slug/logo', requirePermiso('MANAGE_TENANTS'), logoUpload.
         if (!tenant) return res.status(404).json({ error: 'Tenant not found' });
         if (denyIfWrongTenant(req, res, tenant.id)) return;
         if (!req.file) return res.status(400).json({ error: 'No se recibió ningún archivo' });
+
+        // Validate magic bytes to prevent MIME-type spoofing
+        const fileBuffer = fs.readFileSync(req.file.path);
+        if (!validateImageMagicBytes(fileBuffer)) {
+            fs.unlink(req.file.path, () => {});
+            return res.status(400).json({ error: 'El archivo no es una imagen válida' });
+        }
 
         // Delete previous logo file if it exists
         if (tenant.logoUrl) {
