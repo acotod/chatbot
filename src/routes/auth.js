@@ -40,6 +40,69 @@ function signAccess(payload, secret) {
   };
 }
 
+function normalizeGraphBaseUrl() {
+  return (process.env.FACEBOOK_GRAPH_URL || 'https://graph.facebook.com').replace(/\/$/, '');
+}
+
+async function validateFacebookToken(fbAccessToken) {
+  const appId = process.env.FACEBOOK_APP_ID;
+  const appSecret = process.env.FACEBOOK_APP_SECRET;
+
+  if (!appId || !appSecret) {
+    const err = new Error('Facebook auth is not configured');
+    err.status = 503;
+    throw err;
+  }
+
+  if (typeof fetch !== 'function') {
+    const err = new Error('Fetch API unavailable in current runtime');
+    err.status = 503;
+    throw err;
+  }
+
+  const graphBase = normalizeGraphBaseUrl();
+  const version = process.env.FACEBOOK_GRAPH_VERSION || 'v25.0';
+  const appAccessToken = `${appId}|${appSecret}`;
+
+  const debugUrl = new URL(`${graphBase}/${version}/debug_token`);
+  debugUrl.searchParams.set('input_token', fbAccessToken);
+  debugUrl.searchParams.set('access_token', appAccessToken);
+
+  const debugRes = await fetch(debugUrl.toString());
+  const debugJson = await debugRes.json().catch(() => ({}));
+
+  if (!debugRes.ok || !debugJson?.data?.is_valid) {
+    const err = new Error('Invalid Facebook token');
+    err.status = 401;
+    throw err;
+  }
+
+  if (String(debugJson.data.app_id) !== String(appId)) {
+    const err = new Error('Facebook token app mismatch');
+    err.status = 401;
+    throw err;
+  }
+
+  const meUrl = new URL(`${graphBase}/${version}/me`);
+  meUrl.searchParams.set('fields', 'id,name,email');
+  meUrl.searchParams.set('access_token', fbAccessToken);
+
+  const meRes = await fetch(meUrl.toString());
+  const meJson = await meRes.json().catch(() => ({}));
+
+  if (!meRes.ok || !meJson?.id) {
+    const err = new Error('Failed to fetch Facebook profile');
+    err.status = 401;
+    throw err;
+  }
+
+  return {
+    facebookId: String(meJson.id),
+    email: meJson.email ? String(meJson.email).toLowerCase().trim() : null,
+    name: meJson.name || null,
+  };
+}
+
 // ── Rate limiter: 5 login attempts per IP per 15 min ─────────────────────────
 const loginRateLimiter = rateLimit({
   windowMs: LOCKOUT_MINUTES * 60 * 1000,
@@ -117,6 +180,68 @@ router.post('/login', loginRateLimiter, async (req, res) => {
     return res.json({ accessToken, refreshToken, expiresIn: ACCESS_TTL, superAdmin: user.superAdmin });
   } catch (err) {
     return res.status(500).json({ error: 'Auth error' });
+  }
+});
+
+// ── POST /auth/facebook ──────────────────────────────────────────────────────
+router.post('/facebook', loginRateLimiter, async (req, res) => {
+  const { accessToken } = req.body;
+  const jwtSecret = process.env.JWT_SECRET;
+  const ip = req.ip;
+  const userAgent = req.headers['user-agent'] || '';
+
+  if (!jwtSecret) return res.status(503).json({ error: 'JWT_SECRET not configured' });
+  if (!accessToken || typeof accessToken !== 'string') {
+    return res.status(400).json({ error: 'accessToken is required' });
+  }
+
+  try {
+    const profile = await validateFacebookToken(accessToken);
+
+    if (!profile.email) {
+      return res.status(400).json({ error: 'Facebook account has no email available' });
+    }
+
+    const user = await prisma.adminUser.findUnique({ where: { email: profile.email } });
+    if (!user) {
+      audit({ accion: 'LOGIN_FAILED', entidad: 'admin_user', ip, userAgent, metadata: { via: 'facebook', email: profile.email } });
+      return res.status(403).json({ error: 'No admin account is linked to this Facebook email' });
+    }
+
+    if (user.lockedUntil && user.lockedUntil > new Date()) {
+      audit({ adminUserId: user.id, tenantId: user.tenantId, accion: 'LOGIN_BLOCKED', entidad: 'admin_user', entidadId: String(user.id), ip, userAgent, metadata: { via: 'facebook' } });
+      return res.status(423).json({ error: 'Account temporarily locked. Try again later.' });
+    }
+
+    await prisma.adminUser.update({
+      where: { id: user.id },
+      data: { failedAttempts: 0, lockedUntil: null },
+    });
+
+    const { token: accessTokenJwt } = signAccess(
+      { adminUserId: user.id, email: user.email, superAdmin: user.superAdmin, tenantId: user.tenantId ?? null },
+      jwtSecret,
+    );
+    const refreshToken = await issueRefreshToken(user.id);
+
+    audit({
+      adminUserId: user.id,
+      tenantId: user.tenantId,
+      accion: 'LOGIN',
+      entidad: 'admin_user',
+      entidadId: String(user.id),
+      ip,
+      userAgent,
+      metadata: { via: 'facebook', facebookId: profile.facebookId },
+    });
+
+    return res.json({ accessToken: accessTokenJwt, refreshToken, expiresIn: ACCESS_TTL, superAdmin: user.superAdmin });
+  } catch (err) {
+    const status = err.status || 500;
+    if (status >= 500) {
+      return res.status(500).json({ error: 'Facebook auth failed' });
+    }
+    return res.status(status).json({ error: err.message || 'Facebook auth failed' });
   }
 });
 
