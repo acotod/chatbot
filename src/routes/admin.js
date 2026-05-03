@@ -63,6 +63,87 @@ function denyIfWrongTenant(req, res, tenantId) {
   return false;
 }
 
+const AGENDA_TYPES = new Set(['reunion', 'tarea', 'automatizacion', 'webhook']);
+const AGENDA_STATES = new Set(['pendiente', 'en_progreso', 'completado']);
+
+function serializeAgendaEvent(event) {
+    return {
+        ...event,
+        assignments: (event.assignments || []).map((a) => ({
+            agenteId: a.agenteId,
+            nombre: a.agente?.nombre ?? null,
+            email: a.agente?.email ?? null,
+            estado: a.agente?.estado ?? null,
+        })),
+    };
+}
+
+async function logAgendaEvent({ tenantId, eventId, adminUserId, accion, metadata }) {
+    await prisma.agendaEventLog.create({
+        data: {
+            tenantId,
+            eventId,
+            adminUserId: adminUserId ?? null,
+            accion,
+            metadata: metadata ?? undefined,
+        },
+    });
+}
+
+function parseIsoDate(value) {
+    if (!value) return null;
+    const dt = new Date(value);
+    return Number.isNaN(dt.getTime()) ? null : dt;
+}
+
+async function runAgendaStartHooks({ tenantId, event, actorAdminUserId }) {
+    if (!event.triggerWebhookOnStart || !event.webhookUrl) return;
+
+    const method = (event.webhookMethod || 'POST').toUpperCase();
+    const supported = new Set(['POST', 'PUT', 'PATCH']);
+    if (!supported.has(method)) return;
+
+    try {
+        const headers = {
+            'Content-Type': 'application/json',
+            ...(event.webhookHeaders && typeof event.webhookHeaders === 'object' ? event.webhookHeaders : {}),
+        };
+
+        const payload = {
+            eventId: event.id,
+            tenantId,
+            tipo: event.tipo,
+            estado: event.estado,
+            startAt: event.startAt,
+            endAt: event.endAt,
+            flowId: event.flowId,
+            custom: event.webhookPayload ?? null,
+        };
+
+        const resp = await fetch(event.webhookUrl, {
+            method,
+            headers,
+            body: JSON.stringify(payload),
+        });
+
+        await logAgendaEvent({
+            tenantId,
+            eventId: event.id,
+            adminUserId: actorAdminUserId,
+            accion: 'WEBHOOK_TRIGGERED',
+            metadata: { status: resp.status, ok: resp.ok },
+        });
+    } catch (err) {
+        await logAgendaEvent({
+            tenantId,
+            eventId: event.id,
+            adminUserId: actorAdminUserId,
+            accion: 'WEBHOOK_FAILED',
+            metadata: { error: err.message },
+        });
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Tenants
 // ---------------------------------------------------------------------------
@@ -307,6 +388,463 @@ router.patch('/tenants/:slug/solicitudes/:id/agente', requirePermiso('EDIT_SOLIC
 // ---------------------------------------------------------------------------
 // Métricas
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// Agenda (weekly planning)
+// ---------------------------------------------------------------------------
+
+// GET /admin/tenants/:slug/agenda/feature
+router.get('/tenants/:slug/agenda/feature', requirePermiso('VIEW_AGENDA'), async (req, res, next) => {
+    try {
+        const tenant = await db.findTenantBySlug(req.params.slug);
+        if (!tenant) return res.status(404).json({ error: 'Tenant not found' });
+        if (denyIfWrongTenant(req, res, tenant.id)) return;
+        const config = await db.getConfig(tenant.id, 'feature_agenda_enabled');
+        const enabled = Boolean(config?.valor?.enabled);
+        res.json({ enabled });
+    } catch (err) {
+        next(err);
+    }
+});
+
+// PUT /admin/tenants/:slug/agenda/feature
+router.put('/tenants/:slug/agenda/feature', requirePermiso('MANAGE_TENANTS'), async (req, res, next) => {
+    try {
+        const tenant = await db.findTenantBySlug(req.params.slug);
+        if (!tenant) return res.status(404).json({ error: 'Tenant not found' });
+        if (denyIfWrongTenant(req, res, tenant.id)) return;
+        const enabled = Boolean(req.body?.enabled);
+        await db.setConfig(tenant.id, 'feature_agenda_enabled', { enabled });
+        res.json({ enabled });
+    } catch (err) {
+        next(err);
+    }
+});
+
+// GET /admin/tenants/:slug/agenda?start=ISO&end=ISO&tipo=&estado=&agenteId=
+router.get('/tenants/:slug/agenda', requirePermiso('VIEW_AGENDA'), async (req, res, next) => {
+    try {
+        const tenant = await db.findTenantBySlug(req.params.slug);
+        if (!tenant) return res.status(404).json({ error: 'Tenant not found' });
+        if (denyIfWrongTenant(req, res, tenant.id)) return;
+
+        const startAt = parseIsoDate(req.query.start);
+        const endAt = parseIsoDate(req.query.end);
+        if (!startAt || !endAt) {
+            return res.status(400).json({ error: 'start and end ISO dates are required' });
+        }
+        if (startAt >= endAt) {
+            return res.status(400).json({ error: 'start must be earlier than end' });
+        }
+
+        const where = {
+            tenantId: tenant.id,
+            startAt: { lt: endAt },
+            endAt: { gt: startAt },
+        };
+
+        if (req.query.tipo) {
+            if (!AGENDA_TYPES.has(String(req.query.tipo))) {
+                return res.status(400).json({ error: 'Invalid tipo' });
+            }
+            where.tipo = String(req.query.tipo);
+        }
+
+        if (req.query.estado) {
+            if (!AGENDA_STATES.has(String(req.query.estado))) {
+                return res.status(400).json({ error: 'Invalid estado' });
+            }
+            where.estado = String(req.query.estado);
+        }
+
+        if (req.query.agenteId) {
+            where.assignments = { some: { agenteId: Number(req.query.agenteId) } };
+        }
+
+        const events = await prisma.agendaEvent.findMany({
+            where,
+            include: {
+                assignments: { include: { agente: true } },
+            },
+            orderBy: [{ startAt: 'asc' }, { id: 'asc' }],
+        });
+
+        res.json({ data: events.map(serializeAgendaEvent) });
+    } catch (err) {
+        next(err);
+    }
+});
+
+// POST /admin/tenants/:slug/agenda
+router.post('/tenants/:slug/agenda', requirePermiso('CREATE_AGENDA'), async (req, res, next) => {
+    try {
+        const tenant = await db.findTenantBySlug(req.params.slug);
+        if (!tenant) return res.status(404).json({ error: 'Tenant not found' });
+        if (denyIfWrongTenant(req, res, tenant.id)) return;
+
+        const {
+            titulo,
+            descripcion,
+            tipo,
+            color,
+            estado,
+            startAt,
+            endAt,
+            reminderMinutes,
+            flowId,
+            triggerWebhookOnStart,
+            webhookUrl,
+            webhookMethod,
+            webhookHeaders,
+            webhookPayload,
+            agenteIds,
+        } = req.body;
+
+        if (!titulo || typeof titulo !== 'string') {
+            return res.status(400).json({ error: 'titulo is required' });
+        }
+        if (!AGENDA_TYPES.has(tipo)) {
+            return res.status(400).json({ error: 'tipo must be one of reunion|tarea|automatizacion|webhook' });
+        }
+        const normalizedEstado = estado || 'pendiente';
+        if (!AGENDA_STATES.has(normalizedEstado)) {
+            return res.status(400).json({ error: 'estado must be one of pendiente|en_progreso|completado' });
+        }
+
+        const parsedStartAt = parseIsoDate(startAt);
+        const parsedEndAt = parseIsoDate(endAt);
+        if (!parsedStartAt || !parsedEndAt || parsedStartAt >= parsedEndAt) {
+            return res.status(400).json({ error: 'Invalid startAt/endAt interval' });
+        }
+
+        if (flowId) {
+            const flow = await prisma.flow.findFirst({ where: { id: Number(flowId), tenantId: tenant.id } });
+            if (!flow) return res.status(400).json({ error: 'flowId does not exist for this tenant' });
+        }
+
+        const assignmentIds = Array.isArray(agenteIds)
+            ? [...new Set(agenteIds.map((id) => Number(id)).filter((id) => Number.isInteger(id) && id > 0))]
+            : [];
+
+        if (assignmentIds.length > 0) {
+            const agentes = await prisma.agente.findMany({
+                where: { tenantId: tenant.id, id: { in: assignmentIds } },
+                select: { id: true },
+            });
+            if (agentes.length !== assignmentIds.length) {
+                return res.status(400).json({ error: 'One or more agenteIds are invalid for this tenant' });
+            }
+        }
+
+        const created = await prisma.$transaction(async (tx) => {
+            const event = await tx.agendaEvent.create({
+                data: {
+                    tenantId: tenant.id,
+                    createdByAdminUserId: req.admin?.adminUserId ?? null,
+                    flowId: flowId ? Number(flowId) : null,
+                    titulo: titulo.trim(),
+                    descripcion: descripcion || null,
+                    tipo,
+                    color: color || '#60A5FA',
+                    estado: normalizedEstado,
+                    startAt: parsedStartAt,
+                    endAt: parsedEndAt,
+                    reminderMinutes: reminderMinutes ?? null,
+                    triggerWebhookOnStart: Boolean(triggerWebhookOnStart),
+                    webhookUrl: webhookUrl || null,
+                    webhookMethod: webhookMethod || null,
+                    webhookHeaders: webhookHeaders || undefined,
+                    webhookPayload: webhookPayload || undefined,
+                    assignments: assignmentIds.length
+                        ? { create: assignmentIds.map((agenteId) => ({ agenteId })) }
+                        : undefined,
+                },
+                include: { assignments: { include: { agente: true } } },
+            });
+
+            await tx.agendaEventLog.create({
+                data: {
+                    tenantId: tenant.id,
+                    eventId: event.id,
+                    adminUserId: req.admin?.adminUserId ?? null,
+                    accion: 'CREATE',
+                    metadata: { tipo: event.tipo, estado: event.estado },
+                },
+            });
+
+            return event;
+        });
+
+        audit({
+            adminUserId: req.admin?.adminUserId,
+            tenantId: tenant.id,
+            accion: 'CREATE_AGENDA_EVENT',
+            entidad: 'agenda_event',
+            entidadId: String(created.id),
+            ip: req.ip,
+            userAgent: req.headers['user-agent'],
+            metadata: { tipo: created.tipo, estado: created.estado },
+        });
+
+        socketService.emit(tenant.id, 'agenda:event_created', serializeAgendaEvent(created));
+        res.status(201).json(serializeAgendaEvent(created));
+    } catch (err) {
+        next(err);
+    }
+});
+
+// PATCH /admin/tenants/:slug/agenda/:id
+router.patch('/tenants/:slug/agenda/:id', requirePermiso('EDIT_AGENDA'), async (req, res, next) => {
+    try {
+        const tenant = await db.findTenantBySlug(req.params.slug);
+        if (!tenant) return res.status(404).json({ error: 'Tenant not found' });
+        if (denyIfWrongTenant(req, res, tenant.id)) return;
+
+        const eventId = Number(req.params.id);
+        const existing = await prisma.agendaEvent.findFirst({ where: { id: eventId, tenantId: tenant.id } });
+        if (!existing) return res.status(404).json({ error: 'Agenda event not found' });
+
+        const patch = {};
+        if (req.body.titulo !== undefined) patch.titulo = String(req.body.titulo).trim();
+        if (req.body.descripcion !== undefined) patch.descripcion = req.body.descripcion || null;
+        if (req.body.color !== undefined) patch.color = req.body.color || '#60A5FA';
+
+        if (req.body.tipo !== undefined) {
+            if (!AGENDA_TYPES.has(String(req.body.tipo))) return res.status(400).json({ error: 'Invalid tipo' });
+            patch.tipo = String(req.body.tipo);
+        }
+
+        if (req.body.estado !== undefined) {
+            if (!AGENDA_STATES.has(String(req.body.estado))) return res.status(400).json({ error: 'Invalid estado' });
+            patch.estado = String(req.body.estado);
+        }
+
+        const nextStartAt = req.body.startAt !== undefined ? parseIsoDate(req.body.startAt) : existing.startAt;
+        const nextEndAt = req.body.endAt !== undefined ? parseIsoDate(req.body.endAt) : existing.endAt;
+        if (!nextStartAt || !nextEndAt || nextStartAt >= nextEndAt) {
+            return res.status(400).json({ error: 'Invalid startAt/endAt interval' });
+        }
+        patch.startAt = nextStartAt;
+        patch.endAt = nextEndAt;
+
+        if (req.body.reminderMinutes !== undefined) {
+            const value = req.body.reminderMinutes;
+            if (value !== null && (!Number.isInteger(value) || value < 0)) {
+                return res.status(400).json({ error: 'reminderMinutes must be null or a non-negative integer' });
+            }
+            patch.reminderMinutes = value;
+        }
+
+        if (req.body.flowId !== undefined) {
+            if (req.body.flowId === null) {
+                patch.flowId = null;
+            } else {
+                const flow = await prisma.flow.findFirst({ where: { id: Number(req.body.flowId), tenantId: tenant.id } });
+                if (!flow) return res.status(400).json({ error: 'flowId does not exist for this tenant' });
+                patch.flowId = Number(req.body.flowId);
+            }
+        }
+
+        if (req.body.triggerWebhookOnStart !== undefined) {
+            patch.triggerWebhookOnStart = Boolean(req.body.triggerWebhookOnStart);
+        }
+        if (req.body.webhookUrl !== undefined) patch.webhookUrl = req.body.webhookUrl || null;
+        if (req.body.webhookMethod !== undefined) patch.webhookMethod = req.body.webhookMethod || null;
+        if (req.body.webhookHeaders !== undefined) patch.webhookHeaders = req.body.webhookHeaders || undefined;
+        if (req.body.webhookPayload !== undefined) patch.webhookPayload = req.body.webhookPayload || undefined;
+
+        const updated = await prisma.$transaction(async (tx) => {
+            const event = await tx.agendaEvent.update({
+                where: { id: eventId },
+                data: patch,
+                include: { assignments: { include: { agente: true } } },
+            });
+
+            await tx.agendaEventLog.create({
+                data: {
+                    tenantId: tenant.id,
+                    eventId: event.id,
+                    adminUserId: req.admin?.adminUserId ?? null,
+                    accion: 'UPDATE',
+                    metadata: {
+                        changedFields: Object.keys(patch),
+                        moved: existing.startAt.getTime() !== event.startAt.getTime() || existing.endAt.getTime() !== event.endAt.getTime(),
+                        previousEstado: existing.estado,
+                        nextEstado: event.estado,
+                    },
+                },
+            });
+
+            return event;
+        });
+
+        audit({
+            adminUserId: req.admin?.adminUserId,
+            tenantId: tenant.id,
+            accion: 'UPDATE_AGENDA_EVENT',
+            entidad: 'agenda_event',
+            entidadId: String(updated.id),
+            ip: req.ip,
+            userAgent: req.headers['user-agent'],
+            metadata: { changedFields: Object.keys(patch) },
+        });
+
+        if (existing.estado !== 'en_progreso' && updated.estado === 'en_progreso') {
+            runAgendaStartHooks({ tenantId: tenant.id, event: updated, actorAdminUserId: req.admin?.adminUserId }).catch(() => {});
+        }
+
+        socketService.emit(tenant.id, 'agenda:event_updated', serializeAgendaEvent(updated));
+        res.json(serializeAgendaEvent(updated));
+    } catch (err) {
+        next(err);
+    }
+});
+
+// POST /admin/tenants/:slug/agenda/:id/assignments
+router.post('/tenants/:slug/agenda/:id/assignments', requirePermiso('EDIT_AGENDA'), async (req, res, next) => {
+    try {
+        const tenant = await db.findTenantBySlug(req.params.slug);
+        if (!tenant) return res.status(404).json({ error: 'Tenant not found' });
+        if (denyIfWrongTenant(req, res, tenant.id)) return;
+
+        const eventId = Number(req.params.id);
+        const event = await prisma.agendaEvent.findFirst({ where: { id: eventId, tenantId: tenant.id } });
+        if (!event) return res.status(404).json({ error: 'Agenda event not found' });
+
+        const agenteIds = Array.isArray(req.body.agenteIds)
+            ? [...new Set(req.body.agenteIds.map((id) => Number(id)).filter((id) => Number.isInteger(id) && id > 0))]
+            : [];
+
+        if (agenteIds.length > 0) {
+            const agentes = await prisma.agente.findMany({
+                where: { tenantId: tenant.id, id: { in: agenteIds } },
+                select: { id: true },
+            });
+            if (agentes.length !== agenteIds.length) {
+                return res.status(400).json({ error: 'One or more agenteIds are invalid for this tenant' });
+            }
+        }
+
+        const updated = await prisma.$transaction(async (tx) => {
+            await tx.agendaEventAssignment.deleteMany({ where: { eventId } });
+            if (agenteIds.length > 0) {
+                await tx.agendaEventAssignment.createMany({ data: agenteIds.map((agenteId) => ({ eventId, agenteId })) });
+            }
+
+            await tx.agendaEventLog.create({
+                data: {
+                    tenantId: tenant.id,
+                    eventId,
+                    adminUserId: req.admin?.adminUserId ?? null,
+                    accion: 'ASSIGN',
+                    metadata: { agenteIds },
+                },
+            });
+
+            return tx.agendaEvent.findUnique({
+                where: { id: eventId },
+                include: { assignments: { include: { agente: true } } },
+            });
+        });
+
+        audit({
+            adminUserId: req.admin?.adminUserId,
+            tenantId: tenant.id,
+            accion: 'ASSIGN_AGENDA_EVENT',
+            entidad: 'agenda_event',
+            entidadId: String(eventId),
+            ip: req.ip,
+            userAgent: req.headers['user-agent'],
+            metadata: { agenteIds },
+        });
+
+        socketService.emit(tenant.id, 'agenda:event_assignment_changed', serializeAgendaEvent(updated));
+        res.json(serializeAgendaEvent(updated));
+    } catch (err) {
+        next(err);
+    }
+});
+
+// DELETE /admin/tenants/:slug/agenda/:id
+router.delete('/tenants/:slug/agenda/:id', requirePermiso('DELETE_AGENDA'), async (req, res, next) => {
+    try {
+        const tenant = await db.findTenantBySlug(req.params.slug);
+        if (!tenant) return res.status(404).json({ error: 'Tenant not found' });
+        if (denyIfWrongTenant(req, res, tenant.id)) return;
+
+        const eventId = Number(req.params.id);
+        const event = await prisma.agendaEvent.findFirst({ where: { id: eventId, tenantId: tenant.id } });
+        if (!event) return res.status(404).json({ error: 'Agenda event not found' });
+
+        await prisma.$transaction(async (tx) => {
+            await tx.agendaEventLog.create({
+                data: {
+                    tenantId: tenant.id,
+                    eventId,
+                    adminUserId: req.admin?.adminUserId ?? null,
+                    accion: 'DELETE',
+                    metadata: { titulo: event.titulo },
+                },
+            });
+            await tx.agendaEvent.delete({ where: { id: eventId } });
+        });
+
+        audit({
+            adminUserId: req.admin?.adminUserId,
+            tenantId: tenant.id,
+            accion: 'DELETE_AGENDA_EVENT',
+            entidad: 'agenda_event',
+            entidadId: String(eventId),
+            ip: req.ip,
+            userAgent: req.headers['user-agent'],
+            metadata: { titulo: event.titulo },
+        });
+
+        socketService.emit(tenant.id, 'agenda:event_deleted', { id: eventId });
+        res.status(204).end();
+    } catch (err) {
+        next(err);
+    }
+});
+
+// GET /admin/tenants/:slug/agenda/:id/logs
+router.get('/tenants/:slug/agenda/:id/logs', requirePermiso('VIEW_AGENDA'), async (req, res, next) => {
+    try {
+        const tenant = await db.findTenantBySlug(req.params.slug);
+        if (!tenant) return res.status(404).json({ error: 'Tenant not found' });
+        if (denyIfWrongTenant(req, res, tenant.id)) return;
+
+        const eventId = Number(req.params.id);
+        const logs = await prisma.agendaEventLog.findMany({
+            where: { tenantId: tenant.id, eventId },
+            include: { adminUser: { select: { id: true, nombre: true, email: true } } },
+            orderBy: { createdAt: 'desc' },
+            take: 100,
+        });
+
+        res.json({ data: logs });
+    } catch (err) {
+        next(err);
+    }
+});
+
+// POST /admin/tenants/:slug/agenda/:id/trigger-start
+router.post('/tenants/:slug/agenda/:id/trigger-start', requirePermiso('EDIT_AGENDA'), async (req, res, next) => {
+    try {
+        const tenant = await db.findTenantBySlug(req.params.slug);
+        if (!tenant) return res.status(404).json({ error: 'Tenant not found' });
+        if (denyIfWrongTenant(req, res, tenant.id)) return;
+
+        const eventId = Number(req.params.id);
+        const event = await prisma.agendaEvent.findFirst({ where: { id: eventId, tenantId: tenant.id } });
+        if (!event) return res.status(404).json({ error: 'Agenda event not found' });
+
+        await runAgendaStartHooks({ tenantId: tenant.id, event, actorAdminUserId: req.admin?.adminUserId });
+        res.json({ ok: true });
+    } catch (err) {
+        next(err);
+    }
+});
 
 // GET /admin/tenants/:slug/metrics
 router.get('/tenants/:slug/metrics', requirePermiso('VIEW_METRICS'), async (req, res, next) => {

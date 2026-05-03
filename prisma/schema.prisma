@@ -29,6 +29,8 @@ model Tenant {
   conversationContexts ConversationContext[]
   waSendQueue          WaSendQueue[]
   wabaRescueLogs       WabaRescueLog[]
+  agendaEvents         AgendaEvent[]
+  agendaEventLogs      AgendaEventLog[]
 
   @@map("tenants")
 }
@@ -88,6 +90,7 @@ model Agente {
   createdAt   DateTime    @default(now()) @map("created_at")
   tenant      Tenant      @relation(fields: [tenantId], references: [id])
   solicitudes Solicitud[]
+  agendaAssignments AgendaEventAssignment[]
 
   @@map("agentes")
 }
@@ -120,6 +123,8 @@ model AdminUser {
   auditLogs       AuditLog[]
   refreshTokens   RefreshToken[]
   wabaRescueLogs  WabaRescueLog[]
+  agendaEventsCreated AgendaEvent[]       @relation("AgendaEventCreatedBy")
+  agendaEventLogs     AgendaEventLog[]
 
   @@map("admin_users")
 }
@@ -210,8 +215,72 @@ model Flow {
   tenant    Tenant     @relation(fields: [tenantId], references: [id])
   nodes     FlowNode[]
   edges     FlowEdge[]
+  agendaEvents AgendaEvent[]
 
   @@map("flows")
+}
+
+// ── Agenda ───────────────────────────────────────────────────────────────────
+
+model AgendaEvent {
+  id                     Int      @id @default(autoincrement())
+  tenantId               String   @map("tenant_id") @db.Uuid
+  createdByAdminUserId   Int?     @map("created_by_admin_user_id")
+  flowId                 Int?     @map("flow_id")
+  titulo                 String   @db.VarChar(160)
+  descripcion            String?  @db.Text
+  tipo                   String   @db.VarChar(30)
+  color                  String   @default("#60A5FA") @db.VarChar(20)
+  estado                 String   @default("pendiente") @db.VarChar(30)
+  startAt                DateTime @map("start_at")
+  endAt                  DateTime @map("end_at")
+  reminderMinutes        Int?     @map("reminder_minutes")
+  triggerWebhookOnStart  Boolean  @default(false) @map("trigger_webhook_on_start")
+  webhookUrl             String?  @map("webhook_url") @db.VarChar(500)
+  webhookMethod          String?  @map("webhook_method") @db.VarChar(10)
+  webhookHeaders         Json?    @map("webhook_headers")
+  webhookPayload         Json?    @map("webhook_payload")
+  createdAt              DateTime @default(now()) @map("created_at")
+  updatedAt              DateTime @updatedAt @map("updated_at")
+  tenant                 Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  creator                AdminUser? @relation("AgendaEventCreatedBy", fields: [createdByAdminUserId], references: [id], onDelete: SetNull)
+  flow                   Flow?    @relation(fields: [flowId], references: [id], onDelete: SetNull)
+  assignments            AgendaEventAssignment[]
+  logs                   AgendaEventLog[]
+
+  @@index([tenantId, startAt])
+  @@index([tenantId, estado, startAt])
+  @@index([tenantId, tipo, startAt])
+  @@map("agenda_events")
+}
+
+model AgendaEventAssignment {
+  eventId   Int   @map("event_id")
+  agenteId  Int   @map("agente_id")
+  createdAt DateTime @default(now()) @map("created_at")
+  event     AgendaEvent @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  agente    Agente      @relation(fields: [agenteId], references: [id], onDelete: Cascade)
+
+  @@id([eventId, agenteId])
+  @@index([agenteId])
+  @@map("agenda_event_assignments")
+}
+
+model AgendaEventLog {
+  id            Int      @id @default(autoincrement())
+  tenantId      String   @map("tenant_id") @db.Uuid
+  eventId       Int      @map("event_id")
+  adminUserId   Int?     @map("admin_user_id")
+  accion        String   @db.VarChar(80)
+  metadata      Json?
+  createdAt     DateTime @default(now()) @map("created_at")
+  tenant        Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  event         AgendaEvent @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  adminUser     AdminUser? @relation(fields: [adminUserId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, createdAt])
+  @@index([eventId, createdAt])
+  @@map("agenda_event_logs")
 }
 
 model FlowNode {
