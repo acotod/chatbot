@@ -259,6 +259,105 @@ router.post('/facebook', loginRateLimiter, async (req, res) => {
   }
 });
 
+// ── POST /auth/google ─────────────────────────────────────────────────────────
+async function validateGoogleToken(idToken) {
+  const clientId = process.env.GOOGLE_CLIENT_ID;
+  if (!clientId) {
+    const err = new Error('Google auth is not configured');
+    err.status = 503;
+    throw err;
+  }
+
+  if (typeof fetch !== 'function') {
+    const err = new Error('Fetch API unavailable in current runtime');
+    err.status = 503;
+    throw err;
+  }
+
+  const url = new URL('https://oauth2.googleapis.com/tokeninfo');
+  url.searchParams.set('id_token', idToken);
+
+  const res = await fetch(url.toString());
+  if (!res.ok) {
+    const err = new Error('Invalid Google token');
+    err.status = 401;
+    throw err;
+  }
+
+  const data = await res.json();
+
+  if (data.aud !== clientId) {
+    const err = new Error('Google token audience mismatch');
+    err.status = 401;
+    throw err;
+  }
+
+  if (data.email_verified !== 'true' && data.email_verified !== true) {
+    const err = new Error('Google email not verified');
+    err.status = 400;
+    throw err;
+  }
+
+  return { email: data.email, googleId: data.sub };
+}
+
+router.post('/google', loginRateLimiter, async (req, res) => {
+  const { credential } = req.body;
+  const jwtSecret = process.env.JWT_SECRET;
+  const ip = req.ip;
+  const userAgent = req.headers['user-agent'] || '';
+
+  if (!jwtSecret) return res.status(503).json({ error: 'JWT_SECRET not configured' });
+  if (!credential || typeof credential !== 'string') {
+    return res.status(400).json({ error: 'credential is required' });
+  }
+
+  try {
+    const profile = await validateGoogleToken(credential);
+
+    const user = await prisma.adminUser.findUnique({ where: { email: profile.email } });
+    if (!user) {
+      audit({ accion: 'LOGIN_FAILED', entidad: 'admin_user', ip, userAgent, metadata: { via: 'google', email: profile.email } });
+      return res.status(403).json({ error: 'No admin account is linked to this Google email' });
+    }
+
+    if (user.lockedUntil && user.lockedUntil > new Date()) {
+      audit({ adminUserId: user.id, tenantId: user.tenantId, accion: 'LOGIN_BLOCKED', entidad: 'admin_user', entidadId: String(user.id), ip, userAgent, metadata: { via: 'google' } });
+      return res.status(423).json({ error: 'Account temporarily locked. Try again later.' });
+    }
+
+    await prisma.adminUser.update({
+      where: { id: user.id },
+      data: { failedAttempts: 0, lockedUntil: null },
+    });
+
+    const { token: accessToken } = signAccess(
+      { adminUserId: user.id, email: user.email, superAdmin: user.superAdmin, tenantId: user.tenantId ?? null },
+      jwtSecret,
+    );
+    const refreshToken = await issueRefreshToken(user.id);
+
+    audit({
+      adminUserId: user.id,
+      tenantId: user.tenantId,
+      accion: 'LOGIN',
+      entidad: 'admin_user',
+      entidadId: String(user.id),
+      ip,
+      userAgent,
+      metadata: { via: 'google', googleId: profile.googleId },
+    });
+
+    return res.json({ accessToken, refreshToken, expiresIn: ACCESS_TTL, superAdmin: user.superAdmin });
+  } catch (err) {
+    const status = err.status || 500;
+    if (status >= 500) {
+      return res.status(500).json({ error: 'Google auth failed' });
+    }
+    return res.status(status).json({ error: err.message || 'Google auth failed' });
+  }
+});
+
 // ── POST /auth/refresh ────────────────────────────────────────────────────────
 router.post('/refresh', async (req, res) => {
   const { refreshToken } = req.body;
