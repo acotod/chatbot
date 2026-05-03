@@ -5,6 +5,9 @@ const requireJwt = require('../middleware/requireJwt');
 const requirePermiso = require('../middleware/requirePermiso');
 const { audit } = require('../services/audit');
 const { executeStep } = require('../services/flowEngine');
+const { parseMetaJsonToGraph, buildMetaJsonFromGraph } = require('../services/flowTransformer');
+const { getCatalog, saveCatalog } = require('../services/endpointCatalog');
+const { validateWabaJson } = require('../services/wabaValidator');
 
 const prisma = new PrismaClient();
 const router = express.Router();
@@ -63,11 +66,11 @@ router.get('/:id', requirePermiso('VIEW_FLUJOS'), async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-// PUT /flows/:id — full replace (nodes + edges)
+// PUT /flows/:id — full replace (nodes + edges) + meta_json snapshot
 router.put('/:id', requirePermiso('EDIT_FLUJOS'), async (req, res, next) => {
   try {
     const flowId = Number(req.params.id);
-    const { nombre, activo, nodes, edges } = req.body;
+    const { nombre, activo, nodes, edges, metaJson } = req.body;
 
     const existing = await prisma.flow.findUnique({ where: { id: flowId } });
     if (!existing) return res.status(404).json({ error: 'Flow not found' });
@@ -80,9 +83,10 @@ router.put('/:id', requirePermiso('EDIT_FLUJOS'), async (req, res, next) => {
       const updated = await tx.flow.update({
         where: { id: flowId },
         data: {
-          nombre: nombre ?? existing.nombre,
-          activo: activo ?? existing.activo,
-          version: { increment: 1 },
+          nombre:   nombre ?? existing.nombre,
+          activo:   activo ?? existing.activo,
+          version:  { increment: 1 },
+          metaJson: metaJson ?? existing.metaJson ?? undefined,
           nodes: nodes?.length
             ? { create: nodes.map(({ type, content, posX = 0, posY = 0 }) => ({ type, content, posX, posY })) }
             : undefined,
@@ -142,6 +146,143 @@ router.post('/execute', async (req, res, next) => {
     const result = await executeStep({ tenantId, currentNodeId: currentNodeId ?? null, input: input ?? null });
     if (!result) return res.status(404).json({ error: 'No next node found' });
     res.json(result);
+  } catch (err) { next(err); }
+});
+
+// ── Flow Builder smart endpoints ──────────────────────────────────────────────
+
+/**
+ * GET /flows/endpoints-catalog?tenantId=xxx
+ * Returns the dynamic endpoint catalog for the given tenant.
+ * Falls back to the built-in default catalog when no tenant config is found.
+ */
+router.get('/endpoints-catalog', requirePermiso('VIEW_FLUJOS'), async (req, res, next) => {
+  try {
+    const { tenantId, tenantSlug } = req.query;
+
+    let resolvedTenantId = tenantId;
+    if (!resolvedTenantId && tenantSlug) {
+      const tenant = await prisma.tenant.findUnique({ where: { slug: tenantSlug } });
+      resolvedTenantId = tenant?.id ?? null;
+    }
+    if (!resolvedTenantId && !req.admin.superAdmin) {
+      resolvedTenantId = req.admin.tenantId ?? null;
+    }
+
+    const catalog = await getCatalog(resolvedTenantId);
+    res.json({ action: 'catalog', data: catalog, explanation: 'Catálogo de endpoints disponibles' });
+  } catch (err) { next(err); }
+});
+
+/**
+ * PUT /flows/endpoints-catalog
+ * Save a custom endpoint catalog for a tenant.
+ * Body: { tenantId, endpoints: [...] }
+ */
+router.put('/endpoints-catalog', requirePermiso('EDIT_FLUJOS'), async (req, res, next) => {
+  try {
+    const { tenantId, endpoints } = req.body;
+    if (!tenantId) return res.status(400).json({ error: 'tenantId is required' });
+    if (!Array.isArray(endpoints)) return res.status(400).json({ error: 'endpoints must be an array' });
+
+    await saveCatalog(tenantId, { endpoints });
+    audit({
+      adminUserId: req.admin.adminUserId,
+      tenantId,
+      accion: 'UPDATE_ENDPOINTS_CATALOG',
+      entidad: 'flow_catalog',
+      entidadId: tenantId,
+      metadata: { count: endpoints.length },
+    });
+    res.json({ action: 'catalog_saved', data: { endpoints }, explanation: 'Catálogo guardado correctamente' });
+  } catch (err) { next(err); }
+});
+
+/**
+ * POST /flows/parse-json
+ * Convert a Meta WhatsApp Flow JSON into ReactFlow nodes + edges.
+ * Body: { json: <Meta Flow JSON object> }
+ */
+router.post('/parse-json', requirePermiso('VIEW_FLUJOS'), async (req, res, next) => {
+  try {
+    const { json } = req.body;
+    if (!json || typeof json !== 'object') {
+      return res.status(400).json({ error: 'Body must include a "json" object (parsed Meta Flow JSON)' });
+    }
+
+    const result = parseMetaJsonToGraph(json);
+    const hasErrors = result.diagnostics.some(d => d.severity === 'error');
+
+    res.status(hasErrors ? 422 : 200).json({
+      action:      'parse_flow',
+      nodes:       result.nodes,
+      edges:       result.edges,
+      startNodeId: result.startNodeId,
+      diagnostics: result.diagnostics,
+      explanation: hasErrors
+        ? 'El JSON se procesó parcialmente con errores'
+        : `Flow parseado: ${result.nodes.length} nodos, ${result.edges.length} conexiones`,
+    });
+  } catch (err) { next(err); }
+});
+
+/**
+ * POST /flows/export-json
+ * Build a Meta WhatsApp Flow JSON from ReactFlow nodes + edges.
+ * Body: { nodes, edges, tenantId? }
+ * Optionally saves the snapshot to a flow by providing flowId.
+ */
+router.post('/export-json', requirePermiso('EDIT_FLUJOS'), async (req, res, next) => {
+  try {
+    const { nodes, edges, tenantId, tenantSlug, flowId } = req.body;
+    if (!Array.isArray(nodes)) return res.status(400).json({ error: 'nodes must be an array' });
+
+    let resolvedTenantId = tenantId;
+    if (!resolvedTenantId && tenantSlug) {
+      const tenant = await prisma.tenant.findUnique({ where: { slug: tenantSlug } });
+      resolvedTenantId = tenant?.id ?? null;
+    }
+    if (!resolvedTenantId && !req.admin.superAdmin) {
+      resolvedTenantId = req.admin.tenantId ?? null;
+    }
+
+    const catalog = await getCatalog(resolvedTenantId);
+    const { json, validation } = buildMetaJsonFromGraph(nodes, edges ?? [], catalog.endpoints ?? []);
+
+    // Run WABA structural validation on the exported JSON
+    let wabaValidation = { valid: true, errors: [], warnings: [] };
+    if (json) {
+      wabaValidation = validateWabaJson(json);
+      // Merge WABA errors into validation
+      wabaValidation.errors.forEach(e => {
+        if (!validation.errors.find(ve => ve.code === e.code)) {
+          validation.errors.push({ code: e.code, severity: 'error', message: e.message, field: e.field, fix: e.fix });
+        }
+      });
+      wabaValidation.warnings.forEach(w => {
+        if (!validation.warnings.find(vw => vw.code === w.code)) {
+          validation.warnings.push({ code: w.code, severity: 'warning', message: w.message, field: w.field });
+        }
+      });
+    }
+
+    // Optionally persist snapshot to flow
+    if (json && flowId) {
+      await prisma.flow.update({
+        where: { id: Number(flowId) },
+        data:  { metaJson: json },
+      }).catch(() => {}); // Non-blocking
+    }
+
+    const hasErrors = validation.errors.length > 0;
+    res.status(hasErrors ? 422 : 200).json({
+      action: 'export_json',
+      json:   json ?? null,
+      validation,
+      explanation: hasErrors
+        ? `Export falló con ${validation.errors.length} error(es)`
+        : `JSON Meta listo para publicar: ${json?.screens?.length ?? 0} pantallas`,
+    });
   } catch (err) { next(err); }
 });
 

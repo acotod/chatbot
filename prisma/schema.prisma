@@ -205,16 +205,18 @@ model AuditLog {
 // ── Flujos dinámicos ──────────────────────────────────────────────────────────
 
 model Flow {
-  id        Int        @id @default(autoincrement())
-  tenantId  String     @map("tenant_id") @db.Uuid
-  nombre    String     @db.VarChar(100)
-  version   Int        @default(1)
-  activo    Boolean    @default(true)
-  createdAt DateTime   @default(now()) @map("created_at")
-  updatedAt DateTime   @updatedAt @map("updated_at")
-  tenant    Tenant     @relation(fields: [tenantId], references: [id])
-  nodes     FlowNode[]
-  edges     FlowEdge[]
+  id           Int        @id @default(autoincrement())
+  tenantId     String     @map("tenant_id") @db.Uuid
+  nombre       String     @db.VarChar(100)
+  version      Int        @default(1)
+  activo       Boolean    @default(true)
+  /// Snapshot del JSON Meta exportado (version 7.1) guardado en cada save
+  metaJson     Json?      @map("meta_json")
+  createdAt    DateTime   @default(now()) @map("created_at")
+  updatedAt    DateTime   @updatedAt @map("updated_at")
+  tenant       Tenant     @relation(fields: [tenantId], references: [id])
+  nodes        FlowNode[]
+  edges        FlowEdge[]
   agendaEvents AgendaEvent[]
 
   @@map("flows")

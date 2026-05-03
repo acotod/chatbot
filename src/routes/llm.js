@@ -21,7 +21,7 @@ const requireJwt = require('../middleware/requireJwt');
 const requirePermiso = require('../middleware/requirePermiso');
 const { audit } = require('../services/audit');
 const { rescueFlow, validateWabaJson } = require('../services/wabaValidator');
-const { getLlmStatus } = require('../services/llmService');
+const { getLlmStatus, generateFlow } = require('../services/llmService');
 const logger = require('../utils/logger');
 
 const prisma = new PrismaClient();
@@ -211,6 +211,39 @@ router.get('/status', requirePermiso('MANAGE_LLM_CONFIG'), async (req, res, next
   } catch (err) {
     next(err);
   }
+});
+
+// ── POST /llm/generate-flow ──────────────────────────────────────────────────
+// Generate a Meta WhatsApp Flow JSON from a natural language prompt using LLM.
+
+router.post('/generate-flow', requirePermiso('MANAGE_LLM_RESCUE'), [
+  body('prompt').notEmpty().withMessage('prompt is required').isLength({ max: 2000 }),
+  body('tenantId').optional().isUUID(),
+], async (req, res, next) => {
+  if (!validateRequest(req, res)) return;
+  try {
+    const tenantId = resolveTenantId(req, req.body.tenantId);
+    if (!tenantId) return res.status(400).json({ error: 'tenantId is required' });
+
+    const { prompt } = req.body;
+    logger.info({ tenantId, promptLen: prompt.length }, 'llm/generate-flow: generating');
+
+    const result = await generateFlow(tenantId, prompt);
+    if (!result) {
+      return res.status(503).json({ error: 'LLM not configured or unavailable for this tenant' });
+    }
+
+    audit({
+      adminUserId : req.admin.adminUserId,
+      tenantId,
+      accion      : 'GENERATE_FLOW',
+      entidad     : 'flow',
+      entidadId   : null,
+      metadata    : { provider: result.provider, model: result.model, promptLen: prompt.length },
+    });
+
+    res.json({ json: result.json, provider: result.provider, model: result.model });
+  } catch (err) { next(err); }
 });
 
 // ── Helpers ───────────────────────────────────────────────────────────────────

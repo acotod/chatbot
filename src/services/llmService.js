@@ -236,4 +236,29 @@ async function getLlmStatus(tenantId) {
   return { available: true, provider: cfg.provider, model: cfg.model };
 }
 
-module.exports = { callLlm, callLlmForJson, getLlmConfig, getLlmStatus };
+// ─── Flow generator ───────────────────────────────────────────────────────────
+
+const GENERATE_FLOW_SYSTEM = `You are an expert WhatsApp Business Flows designer.
+Generate a valid Meta WhatsApp Flow JSON (version 7.1, data_api_version 3.0) from the user's description.
+
+Rules:
+- version must be "7.1", data_api_version must be "3.0"
+- routing_model maps screen id -> array of next screen ids
+- Every flow needs at least one terminal screen (terminal: true)
+- Screen IDs must be SCREAMING_SNAKE_CASE
+- Use EmbeddedLink, TextHeading, TextBody, TextInput, RadioButtonsGroup, Footer component types
+- Footer must be the last child in each screen with "enabled": true
+- Respond ONLY with the JSON object, no markdown, no explanation.`;
+
+/**
+ * Generate a Meta WhatsApp Flow JSON from a natural-language prompt.
+ * @param {string} tenantId
+ * @param {string} prompt
+ * @returns {{ json: object, provider: string, model: string }|null}
+ */
+async function generateFlow(tenantId, prompt) {
+  const userPrompt = `Design a WhatsApp Flow for the following use case:\n\n${prompt}\n\nReturn only the JSON.`;
+  return callLlmForJson(tenantId, GENERATE_FLOW_SYSTEM, userPrompt);
+}
+
+module.exports = { callLlm, callLlmForJson, getLlmConfig, getLlmStatus, generateFlow };
