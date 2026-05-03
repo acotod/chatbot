@@ -869,9 +869,31 @@ router.put('/tenants/:slug/config/:clave', requirePermiso('MANAGE_TENANTS'), asy
         const tenant = await db.findTenantBySlug(req.params.slug);
         if (!tenant) return res.status(404).json({ error: 'Tenant not found' });
         if (denyIfWrongTenant(req, res, tenant.id)) return;
-        const { valor } = req.body;
+        let { valor } = req.body;
         if (valor === undefined) return res.status(400).json({ error: 'valor is required' });
+
+        // For llm_config: if api_key is the sentinel or absent, preserve the existing key from DB
+        if (req.params.clave === 'llm_config' && typeof valor === 'object' && valor !== null) {
+            const incoming = valor.api_key;
+            if (!incoming || incoming === '__configured__') {
+                const existing = await db.getConfig(tenant.id, 'llm_config');
+                const existingKey = existing?.valor?.api_key;
+                if (existingKey) {
+                    valor = { ...valor, api_key: existingKey };
+                } else {
+                    // No existing key and none provided — remove the field entirely
+                    const { api_key: _dropped, ...rest } = valor;
+                    valor = rest;
+                }
+            }
+        }
+
         const config = await db.setConfig(tenant.id, req.params.clave, valor);
+
+        // Return masked version
+        if (req.params.clave === 'llm_config' && config?.valor?.api_key) {
+            return res.json({ ...config, valor: { ...config.valor, api_key: '__configured__' } });
+        }
         res.json(config);
     } catch (err) {
         next(err);
@@ -886,6 +908,11 @@ router.get('/tenants/:slug/config/:clave', requirePermiso('MANAGE_TENANTS'), asy
         if (denyIfWrongTenant(req, res, tenant.id)) return;
         const config = await db.getConfig(tenant.id, req.params.clave);
         if (!config) return res.status(404).json({ error: 'Config not found' });
+
+        // Mask api_key for llm_config — never expose it to the client
+        if (req.params.clave === 'llm_config' && config?.valor?.api_key) {
+            return res.json({ ...config, valor: { ...config.valor, api_key: '__configured__' } });
+        }
         res.json(config);
     } catch (err) {
         next(err);
