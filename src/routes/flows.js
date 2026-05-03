@@ -54,88 +54,6 @@ router.post('/', requirePermiso('EDIT_FLUJOS'), async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-// GET /flows/:id
-router.get('/:id', requirePermiso('VIEW_FLUJOS'), async (req, res, next) => {
-  try {
-    const flow = await prisma.flow.findUnique({
-      where: { id: Number(req.params.id) },
-      include: { nodes: true, edges: true },
-    });
-    if (!flow) return res.status(404).json({ error: 'Flow not found' });
-    res.json(flow);
-  } catch (err) { next(err); }
-});
-
-// PUT /flows/:id — full replace (nodes + edges) + meta_json snapshot
-router.put('/:id', requirePermiso('EDIT_FLUJOS'), async (req, res, next) => {
-  try {
-    const flowId = Number(req.params.id);
-    const { nombre, activo, nodes, edges, metaJson } = req.body;
-
-    const existing = await prisma.flow.findUnique({ where: { id: flowId } });
-    if (!existing) return res.status(404).json({ error: 'Flow not found' });
-
-    // Transactionally replace nodes + edges
-    const flow = await prisma.$transaction(async (tx) => {
-      await tx.flowEdge.deleteMany({ where: { flowId } });
-      await tx.flowNode.deleteMany({ where: { flowId } });
-
-      const updated = await tx.flow.update({
-        where: { id: flowId },
-        data: {
-          nombre:   nombre ?? existing.nombre,
-          activo:   activo ?? existing.activo,
-          version:  { increment: 1 },
-          metaJson: metaJson ?? existing.metaJson ?? undefined,
-          nodes: nodes?.length
-            ? { create: nodes.map(({ type, content, posX = 0, posY = 0 }) => ({ type, content, posX, posY })) }
-            : undefined,
-        },
-        include: { nodes: true },
-      });
-
-      // Re-create edges using new node IDs mapped by index
-      if (edges?.length && nodes?.length) {
-        const nodeIdMap = {}; // old_index → new DB id
-        updated.nodes.forEach((n, i) => { nodeIdMap[i] = n.id; });
-
-        await tx.flowEdge.createMany({
-          data: edges.map(({ sourceIndex, targetIndex, condition }) => ({
-            flowId,
-            sourceNodeId: nodeIdMap[sourceIndex],
-            targetNodeId: nodeIdMap[targetIndex],
-            condition: condition ?? null,
-          })),
-        });
-      }
-
-      return tx.flow.findUnique({
-        where: { id: flowId },
-        include: { nodes: true, edges: true },
-      });
-    });
-
-    audit({
-      adminUserId: req.admin.adminUserId,
-      tenantId: existing.tenantId,
-      accion: 'UPDATE_FLOW',
-      entidad: 'flow',
-      entidadId: flowId,
-      metadata: { nombre, version: flow.version },
-    });
-    res.json(flow);
-  } catch (err) { next(err); }
-});
-
-// DELETE /flows/:id
-router.delete('/:id', requirePermiso('EDIT_FLUJOS'), async (req, res, next) => {
-  try {
-    const flow = await prisma.flow.delete({ where: { id: Number(req.params.id) } });
-    audit({ adminUserId: req.admin.adminUserId, tenantId: flow.tenantId, accion: 'DELETE_FLOW', entidad: 'flow', entidadId: req.params.id });
-    res.status(204).end();
-  } catch (err) { next(err); }
-});
-
 // ── Flow engine step ──────────────────────────────────────────────────────────
 
 // POST /flows/execute
@@ -283,6 +201,90 @@ router.post('/export-json', requirePermiso('EDIT_FLUJOS'), async (req, res, next
         ? `Export falló con ${validation.errors.length} error(es)`
         : `JSON Meta listo para publicar: ${json?.screens?.length ?? 0} pantallas`,
     });
+  } catch (err) { next(err); }
+});
+
+// ── Per-flow CRUD (wildcards — must be last to avoid shadowing static routes) ─
+
+// GET /flows/:id
+router.get('/:id', requirePermiso('VIEW_FLUJOS'), async (req, res, next) => {
+  try {
+    const flow = await prisma.flow.findUnique({
+      where: { id: Number(req.params.id) },
+      include: { nodes: true, edges: true },
+    });
+    if (!flow) return res.status(404).json({ error: 'Flow not found' });
+    res.json(flow);
+  } catch (err) { next(err); }
+});
+
+// PUT /flows/:id — full replace (nodes + edges) + meta_json snapshot
+router.put('/:id', requirePermiso('EDIT_FLUJOS'), async (req, res, next) => {
+  try {
+    const flowId = Number(req.params.id);
+    const { nombre, activo, nodes, edges, metaJson } = req.body;
+
+    const existing = await prisma.flow.findUnique({ where: { id: flowId } });
+    if (!existing) return res.status(404).json({ error: 'Flow not found' });
+
+    // Transactionally replace nodes + edges
+    const flow = await prisma.$transaction(async (tx) => {
+      await tx.flowEdge.deleteMany({ where: { flowId } });
+      await tx.flowNode.deleteMany({ where: { flowId } });
+
+      const updated = await tx.flow.update({
+        where: { id: flowId },
+        data: {
+          nombre:   nombre ?? existing.nombre,
+          activo:   activo ?? existing.activo,
+          version:  { increment: 1 },
+          metaJson: metaJson ?? existing.metaJson ?? undefined,
+          nodes: nodes?.length
+            ? { create: nodes.map(({ type, content, posX = 0, posY = 0 }) => ({ type, content, posX, posY })) }
+            : undefined,
+        },
+        include: { nodes: true },
+      });
+
+      // Re-create edges using new node IDs mapped by index
+      if (edges?.length && nodes?.length) {
+        const nodeIdMap = {}; // old_index → new DB id
+        updated.nodes.forEach((n, i) => { nodeIdMap[i] = n.id; });
+
+        await tx.flowEdge.createMany({
+          data: edges.map(({ sourceIndex, targetIndex, condition }) => ({
+            flowId,
+            sourceNodeId: nodeIdMap[sourceIndex],
+            targetNodeId: nodeIdMap[targetIndex],
+            condition: condition ?? null,
+          })),
+        });
+      }
+
+      return tx.flow.findUnique({
+        where: { id: flowId },
+        include: { nodes: true, edges: true },
+      });
+    });
+
+    audit({
+      adminUserId: req.admin.adminUserId,
+      tenantId: existing.tenantId,
+      accion: 'UPDATE_FLOW',
+      entidad: 'flow',
+      entidadId: flowId,
+      metadata: { nombre, version: flow.version },
+    });
+    res.json(flow);
+  } catch (err) { next(err); }
+});
+
+// DELETE /flows/:id
+router.delete('/:id', requirePermiso('EDIT_FLUJOS'), async (req, res, next) => {
+  try {
+    const flow = await prisma.flow.delete({ where: { id: Number(req.params.id) } });
+    audit({ adminUserId: req.admin.adminUserId, tenantId: flow.tenantId, accion: 'DELETE_FLOW', entidad: 'flow', entidadId: req.params.id });
+    res.status(204).end();
   } catch (err) { next(err); }
 });
 

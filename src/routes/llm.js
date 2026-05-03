@@ -42,10 +42,17 @@ function validateRequest(req, res) {
 
 /**
  * Resolve the tenantId the caller may act on.
- * SuperAdmins may pass an explicit tenantId; scoped admins are limited to their own.
+ * SuperAdmins may pass an explicit tenantId; if none provided, falls back to
+ * the first available tenant so the LLM features work without a scoped user.
  */
-function resolveTenantId(req, explicitId) {
-  if (req.admin.superAdmin) return explicitId ?? req.admin.tenantId ?? null;
+async function resolveTenantId(req, explicitId) {
+  if (req.admin.superAdmin) {
+    if (explicitId) return explicitId;
+    if (req.admin.tenantId) return req.admin.tenantId;
+    // Fall back to the first tenant in the database
+    const first = await prisma.tenant.findFirst({ orderBy: { createdAt: 'asc' } });
+    return first?.id ?? null;
+  }
   return req.admin.tenantId ?? null;
 }
 
@@ -69,7 +76,7 @@ router.post('/rescue', requirePermiso('MANAGE_LLM_RESCUE'), rescueValidationRule
   if (!validateRequest(req, res)) return;
 
   try {
-    const tenantId = resolveTenantId(req, req.body.tenantId);
+    const tenantId = await resolveTenantId(req, req.body.tenantId);
     if (!tenantId) return res.status(400).json({ error: 'tenantId is required' });
 
     const { originalJson, wabaError } = req.body;
@@ -151,7 +158,7 @@ router.get('/rescue', requirePermiso('VIEW_LLM_RESCUE'), [
 ], async (req, res, next) => {
   if (!validateRequest(req, res)) return;
   try {
-    const tenantId = resolveTenantId(req, req.query.tenantId);
+    const tenantId = await resolveTenantId(req, req.query.tenantId);
     if (!tenantId) return res.status(400).json({ error: 'tenantId is required' });
 
     const page  = req.query.page  ?? 1;
@@ -203,7 +210,7 @@ router.get('/rescue/:id', requirePermiso('VIEW_LLM_RESCUE'), async (req, res, ne
 
 router.get('/status', requirePermiso('MANAGE_LLM_CONFIG'), async (req, res, next) => {
   try {
-    const tenantId = resolveTenantId(req, req.query.tenantId);
+    const tenantId = await resolveTenantId(req, req.query.tenantId);
     if (!tenantId) return res.status(400).json({ error: 'tenantId is required' });
 
     const status = await getLlmStatus(tenantId);
@@ -222,7 +229,7 @@ router.post('/generate-flow', requirePermiso('MANAGE_LLM_RESCUE'), [
 ], async (req, res, next) => {
   if (!validateRequest(req, res)) return;
   try {
-    const tenantId = resolveTenantId(req, req.body.tenantId);
+    const tenantId = await resolveTenantId(req, req.body.tenantId);
     if (!tenantId) return res.status(400).json({ error: 'tenantId is required' });
 
     const { prompt } = req.body;

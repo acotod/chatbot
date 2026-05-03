@@ -182,6 +182,18 @@ router.get('/tenants', async (req, res, next) => {
     }
 });
 
+// GET /admin/tenants/:slug — fetch a single tenant by slug
+router.get('/tenants/:slug', async (req, res, next) => {
+    try {
+        const tenant = await prisma.tenant.findUnique({ where: { slug: req.params.slug } });
+        if (!tenant) return res.status(404).json({ error: 'Tenant not found' });
+        if (denyIfWrongTenant(req, res, tenant.id)) return;
+        res.json(tenant);
+    } catch (err) {
+        next(err);
+    }
+});
+
 // PATCH /admin/tenants/:slug/deactivate
 router.patch('/tenants/:slug/deactivate', requirePermiso('MANAGE_TENANTS'), async (req, res, next) => {
     try {
