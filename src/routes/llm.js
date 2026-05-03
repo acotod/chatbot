@@ -224,7 +224,7 @@ router.get('/status', requirePermiso('MANAGE_LLM_CONFIG'), async (req, res, next
 // Generate a Meta WhatsApp Flow JSON from a natural language prompt using LLM.
 
 router.post('/generate-flow', requirePermiso('MANAGE_LLM_RESCUE'), [
-  body('prompt').notEmpty().withMessage('prompt is required').isLength({ max: 2000 }),
+  body('prompt').notEmpty().withMessage('prompt is required').isLength({ max: 10000 }),
   body('tenantId').optional({ checkFalsy: true }).isUUID(),
 ], async (req, res, next) => {
   if (!validateRequest(req, res)) return;
