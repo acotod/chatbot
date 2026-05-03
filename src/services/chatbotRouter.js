@@ -55,13 +55,10 @@ async function routeMessage({ tenantId, userId, input }) {
     return { response: null, fallbackToHuman: false };
   }
 
-  // Update context to new node
-  await db.setConversationContext(tenantId, userId, { currentNodeId: result.nodeId });
-
   const content = result.content ?? {};
   const type = content.type ?? 'text';
 
-  // Explicit handoff node → human agent
+  // Explicit handoff node → human agent (clear context, do NOT persist handoff node)
   if (type === 'handoff') {
     await db.clearConversationContext(tenantId, userId);
     return { response: content, fallbackToHuman: true };
@@ -72,6 +69,9 @@ async function routeMessage({ tenantId, userId, input }) {
     await db.clearConversationContext(tenantId, userId);
     return { response: content, fallbackToHuman: false };
   }
+
+  // Update context to new node (only for non-terminal nodes)
+  await db.setConversationContext(tenantId, userId, { currentNodeId: result.nodeId });
 
   return { response: content, fallbackToHuman: false };
 }
