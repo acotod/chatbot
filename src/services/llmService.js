@@ -1,0 +1,239 @@
+'use strict';
+/**
+ * LLM Service — provider-agnostic, configurable per tenant.
+ *
+ * Tenant config stored in `configuraciones` table:
+ *   clave  = 'llm_config'
+ *   valor  = {
+ *     provider   : 'openai' | 'anthropic' | 'custom',
+ *     api_key    : '...',                          // kept server-side only, never returned to client
+ *     model      : 'gpt-4o' | 'claude-3-5-sonnet-20241022' | 'gpt-4o-mini' | ...
+ *     base_url   : 'https://api.openai.com/v1',   // optional override
+ *     max_tokens : 4096,                           // default 4096
+ *     timeout_ms : 30000,                          // default 30 s
+ *     temperature: 0.2,                            // default 0.2 (deterministic for JSON tasks)
+ *   }
+ *
+ * A global fallback config can be set via env vars:
+ *   LLM_PROVIDER, LLM_API_KEY, LLM_MODEL, LLM_BASE_URL
+ */
+
+const { PrismaClient } = require('@prisma/client');
+const logger = require('../utils/logger');
+
+const prisma = new PrismaClient();
+
+// ─── Defaults ────────────────────────────────────────────────────────────────
+
+const GLOBAL_FALLBACK = {
+  provider  : process.env.LLM_PROVIDER  || null,
+  api_key   : process.env.LLM_API_KEY   || null,
+  model     : process.env.LLM_MODEL     || 'gpt-4o-mini',
+  base_url  : process.env.LLM_BASE_URL  || 'https://api.openai.com/v1',
+  max_tokens: 4096,
+  timeout_ms: 30000,
+  temperature: 0.2,
+};
+
+const PROVIDER_DEFAULTS = {
+  openai    : { base_url: 'https://api.openai.com/v1',             model: 'gpt-4o-mini'                    },
+  anthropic : { base_url: 'https://api.anthropic.com/v1',          model: 'claude-3-5-haiku-20241022'      },
+  custom    : { base_url: process.env.LLM_BASE_URL || '',          model: process.env.LLM_MODEL || ''      },
+};
+
+// ─── Config loader ────────────────────────────────────────────────────────────
+
+/**
+ * Load the LLM config for a tenant (or fall back to global env config).
+ * @param {string} tenantId
+ * @returns {object|null}  Null if no config is available.
+ */
+async function getLlmConfig(tenantId) {
+  try {
+    const cfg = await prisma.configuracion.findUnique({
+      where: { tenantId_clave: { tenantId, clave: 'llm_config' } },
+    });
+    if (cfg?.valor?.api_key) return mergeWithDefaults(cfg.valor);
+  } catch (err) {
+    logger.warn({ tenantId, err: err.message }, 'llmService: failed to read tenant llm_config');
+  }
+
+  // Global fallback
+  if (GLOBAL_FALLBACK.provider && GLOBAL_FALLBACK.api_key) {
+    return mergeWithDefaults(GLOBAL_FALLBACK);
+  }
+
+  return null;
+}
+
+function mergeWithDefaults(cfg) {
+  const providerDefs = PROVIDER_DEFAULTS[cfg.provider] || PROVIDER_DEFAULTS.custom;
+  return {
+    provider   : cfg.provider    || 'openai',
+    api_key    : cfg.api_key,
+    model      : cfg.model       || providerDefs.model,
+    base_url   : cfg.base_url    || providerDefs.base_url,
+    max_tokens : cfg.max_tokens  || 4096,
+    timeout_ms : cfg.timeout_ms  || 30000,
+    temperature: cfg.temperature ?? 0.2,
+  };
+}
+
+// ─── Provider adapters ────────────────────────────────────────────────────────
+
+/**
+ * Build fetch options for OpenAI-compatible APIs (openai, custom).
+ */
+function buildOpenAiRequest(cfg, systemPrompt, userPrompt) {
+  const url = `${cfg.base_url.replace(/\/$/, '')}/chat/completions`;
+  const body = JSON.stringify({
+    model      : cfg.model,
+    max_tokens : cfg.max_tokens,
+    temperature: cfg.temperature,
+    messages   : [
+      { role: 'system', content: systemPrompt },
+      { role: 'user',   content: userPrompt   },
+    ],
+  });
+  const headers = {
+    'Content-Type' : 'application/json',
+    'Authorization': `Bearer ${cfg.api_key}`,
+  };
+  return { url, body, headers };
+}
+
+/**
+ * Build fetch options for Anthropic Messages API.
+ */
+function buildAnthropicRequest(cfg, systemPrompt, userPrompt) {
+  const url = `${cfg.base_url.replace(/\/$/, '')}/messages`;
+  const body = JSON.stringify({
+    model      : cfg.model,
+    max_tokens : cfg.max_tokens,
+    temperature: cfg.temperature,
+    system     : systemPrompt,
+    messages   : [{ role: 'user', content: userPrompt }],
+  });
+  const headers = {
+    'Content-Type'     : 'application/json',
+    'x-api-key'        : cfg.api_key,
+    'anthropic-version': '2023-06-01',
+  };
+  return { url, body, headers };
+}
+
+/**
+ * Extract text from response body depending on provider.
+ */
+function extractText(provider, data) {
+  if (provider === 'anthropic') {
+    return data?.content?.[0]?.text ?? null;
+  }
+  // OpenAI-compatible
+  return data?.choices?.[0]?.message?.content ?? null;
+}
+
+// ─── Core call ────────────────────────────────────────────────────────────────
+
+/**
+ * Call the LLM for a given tenant.
+ *
+ * @param {string}  tenantId
+ * @param {string}  systemPrompt
+ * @param {string}  userPrompt
+ * @returns {{ text: string, provider: string, model: string }|null}
+ *          Returns null if no LLM is configured or the call fails.
+ */
+async function callLlm(tenantId, systemPrompt, userPrompt) {
+  const cfg = await getLlmConfig(tenantId);
+  if (!cfg) {
+    logger.info({ tenantId }, 'llmService: no LLM config — skipping AI enhancement');
+    return null;
+  }
+
+  const builder = cfg.provider === 'anthropic' ? buildAnthropicRequest : buildOpenAiRequest;
+  const { url, body, headers } = builder(cfg, systemPrompt, userPrompt);
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), cfg.timeout_ms);
+
+  try {
+    const response = await fetch(url, { method: 'POST', headers, body, signal: controller.signal });
+
+    if (!response.ok) {
+      const errText = await response.text().catch(() => '(unreadable)');
+      logger.warn({ tenantId, status: response.status, errText }, 'llmService: provider returned error');
+      return null;
+    }
+
+    const data = await response.json();
+    const text = extractText(cfg.provider, data);
+
+    if (!text) {
+      logger.warn({ tenantId, data }, 'llmService: empty text in provider response');
+      return null;
+    }
+
+    return { text, provider: cfg.provider, model: cfg.model };
+  } catch (err) {
+    if (err.name === 'AbortError') {
+      logger.warn({ tenantId, timeout_ms: cfg.timeout_ms }, 'llmService: request timed out');
+    } else {
+      logger.error({ tenantId, err: err.message }, 'llmService: unexpected error');
+    }
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
+ * Call the LLM and attempt to extract JSON from the response.
+ * Strips markdown code fences if present.
+ *
+ * @param {string}  tenantId
+ * @param {string}  systemPrompt
+ * @param {string}  userPrompt
+ * @returns {{ json: object, provider: string, model: string }|null}
+ */
+async function callLlmForJson(tenantId, systemPrompt, userPrompt) {
+  const result = await callLlm(tenantId, systemPrompt, userPrompt);
+  if (!result) return null;
+
+  // Strip markdown fences: ```json ... ``` or ``` ... ```
+  const cleaned = result.text
+    .replace(/^```(?:json)?\s*/im, '')
+    .replace(/\s*```\s*$/im, '')
+    .trim();
+
+  try {
+    const json = JSON.parse(cleaned);
+    return { json, provider: result.provider, model: result.model };
+  } catch {
+    // Try to extract first {...} or [...] block
+    const match = cleaned.match(/(\{[\s\S]*\}|\[[\s\S]*\])/);
+    if (match) {
+      try {
+        const json = JSON.parse(match[1]);
+        return { json, provider: result.provider, model: result.model };
+      } catch { /* fall through */ }
+    }
+    logger.warn({ tenantId, raw: result.text.slice(0, 200) }, 'llmService: could not parse LLM response as JSON');
+    return null;
+  }
+}
+
+// ─── Config helpers (for admin routes) ───────────────────────────────────────
+
+/**
+ * Check if an LLM is available for a tenant (without exposing the key).
+ * @param {string} tenantId
+ * @returns {{ available: boolean, provider: string|null, model: string|null }}
+ */
+async function getLlmStatus(tenantId) {
+  const cfg = await getLlmConfig(tenantId);
+  if (!cfg) return { available: false, provider: null, model: null };
+  return { available: true, provider: cfg.provider, model: cfg.model };
+}
+
+module.exports = { callLlm, callLlmForJson, getLlmConfig, getLlmStatus };

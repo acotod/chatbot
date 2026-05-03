@@ -28,6 +28,7 @@ model Tenant {
   mensajes             Mensaje[]
   conversationContexts ConversationContext[]
   waSendQueue          WaSendQueue[]
+  wabaRescueLogs       WabaRescueLog[]
 
   @@map("tenants")
 }
@@ -118,6 +119,7 @@ model AdminUser {
   roles           AdminUserRole[]
   auditLogs       AuditLog[]
   refreshTokens   RefreshToken[]
+  wabaRescueLogs  WabaRescueLog[]
 
   @@map("admin_users")
 }
@@ -293,4 +295,28 @@ model WaSendQueue {
 
   @@index([status, scheduledAt])
   @@map("wa_send_queue")
+}
+
+// ── LLM / WABA Rescue ─────────────────────────────────────────────────────────
+
+model WabaRescueLog {
+  id              Int        @id @default(autoincrement())
+  tenantId        String     @map("tenant_id") @db.Uuid
+  adminUserId     Int?       @map("admin_user_id")
+  originalJson    Json       @map("original_json")
+  wabaError       Json       @map("waba_error")
+  diagnosis       Json?
+  fixedJson       Json?      @map("fixed_json")
+  changes         Json?
+  confidenceScore Int?       @map("confidence_score")
+  /// "pending" | "fixed" | "failed" | "manual_review"
+  status          String     @default("pending") @db.VarChar(20)
+  llmUsed         Boolean    @default(false) @map("llm_used")
+  createdAt       DateTime   @default(now()) @map("created_at")
+  updatedAt       DateTime   @updatedAt @map("updated_at")
+  tenant          Tenant     @relation(fields: [tenantId], references: [id])
+  adminUser       AdminUser? @relation(fields: [adminUserId], references: [id])
+
+  @@index([tenantId, createdAt])
+  @@map("waba_rescue_logs")
 }

@@ -10,6 +10,7 @@ const rbacRouter = require('./routes/rbac');
 const auditRouter = require('./routes/auditLogs');
 const flowsRouter = require('./routes/flows');
 const whatsappRouter = require('./routes/whatsapp');
+const llmRouter = require('./routes/llm');
 const resolveTenant = require('./middleware/resolveTenant');
 const createRateLimiter = require('./middleware/rateLimiter');
 const errorHandler = require('./middleware/errorHandler');
@@ -97,6 +98,9 @@ app.use('/flows', flowsRouter);
 
 // WhatsApp Business Cloud API (GET: verify, POST: incoming messages + /send)
 app.use('/whatsapp', whatsappRouter);
+
+// LLM / WABA Rescue (JWT-protected)
+app.use('/llm', llmRouter);
 
 app.use(errorHandler);
 
