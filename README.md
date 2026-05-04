@@ -40,6 +40,7 @@ Endpoints principales:
 - `POST /flows/:id/execute-generic`
 - `GET /flows/:id/sessions`
 - `GET /flows/:id/sessions/:sessionKey`
+- `GET /flows/:id/whatsapp-simulation`
 
 ### Request de ejecución (Postman)
 
@@ -106,6 +107,16 @@ Notas:
 - `stateJson` almacena variables runtime.
 - `businessContextJson` permite adaptar la lógica por negocio sin hardcode.
 - `auditEventsJson` guarda trazabilidad de transiciones y webhooks por sesión.
+
+### Simulacion WhatsApp por pantalla
+
+`GET /flows/:id/whatsapp-simulation` devuelve una vista orientada al usuario final con:
+
+- Burbujas de texto por pantalla (como vista tipo chat)
+- Menus/opciones disponibles
+- Acciones por condicion
+- Donde se ejecuta webhook
+- Que debe responder el webhook (status, tipo y ejemplo de JSON esperado)
 
 ## Login con Facebook (SDK JavaScript)
 

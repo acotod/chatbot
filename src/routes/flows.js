@@ -8,6 +8,7 @@ const { executeStep } = require('../services/flowEngine');
 const { executeGenericStep } = require('../services/genericFlowEngine');
 const { parseMetaJsonToGraph, buildMetaJsonFromGraph } = require('../services/flowTransformer');
 const { getCatalog, saveCatalog } = require('../services/endpointCatalog');
+const { buildWhatsAppSimulation } = require('../services/whatsappFlowSimulation');
 const { validateWabaJson } = require('../services/wabaValidator');
 
 const prisma = new PrismaClient();
@@ -514,6 +515,38 @@ router.post('/export-json', requirePermiso('EDIT_FLUJOS'), async (req, res, next
         : `JSON Meta listo para publicar: ${json?.screens?.length ?? 0} pantallas`,
     });
   } catch (err) { next(err); }
+});
+
+// GET /flows/:id/whatsapp-simulation
+// Returns a professional WhatsApp-oriented simulation payload:
+// screen-by-screen user view, menu/actions, and webhook call contracts.
+router.get('/:id/whatsapp-simulation', requirePermiso('VIEW_FLUJOS'), async (req, res, next) => {
+  try {
+    const flowId = Number(req.params.id);
+    if (Number.isNaN(flowId)) return res.status(400).json({ error: 'Invalid flow id' });
+
+    const flow = await prisma.flow.findUnique({
+      where: { id: flowId },
+      include: { nodes: true, edges: true },
+    });
+    if (!flow) return res.status(404).json({ error: 'Flow not found' });
+
+    if (!req.admin.superAdmin && req.admin.tenantId && flow.tenantId !== req.admin.tenantId) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+
+    const flowJson = flow.metaJson;
+    if (!flowJson || !Array.isArray(flowJson.screens) || flowJson.screens.length === 0) {
+      return res.status(400).json({
+        error: 'Flow metaJson must include screens[] to generate WhatsApp simulation',
+      });
+    }
+
+    const simulation = buildWhatsAppSimulation({ flow, flowJson });
+    return res.json(simulation);
+  } catch (err) {
+    return next(err);
+  }
 });
 
 // ── Per-flow CRUD (wildcards — must be last to avoid shadowing static routes) ─
