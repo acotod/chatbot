@@ -11,8 +11,29 @@ const { validateWabaJson } = require('../services/wabaValidator');
 
 const prisma = new PrismaClient();
 const router = express.Router();
+const flowTestSessions = new Map();
 
 router.use(requireJwt);
+
+function executeStepInFlow(flow, { currentNodeId, input }) {
+  if (!currentNodeId) {
+    const startNode = flow.nodes.find((n) => n.type === 'start') ?? flow.nodes[0];
+    if (!startNode) return null;
+    return { nodeId: startNode.id, content: startNode.content };
+  }
+
+  const edges = flow.edges.filter((e) => e.sourceNodeId === currentNodeId);
+  const matchedEdge =
+    edges.find((e) => e.condition && e.condition === input) ??
+    edges.find((e) => !e.condition);
+
+  if (!matchedEdge) return null;
+
+  const nextNode = flow.nodes.find((n) => n.id === matchedEdge.targetNodeId);
+  if (!nextNode) return null;
+
+  return { nodeId: nextNode.id, content: nextNode.content };
+}
 
 // ── CRUD flows ────────────────────────────────────────────────────────────────
 
@@ -64,6 +85,52 @@ router.post('/execute', async (req, res, next) => {
     const result = await executeStep({ tenantId, currentNodeId: currentNodeId ?? null, input: input ?? null });
     if (!result) return res.status(404).json({ error: 'No next node found' });
     res.json(result);
+  } catch (err) { next(err); }
+});
+
+// POST /flows/:id/execute
+// Compatibility route used by the builder test panel.
+router.post('/:id/execute', requirePermiso('VIEW_FLUJOS'), async (req, res, next) => {
+  try {
+    const flowId = Number(req.params.id);
+    if (Number.isNaN(flowId)) return res.status(400).json({ error: 'Invalid flow id' });
+
+    const flow = await prisma.flow.findUnique({
+      where: { id: flowId },
+      include: { nodes: true, edges: true },
+    });
+    if (!flow) return res.status(404).json({ error: 'Flow not found' });
+
+    if (!req.admin.superAdmin && req.admin.tenantId && flow.tenantId !== req.admin.tenantId) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+
+    const sessionId = req.body?.sessionId ? String(req.body.sessionId) : null;
+    const key = sessionId ? `${flowId}:${sessionId}` : null;
+
+    const currentNodeId = req.body?.currentNodeId ?? (key ? flowTestSessions.get(key) ?? null : null);
+    const input = req.body?.mensaje ?? req.body?.input ?? null;
+
+    const result = executeStepInFlow(flow, {
+      currentNodeId: currentNodeId ? Number(currentNodeId) : null,
+      input,
+    });
+
+    if (!result) {
+      if (key) flowTestSessions.delete(key);
+      return res.status(404).json({ error: 'No next node found' });
+    }
+
+    if (key) flowTestSessions.set(key, result.nodeId);
+
+    const content = result.content ?? {};
+    const reply = content.body ?? content.label ?? content.title ?? '✓';
+    res.json({
+      reply,
+      nextScreen: String(result.nodeId),
+      nodeId: result.nodeId,
+      content,
+    });
   } catch (err) { next(err); }
 });
 

@@ -21,7 +21,7 @@ const requireJwt = require('../middleware/requireJwt');
 const requirePermiso = require('../middleware/requirePermiso');
 const { audit } = require('../services/audit');
 const { rescueFlow, validateWabaJson } = require('../services/wabaValidator');
-const { getLlmStatus, generateFlow } = require('../services/llmService');
+const { getLlmStatus, getLlmConfig, generateFlow } = require('../services/llmService');
 const logger = require('../utils/logger');
 
 const prisma = new PrismaClient();
@@ -244,14 +244,37 @@ router.post('/generate-flow', requirePermiso('MANAGE_LLM_RESCUE'), [
     const { prompt } = req.body;
     logger.info({ tenantId, promptLen: prompt.length }, 'llm/generate-flow: generating');
 
-    const result = await generateFlow(tenantId, prompt);
+    let resolvedTenantId = tenantId;
+    let result = await generateFlow(resolvedTenantId, prompt);
+
+    // Superadmin resilience: if chosen tenant fails, try another tenant that has llm_config
+    if (!result && req.admin.superAdmin) {
+      const fallbackCfg = await prisma.configuracion.findFirst({
+        where: { clave: 'llm_config', tenantId: { not: resolvedTenantId } },
+        select: { tenantId: true },
+        orderBy: { id: 'asc' },
+      });
+      if (fallbackCfg?.tenantId) {
+        logger.warn({ fromTenantId: resolvedTenantId, toTenantId: fallbackCfg.tenantId }, 'llm/generate-flow: trying fallback tenant with llm_config');
+        const fallbackResult = await generateFlow(fallbackCfg.tenantId, prompt);
+        if (fallbackResult) {
+          resolvedTenantId = fallbackCfg.tenantId;
+          result = fallbackResult;
+        }
+      }
+    }
+
     if (!result) {
-      return res.status(503).json({ error: 'LLM not configured or unavailable for this tenant' });
+      const cfg = await getLlmConfig(resolvedTenantId);
+      if (!cfg) {
+        return res.status(503).json({ error: 'LLM not configured or unavailable for this tenant' });
+      }
+      return res.status(503).json({ error: 'LLM provider temporarily unavailable. Retry in a few seconds.' });
     }
 
     audit({
       adminUserId : req.admin.adminUserId,
-      tenantId,
+      tenantId: resolvedTenantId,
       accion      : 'GENERATE_FLOW',
       entidad     : 'flow',
       entidadId   : null,
