@@ -110,6 +110,7 @@ router.post('/:id/execute', requirePermiso('VIEW_FLUJOS'), async (req, res, next
     const key = sessionId ? `${flowId}:${sessionId}` : null;
 
     const currentNodeId = req.body?.currentNodeId ?? (key ? flowTestSessions.get(key) ?? null : null);
+    const isStarting = !currentNodeId; // null → first step, truthy → mid-flow
     const input = req.body?.mensaje ?? req.body?.input ?? null;
 
     const result = executeStepInFlow(flow, {
@@ -119,7 +120,20 @@ router.post('/:id/execute', requirePermiso('VIEW_FLUJOS'), async (req, res, next
 
     if (!result) {
       if (key) flowTestSessions.delete(key);
-      return res.status(404).json({ error: 'No next node found' });
+
+      // First step with no start node → genuine configuration error
+      if (isStarting) {
+        return res.status(404).json({ error: 'Flow has no nodes configured' });
+      }
+
+      // Mid-flow with no outgoing edge → end of flow (not an error)
+      return res.json({
+        reply: '✅ El flujo ha finalizado. ¡Gracias!',
+        nextScreen: null,
+        nodeId: null,
+        content: { type: 'end', text: '✅ El flujo ha finalizado. ¡Gracias!' },
+        end: true,
+      });
     }
 
     if (key) flowTestSessions.set(key, result.nodeId);

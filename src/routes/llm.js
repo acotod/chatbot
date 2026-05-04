@@ -269,7 +269,12 @@ router.post('/generate-flow', requirePermiso('MANAGE_LLM_RESCUE'), [
       if (!cfg) {
         return res.status(503).json({ error: 'LLM not configured or unavailable for this tenant' });
       }
-      return res.status(503).json({ error: 'LLM provider temporarily unavailable. Retry in a few seconds.' });
+      logger.warn({ tenantId: resolvedTenantId, provider: cfg.provider, model: cfg.model }, 'llm/generate-flow: provider returned null');
+      return res.status(503).json({
+        error: 'LLM provider temporarily unavailable. Retry in a few seconds.',
+        provider: cfg.provider,
+        model: cfg.model,
+      });
     }
 
     audit({
