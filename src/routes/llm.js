@@ -22,6 +22,7 @@ const requirePermiso = require('../middleware/requirePermiso');
 const { audit } = require('../services/audit');
 const { rescueFlow, validateWabaJson } = require('../services/wabaValidator');
 const { getLlmStatus, getLlmConfig, generateFlow, callLlmForJson } = require('../services/llmService');
+const { getCatalog } = require('../services/endpointCatalog');
 const logger = require('../utils/logger');
 
 const prisma = new PrismaClient();
@@ -433,7 +434,195 @@ router.post('/generate-flow', requirePermiso('MANAGE_LLM_RESCUE'), [
   } catch (err) { next(err); }
 });
 
+// ── POST /llm/design-intelligent-flow ───────────────────────────────────────
+// Enterprise-ready orchestration response with backward-compatible payload.
+
+router.post('/design-intelligent-flow', requirePermiso('MANAGE_LLM_RESCUE'), [
+  body('prompt').notEmpty().withMessage('prompt is required').isLength({ max: 10000 }),
+  body('tenantId').optional({ checkFalsy: true }).isUUID(),
+], async (req, res, next) => {
+  if (!validateRequest(req, res)) return;
+  try {
+    const tenantId = await resolveTenantId(req, req.body.tenantId);
+    if (!tenantId) return res.status(400).json({ error: 'tenantId is required' });
+
+    const { prompt } = req.body;
+    logger.info({ tenantId, promptLen: prompt.length }, 'llm/design-intelligent-flow: designing');
+
+    const generation = await generateFlowOrFallback(req, tenantId, prompt);
+    const validation = buildValidationSummary(generation.json);
+    const integrations = await buildIntegrationSuggestions(generation.resolvedTenantId, prompt);
+    const stageStatus = validation.status === 'failed'
+      ? 'failed'
+      : validation.status === 'passed_with_warnings'
+        ? 'completed_with_warnings'
+        : 'completed';
+    const screenCount = Array.isArray(generation.json?.screens) ? generation.json.screens.length : 0;
+
+    audit({
+      adminUserId : req.admin.adminUserId,
+      tenantId: generation.resolvedTenantId,
+      accion      : 'DESIGN_INTELLIGENT_FLOW',
+      entidad     : 'flow',
+      entidadId   : null,
+      metadata    : {
+        provider: generation.provider,
+        model: generation.model,
+        promptLen: prompt.length,
+        fallback: generation.fallback === true,
+        validationStatus: validation.status,
+        suggestedIntegrations: integrations.suggested.length,
+      },
+    });
+
+    return res.json({
+      orchestration: {
+        pipelineVersion: '1.0',
+        stages: [
+          { key: 'interpret_requirement', label: 'Interpretar requerimiento', status: 'completed' },
+          { key: 'synthesize_flow', label: 'Proponer flujo estructurado', status: 'completed' },
+          { key: 'integration_mapping', label: 'Sugerir integraciones', status: 'completed' },
+          { key: 'validate_logic', label: 'Validar logica', status: stageStatus },
+          { key: 'simulate', label: 'Simular ejecucion', status: 'ready' },
+        ],
+      },
+      proposal: {
+        flowJson: generation.json,
+        summary: { screenCount },
+      },
+      integrations: {
+        suggested: integrations.suggested,
+        catalogSize: integrations.catalogSize,
+      },
+      dataContract: {
+        user_input: {},
+        validated_data: {},
+        api_responses: {},
+        context_memory: {},
+      },
+      validation,
+      simulation: {
+        channels: ['waba', 'web'],
+        dryRunReady: true,
+      },
+      approval: {
+        required: true,
+        status: 'pending_human_approval',
+      },
+      legacy: {
+        json: generation.json,
+        provider: generation.provider,
+        model: generation.model,
+        warning: generation.warning,
+        fallback: generation.fallback === true,
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
+
+async function generateFlowOrFallback(req, tenantId, prompt) {
+  let resolvedTenantId = tenantId;
+  let result = await generateFlow(resolvedTenantId, prompt);
+
+  if (!result && req.admin.superAdmin) {
+    const fallbackCfg = await prisma.configuracion.findFirst({
+      where: { clave: 'llm_config', tenantId: { not: resolvedTenantId } },
+      select: { tenantId: true },
+      orderBy: { id: 'asc' },
+    });
+    if (fallbackCfg?.tenantId) {
+      logger.warn({ fromTenantId: resolvedTenantId, toTenantId: fallbackCfg.tenantId }, 'llm/design-intelligent-flow: trying fallback tenant with llm_config');
+      const fallbackResult = await generateFlow(fallbackCfg.tenantId, prompt);
+      if (fallbackResult) {
+        resolvedTenantId = fallbackCfg.tenantId;
+        result = fallbackResult;
+      }
+    }
+  }
+
+  if (result) {
+    return {
+      resolvedTenantId,
+      json: result.json,
+      provider: result.provider,
+      model: result.model,
+      fallback: false,
+      warning: null,
+    };
+  }
+
+  const cfg = await getLlmConfig(resolvedTenantId);
+  const warning = !cfg
+    ? 'LLM no configurado o no disponible. Se generó un flujo base para que puedas continuar.'
+    : 'Proveedor LLM temporalmente no disponible. Se generó un flujo base para que puedas continuar.';
+
+  return {
+    resolvedTenantId,
+    json: buildDeterministicFallbackFlow(prompt),
+    provider: 'fallback',
+    model: 'deterministic-v1',
+    fallback: true,
+    warning,
+  };
+}
+
+function tokenize(text) {
+  return String(text || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .split(/\s+/)
+    .filter((token) => token.length >= 4);
+}
+
+function scoreEndpoint(endpoint, prompt) {
+  const promptTokens = new Set(tokenize(prompt));
+  const source = [
+    endpoint?.id,
+    endpoint?.name,
+    endpoint?.description,
+    ...(Array.isArray(endpoint?.inputs) ? endpoint.inputs : []),
+    ...(Array.isArray(endpoint?.outputs) ? endpoint.outputs : []),
+  ].join(' ');
+  return tokenize(source).reduce((acc, token) => acc + (promptTokens.has(token) ? 1 : 0), 0);
+}
+
+async function buildIntegrationSuggestions(tenantId, prompt) {
+  const catalog = await getCatalog(tenantId);
+  const endpoints = Array.isArray(catalog?.endpoints) ? catalog.endpoints : [];
+
+  const suggested = endpoints
+    .map((endpoint) => ({ endpoint, score: scoreEndpoint(endpoint, prompt) }))
+    .filter((item) => item.score > 0)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 5)
+    .map((item) => ({
+      id: item.endpoint.id,
+      name: item.endpoint.name,
+      method: item.endpoint.method,
+      url: item.endpoint.url,
+      inputs: Array.isArray(item.endpoint.inputs) ? item.endpoint.inputs : [],
+      outputs: Array.isArray(item.endpoint.outputs) ? item.endpoint.outputs : [],
+      description: item.endpoint.description,
+      score: item.score,
+    }));
+
+  return { suggested, catalogSize: endpoints.length };
+}
+
+function buildValidationSummary(flowJson) {
+  const validation = validateWabaJson(flowJson);
+  const hasErrors = Array.isArray(validation?.errors) && validation.errors.length > 0;
+  const hasWarnings = Array.isArray(validation?.warnings) && validation.warnings.length > 0;
+  return {
+    status: hasErrors ? 'failed' : hasWarnings ? 'passed_with_warnings' : 'passed',
+    errors: validation.errors || [],
+    warnings: validation.warnings || [],
+  };
+}
 
 function tryParseJson(str) {
   try { return JSON.parse(str); } catch { return { raw: str }; }
