@@ -302,4 +302,44 @@ async function generateFlow(tenantId, prompt) {
   return callLlmForJson(tenantId, GENERATE_FLOW_SYSTEM, userPrompt);
 }
 
-module.exports = { callLlm, callLlmForJson, getLlmConfig, getLlmStatus, generateFlow };
+// ─── Intent classifier ────────────────────────────────────────────────────────
+
+const CLASSIFY_INTENT_SYSTEM = `You are an intent classifier for a conversational chatbot.
+Given the user's free-text input and a closed list of possible intents, return a JSON object
+with a single key "intent" containing the best matching intent from the list.
+Rules:
+- You MUST choose one of the provided intents — never invent new ones.
+- Respond ONLY with JSON, no prose. Example: {"intent": "crisis"}`;
+
+/**
+ * Classify free-text user input into one of the provided intents using the LLM.
+ *
+ * @param {string}   tenantId
+ * @param {string}   userInput       - raw text from the user
+ * @param {string[]} possibleIntents - closed list of valid intent names
+ * @returns {Promise<string|null>} The matched intent, or null if classification failed.
+ */
+async function classifyIntent(tenantId, userInput, possibleIntents) {
+  if (!possibleIntents?.length) return null;
+
+  const userPrompt = [
+    `User input: "${userInput}"`,
+    `Possible intents: ${JSON.stringify(possibleIntents)}`,
+    '',
+    'Return only {"intent": "<best_match>"}.',
+  ].join('\n');
+
+  const result = await callLlmForJson(tenantId, CLASSIFY_INTENT_SYSTEM, userPrompt);
+  if (!result) return null;
+
+  const intent = result.json?.intent;
+  if (!possibleIntents.includes(intent)) {
+    logger.warn({ tenantId, intent, possibleIntents }, 'classifyIntent: LLM returned unknown intent — ignoring');
+    return null;
+  }
+
+  logger.info({ tenantId, intent, provider: result.provider }, 'classifyIntent: resolved');
+  return intent;
+}
+
+module.exports = { callLlm, callLlmForJson, getLlmConfig, getLlmStatus, generateFlow, classifyIntent };
