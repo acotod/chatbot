@@ -42,13 +42,22 @@ function validateRequest(req, res) {
 
 /**
  * Resolve the tenantId the caller may act on.
- * SuperAdmins may pass an explicit tenantId; if none provided, falls back to
- * the first available tenant so the LLM features work without a scoped user.
+ * SuperAdmins may pass an explicit tenantId; if none provided, prefer a tenant
+ * with llm_config, then fall back to the first available tenant.
  */
 async function resolveTenantId(req, explicitId) {
   if (req.admin.superAdmin) {
     if (explicitId) return explicitId;
     if (req.admin.tenantId) return req.admin.tenantId;
+
+    // Prefer a tenant that already has llm_config configured
+    const withLlmConfig = await prisma.configuracion.findFirst({
+      where: { clave: 'llm_config' },
+      select: { tenantId: true },
+      orderBy: { id: 'asc' },
+    });
+    if (withLlmConfig?.tenantId) return withLlmConfig.tenantId;
+
     // Fall back to the first tenant in the database
     const first = await prisma.tenant.findFirst({ orderBy: { createdAt: 'asc' } });
     return first?.id ?? null;
