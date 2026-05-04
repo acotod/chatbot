@@ -51,6 +51,29 @@ function signAccess(payload, secret) {
   };
 }
 
+function signLegacyRefresh(secret, email) {
+  return jwt.sign(
+    {
+      sub: 'admin',
+      email,
+      typ: 'refresh',
+      jti: crypto.randomBytes(16).toString('hex'),
+    },
+    secret,
+    { expiresIn: REFRESH_TTL },
+  );
+}
+
+function verifyLegacyRefresh(token, secret) {
+  try {
+    const payload = jwt.verify(token, secret);
+    if (payload?.sub !== 'admin' || payload?.typ !== 'refresh') return null;
+    return payload;
+  } catch {
+    return null;
+  }
+}
+
 function normalizeGraphBaseUrl() {
   return (process.env.FACEBOOK_GRAPH_URL || 'https://graph.facebook.com').replace(/\/$/, '');
 }
@@ -142,8 +165,9 @@ router.post('/login', loginRateLimiter, async (req, res) => {
     const valid = await bcrypt.compare(password, adminPasswordHash);
     if (valid) {
       const { token } = signAccess({ sub: 'admin', email }, jwtSecret);
+      const refreshToken = signLegacyRefresh(jwtSecret, email);
       audit({ accion: 'LOGIN', entidad: 'admin', ip, userAgent, metadata: { email, via: 'env' } });
-      return res.json({ accessToken: token, expiresIn: ACCESS_TTL, superAdmin: true });
+      return res.json({ accessToken: token, refreshToken, expiresIn: ACCESS_TTL, superAdmin: true });
     }
   }
 
@@ -373,17 +397,32 @@ router.post('/refresh', async (req, res) => {
       include: { adminUser: true },
     });
 
-    if (!stored || stored.revoked || stored.expiresAt < new Date()) {
-      return res.status(401).json({ error: 'Invalid or expired refresh token' });
+    if (stored && !stored.revoked && stored.expiresAt >= new Date()) {
+      const user = stored.adminUser;
+      const { token: accessToken } = signAccess(
+        { adminUserId: user.id, email: user.email, superAdmin: user.superAdmin, tenantId: user.tenantId ?? null },
+        jwtSecret,
+      );
+
+      return res.json({ accessToken, expiresIn: ACCESS_TTL });
     }
 
-    const user = stored.adminUser;
-    const { token: accessToken } = signAccess(
-      { adminUserId: user.id, email: user.email, superAdmin: user.superAdmin, tenantId: user.tenantId ?? null },
-      jwtSecret,
-    );
+    // Legacy env-admin refresh token path (for super-admin defined in .env).
+    const legacyPayload = verifyLegacyRefresh(refreshToken, jwtSecret);
+    if (legacyPayload) {
+      const adminEmail = process.env.ADMIN_EMAIL;
+      if (!adminEmail || legacyPayload.email !== adminEmail) {
+        return res.status(401).json({ error: 'Invalid or expired refresh token' });
+      }
 
-    return res.json({ accessToken, expiresIn: ACCESS_TTL });
+      const { token: accessToken } = signAccess(
+        { sub: 'admin', email: legacyPayload.email },
+        jwtSecret,
+      );
+      return res.json({ accessToken, expiresIn: ACCESS_TTL });
+    }
+
+    return res.status(401).json({ error: 'Invalid or expired refresh token' });
   } catch (err) {
     return res.status(500).json({ error: 'Token refresh failed' });
   }
