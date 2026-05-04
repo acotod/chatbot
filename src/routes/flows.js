@@ -5,6 +5,7 @@ const requireJwt = require('../middleware/requireJwt');
 const requirePermiso = require('../middleware/requirePermiso');
 const { audit } = require('../services/audit');
 const { executeStep } = require('../services/flowEngine');
+const { executeGenericStep } = require('../services/genericFlowEngine');
 const { parseMetaJsonToGraph, buildMetaJsonFromGraph } = require('../services/flowTransformer');
 const { getCatalog, saveCatalog } = require('../services/endpointCatalog');
 const { validateWabaJson } = require('../services/wabaValidator');
@@ -132,6 +133,131 @@ router.post('/:id/execute', requirePermiso('VIEW_FLUJOS'), async (req, res, next
       content,
     });
   } catch (err) { next(err); }
+});
+
+// POST /flows/:id/execute-generic
+// Stateful execution using Flow.metaJson screens/actions and DB-persisted JSON session state.
+router.post('/:id/execute-generic', requirePermiso('VIEW_FLUJOS'), async (req, res, next) => {
+  try {
+    const flowId = Number(req.params.id);
+    if (Number.isNaN(flowId)) return res.status(400).json({ error: 'Invalid flow id' });
+
+    const flow = await prisma.flow.findUnique({ where: { id: flowId } });
+    if (!flow) return res.status(404).json({ error: 'Flow not found' });
+
+    if (!req.admin.superAdmin && req.admin.tenantId && flow.tenantId !== req.admin.tenantId) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+
+    const flowJson = flow.metaJson;
+    if (!flowJson || !Array.isArray(flowJson.screens) || flowJson.screens.length === 0) {
+      return res.status(400).json({
+        error: 'Flow metaJson must include screens[] in generic format before execute-generic',
+      });
+    }
+
+    const sessionKeyRaw = req.body?.sessionKey ?? `admin-${req.admin.adminUserId}`;
+    const sessionKey = String(sessionKeyRaw).trim();
+    if (!sessionKey) return res.status(400).json({ error: 'sessionKey is required' });
+
+    if (req.body?.reset === true) {
+      await prisma.flowSession.deleteMany({
+        where: { tenantId: flow.tenantId, flowId, sessionKey },
+      });
+    }
+
+    let session = await prisma.flowSession.findUnique({
+      where: {
+        tenantId_flowId_sessionKey: {
+          tenantId: flow.tenantId,
+          flowId,
+          sessionKey,
+        },
+      },
+    });
+
+    if (!session) {
+      session = await prisma.flowSession.create({
+        data: {
+          tenantId: flow.tenantId,
+          flowId,
+          sessionKey,
+          currentScreenId: null,
+          stateJson: { variables: {} },
+          businessContextJson: req.body?.businessContextJson ?? null,
+          auditEventsJson: [],
+        },
+      });
+    }
+
+    const currentScreenId = req.body?.currentScreenId ?? session.currentScreenId ?? null;
+    const input = req.body?.input ?? null;
+    const previousVars = (session.stateJson && typeof session.stateJson === 'object')
+      ? (session.stateJson.variables || {})
+      : {};
+    const businessContext = req.body?.businessContextJson
+      ?? session.businessContextJson
+      ?? {};
+
+    const result = await executeGenericStep({
+      flowJson,
+      currentScreenId,
+      input,
+      variables: previousVars,
+      businessContext,
+    });
+
+    const nextAudit = Array.isArray(session.auditEventsJson) ? [...session.auditEventsJson] : [];
+    nextAudit.push({
+      ts: new Date().toISOString(),
+      from: result.currentScreenId,
+      to: result.nextScreenId,
+      input,
+      matchedCondition: result.matchedCondition,
+      webhook: result.webhookResult
+        ? {
+            payload: result.webhookResult.payload,
+            response: result.webhookResult.responseBody,
+          }
+        : null,
+    });
+
+    const updated = await prisma.flowSession.update({
+      where: {
+        tenantId_flowId_sessionKey: {
+          tenantId: flow.tenantId,
+          flowId,
+          sessionKey,
+        },
+      },
+      data: {
+        status: result.terminal ? 'completed' : 'active',
+        currentScreenId: result.nextScreenId,
+        stateJson: {
+          variables: result.variables,
+          lastWebhook: result.webhookResult
+            ? {
+                payload: result.webhookResult.payload,
+                response: result.webhookResult.responseBody,
+              }
+            : null,
+        },
+        businessContextJson: businessContext,
+        auditEventsJson: nextAudit,
+      },
+    });
+
+    return res.json({
+      sessionKey,
+      status: updated.status,
+      currentScreenId: updated.currentScreenId,
+      screen: result.nextScreen,
+      terminal: result.terminal,
+      variables: result.variables,
+    });
+  } catch (err) {
+    return next(err);
+  }
 });
 
 // ── Flow Builder smart endpoints ──────────────────────────────────────────────

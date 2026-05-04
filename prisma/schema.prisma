@@ -33,6 +33,7 @@ model Tenant {
   agendaEventLogs      AgendaEventLog[]
   eventLogs            EventLog[]
   deadLetterEntries    DeadLetterQueue[]
+  flowSessions         FlowSession[]
 
   @@map("tenants")
 }
@@ -280,9 +281,31 @@ model Flow {
   tenant       Tenant     @relation(fields: [tenantId], references: [id])
   nodes        FlowNode[]
   edges        FlowEdge[]
+  sessions     FlowSession[]
   agendaEvents AgendaEvent[]
 
   @@map("flows")
+}
+
+model FlowSession {
+  id                  Int      @id @default(autoincrement())
+  tenantId            String   @map("tenant_id") @db.Uuid
+  flowId              Int      @map("flow_id")
+  sessionKey          String   @map("session_key") @db.VarChar(120)
+  status              String   @default("active") @db.VarChar(20)
+  currentScreenId     String?  @map("current_screen_id") @db.VarChar(120)
+  stateJson           Json     @default("{}") @map("state_json")
+  businessContextJson Json?    @map("business_context_json")
+  auditEventsJson     Json     @default("[]") @map("audit_events_json")
+  createdAt           DateTime @default(now()) @map("created_at")
+  updatedAt           DateTime @updatedAt @map("updated_at")
+  tenant              Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  flow                Flow     @relation(fields: [flowId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, flowId, sessionKey])
+  @@index([tenantId, updatedAt])
+  @@index([flowId, status])
+  @@map("flow_sessions")
 }
 
 // ── Agenda ───────────────────────────────────────────────────────────────────
