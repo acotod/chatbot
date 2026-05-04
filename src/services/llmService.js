@@ -532,6 +532,124 @@ function getScreenCountFromFlowJson(flowJson) {
   return Array.isArray(flowJson?.pantallas) ? flowJson.pantallas.length : 0;
 }
 
+function toScreenId(value, fallback) {
+  const raw = normalizeText(value) || fallback;
+  return raw
+    .toUpperCase()
+    .replace(/[^A-Z0-9_]/g, '_')
+    .replace(/_+/g, '_')
+    .replace(/^_|_$/g, '') || fallback;
+}
+
+function normalizeStructuredFlowToMetaJson(flowJson) {
+  if (!flowJson || typeof flowJson !== 'object') return flowJson;
+  if (Array.isArray(flowJson.screens) && flowJson.screens.length > 0) return flowJson;
+
+  const pantallas = asArray(flowJson.pantallas);
+  if (pantallas.length === 0) return flowJson;
+
+  const idMap = {};
+  pantallas.forEach((pantalla, idx) => {
+    const fallbackId = `PANTALLA_${idx + 1}`;
+    const idMapKey = normalizeText(pantalla?.id) || fallbackId;
+    idMap[idMapKey] = toScreenId(pantalla?.id, fallbackId);
+  });
+
+  const mapDestino = (destino) => {
+    const d = normalizeText(destino);
+    if (!d || d === 'FIN') return null;
+    return idMap[d] || toScreenId(d, d);
+  };
+
+  const screens = pantallas.map((pantalla, idx) => {
+    const fallbackId = `PANTALLA_${idx + 1}`;
+    const id = idMap[normalizeText(pantalla?.id) || fallbackId] || fallbackId;
+
+    const children = [
+      { type: 'TextHeading', text: `Paso ${idx + 1}` },
+      { type: 'TextBody', text: normalizeText(pantalla?.mensaje) || 'Continuemos con el flujo.' },
+    ];
+
+    const inputs = asArray(pantalla?.inputs);
+    for (const input of inputs) {
+      const fieldName = normalizeText(input?.nombre_campo) || `campo_${idx + 1}`;
+      children.push({
+        type: 'TextInput',
+        name: fieldName,
+        label: fieldName,
+      });
+    }
+
+    const botones = asArray(pantalla?.botones);
+    if (botones.length >= 2) {
+      children.push({
+        type: 'RadioButtonsGroup',
+        name: `decision_${idx + 1}`,
+        label: 'Selecciona una opcion',
+        'data-source': botones.map((b, optionIdx) => ({
+          id: `opcion_${optionIdx + 1}`,
+          title: normalizeText(b?.texto) || `Opcion ${optionIdx + 1}`,
+        })),
+      });
+    }
+
+    const routingValues = Object.values(pantalla?.routing || {})
+      .map(mapDestino)
+      .filter(Boolean);
+    const buttonTargets = botones
+      .map((b) => mapDestino(b?.destino))
+      .filter(Boolean);
+    const nextCandidates = [...new Set([...buttonTargets, ...routingValues])];
+    const nextScreen = nextCandidates[0] || null;
+
+    children.push(nextScreen
+      ? {
+          type: 'Footer',
+          label: 'Continuar',
+          'on-click-action': { name: 'navigate', next: { type: 'screen', name: nextScreen } },
+        }
+      : {
+          type: 'Footer',
+          label: 'Finalizar',
+          'on-click-action': { name: 'complete' },
+        });
+
+    return {
+      id,
+      title: id,
+      terminal: !nextScreen,
+      layout: {
+        type: 'SingleColumnLayout',
+        children,
+      },
+    };
+  });
+
+  const routing_model = {};
+  pantallas.forEach((pantalla, idx) => {
+    const fallbackId = `PANTALLA_${idx + 1}`;
+    const sourceId = idMap[normalizeText(pantalla?.id) || fallbackId] || fallbackId;
+
+    const botones = asArray(pantalla?.botones);
+    const buttonTargets = botones
+      .map((b) => mapDestino(b?.destino))
+      .filter(Boolean);
+    const routingTargets = Object.values(pantalla?.routing || {})
+      .map(mapDestino)
+      .filter(Boolean);
+
+    routing_model[sourceId] = [...new Set([...buttonTargets, ...routingTargets])];
+  });
+
+  return {
+    version: '7.1',
+    data_api_version: '3.0',
+    routing_model,
+    screens,
+    _structured_source: flowJson,
+  };
+}
+
 /**
  * Generate a Meta WhatsApp Flow JSON from a natural-language prompt.
  * @param {string} tenantId
@@ -548,10 +666,13 @@ async function generateFlow(tenantId, prompt) {
     const result = await callLlmForJson(tenantId, GENERATE_FLOW_SYSTEM, currentPrompt);
     if (!result?.json) return null;
 
-    lastResult = result;
     const validation = validateStructuredFlow(result.json, requestedScreenCount);
+    lastResult = {
+      ...result,
+      json: normalizeStructuredFlowToMetaJson(result.json),
+    };
     if (validation.valid) {
-      return result;
+      return lastResult;
     }
 
     const produced = getScreenCountFromFlowJson(result.json);
