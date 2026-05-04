@@ -279,6 +279,12 @@ Hard requirements:
 - Use only valid WABA components (TextHeading, TextBody, TextInput, RadioButtonsGroup, Dropdown, EmbeddedLink, Form, Footer)
 - Respond ONLY with JSON (no markdown, no prose)
 
+Prompt fidelity rules (must follow):
+- Obey explicit user directives from the prompt (screen count, mandatory steps, required fields, branches)
+- Do not collapse or skip required stages from the prompt
+- If prompt asks for N screens, output exactly N screens
+- Keep routing_model coherent with all screens and terminal closure
+
 Conversation UX rules:
 - Adapt domain and entities to the user's project description; do not assume a fixed industry
 - Do NOT use emotional-support language unless the user explicitly asks for it
@@ -294,6 +300,39 @@ Specialization for emotional support style requests:
 - Add an explicit urgent branch with immediate escalation copy
 - Keep tone empathetic, non-judgmental, concise`;
 
+function extractRequestedScreenCount(prompt) {
+  const text = String(prompt || '').toLowerCase();
+  const match = text.match(/\b(\d{1,2})\s*(pantallas|pantalla|screens|screen)\b/);
+  if (!match) return null;
+  const count = Number(match[1]);
+  if (!Number.isInteger(count) || count < 1 || count > 25) return null;
+  return count;
+}
+
+function buildGenerateFlowUserPrompt(prompt, requestedScreenCount) {
+  const directives = [
+    'Design a WhatsApp Flow for the following use case:',
+    '',
+    String(prompt || '').trim(),
+    '',
+  ];
+
+  if (requestedScreenCount) {
+    directives.push(
+      `MANDATORY: output exactly ${requestedScreenCount} screens in the JSON (no more, no less).`,
+      'MANDATORY: preserve complete journey, do not collapse required steps.',
+      '',
+    );
+  }
+
+  directives.push('Return only the JSON.');
+  return directives.join('\n');
+}
+
+function getScreenCountFromFlowJson(flowJson) {
+  return Array.isArray(flowJson?.screens) ? flowJson.screens.length : 0;
+}
+
 /**
  * Generate a Meta WhatsApp Flow JSON from a natural-language prompt.
  * @param {string} tenantId
@@ -301,8 +340,36 @@ Specialization for emotional support style requests:
  * @returns {{ json: object, provider: string, model: string }|null}
  */
 async function generateFlow(tenantId, prompt) {
-  const userPrompt = `Design a WhatsApp Flow for the following use case:\n\n${prompt}\n\nReturn only the JSON.`;
-  return callLlmForJson(tenantId, GENERATE_FLOW_SYSTEM, userPrompt);
+  const requestedScreenCount = extractRequestedScreenCount(prompt);
+  const userPrompt = buildGenerateFlowUserPrompt(prompt, requestedScreenCount);
+  let result = await callLlmForJson(tenantId, GENERATE_FLOW_SYSTEM, userPrompt);
+
+  // One deterministic correction pass when prompt requests an exact screen count.
+  if (requestedScreenCount && result?.json) {
+    const produced = getScreenCountFromFlowJson(result.json);
+    if (produced !== requestedScreenCount) {
+      const correctionPrompt = [
+        'Correct the following flow JSON to satisfy the requirement exactly.',
+        `Requirement: exactly ${requestedScreenCount} screens.`,
+        `Current screen count: ${produced}.`,
+        'Keep version/data_api_version and valid WABA JSON format.',
+        '',
+        JSON.stringify(result.json),
+        '',
+        'Return only corrected JSON.',
+      ].join('\n');
+
+      const corrected = await callLlmForJson(tenantId, GENERATE_FLOW_SYSTEM, correctionPrompt);
+      if (corrected?.json) {
+        const correctedCount = getScreenCountFromFlowJson(corrected.json);
+        if (correctedCount === requestedScreenCount) {
+          result = corrected;
+        }
+      }
+    }
+  }
+
+  return result;
 }
 
 // ─── Intent classifier ────────────────────────────────────────────────────────
