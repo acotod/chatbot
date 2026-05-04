@@ -28,6 +28,7 @@ const NAV_ITEMS = [
   { icon: ClipboardList, label: "Solicitudes", href: "/solicitudes" },
   { icon: CalendarDays, label: "Agenda", href: "/agenda" },
   { icon: Users, label: "Agentes", href: "/agentes" },
+  { icon: BarChart2, label: "Flujos", href: "/flujos" },
   { icon: Settings, label: "Configuración", href: "/configuracion" },
   { icon: CreditCard, label: "Facturación", href: "/facturacion" },
   { icon: ScrollText, label: "Auditoría", href: "/auditoria" },
