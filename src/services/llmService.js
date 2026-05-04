@@ -37,8 +37,15 @@ const GLOBAL_FALLBACK = {
 
 const PROVIDER_DEFAULTS = {
   openai    : { base_url: 'https://api.openai.com/v1',             model: 'gpt-4o-mini'                    },
-  anthropic : { base_url: 'https://api.anthropic.com/v1',          model: 'claude-3-5-haiku-20241022'      },
+  anthropic : { base_url: 'https://api.anthropic.com/v1',          model: 'claude-sonnet-4-20250514'       },
   custom    : { base_url: process.env.LLM_BASE_URL || '',          model: process.env.LLM_MODEL || ''      },
+};
+
+const ANTHROPIC_MODEL_ALIASES = {
+  'claude-3-5-sonnet-20241022': 'claude-sonnet-4-20250514',
+  'claude-3-5-sonnet-latest':   'claude-sonnet-4-20250514',
+  'claude-3-5-haiku-20241022':  'claude-sonnet-4-20250514',
+  'claude-3-5-haiku-latest':    'claude-sonnet-4-20250514',
 };
 
 // ─── Config loader ────────────────────────────────────────────────────────────
@@ -68,10 +75,17 @@ async function getLlmConfig(tenantId) {
 
 function mergeWithDefaults(cfg) {
   const providerDefs = PROVIDER_DEFAULTS[cfg.provider] || PROVIDER_DEFAULTS.custom;
+  const provider = cfg.provider || 'openai';
+  let model = cfg.model || providerDefs.model;
+
+  if (provider === 'anthropic') {
+    model = ANTHROPIC_MODEL_ALIASES[model] || model;
+  }
+
   return {
-    provider   : cfg.provider    || 'openai',
+    provider,
     api_key    : cfg.api_key,
-    model      : cfg.model       || providerDefs.model,
+    model,
     base_url   : cfg.base_url    || providerDefs.base_url,
     max_tokens : cfg.max_tokens  || 4096,
     timeout_ms : cfg.timeout_ms  || 30000,
