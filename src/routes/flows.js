@@ -260,6 +260,111 @@ router.post('/:id/execute-generic', requirePermiso('VIEW_FLUJOS'), async (req, r
   }
 });
 
+// GET /flows/:id/sessions/:sessionKey
+// Returns a persisted generic flow session snapshot with JSON state/audit.
+router.get('/:id/sessions/:sessionKey', requirePermiso('VIEW_FLUJOS'), async (req, res, next) => {
+  try {
+    const flowId = Number(req.params.id);
+    if (Number.isNaN(flowId)) return res.status(400).json({ error: 'Invalid flow id' });
+
+    const flow = await prisma.flow.findUnique({ where: { id: flowId } });
+    if (!flow) return res.status(404).json({ error: 'Flow not found' });
+
+    if (!req.admin.superAdmin && req.admin.tenantId && flow.tenantId !== req.admin.tenantId) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+
+    const sessionKey = String(req.params.sessionKey || '').trim();
+    if (!sessionKey) return res.status(400).json({ error: 'sessionKey is required' });
+
+    const session = await prisma.flowSession.findUnique({
+      where: {
+        tenantId_flowId_sessionKey: {
+          tenantId: flow.tenantId,
+          flowId,
+          sessionKey,
+        },
+      },
+    });
+
+    if (!session) return res.status(404).json({ error: 'Session not found' });
+
+    const includeAudit = req.query.includeAudit !== 'false';
+    const auditEvents = Array.isArray(session.auditEventsJson) ? session.auditEventsJson : [];
+
+    return res.json({
+      flow: {
+        id: flow.id,
+        nombre: flow.nombre,
+        version: flow.version,
+      },
+      session: {
+        id: session.id,
+        sessionKey: session.sessionKey,
+        status: session.status,
+        currentScreenId: session.currentScreenId,
+        stateJson: session.stateJson,
+        businessContextJson: session.businessContextJson,
+        createdAt: session.createdAt,
+        updatedAt: session.updatedAt,
+      },
+      audit: includeAudit ? auditEvents : undefined,
+      auditCount: auditEvents.length,
+    });
+  } catch (err) {
+    return next(err);
+  }
+});
+
+// GET /flows/:id/sessions
+// Lists persisted generic flow sessions for the selected flow.
+router.get('/:id/sessions', requirePermiso('VIEW_FLUJOS'), async (req, res, next) => {
+  try {
+    const flowId = Number(req.params.id);
+    if (Number.isNaN(flowId)) return res.status(400).json({ error: 'Invalid flow id' });
+
+    const flow = await prisma.flow.findUnique({ where: { id: flowId } });
+    if (!flow) return res.status(404).json({ error: 'Flow not found' });
+
+    if (!req.admin.superAdmin && req.admin.tenantId && flow.tenantId !== req.admin.tenantId) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+
+    const rawLimit = Number(req.query.limit ?? 20);
+    const limit = Number.isFinite(rawLimit) ? Math.min(Math.max(rawLimit, 1), 100) : 20;
+    const status = req.query.status ? String(req.query.status) : null;
+
+    const sessions = await prisma.flowSession.findMany({
+      where: {
+        tenantId: flow.tenantId,
+        flowId,
+        ...(status ? { status } : {}),
+      },
+      orderBy: { updatedAt: 'desc' },
+      take: limit,
+    });
+
+    return res.json({
+      flow: {
+        id: flow.id,
+        nombre: flow.nombre,
+        version: flow.version,
+      },
+      total: sessions.length,
+      items: sessions.map((s) => ({
+        id: s.id,
+        sessionKey: s.sessionKey,
+        status: s.status,
+        currentScreenId: s.currentScreenId,
+        updatedAt: s.updatedAt,
+        createdAt: s.createdAt,
+      })),
+    });
+  } catch (err) {
+    return next(err);
+  }
+});
+
 // ── Flow Builder smart endpoints ──────────────────────────────────────────────
 
 /**
