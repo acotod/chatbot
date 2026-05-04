@@ -292,7 +292,7 @@ router.post('/prompt-assistant', requirePermiso('MANAGE_LLM_RESCUE'), [
   body('draftPrompt').optional().isString().isLength({ max: 12000 }),
   body('userMessage').optional().isString().isLength({ max: 2000 }),
   body('brief').optional().isObject(),
-  body('history').optional().isArray({ max: 20 }),
+  body('history').optional().isArray(),
 ], async (req, res, next) => {
   if (!validateRequest(req, res)) return;
 
