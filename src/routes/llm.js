@@ -435,7 +435,9 @@ router.post('/generate-flow', requirePermiso('MANAGE_LLM_RESCUE'), [
 });
 
 // ── POST /llm/design-intelligent-flow ───────────────────────────────────────
-// Enterprise-ready orchestration response with backward-compatible payload.
+// Enterprise AI Flow Orchestrator — two-stage LLM pipeline:
+//   Stage 1: Requirement analysis (intent + entities + constraints)
+//   Stage 2: Enriched flow synthesis (catalog-aware prompt)
 
 router.post('/design-intelligent-flow', requirePermiso('MANAGE_LLM_RESCUE'), [
   body('prompt').notEmpty().withMessage('prompt is required').isLength({ max: 10000 }),
@@ -447,11 +449,25 @@ router.post('/design-intelligent-flow', requirePermiso('MANAGE_LLM_RESCUE'), [
     if (!tenantId) return res.status(400).json({ error: 'tenantId is required' });
 
     const { prompt } = req.body;
-    logger.info({ tenantId, promptLen: prompt.length }, 'llm/design-intelligent-flow: designing');
+    logger.info({ tenantId, promptLen: prompt.length }, 'llm/design-intelligent-flow: starting pipeline');
 
-    const generation = await generateFlowOrFallback(req, tenantId, prompt);
+    // ── Stage 1: Requirement analysis ─────────────────────────────────────────
+    const analysis = await analyzeRequirement(tenantId, prompt);
+    logger.info(
+      { tenantId, intent: analysis.intent, entities: analysis.entities.length, source: analysis._source },
+      'llm/design-intelligent-flow: analysis complete',
+    );
+
+    // ── Stage 3 (pre-synthesis): Integration catalog scoring ──────────────────
+    const integrations = await buildIntegrationSuggestions(tenantId, prompt);
+    const topEndpoints = integrations.suggested.slice(0, 3);
+
+    // ── Stage 2: Build enriched prompt + generate flow ────────────────────────
+    const enrichedPrompt = buildEnrichedPrompt(prompt, analysis, topEndpoints);
+    const generation = await generateFlowOrFallback(req, tenantId, enrichedPrompt);
+
+    // ── Stage 4: Structural validation ───────────────────────────────────────
     const validation = buildValidationSummary(generation.json);
-    const integrations = await buildIntegrationSuggestions(generation.resolvedTenantId, prompt);
     const stageStatus = validation.status === 'failed'
       ? 'failed'
       : validation.status === 'passed_with_warnings'
@@ -459,61 +475,94 @@ router.post('/design-intelligent-flow', requirePermiso('MANAGE_LLM_RESCUE'), [
         : 'completed';
     const screenCount = Array.isArray(generation.json?.screens) ? generation.json.screens.length : 0;
 
+    // ── Stage 6: Unified data contract ───────────────────────────────────────
+    const dataContract = buildDataContract(analysis, topEndpoints);
+
     audit({
       adminUserId : req.admin.adminUserId,
-      tenantId: generation.resolvedTenantId,
+      tenantId    : generation.resolvedTenantId,
       accion      : 'DESIGN_INTELLIGENT_FLOW',
       entidad     : 'flow',
       entidadId   : null,
       metadata    : {
-        provider: generation.provider,
-        model: generation.model,
-        promptLen: prompt.length,
-        fallback: generation.fallback === true,
-        validationStatus: validation.status,
+        provider             : generation.provider,
+        model                : generation.model,
+        promptLen            : prompt.length,
+        enrichedPromptLen    : enrichedPrompt.length,
+        fallback             : generation.fallback === true,
+        intent               : analysis.intent,
+        entityCount          : analysis.entities.length,
+        analysisSource       : analysis._source,
+        validationStatus     : validation.status,
         suggestedIntegrations: integrations.suggested.length,
       },
     });
 
     return res.json({
       orchestration: {
-        pipelineVersion: '1.0',
+        pipelineVersion: '2.0',
         stages: [
-          { key: 'interpret_requirement', label: 'Interpretar requerimiento', status: 'completed' },
-          { key: 'synthesize_flow', label: 'Proponer flujo estructurado', status: 'completed' },
-          { key: 'integration_mapping', label: 'Sugerir integraciones', status: 'completed' },
-          { key: 'validate_logic', label: 'Validar logica', status: stageStatus },
+          {
+            key   : 'interpret_requirement',
+            label : 'Interpretar requerimiento',
+            status: analysis._source === 'fallback' ? 'completed_with_warnings' : 'completed',
+            detail: {
+              intent           : analysis.intent,
+              summary          : analysis.summary,
+              goals            : analysis.goals,
+              entities         : analysis.entities,
+              constraints      : analysis.constraints,
+              flow_type        : analysis.flow_type,
+              tone             : analysis.tone,
+              error_handling   : analysis.error_handling,
+              estimated_screens: analysis.estimated_screens,
+              source           : analysis._source || 'llm',
+            },
+          },
+          {
+            key   : 'synthesize_flow',
+            label : 'Proponer flujo estructurado',
+            status: 'completed',
+            detail: { screenCount, enrichedPromptLen: enrichedPrompt.length },
+          },
+          {
+            key   : 'integration_mapping',
+            label : 'Sugerir integraciones',
+            status: 'completed',
+            detail: { catalogSize: integrations.catalogSize, suggested: topEndpoints.length },
+          },
+          {
+            key   : 'validate_logic',
+            label : 'Validar logica',
+            status: stageStatus,
+            detail: { errors: validation.errors.length, warnings: validation.warnings.length },
+          },
           { key: 'simulate', label: 'Simular ejecucion', status: 'ready' },
         ],
       },
       proposal: {
         flowJson: generation.json,
-        summary: { screenCount },
+        summary : { screenCount },
       },
       integrations: {
-        suggested: integrations.suggested,
+        suggested  : integrations.suggested,
         catalogSize: integrations.catalogSize,
       },
-      dataContract: {
-        user_input: {},
-        validated_data: {},
-        api_responses: {},
-        context_memory: {},
-      },
+      dataContract,
       validation,
       simulation: {
-        channels: ['waba', 'web'],
+        channels   : ['waba', 'web'],
         dryRunReady: true,
       },
       approval: {
         required: true,
-        status: 'pending_human_approval',
+        status  : 'pending_human_approval',
       },
       legacy: {
-        json: generation.json,
+        json    : generation.json,
         provider: generation.provider,
-        model: generation.model,
-        warning: generation.warning,
+        model   : generation.model,
+        warning : generation.warning,
         fallback: generation.fallback === true,
       },
     });
@@ -523,6 +572,188 @@ router.post('/design-intelligent-flow', requirePermiso('MANAGE_LLM_RESCUE'), [
 });
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
+
+// ── Requirement intelligence ──────────────────────────────────────────────────
+
+const REQUIREMENT_ANALYSIS_SYSTEM = `You are an enterprise conversational flow architect.
+Analyze the user's natural-language requirement and extract a precise structure.
+Always respond with valid JSON only — no explanation, no markdown fences.
+
+Return schema:
+{
+  "intent": "short_snake_case_intent_id",
+  "summary": "one sentence description in Spanish",
+  "goals": ["goal1", "goal2"],
+  "entities": [{ "name": "field_name", "type": "text|number|date|email|phone|select|boolean", "required": true, "description": "brief" }],
+  "constraints": ["constraint1"],
+  "suggested_integrations": ["integration_keyword1"],
+  "data_collection": "single|multiple|none",
+  "tone": "professional|casual|formal|friendly",
+  "error_handling": "retry|human_fallback|silent_skip|none",
+  "flow_type": "linear|branched|conditional|hybrid",
+  "estimated_screens": 3
+}`;
+
+/**
+ * Stage 1 — LLM-based requirement analysis.
+ * Returns a validated/normalised structure; falls back deterministically if the LLM
+ * is unavailable so the pipeline never blocks on the first stage.
+ */
+async function analyzeRequirement(tenantId, prompt) {
+  const VALID_TYPES    = ['text', 'number', 'date', 'email', 'phone', 'select', 'boolean'];
+  const VALID_DC       = ['single', 'multiple', 'none'];
+  const VALID_TONE     = ['professional', 'casual', 'formal', 'friendly'];
+  const VALID_HANDLING = ['retry', 'human_fallback', 'silent_skip', 'none'];
+  const VALID_FTYPE    = ['linear', 'branched', 'conditional', 'hybrid'];
+
+  const result = await callLlmForJson(tenantId, REQUIREMENT_ANALYSIS_SYSTEM, prompt);
+
+  if (!result || typeof result.json !== 'object' || !result.json) {
+    // Deterministic fallback so the pipeline always completes
+    return {
+      intent            : 'generic_flow',
+      summary           : 'Flujo conversacional general',
+      goals             : ['capturar datos', 'confirmar solicitud'],
+      entities          : [
+        { name: 'nombre',  type: 'text', required: true,  description: 'Nombre del usuario'           },
+        { name: 'detalle', type: 'text', required: true,  description: 'Detalle de la solicitud'       },
+      ],
+      constraints           : [],
+      suggested_integrations: [],
+      data_collection   : 'multiple',
+      tone              : 'professional',
+      error_handling    : 'human_fallback',
+      flow_type         : 'linear',
+      estimated_screens : 3,
+      _source           : 'fallback',
+    };
+  }
+
+  const j = result.json;
+  return {
+    intent: String(j.intent || 'generic_flow')
+      .toLowerCase().replace(/[^a-z0-9_]/g, '_').slice(0, 60),
+    summary: String(j.summary || '').trim().slice(0, 300),
+    goals  : Array.isArray(j.goals)
+      ? j.goals.map((g) => String(g).trim()).filter(Boolean).slice(0, 10)
+      : [],
+    entities: Array.isArray(j.entities)
+      ? j.entities.slice(0, 20).map((e) => ({
+          name       : String(e?.name || 'field').replace(/[^a-z0-9_]/gi, '_').toLowerCase().slice(0, 60),
+          type       : VALID_TYPES.includes(e?.type) ? e.type : 'text',
+          required   : e?.required !== false,
+          description: String(e?.description || '').trim().slice(0, 100),
+        }))
+      : [],
+    constraints: Array.isArray(j.constraints)
+      ? j.constraints.map((c) => String(c).trim()).filter(Boolean).slice(0, 10)
+      : [],
+    suggested_integrations: Array.isArray(j.suggested_integrations)
+      ? j.suggested_integrations.map((s) => String(s).trim()).filter(Boolean).slice(0, 5)
+      : [],
+    data_collection   : VALID_DC.includes(j.data_collection)   ? j.data_collection   : 'multiple',
+    tone              : VALID_TONE.includes(j.tone)             ? j.tone              : 'professional',
+    error_handling    : VALID_HANDLING.includes(j.error_handling) ? j.error_handling : 'human_fallback',
+    flow_type         : VALID_FTYPE.includes(j.flow_type)       ? j.flow_type         : 'linear',
+    estimated_screens : Math.max(1, Math.min(20,
+      Number.isInteger(j.estimated_screens) ? j.estimated_screens : 3)),
+    _source  : 'llm',
+    _provider: result.provider,
+    _model   : result.model,
+  };
+}
+
+/**
+ * Build an enriched generation prompt that includes the extracted requirement
+ * structure and the top catalog endpoints as inline context for the flow LLM.
+ */
+function buildEnrichedPrompt(prompt, analysis, topEndpoints) {
+  const lines = [
+    '=== REQUERIMIENTO DEL USUARIO ===',
+    prompt.trim(),
+    '',
+    '=== INTENCIÓN DETECTADA ===',
+    `Intent: ${analysis.intent}`,
+    `Tipo de flujo: ${analysis.flow_type}`,
+    `Tono: ${analysis.tone}`,
+    `Manejo de errores: ${analysis.error_handling}`,
+    `Pantallas estimadas: ${analysis.estimated_screens}`,
+  ];
+
+  if (analysis.goals.length > 0) {
+    lines.push('', '=== OBJETIVOS ===');
+    analysis.goals.forEach((g) => lines.push(`- ${g}`));
+  }
+
+  if (analysis.entities.length > 0) {
+    lines.push(
+      '',
+      '=== CAMPOS DE DATOS REQUERIDOS (usa estos nombres de campo exactamente en los inputs) ===',
+    );
+    analysis.entities.forEach((e) => {
+      lines.push(
+        `- ${e.name} [${e.type}]${e.required ? ' (obligatorio)' : ' (opcional)'}: ${e.description}`,
+      );
+    });
+  }
+
+  if (analysis.constraints.length > 0) {
+    lines.push('', '=== RESTRICCIONES DE NEGOCIO ===');
+    analysis.constraints.forEach((c) => lines.push(`- ${c}`));
+  }
+
+  if (topEndpoints.length > 0) {
+    lines.push(
+      '',
+      '=== APIs DISPONIBLES EN EL CATÁLOGO (incluye llamadas webhook cuando sea relevante) ===',
+    );
+    topEndpoints.forEach((ep) => {
+      lines.push(`- ${ep.name} [${ep.method} ${ep.url}]: ${ep.description || ''}`);
+      if (ep.inputs.length  > 0) lines.push(`  inputs: ${ep.inputs.join(', ')}`);
+      if (ep.outputs.length > 0) lines.push(`  outputs: ${ep.outputs.join(', ')}`);
+    });
+  }
+
+  return lines.join('\n');
+}
+
+/**
+ * Build the unified data contract from the requirement analysis and catalog suggestions.
+ * user_input  — fields to collect from the end-user, keyed by entity name
+ * api_responses — expected outputs from each relevant catalog endpoint
+ * context_memory — intent metadata persisted across screens
+ * validated_data — empty placeholder, filled at runtime after validations
+ */
+function buildDataContract(analysis, topEndpoints) {
+  const user_input = {};
+  for (const entity of analysis.entities) {
+    user_input[entity.name] = {
+      type       : entity.type,
+      required   : entity.required,
+      description: entity.description,
+    };
+  }
+
+  const api_responses = {};
+  for (const ep of topEndpoints) {
+    api_responses[ep.id] = {
+      endpoint: ep.name,
+      method  : ep.method,
+      outputs : ep.outputs,
+    };
+  }
+
+  const context_memory = {
+    flow_intent   : analysis.intent,
+    flow_type     : analysis.flow_type,
+    tone          : analysis.tone,
+    error_handling: analysis.error_handling,
+    goals         : analysis.goals,
+    constraints   : analysis.constraints,
+  };
+
+  return { user_input, validated_data: {}, api_responses, context_memory };
+}
 
 async function generateFlowOrFallback(req, tenantId, prompt) {
   let resolvedTenantId = tenantId;
