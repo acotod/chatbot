@@ -265,40 +265,235 @@ async function getLlmStatus(tenantId) {
 
 // ─── Flow generator ───────────────────────────────────────────────────────────
 
-const GENERATE_FLOW_SYSTEM = `You are an expert WhatsApp Business Flows designer.
-Generate a valid Meta WhatsApp Flow JSON (version 7.1, data_api_version 3.0) from the user's description.
+const GENERATE_FLOW_SYSTEM = `Eres un generador de flujos conversacionales estructurados para WhatsApp (WABA).
 
-Hard requirements:
-- version must be "7.1", data_api_version must be "3.0"
-- Output must be a single JSON object with: version, data_api_version, routing_model, screens
-- routing_model maps each screen id to an array of next screen ids
-- Every flow must have at least one terminal screen (terminal: true)
-- Screen IDs must be SCREAMING_SNAKE_CASE and unique
-- layout.type must be "SingleColumnLayout" in every screen
-- Footer must be the last child in each screen
-- Use only valid WABA components (TextHeading, TextBody, TextInput, RadioButtonsGroup, Dropdown, EmbeddedLink, Form, Footer)
-- Respond ONLY with JSON (no markdown, no prose)
+Reglas obligatorias:
+1) Estructura obligatoria por pantalla:
+- id
+- mensaje
+- botones (si aplica)
+- inputs (si aplica)
+- acciones (guardar / webhook cuando corresponda)
+- routing (siempre requerido)
 
-Prompt fidelity rules (must follow):
-- Obey explicit user directives from the prompt (screen count, mandatory steps, required fields, branches)
-- Do not collapse or skip required stages from the prompt
-- If prompt asks for N screens, output exactly N screens
-- Keep routing_model coherent with all screens and terminal closure
+2) Menus y decisiones:
+- Toda decision debe representarse con botones.
+- Nunca usar texto libre para decisiones.
+- Minimo 2 opciones y maximo 4.
 
-Conversation UX rules:
-- Adapt domain and entities to the user's project description; do not assume a fixed industry
-- Do NOT use emotional-support language unless the user explicitly asks for it
-- First screen must greet and explain the purpose in plain language
-- Prefer short and clear labels in Spanish when user prompt is in Spanish
-- If user needs to choose a path, use RadioButtonsGroup with 3-5 options max
-- Include safe fallback path to human support when relevant
-- Include one confirmation/closure terminal screen
+3) Inputs:
+- Si se piden datos, usar inputs[].
+- Cada input debe incluir nombre_campo, tipo, validacion.
+- Cuando haya inputs, acciones debe guardar esos datos con formato guardar.campo = valor.
 
-Specialization for emotional support style requests:
-- If prompt mentions emotional support / stress / urgent help, start with a screen equivalent to:
-  greeting + "Como te sentis hoy?" + options like talking to someone, stress, information, urgent
-- Add an explicit urgent branch with immediate escalation copy
-- Keep tone empathetic, non-judgmental, concise`;
+4) Memoria obligatoria:
+Debe existir y usarse en el flujo:
+{
+  "tipo_necesidad": null,
+  "nombre": null,
+  "telefono": null,
+  "horario": null,
+  "estado": null
+}
+
+5) Webhooks:
+- Si hay confirmacion o accion final, definir webhook con endpoint, metodo y payload.
+
+6) Routing:
+- Cada pantalla debe tener routing claro, sin ambiguedad y sin caminos muertos.
+
+7) Tono:
+- Empatico, claro, conversacional, no tecnico.
+
+8) Prohibido:
+- No describir: estructurar siempre.
+- No omitir botones en decisiones.
+- No dejar pasos implicitos.
+
+Formato de salida obligatorio:
+- Responde SOLO con JSON valido (sin markdown ni texto adicional).
+- Usa exactamente este schema de nivel superior:
+{
+  "memoria_inicial": {
+    "tipo_necesidad": null,
+    "nombre": null,
+    "telefono": null,
+    "horario": null,
+    "estado": null
+  },
+  "pantallas": [
+    {
+      "id": "PANTALLA_1",
+      "mensaje": "",
+      "botones": [],
+      "inputs": [],
+      "acciones": [],
+      "routing": {}
+    }
+  ]
+}`;
+
+const FLOW_OUTPUT_SCHEMA_SAMPLE = {
+  memoria_inicial: {
+    tipo_necesidad: null,
+    nombre: null,
+    telefono: null,
+    horario: null,
+    estado: null,
+  },
+  pantallas: [
+    {
+      id: 'PANTALLA_1',
+      mensaje: '',
+      botones: [],
+      inputs: [],
+      acciones: [],
+      routing: {},
+    },
+  ],
+};
+
+const FLOW_GENERATION_MAX_ATTEMPTS = 3;
+
+function asArray(value) {
+  return Array.isArray(value) ? value : [];
+}
+
+function normalizeText(value) {
+  return String(value || '').trim();
+}
+
+function collectActionStrings(actions) {
+  return asArray(actions).map((action) => {
+    if (typeof action === 'string') return action;
+    if (action && typeof action === 'object') return JSON.stringify(action);
+    return '';
+  }).filter(Boolean);
+}
+
+function hasWebhookAction(actions) {
+  return asArray(actions).some((action) => {
+    if (!action || typeof action !== 'object') return false;
+    if (!action.webhook || typeof action.webhook !== 'object') return false;
+    const endpoint = normalizeText(action.webhook.endpoint || action.webhook.url);
+    const metodo = normalizeText(action.webhook.metodo || action.webhook.method).toUpperCase();
+    const payload = action.webhook.payload;
+    return Boolean(endpoint) && (metodo === 'POST' || metodo === 'GET') && payload && typeof payload === 'object';
+  });
+}
+
+function validateStructuredFlow(flowJson, requestedScreenCount) {
+  const errors = [];
+  if (!flowJson || typeof flowJson !== 'object') {
+    return { valid: false, errors: ['La salida no es un objeto JSON valido.'] };
+  }
+
+  const memoria = flowJson.memoria_inicial;
+  const requiredMemoryFields = ['tipo_necesidad', 'nombre', 'telefono', 'horario', 'estado'];
+  if (!memoria || typeof memoria !== 'object') {
+    errors.push('Falta memoria_inicial obligatoria.');
+  } else {
+    for (const field of requiredMemoryFields) {
+      if (!(field in memoria)) {
+        errors.push(`Falta memoria_inicial.${field}.`);
+      }
+    }
+  }
+
+  const pantallas = asArray(flowJson.pantallas);
+  if (pantallas.length === 0) {
+    errors.push('Debe existir pantallas[] con al menos una pantalla.');
+    return { valid: false, errors };
+  }
+
+  if (!pantallas.some((p) => normalizeText(p?.id) === 'PANTALLA_1')) {
+    errors.push('Debe existir una pantalla con id PANTALLA_1.');
+  }
+
+  if (requestedScreenCount && pantallas.length !== requestedScreenCount) {
+    errors.push(`Se solicitaron ${requestedScreenCount} pantallas y se generaron ${pantallas.length}.`);
+  }
+
+  const screenIds = new Set(pantallas.map((p) => normalizeText(p?.id)).filter(Boolean));
+  let foundConfirmation = false;
+  let foundWebhook = false;
+
+  for (const pantalla of pantallas) {
+    const id = normalizeText(pantalla?.id);
+    if (!id) {
+      errors.push('Toda pantalla debe tener id.');
+      continue;
+    }
+
+    if (!normalizeText(pantalla?.mensaje)) {
+      errors.push(`${id}: falta mensaje.`);
+    }
+
+    if (!pantalla || typeof pantalla.routing !== 'object' || Array.isArray(pantalla.routing) || pantalla.routing == null) {
+      errors.push(`${id}: cada pantalla debe tener routing objeto.`);
+    }
+
+    const botones = asArray(pantalla?.botones);
+    if (botones.length > 0 && (botones.length < 2 || botones.length > 4)) {
+      errors.push(`${id}: las decisiones deben tener entre 2 y 4 botones.`);
+    }
+
+    for (const boton of botones) {
+      const destino = normalizeText(boton?.destino);
+      if (!destino) {
+        errors.push(`${id}: todos los botones deben tener destino.`);
+        continue;
+      }
+      if (destino !== 'FIN' && !screenIds.has(destino)) {
+        errors.push(`${id}: destino de boton invalido (${destino}).`);
+      }
+
+      const buttonText = normalizeText(boton?.texto).toLowerCase();
+      if (buttonText.includes('confirm')) foundConfirmation = true;
+    }
+
+    const routingValues = Object.values(pantalla?.routing || {});
+    for (const destino of routingValues) {
+      const nextId = normalizeText(destino);
+      if (!nextId) {
+        errors.push(`${id}: routing contiene destino vacio.`);
+        continue;
+      }
+      if (nextId !== 'FIN' && !screenIds.has(nextId)) {
+        errors.push(`${id}: routing apunta a pantalla inexistente (${nextId}).`);
+      }
+    }
+
+    const inputs = asArray(pantalla?.inputs);
+    for (const input of inputs) {
+      const fieldName = normalizeText(input?.nombre_campo);
+      const inputType = normalizeText(input?.tipo);
+      const validation = normalizeText(input?.validacion);
+
+      if (!fieldName || !inputType || !validation) {
+        errors.push(`${id}: cada input debe tener nombre_campo, tipo y validacion.`);
+      }
+
+      const actionStrings = collectActionStrings(pantalla?.acciones).map((s) => s.toLowerCase());
+      if (fieldName && !actionStrings.some((s) => s.includes(`guardar.${fieldName.toLowerCase()}`))) {
+        errors.push(`${id}: falta guardar.${fieldName} en acciones para inputs.`);
+      }
+    }
+
+    if (normalizeText(pantalla?.mensaje).toLowerCase().includes('confirm')) {
+      foundConfirmation = true;
+    }
+    if (hasWebhookAction(pantalla?.acciones)) {
+      foundWebhook = true;
+    }
+  }
+
+  if (foundConfirmation && !foundWebhook) {
+    errors.push('Si hay confirmacion, debe existir webhook con endpoint, metodo y payload.');
+  }
+
+  return { valid: errors.length === 0, errors };
+}
 
 function extractRequestedScreenCount(prompt) {
   const text = String(prompt || '').toLowerCase();
@@ -311,26 +506,30 @@ function extractRequestedScreenCount(prompt) {
 
 function buildGenerateFlowUserPrompt(prompt, requestedScreenCount) {
   const directives = [
-    'Design a WhatsApp Flow for the following use case:',
+    'Brief del usuario (usar literalmente para generar el flujo):',
     '',
     String(prompt || '').trim(),
+    '',
+    'Combina este brief con las reglas del system prompt y ejecutalas sin excepcion.',
+    'La salida debe ser JSON estricto y parseable.',
+    'Schema obligatorio de salida:',
+    JSON.stringify(FLOW_OUTPUT_SCHEMA_SAMPLE, null, 2),
     '',
   ];
 
   if (requestedScreenCount) {
     directives.push(
-      `MANDATORY: output exactly ${requestedScreenCount} screens in the JSON (no more, no less).`,
-      'MANDATORY: preserve complete journey, do not collapse required steps.',
+      `Regla adicional: generar exactamente ${requestedScreenCount} pantallas (ni mas ni menos).`,
       '',
     );
   }
 
-  directives.push('Return only the JSON.');
+  directives.push('Responde solo JSON.');
   return directives.join('\n');
 }
 
 function getScreenCountFromFlowJson(flowJson) {
-  return Array.isArray(flowJson?.screens) ? flowJson.screens.length : 0;
+  return Array.isArray(flowJson?.pantallas) ? flowJson.pantallas.length : 0;
 }
 
 /**
@@ -342,34 +541,49 @@ function getScreenCountFromFlowJson(flowJson) {
 async function generateFlow(tenantId, prompt) {
   const requestedScreenCount = extractRequestedScreenCount(prompt);
   const userPrompt = buildGenerateFlowUserPrompt(prompt, requestedScreenCount);
-  let result = await callLlmForJson(tenantId, GENERATE_FLOW_SYSTEM, userPrompt);
+  let currentPrompt = userPrompt;
+  let lastResult = null;
 
-  // One deterministic correction pass when prompt requests an exact screen count.
-  if (requestedScreenCount && result?.json) {
-    const produced = getScreenCountFromFlowJson(result.json);
-    if (produced !== requestedScreenCount) {
-      const correctionPrompt = [
-        'Correct the following flow JSON to satisfy the requirement exactly.',
-        `Requirement: exactly ${requestedScreenCount} screens.`,
-        `Current screen count: ${produced}.`,
-        'Keep version/data_api_version and valid WABA JSON format.',
-        '',
-        JSON.stringify(result.json),
-        '',
-        'Return only corrected JSON.',
-      ].join('\n');
+  for (let attempt = 1; attempt <= FLOW_GENERATION_MAX_ATTEMPTS; attempt += 1) {
+    const result = await callLlmForJson(tenantId, GENERATE_FLOW_SYSTEM, currentPrompt);
+    if (!result?.json) return null;
 
-      const corrected = await callLlmForJson(tenantId, GENERATE_FLOW_SYSTEM, correctionPrompt);
-      if (corrected?.json) {
-        const correctedCount = getScreenCountFromFlowJson(corrected.json);
-        if (correctedCount === requestedScreenCount) {
-          result = corrected;
-        }
-      }
+    lastResult = result;
+    const validation = validateStructuredFlow(result.json, requestedScreenCount);
+    if (validation.valid) {
+      return result;
     }
+
+    const produced = getScreenCountFromFlowJson(result.json);
+    logger.warn({ tenantId, attempt, produced, errors: validation.errors }, 'generateFlow: validation failed, requesting correction');
+
+    if (attempt >= FLOW_GENERATION_MAX_ATTEMPTS) {
+      break;
+    }
+
+    currentPrompt = [
+      'Corrige el flujo para cumplir TODAS las reglas del system prompt.',
+      'Checklist obligatorio (si falla cualquiera, corrige):',
+      '- Debe existir PANTALLA_1',
+      '- Cada pantalla debe tener routing',
+      '- En decisiones debe haber botones',
+      '- En pantallas con inputs debe existir guardar.campo',
+      '- Si hay confirmacion debe haber webhook',
+      requestedScreenCount
+        ? `- Debe haber exactamente ${requestedScreenCount} pantallas`
+        : null,
+      '',
+      'Errores detectados:',
+      ...validation.errors.map((e) => `- ${e}`),
+      '',
+      'JSON actual a corregir:',
+      JSON.stringify(result.json),
+      '',
+      'Devuelve solo JSON valido y estricto con el schema exigido.',
+    ].filter(Boolean).join('\n');
   }
 
-  return result;
+  return lastResult;
 }
 
 // ─── Intent classifier ────────────────────────────────────────────────────────
