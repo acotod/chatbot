@@ -8,7 +8,6 @@ const adminRouter = require('./routes/admin');
 const authRouter = require('./routes/auth');
 const rbacRouter = require('./routes/rbac');
 const auditRouter = require('./routes/auditLogs');
-const flowsRouter = require('./routes/flows');
 const whatsappRouter = require('./routes/whatsapp');
 const llmRouter = require('./routes/llm');
 const eventsRouter = require('./routes/events');
@@ -96,9 +95,6 @@ app.use('/rbac', rbacRouter);
 
 // Audit logs
 app.use('/audit', auditRouter);
-
-// Flow management
-app.use('/flows', flowsRouter);
 
 // WhatsApp Business Cloud API (GET: verify, POST: incoming messages + /send)
 app.use('/whatsapp', whatsappRouter);
