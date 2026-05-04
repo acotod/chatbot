@@ -374,6 +374,108 @@ async function findTenantByFlowToken(flowToken) {
   return config?.tenant ?? null;
 }
 
+// ---------------------------------------------------------------------------
+// Unified Event Gateway helpers
+// ---------------------------------------------------------------------------
+
+async function findEventLogByIdempotencyKey(tenantId, idempotencyKey) {
+  const client = getPrismaClient();
+  if (!client || !tenantId || !idempotencyKey) return null;
+  return client.eventLog.findUnique({
+    where: {
+      tenantId_idempotencyKey: { tenantId, idempotencyKey },
+    },
+  });
+}
+
+async function saveEventLog({
+  tenantId,
+  eventId,
+  eventVersion = '1.0',
+  channel,
+  source,
+  eventType,
+  direction = 'inbound',
+  idempotencyKey,
+  occurredAt,
+  payload,
+  metadata,
+  rawEvent,
+  status = 'ingested',
+}) {
+  const client = getPrismaClient();
+  if (!client) return null;
+  return client.eventLog.create({
+    data: {
+      tenantId,
+      eventId,
+      eventVersion,
+      channel,
+      source,
+      eventType,
+      direction,
+      idempotencyKey,
+      occurredAt,
+      payload,
+      metadata: metadata ?? undefined,
+      rawEvent: rawEvent ?? undefined,
+      status,
+    },
+  });
+}
+
+async function markEventLogStatus(id, status, { lastError, processedAt, incrementAttempts } = {}) {
+  const client = getPrismaClient();
+  if (!client || !id || !status) return null;
+
+  const data = {
+    status,
+    ...(lastError !== undefined ? { lastError } : {}),
+    ...(processedAt !== undefined ? { processedAt } : {}),
+    ...(incrementAttempts ? { attempts: { increment: 1 } } : {}),
+  };
+
+  return client.eventLog.update({ where: { id }, data });
+}
+
+async function saveDeadLetter({
+  tenantId,
+  eventLogId,
+  reason,
+  error,
+  payload,
+  status = 'pending',
+}) {
+  const client = getPrismaClient();
+  if (!client) return null;
+  return client.deadLetterQueue.create({
+    data: {
+      tenantId,
+      eventLogId: eventLogId ?? null,
+      reason,
+      error: error ?? undefined,
+      payload: payload ?? undefined,
+      status,
+    },
+  });
+}
+
+async function getEventSchema(name, version = '1.0') {
+  const client = getPrismaClient();
+  if (!client || !name) return null;
+  return client.eventSchema.findUnique({ where: { name_version: { name, version } } });
+}
+
+async function upsertEventSchema({ name, version = '1.0', schema, activo = true }) {
+  const client = getPrismaClient();
+  if (!client || !name || !schema) return null;
+  return client.eventSchema.upsert({
+    where: { name_version: { name, version } },
+    create: { name, version, schema, activo },
+    update: { schema, activo },
+  });
+}
+
 module.exports = {
   getPrismaClient,
   // tenant
@@ -410,6 +512,13 @@ module.exports = {
   saveMensaje,
   listMensajes,
   listConversaciones,
+  // ueg
+  findEventLogByIdempotencyKey,
+  saveEventLog,
+  markEventLogStatus,
+  saveDeadLetter,
+  getEventSchema,
+  upsertEventSchema,
   // chatbot context
   getConversationContext,
   setConversationContext,

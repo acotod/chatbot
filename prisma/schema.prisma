@@ -31,8 +31,71 @@ model Tenant {
   wabaRescueLogs       WabaRescueLog[]
   agendaEvents         AgendaEvent[]
   agendaEventLogs      AgendaEventLog[]
+  eventLogs            EventLog[]
+  deadLetterEntries    DeadLetterQueue[]
 
   @@map("tenants")
+}
+
+model EventSchema {
+  id        Int      @id @default(autoincrement())
+  name      String   @db.VarChar(100)
+  version   String   @db.VarChar(20)
+  schema    Json
+  activo    Boolean  @default(true)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@unique([name, version])
+  @@map("event_schemas")
+}
+
+model EventLog {
+  id             Int       @id @default(autoincrement())
+  tenantId       String    @map("tenant_id") @db.Uuid
+  eventId        String    @unique @map("event_id") @db.VarChar(80)
+  eventVersion   String    @default("1.0") @map("event_version") @db.VarChar(20)
+  channel        String    @db.VarChar(40)
+  source         String    @db.VarChar(60)
+  eventType      String    @map("event_type") @db.VarChar(80)
+  direction      String    @default("inbound") @db.VarChar(20)
+  idempotencyKey String    @map("idempotency_key") @db.VarChar(191)
+  status         String    @default("ingested") @db.VarChar(20)
+  occurredAt     DateTime  @map("occurred_at")
+  ingestedAt     DateTime  @default(now()) @map("ingested_at")
+  processedAt    DateTime? @map("processed_at")
+  payload        Json
+  metadata       Json?
+  rawEvent       Json?     @map("raw_event")
+  lastError      String?   @map("last_error") @db.Text
+  attempts       Int       @default(0)
+  tenant         Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  deadLetters    DeadLetterQueue[]
+
+  @@unique([tenantId, idempotencyKey])
+  @@index([tenantId, ingestedAt])
+  @@index([tenantId, eventType, ingestedAt])
+  @@map("event_logs")
+}
+
+model DeadLetterQueue {
+  id          Int       @id @default(autoincrement())
+  tenantId    String    @map("tenant_id") @db.Uuid
+  eventLogId  Int?      @map("event_log_id")
+  reason      String    @db.VarChar(255)
+  error       Json?
+  payload     Json?
+  status      String    @default("pending") @db.VarChar(20)
+  attempts    Int       @default(0)
+  nextRetryAt DateTime? @map("next_retry_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  tenant      Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  eventLog    EventLog? @relation(fields: [eventLogId], references: [id], onDelete: SetNull)
+
+  @@index([status, nextRetryAt])
+  @@index([tenantId, createdAt])
+  @@map("dead_letter_queue")
 }
 
 model User {

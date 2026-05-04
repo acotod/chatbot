@@ -11,6 +11,7 @@ const auditRouter = require('./routes/auditLogs');
 const flowsRouter = require('./routes/flows');
 const whatsappRouter = require('./routes/whatsapp');
 const llmRouter = require('./routes/llm');
+const eventsRouter = require('./routes/events');
 const resolveTenant = require('./middleware/resolveTenant');
 const createRateLimiter = require('./middleware/rateLimiter');
 const errorHandler = require('./middleware/errorHandler');
@@ -49,7 +50,7 @@ const corsOptions = {
     cb(new Error('Not allowed by CORS'));
   },
   methods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'x-api-key'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'x-api-key', 'x-correlation-id', 'x-idempotency-key'],
   credentials: true,
 };
 
@@ -83,6 +84,9 @@ const tenantRateLimiter = createRateLimiter();
 
 // POST /webhook — tenant identified by x-api-key header
 app.use('/webhook', resolveTenant, tenantRateLimiter, webhookRouter);
+
+// POST /events/ingest — canonical Unified Event Gateway ingest endpoint
+app.use('/events', resolveTenant, tenantRateLimiter, eventsRouter);
 
 // Admin routes (protected by JWT — POST /auth/login to get a token)
 app.use('/admin', adminRouter);
