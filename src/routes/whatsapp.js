@@ -19,8 +19,32 @@ const chatbotRouter = require('../services/chatbotRouter');
 const requireJwt = require('../middleware/requireJwt');
 const { getRedisClient } = require('../services/redis');
 const { getNextScreen } = require('../services/flowNavigation');
+const { ingestEvent } = require('../services/eventGateway');
 
 const router = express.Router();
+
+function _toIsoFromUnixSeconds(seconds) {
+  const ts = Number(seconds);
+  if (!Number.isFinite(ts)) return new Date().toISOString();
+  return new Date(ts * 1000).toISOString();
+}
+
+async function _ingestUegBestEffort({ tenantId, correlationId, idempotencyKey, rawEvent, context }) {
+  try {
+    await ingestEvent({
+      tenantId,
+      correlationId,
+      idempotencyKeyHeader: idempotencyKey,
+      rawEvent,
+    });
+  } catch (uegErr) {
+    logger.warn('UEG dual-write failed on /whatsapp', {
+      tenantId,
+      context,
+      message: uegErr.message,
+    });
+  }
+}
 
 // ── Meta Webhook Signature Verification ─────────────────────────────────────
 // Validates X-Hub-Signature-256 sent by Meta on every POST.
@@ -108,6 +132,29 @@ router.post('/', verifyMetaSignature, async (req, res) => {
             msgId: status.id,
             status: status.status,
           });
+
+          await _ingestUegBestEffort({
+            tenantId: tenant.id,
+            correlationId: req.correlationId,
+            idempotencyKey: status.id ? `wa_status:${status.id}:${status.status}` : null,
+            rawEvent: {
+              channel: 'whatsapp',
+              source: 'meta_whatsapp_cloud',
+              eventType: 'message_status_updated',
+              direction: 'inbound',
+              occurredAt: _toIsoFromUnixSeconds(status.timestamp),
+              payload: {
+                phoneNumberId,
+                status,
+              },
+              metadata: {
+                route: '/whatsapp',
+                type: 'status_update',
+              },
+            },
+            context: 'status_update',
+          });
+
           socketService.emit(tenant.id, 'wa_status', {
             waMsgId: status.id,
             status: status.status,
@@ -117,7 +164,14 @@ router.post('/', verifyMetaSignature, async (req, res) => {
 
         // Handle incoming messages
         for (const msg of value.messages ?? []) {
-          await _handleIncomingMessage(msg, value.contacts, tenant, phoneNumberId, accessToken);
+          await _handleIncomingMessage({
+            msg,
+            contacts: value.contacts,
+            tenant,
+            phoneNumberId,
+            accessToken,
+            correlationId: req.correlationId,
+          });
         }
       }
     }
@@ -128,7 +182,7 @@ router.post('/', verifyMetaSignature, async (req, res) => {
 
 // ── Private ──────────────────────────────────────────────────────────────────
 
-async function _handleIncomingMessage(msg, contacts, tenant, phoneNumberId, accessToken) {
+async function _handleIncomingMessage({ msg, contacts, tenant, phoneNumberId, accessToken, correlationId }) {
   const phone   = msg.from;
   const waMsgId = msg.id;
   const tipo    = msg.type;
@@ -194,6 +248,31 @@ async function _handleIncomingMessage(msg, contacts, tenant, phoneNumberId, acce
     contenido,
   });
 
+  await _ingestUegBestEffort({
+    tenantId: tenant.id,
+    correlationId,
+    idempotencyKey: waMsgId,
+    rawEvent: {
+      channel: 'whatsapp',
+      source: 'meta_whatsapp_cloud',
+      eventType: 'message_received',
+      direction: 'inbound',
+      occurredAt: _toIsoFromUnixSeconds(msg.timestamp),
+      payload: {
+        userId,
+        phone,
+        waMsgId,
+        tipo,
+        contenido,
+      },
+      metadata: {
+        route: '/whatsapp',
+        type: 'incoming_message',
+      },
+    },
+    context: 'incoming_message',
+  });
+
   const contactName = contacts?.find((c) => c.wa_id === phone)?.profile?.name ?? null;
 
   logger.info('WhatsApp message received', {
@@ -225,14 +304,14 @@ async function _handleIncomingMessage(msg, contacts, tenant, phoneNumberId, acce
 
   // ── Chatbot engine ───────────────────────────────────────────────────────
   if (userId !== null && userInput !== null && accessToken) {
-    _runChatbot({ tenant, userId, phone, userInput, phoneNumberId, accessToken })
+    _runChatbot({ tenant, userId, phone, userInput, phoneNumberId, accessToken, correlationId })
       .catch((err) => logger.error('_runChatbot error', { tenantId: tenant.id, message: err.message }));
   }
 }
 
 // ── Chatbot dispatcher ────────────────────────────────────────────────────────
 
-async function _runChatbot({ tenant, userId, phone, userInput, phoneNumberId, accessToken }) {
+async function _runChatbot({ tenant, userId, phone, userInput, phoneNumberId, accessToken, correlationId }) {
   const { response, fallbackToHuman } = await chatbotRouter.routeMessage({
     tenantId: tenant.id,
     userId,
@@ -240,16 +319,32 @@ async function _runChatbot({ tenant, userId, phone, userInput, phoneNumberId, ac
   });
 
   if (fallbackToHuman) {
-    await _handleFallbackToHuman({ tenant, userId, phone, response, phoneNumberId, accessToken });
+    await _handleFallbackToHuman({
+      tenant,
+      userId,
+      phone,
+      response,
+      phoneNumberId,
+      accessToken,
+      correlationId,
+    });
   } else if (response) {
-    await _sendChatbotResponse({ tenant, userId, phone, phoneNumberId, accessToken, response });
+    await _sendChatbotResponse({
+      tenant,
+      userId,
+      phone,
+      phoneNumberId,
+      accessToken,
+      response,
+      correlationId,
+    });
   }
 }
 
-async function _handleFallbackToHuman({ tenant, userId, phone, response, phoneNumberId, accessToken }) {
+async function _handleFallbackToHuman({ tenant, userId, phone, response, phoneNumberId, accessToken, correlationId }) {
   // Send handoff message to user if provided
   if (response?.text) {
-    await _sendText(phoneNumberId, phone, response.text, accessToken, tenant, userId);
+    await _sendText(phoneNumberId, phone, response.text, accessToken, tenant, userId, correlationId);
   }
 
   // Create solicitud for human agent follow-up (avoid duplicates)
@@ -267,7 +362,7 @@ async function _handleFallbackToHuman({ tenant, userId, phone, response, phoneNu
   });
 }
 
-async function _sendChatbotResponse({ tenant, userId, phone, phoneNumberId, accessToken, response }) {
+async function _sendChatbotResponse({ tenant, userId, phone, phoneNumberId, accessToken, response, correlationId }) {
   const type = response?.type ?? 'text';
 
   try {
@@ -288,6 +383,31 @@ async function _sendChatbotResponse({ tenant, userId, phone, phoneNumberId, acce
       direccion: 'salida',
       tipo:      type === 'buttons' ? 'interactive' : 'text',
       contenido: response,
+    });
+
+    await _ingestUegBestEffort({
+      tenantId: tenant.id,
+      correlationId,
+      idempotencyKey: outboundMsg.waMsgId ?? `wa_outbound:${outboundMsg.id}`,
+      rawEvent: {
+        channel: 'whatsapp',
+        source: 'chatbot_runtime',
+        eventType: 'message_sent',
+        direction: 'outbound',
+        occurredAt: outboundMsg.createdAt,
+        payload: {
+          userId,
+          phone,
+          waMsgId: outboundMsg.waMsgId,
+          tipo: outboundMsg.tipo,
+          contenido: response,
+        },
+        metadata: {
+          route: '/whatsapp',
+          type: 'chatbot_response',
+        },
+      },
+      context: 'chatbot_response',
     });
 
     socketService.emit(tenant.id, 'nuevo_mensaje', {
@@ -350,7 +470,7 @@ function _buildButtonPayload(to, response) {
   };
 }
 
-async function _sendText(phoneNumberId, phone, text, accessToken, tenant, userId) {
+async function _sendText(phoneNumberId, phone, text, accessToken, tenant, userId, correlationId) {
   try {
     const waResp = await wa.sendTextMessage(phoneNumberId, phone, text, accessToken);
     const msg = await db.saveMensaje({
@@ -361,6 +481,32 @@ async function _sendText(phoneNumberId, phone, text, accessToken, tenant, userId
       tipo:      'text',
       contenido: { text },
     });
+
+    await _ingestUegBestEffort({
+      tenantId: tenant.id,
+      correlationId,
+      idempotencyKey: msg.waMsgId ?? `wa_outbound:${msg.id}`,
+      rawEvent: {
+        channel: 'whatsapp',
+        source: 'chatbot_runtime',
+        eventType: 'message_sent',
+        direction: 'outbound',
+        occurredAt: msg.createdAt,
+        payload: {
+          userId,
+          phone,
+          waMsgId: msg.waMsgId,
+          tipo: 'text',
+          contenido: { text },
+        },
+        metadata: {
+          route: '/whatsapp',
+          type: 'fallback_message',
+        },
+      },
+      context: 'fallback_message',
+    });
+
     socketService.emit(tenant.id, 'nuevo_mensaje', {
       id: msg.id, userId, phone,
       tipo: 'text', contenido: { text }, waMsgId: msg.waMsgId,
@@ -402,6 +548,31 @@ router.post('/send', async (req, res, next) => {
       direccion: 'salida',
       tipo:      'text',
       contenido: { text },
+    });
+
+    await _ingestUegBestEffort({
+      tenantId,
+      correlationId: req.correlationId,
+      idempotencyKey: mensaje.waMsgId ?? `wa_outbound:${mensaje.id}`,
+      rawEvent: {
+        channel: 'whatsapp',
+        source: 'admin_panel',
+        eventType: 'message_sent',
+        direction: 'outbound',
+        occurredAt: mensaje.createdAt,
+        payload: {
+          userId: user?.id ?? null,
+          phone: to,
+          waMsgId: mensaje.waMsgId,
+          tipo: 'text',
+          contenido: { text },
+        },
+        metadata: {
+          route: '/whatsapp/send',
+          type: 'admin_message',
+        },
+      },
+      context: 'admin_message',
     });
 
     socketService.emit(tenantId, 'nuevo_mensaje', {
