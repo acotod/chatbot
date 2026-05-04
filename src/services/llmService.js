@@ -24,7 +24,8 @@ const logger = require('../utils/logger');
 const prisma = new PrismaClient();
 
 const LLM_DEFAULT_TIMEOUT_MS = 90000;
-const LLM_TRANSIENT_RETRIES = 1;
+const LLM_TRANSIENT_RETRIES = 3;
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // ─── Defaults ────────────────────────────────────────────────────────────────
 
@@ -180,9 +181,11 @@ async function callLlm(tenantId, systemPrompt, userPrompt) {
 
       if (!response.ok) {
         const errText = await response.text().catch(() => '(unreadable)');
-        const canRetry = attempt < LLM_TRANSIENT_RETRIES && (response.status >= 500 || response.status === 429);
-        logger.warn({ tenantId, status: response.status, attempt: attempt + 1, canRetry, errText }, 'llmService: provider returned error');
-        if (canRetry) continue;
+        const isTransient = response.status >= 500 || response.status === 429 || response.status === 529;
+        const canRetry = attempt < LLM_TRANSIENT_RETRIES && isTransient;
+        const delayMs = Math.min(1000 * 2 ** attempt, 8000); // 1s, 2s, 4s, max 8s
+        logger.warn({ tenantId, status: response.status, attempt: attempt + 1, canRetry, delayMs, errText }, 'llmService: provider returned error');
+        if (canRetry) { await sleep(delayMs); continue; }
         return null;
       }
 
