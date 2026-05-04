@@ -343,15 +343,38 @@ router.patch('/tenants/:slug/agentes/:id/presencia', requirePermiso('EDIT_AGENTE
 // Solicitudes (per-tenant)
 // ---------------------------------------------------------------------------
 
+// POST /admin/tenants/:slug/solicitudes — create solicitud from admin panel
+router.post('/tenants/:slug/solicitudes', requirePermiso('EDIT_SOLICITUDES'), async (req, res, next) => {
+    try {
+        const tenant = await db.findTenantBySlug(req.params.slug);
+        if (!tenant) return res.status(404).json({ error: 'Tenant not found' });
+        if (denyIfWrongTenant(req, res, tenant.id)) return;
+        const { userId, nombre, telefonoContacto, horario, estado } = req.body;
+        if (!userId) return res.status(400).json({ error: 'userId is required' });
+        const solicitud = await db.saveSolicitud(Number(userId), {
+            nombre: nombre || null,
+            telefono_contacto: telefonoContacto || null,
+            horario: horario || null,
+            estado: estado || 'pendiente',
+        }, tenant.id);
+        audit({ adminUserId: req.admin?.adminUserId, tenantId: tenant.id, accion: 'CREATE_SOLICITUD', entidad: 'solicitud', entidadId: String(solicitud.id), ip: req.ip, userAgent: req.headers['user-agent'], metadata: { userId, nombre } });
+        socketService.emit(tenant.id, 'SOLICITUD_CREATED', { solicitud });
+        res.status(201).json(solicitud);
+    } catch (err) {
+        next(err);
+    }
+});
+
 // GET /admin/tenants/:slug/solicitudes?estado=pendiente&page=1&limit=20
 router.get('/tenants/:slug/solicitudes', requirePermiso('VIEW_SOLICITUDES'), async (req, res, next) => {
     try {
         const tenant = await db.findTenantBySlug(req.params.slug);
         if (!tenant) return res.status(404).json({ error: 'Tenant not found' });
         if (denyIfWrongTenant(req, res, tenant.id)) return;
-        const { estado, page, limit } = req.query;
+        const { estado, page, limit, userId } = req.query;
         const solicitudes = await db.listSolicitudes(tenant.id, {
             estado: estado || undefined,
+            userId: userId !== undefined ? Number(userId) : undefined,
             page: page ? Number(page) : 1,
             limit: limit ? Number(limit) : 20,
         });

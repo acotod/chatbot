@@ -147,10 +147,14 @@ async function setAgenteEstado(id, tenantId, estado) {
 // Solicitud helpers (scoped to tenant)
 // ---------------------------------------------------------------------------
 
-async function listSolicitudes(tenantId, { estado, page = 1, limit = 20 } = {}) {
+async function listSolicitudes(tenantId, { estado, userId, page = 1, limit = 20 } = {}) {
   const client = getPrismaClient();
   if (!client) return [];
-  const where = { tenantId, ...(estado ? { estado } : {}) };
+  const where = {
+    tenantId,
+    ...(estado ? { estado } : {}),
+    ...(userId !== undefined ? { userId: Number(userId) } : {}),
+  };
   return client.solicitud.findMany({
     where,
     orderBy: { createdAt: 'desc' },
