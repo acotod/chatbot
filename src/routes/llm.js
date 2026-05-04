@@ -285,30 +285,7 @@ function buildDraftFromBrief(brief, draftPrompt) {
   return lines.join('\n');
 }
 
-function heuristicFallback(brief, draftPrompt) {
-  const b = brief && typeof brief === 'object' ? brief : {};
-  const missing = [];
-  if (!b.useCase) missing.push('caso de uso');
-  if (!b.targetUser) missing.push('usuario objetivo');
-  if (!b.mainGoal) missing.push('objetivo principal');
-  if (!b.requiredInputs) missing.push('entradas esperadas');
-  if (!b.expectedOutputs) missing.push('salidas esperadas');
 
-  const status = missing.length > 0 ? 'needs_info' : 'ready';
-  const questions = missing.slice(0, 3).map((m) => `Indica con mas detalle: ${m}.`);
-  const score = Math.max(40, 100 - missing.length * 12);
-
-  return {
-    status,
-    assistantMessage: status === 'ready'
-      ? 'El prompt ya esta bastante completo. Puedes generar el flujo.'
-      : 'Falta informacion clave para un flujo robusto. Responde estas preguntas cortas.',
-    questions,
-    missing,
-    suggestedPrompt: buildDraftFromBrief(b, draftPrompt),
-    score,
-  };
-}
 
 router.post('/prompt-assistant', requirePermiso('MANAGE_LLM_RESCUE'), [
   body('tenantId').optional({ checkFalsy: true }).isUUID(),
@@ -338,8 +315,9 @@ router.post('/prompt-assistant', requirePermiso('MANAGE_LLM_RESCUE'), [
 
     const llm = await callLlmForJson(tenantId, PROMPT_ASSISTANT_SYSTEM, JSON.stringify(userPayload));
     if (!llm || typeof llm.json !== 'object' || !llm.json) {
-      const fb = heuristicFallback(brief, draftPrompt);
-      return res.json({ ...fb, provider: null, model: null });
+      const cfg = await getLlmConfig(tenantId);
+      if (!cfg) return res.status(503).json({ error: 'LLM no configurado para este tenant' });
+      return res.status(503).json({ error: 'LLM temporalmente no disponible. Reintenta en unos segundos.', provider: cfg.provider, model: cfg.model });
     }
 
     const json = llm.json;
