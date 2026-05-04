@@ -1454,4 +1454,148 @@ async function loadFlowExamples(tenantId) {
   }
 }
 
+// ── GET /llm/flow-history ─────────────────────────────────────────────────────
+// Returns paginated list of AI-designed flows for the tenant (drafts + published)
+// with design report metadata and feedback counts.
+// Query: { tenantId?, page?, limit?, status? ("draft"|"published"|"all") }
+
+router.get('/flow-history', requirePermiso('MANAGE_LLM_RESCUE'), [
+  query('tenantId').optional({ checkFalsy: true }).isUUID(),
+  query('page').optional().isInt({ min: 1 }).toInt(),
+  query('limit').optional().isInt({ min: 1, max: 50 }).toInt(),
+  query('status').optional().isIn(['draft', 'published', 'all']),
+], async (req, res, next) => {
+  if (!validateRequest(req, res)) return;
+  try {
+    const tenantId = await resolveTenantId(req, req.query.tenantId);
+    if (!tenantId) return res.status(400).json({ error: 'tenantId is required' });
+
+    const page   = req.query.page  ?? 1;
+    const limit  = req.query.limit ?? 20;
+    const status = req.query.status ?? 'all';
+    const skip   = (page - 1) * limit;
+
+    const where = { tenantId };
+    if (status === 'draft')     where.activo = false;
+    if (status === 'published') where.activo = true;
+
+    const [flows, total] = await Promise.all([
+      prisma.flow.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: limit,
+        select: {
+          id       : true,
+          nombre   : true,
+          activo   : true,
+          metaJson : true,
+          createdAt: true,
+          updatedAt: true,
+        },
+      }),
+      prisma.flow.count({ where }),
+    ]);
+
+    // Load design reports and build enriched response
+    const reportKeys = flows.map((f) => `flow_draft_report_${f.id}`);
+    const configs = reportKeys.length > 0
+      ? await prisma.configuracion.findMany({
+          where: { tenantId, clave: { in: reportKeys } },
+        })
+      : [];
+    const reportMap = Object.fromEntries(configs.map((c) => [c.clave, c.valor]));
+
+    // Load feedback for the tenant (aggregate per flowId)
+    const feedbackCfg = await prisma.configuracion.findUnique({
+      where: { tenantId_clave: { tenantId, clave: 'flow_design_feedback' } },
+    });
+    const allFeedback = Array.isArray(feedbackCfg?.valor) ? feedbackCfg.valor : [];
+
+    const feedbackByFlow = {};
+    allFeedback.forEach((fb) => {
+      if (!fb.flowId) return;
+      if (!feedbackByFlow[fb.flowId]) feedbackByFlow[fb.flowId] = { good: 0, bad: 0 };
+      feedbackByFlow[fb.flowId][fb.rating === 'good' ? 'good' : 'bad']++;
+    });
+
+    const enriched = flows.map((f) => {
+      const report = reportMap[`flow_draft_report_${f.id}`] ?? null;
+      const screenCount = Array.isArray(f.metaJson?.screens) ? f.metaJson.screens.length : 0;
+      const intent = report?.orchestration?.stages?.[0]?.detail?.intent ?? null;
+      const summary = report?.orchestration?.stages?.[0]?.detail?.summary ?? null;
+      const fb = feedbackByFlow[f.id] ?? { good: 0, bad: 0 };
+
+      return {
+        id         : f.id,
+        nombre     : f.nombre,
+        status     : f.activo ? 'published' : 'draft',
+        screenCount,
+        intent,
+        summary,
+        feedback   : fb,
+        createdAt  : f.createdAt,
+        updatedAt  : f.updatedAt,
+      };
+    });
+
+    return res.json({
+      flows: enriched,
+      pagination: { page, limit, total, pages: Math.ceil(total / limit) },
+    });
+  } catch (err) { next(err); }
+});
+
+// ── GET /llm/flow-metrics ─────────────────────────────────────────────────────
+// Aggregated AI orchestrator metrics for the tenant.
+// Query: { tenantId? }
+
+router.get('/flow-metrics', requirePermiso('MANAGE_LLM_RESCUE'), [
+  query('tenantId').optional({ checkFalsy: true }).isUUID(),
+], async (req, res, next) => {
+  if (!validateRequest(req, res)) return;
+  try {
+    const tenantId = await resolveTenantId(req, req.query.tenantId);
+    if (!tenantId) return res.status(400).json({ error: 'tenantId is required' });
+
+    const [totalFlows, publishedFlows, feedbackCfg, examplesCfg, rescueCount] =
+      await Promise.all([
+        prisma.flow.count({ where: { tenantId } }),
+        prisma.flow.count({ where: { tenantId, activo: true } }),
+        prisma.configuracion.findUnique({
+          where: { tenantId_clave: { tenantId, clave: 'flow_design_feedback' } },
+        }),
+        prisma.configuracion.findUnique({
+          where: { tenantId_clave: { tenantId, clave: FLOW_EXAMPLES_KEY } },
+        }),
+        prisma.configuracion.count({
+          where: { tenantId, clave: { startsWith: 'flow_draft_report_' } },
+        }),
+      ]);
+
+    const feedbackList  = Array.isArray(feedbackCfg?.valor)  ? feedbackCfg.valor  : [];
+    const examplesList  = Array.isArray(examplesCfg?.valor)  ? examplesCfg.valor  : [];
+
+    const goodCount = feedbackList.filter((f) => f.rating === 'good').length;
+    const badCount  = feedbackList.filter((f) => f.rating === 'bad').length;
+    const approvalRate = totalFlows > 0
+      ? Math.round((publishedFlows / totalFlows) * 100)
+      : 0;
+    const feedbackTotal = goodCount + badCount;
+    const satisfactionRate = feedbackTotal > 0
+      ? Math.round((goodCount / feedbackTotal) * 100)
+      : null;
+
+    return res.json({
+      totalFlows,
+      draftFlows     : totalFlows - publishedFlows,
+      publishedFlows,
+      approvalRate,
+      feedback       : { good: goodCount, bad: badCount, total: feedbackTotal, satisfactionRate },
+      learningExamples: examplesList.length,
+      aiDesignedFlows : rescueCount,
+    });
+  } catch (err) { next(err); }
+});
+
 module.exports = router;
