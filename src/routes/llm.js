@@ -261,7 +261,10 @@ function normalizeHistory(rawHistory) {
   if (!Array.isArray(rawHistory)) return [];
   return rawHistory
     .slice(-20)
-    .map((m) => ({ role: m?.role === 'assistant' ? 'assistant' : 'user', text: String(m?.text || '').trim() }))
+    .map((m) => ({
+      role: m?.role === 'assistant' ? 'assistant' : 'user',
+      text: String(m?.text || '').trim().slice(0, 1000),
+    }))
     .filter((m) => m.text.length > 0);
 }
 
@@ -289,10 +292,6 @@ function buildDraftFromBrief(brief, draftPrompt) {
 
 router.post('/prompt-assistant', requirePermiso('MANAGE_LLM_RESCUE'), [
   body('tenantId').optional({ checkFalsy: true }).isUUID(),
-  body('draftPrompt').optional().isString().isLength({ max: 12000 }),
-  body('userMessage').optional().isString().isLength({ max: 2000 }),
-  body('brief').optional().isObject(),
-  body('history').optional().isArray(),
 ], async (req, res, next) => {
   if (!validateRequest(req, res)) return;
 
