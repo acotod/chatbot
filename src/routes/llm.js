@@ -21,7 +21,7 @@ const requireJwt = require('../middleware/requireJwt');
 const requirePermiso = require('../middleware/requirePermiso');
 const { audit } = require('../services/audit');
 const { rescueFlow, validateWabaJson } = require('../services/wabaValidator');
-const { getLlmStatus, getLlmConfig, generateFlow } = require('../services/llmService');
+const { getLlmStatus, getLlmConfig, generateFlow, callLlmForJson } = require('../services/llmService');
 const logger = require('../utils/logger');
 
 const prisma = new PrismaClient();
@@ -224,6 +224,146 @@ router.get('/status', requirePermiso('MANAGE_LLM_CONFIG'), async (req, res, next
 
     const status = await getLlmStatus(tenantId);
     res.json(status);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ── POST /llm/prompt-assistant ───────────────────────────────────────────────
+// Validates prompt completeness and asks follow-up questions to enrich it.
+
+const PROMPT_ASSISTANT_SYSTEM = `You are a prompt assistant for a WhatsApp flow builder.
+You must improve a draft prompt and decide if it is complete enough to generate a robust flow.
+
+Rules:
+- Work only with provided information.
+- If information is missing, ask concise follow-up questions (max 3).
+- If enough information exists, mark status as "ready".
+- Always return valid JSON only.
+
+Return schema:
+{
+  "status": "needs_info" | "ready",
+  "assistantMessage": "short guidance in Spanish",
+  "questions": ["..."],
+  "missing": ["..."],
+  "suggestedPrompt": "full improved prompt in Spanish, ready for flow generation",
+  "score": 0
+}`;
+
+function clampScore(v) {
+  const n = Number(v);
+  if (!Number.isFinite(n)) return 0;
+  return Math.max(0, Math.min(100, Math.round(n)));
+}
+
+function normalizeHistory(rawHistory) {
+  if (!Array.isArray(rawHistory)) return [];
+  return rawHistory
+    .slice(-20)
+    .map((m) => ({ role: m?.role === 'assistant' ? 'assistant' : 'user', text: String(m?.text || '').trim() }))
+    .filter((m) => m.text.length > 0);
+}
+
+function buildDraftFromBrief(brief, draftPrompt) {
+  if (typeof draftPrompt === 'string' && draftPrompt.trim()) return draftPrompt.trim();
+  if (!brief || typeof brief !== 'object') return '';
+
+  const lines = [
+    'Objetivo: Disenar un flujo conversacional de WhatsApp Business',
+    `Tipo de proyecto: ${brief.projectType || 'general'}`,
+    `Caso de uso: ${brief.useCase || 'No especificado'}`,
+    `Industria: ${brief.industry || 'No especificada'}`,
+    `Usuario objetivo: ${brief.targetUser || 'No especificado'}`,
+    `Objetivo principal: ${brief.mainGoal || 'No especificado'}`,
+    `Entradas esperadas: ${brief.requiredInputs || 'No especificadas'}`,
+    `Reglas de negocio: ${brief.businessRules || 'No especificadas'}`,
+    `Integraciones API/webhooks: ${brief.apiIntegrations || 'Sin integraciones externas'}`,
+    `Salidas esperadas: ${brief.expectedOutputs || 'No especificadas'}`,
+    `Tono conversacional: ${brief.tone || 'cercano'}`,
+  ];
+  return lines.join('\n');
+}
+
+function heuristicFallback(brief, draftPrompt) {
+  const b = brief && typeof brief === 'object' ? brief : {};
+  const missing = [];
+  if (!b.useCase) missing.push('caso de uso');
+  if (!b.targetUser) missing.push('usuario objetivo');
+  if (!b.mainGoal) missing.push('objetivo principal');
+  if (!b.requiredInputs) missing.push('entradas esperadas');
+  if (!b.expectedOutputs) missing.push('salidas esperadas');
+
+  const status = missing.length > 0 ? 'needs_info' : 'ready';
+  const questions = missing.slice(0, 3).map((m) => `Indica con mas detalle: ${m}.`);
+  const score = Math.max(40, 100 - missing.length * 12);
+
+  return {
+    status,
+    assistantMessage: status === 'ready'
+      ? 'El prompt ya esta bastante completo. Puedes generar el flujo.'
+      : 'Falta informacion clave para un flujo robusto. Responde estas preguntas cortas.',
+    questions,
+    missing,
+    suggestedPrompt: buildDraftFromBrief(b, draftPrompt),
+    score,
+  };
+}
+
+router.post('/prompt-assistant', requirePermiso('MANAGE_LLM_RESCUE'), [
+  body('tenantId').optional({ checkFalsy: true }).isUUID(),
+  body('draftPrompt').optional().isString().isLength({ max: 12000 }),
+  body('userMessage').optional().isString().isLength({ max: 2000 }),
+  body('brief').optional().isObject(),
+  body('history').optional().isArray({ max: 20 }),
+], async (req, res, next) => {
+  if (!validateRequest(req, res)) return;
+
+  try {
+    const tenantId = await resolveTenantId(req, req.body.tenantId);
+    if (!tenantId) return res.status(400).json({ error: 'tenantId is required' });
+
+    const brief = req.body.brief && typeof req.body.brief === 'object' ? req.body.brief : {};
+    const draftPrompt = buildDraftFromBrief(brief, req.body.draftPrompt);
+    const userMessage = String(req.body.userMessage || '').trim();
+    const history = normalizeHistory(req.body.history);
+    if (userMessage) history.push({ role: 'user', text: userMessage });
+
+    const userPayload = {
+      draftPrompt,
+      brief,
+      history,
+      instruction: 'Evalua completitud del prompt, pregunta faltantes y devuelve prompt mejorado.',
+    };
+
+    const llm = await callLlmForJson(tenantId, PROMPT_ASSISTANT_SYSTEM, JSON.stringify(userPayload));
+    if (!llm || typeof llm.json !== 'object' || !llm.json) {
+      const fb = heuristicFallback(brief, draftPrompt);
+      return res.json({ ...fb, provider: null, model: null });
+    }
+
+    const json = llm.json;
+    const status = json.status === 'ready' ? 'ready' : 'needs_info';
+    const questions = Array.isArray(json.questions)
+      ? json.questions.map((q) => String(q).trim()).filter(Boolean).slice(0, 3)
+      : [];
+    const missing = Array.isArray(json.missing)
+      ? json.missing.map((m) => String(m).trim()).filter(Boolean).slice(0, 8)
+      : [];
+    const suggestedPrompt = String(json.suggestedPrompt || draftPrompt || '').trim();
+
+    return res.json({
+      status,
+      assistantMessage: String(json.assistantMessage || (status === 'ready'
+        ? 'Prompt listo para generar flujo.'
+        : 'Necesito algunos datos extra para completar el prompt.')).trim(),
+      questions,
+      missing,
+      suggestedPrompt,
+      score: clampScore(json.score),
+      provider: llm.provider,
+      model: llm.model,
+    });
   } catch (err) {
     next(err);
   }
