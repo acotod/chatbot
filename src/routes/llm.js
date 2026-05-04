@@ -467,7 +467,7 @@ router.post('/design-intelligent-flow', requirePermiso('MANAGE_LLM_RESCUE'), [
     const generation = await generateFlowOrFallback(req, tenantId, enrichedPrompt);
 
     // ── Stage 4: Structural validation ───────────────────────────────────────
-    const validation = buildValidationSummary(generation.json);
+    const validation = buildValidationSummary(generation.json, analysis);
     const stageStatus = validation.status === 'failed'
       ? 'failed'
       : validation.status === 'passed_with_warnings'
@@ -844,15 +844,70 @@ async function buildIntegrationSuggestions(tenantId, prompt) {
   return { suggested, catalogSize: endpoints.length };
 }
 
-function buildValidationSummary(flowJson) {
+function buildValidationSummary(flowJson, analysis) {
   const validation = validateWabaJson(flowJson);
   const hasErrors = Array.isArray(validation?.errors) && validation.errors.length > 0;
   const hasWarnings = Array.isArray(validation?.warnings) && validation.warnings.length > 0;
+
+  // Data-completeness check: verify that every required entity has at least one
+  // matching input component across the generated screens.
+  const completeness = { covered: [], missing: [] };
+  if (analysis && Array.isArray(analysis.entities) && analysis.entities.length > 0) {
+    const allInputNames = new Set();
+    const screens = Array.isArray(flowJson?.screens) ? flowJson.screens : [];
+    for (const screen of screens) {
+      collectComponentNames(screen?.layout?.children || [], allInputNames);
+    }
+    for (const entity of analysis.entities) {
+      const nameLower = entity.name.toLowerCase();
+      const covered = [...allInputNames].some(
+        (n) => n.toLowerCase() === nameLower ||
+               n.toLowerCase().includes(nameLower) ||
+               nameLower.includes(n.toLowerCase()),
+      );
+      if (covered) {
+        completeness.covered.push(entity.name);
+      } else {
+        completeness.missing.push({
+          field  : entity.name,
+          type   : entity.type,
+          required: entity.required,
+          message: `Campo '${entity.name}' no encontrado en ningun input del flujo generado`,
+        });
+      }
+    }
+  }
+
+  const missingRequired = completeness.missing.filter((m) => m.required);
+  const missingOptional = completeness.missing.filter((m) => !m.required);
+  const effectiveStatus = hasErrors || missingRequired.length > 0
+    ? 'failed'
+    : (hasWarnings || missingOptional.length > 0) ? 'passed_with_warnings' : 'passed';
+
   return {
-    status: hasErrors ? 'failed' : hasWarnings ? 'passed_with_warnings' : 'passed',
-    errors: validation.errors || [],
-    warnings: validation.warnings || [],
+    status  : effectiveStatus,
+    errors  : validation.errors || [],
+    warnings: [
+      ...(validation.warnings || []),
+      ...missingOptional.map((m) => ({ code: 'MISSING_OPTIONAL_FIELD', message: m.message, field: m.field })),
+    ],
+    completeness_errors: missingRequired.map((m) => ({ code: 'MISSING_REQUIRED_FIELD', message: m.message, field: m.field })),
+    covered_fields: completeness.covered,
   };
+}
+
+/** Recursively collect all `name` attributes from layout components. */
+function collectComponentNames(children, nameSet) {
+  if (!Array.isArray(children)) return;
+  for (const child of children) {
+    if (child?.name) nameSet.add(String(child.name));
+    if (Array.isArray(child?.children))   collectComponentNames(child.children, nameSet);
+    if (Array.isArray(child?.['data-source'])) {
+      for (const ds of child['data-source']) {
+        if (ds?.id) nameSet.add(String(ds.id));
+      }
+    }
+  }
 }
 
 function tryParseJson(str) {
@@ -940,6 +995,217 @@ function buildDeterministicFallbackFlow(prompt) {
         },
       },
     ],
+  };
+}
+
+// ── POST /llm/simulate-flow ───────────────────────────────────────────────────
+// Dry-run simulation of a Meta WABA flow JSON without real HTTP calls.
+// Accepts the flowJson + dataContract from design-intelligent-flow response.
+
+router.post('/simulate-flow', requirePermiso('MANAGE_LLM_RESCUE'), [
+  body('flowJson').notEmpty().withMessage('flowJson is required'),
+  body('tenantId').optional({ checkFalsy: true }).isUUID(),
+], async (req, res, next) => {
+  if (!validateRequest(req, res)) return;
+  try {
+    const tenantId = await resolveTenantId(req, req.body.tenantId);
+    if (!tenantId) return res.status(400).json({ error: 'tenantId is required' });
+
+    let flowJson = req.body.flowJson;
+    if (typeof flowJson === 'string') {
+      try { flowJson = JSON.parse(flowJson); } catch (e) {
+        return res.status(400).json({ error: 'flowJson must be valid JSON' });
+      }
+    }
+    if (!flowJson || typeof flowJson !== 'object') {
+      return res.status(400).json({ error: 'flowJson must be an object' });
+    }
+
+    const dataContract = req.body.dataContract && typeof req.body.dataContract === 'object'
+      ? req.body.dataContract
+      : {};
+
+    logger.info({ tenantId }, 'llm/simulate-flow: starting dry-run');
+
+    const simulation = simulateDryRun(flowJson, dataContract);
+
+    audit({
+      adminUserId: req.admin.adminUserId,
+      tenantId,
+      accion     : 'SIMULATE_FLOW',
+      entidad    : 'flow',
+      entidadId  : null,
+      metadata   : { steps: simulation.summary.totalSteps, terminal: simulation.summary.terminal },
+    });
+
+    return res.json({ simulation });
+  } catch (err) { next(err); }
+});
+
+// ── Dry-run simulation helpers ────────────────────────────────────────────────
+
+const MOCK_VALUE_BY_TYPE = {
+  text   : (name) => `[${name}_simulado]`,
+  number : ()     => 42,
+  date   : ()     => new Date().toISOString().slice(0, 10),
+  email  : ()     => 'usuario@ejemplo.com',
+  phone  : ()     => '+521234567890',
+  select : (name) => `opcion_1`,
+  boolean: ()     => true,
+};
+
+function generateMockValue(type, name) {
+  const fn = MOCK_VALUE_BY_TYPE[type] || MOCK_VALUE_BY_TYPE.text;
+  return fn(name);
+}
+
+function buildMockInputsFromContract(userInput) {
+  const mocks = {};
+  for (const [field, meta] of Object.entries(userInput || {})) {
+    mocks[field] = generateMockValue(meta?.type || 'text', field);
+  }
+  return mocks;
+}
+
+function collectScreenInputs(children) {
+  const inputs = [];
+  if (!Array.isArray(children)) return inputs;
+  for (const child of children) {
+    const inputTypes = ['TextInput', 'TextArea', 'DatePicker', 'RadioButtonsGroup',
+                        'CheckboxGroup', 'Dropdown', 'OptIn'];
+    if (inputTypes.includes(child?.type) && child?.name) {
+      inputs.push({ name: child.name, type: child.type, label: child.label || child.name });
+    }
+    if (Array.isArray(child?.children)) inputs.push(...collectScreenInputs(child.children));
+  }
+  return inputs;
+}
+
+function collectScreenWebhooks(children) {
+  const webhooks = [];
+  if (!Array.isArray(children)) return webhooks;
+  for (const child of children) {
+    const action = child?.['on-click-action'];
+    if (action?.payload?.extension_message_response?.params?.flow_token) {
+      webhooks.push({ component: child.type, action: action.name });
+    }
+    if (Array.isArray(child?.children)) webhooks.push(...collectScreenWebhooks(child.children));
+  }
+  return webhooks;
+}
+
+function buildWabaView(screen) {
+  const children = screen?.layout?.children || [];
+  const parts = [];
+  for (const child of children) {
+    if (child?.type === 'TextHeading')  parts.push({ kind: 'heading',  text: child.text });
+    if (child?.type === 'TextSubheading') parts.push({ kind: 'subheading', text: child.text });
+    if (child?.type === 'TextBody')     parts.push({ kind: 'body',     text: child.text });
+    if (child?.type === 'TextInput')    parts.push({ kind: 'input',    label: child.label, name: child.name });
+    if (child?.type === 'TextArea')     parts.push({ kind: 'textarea', label: child.label, name: child.name });
+    if (child?.type === 'DatePicker')   parts.push({ kind: 'date',     label: child.label, name: child.name });
+    if (child?.type === 'RadioButtonsGroup') {
+      parts.push({
+        kind   : 'radio',
+        label  : child.label,
+        name   : child.name,
+        options: (child['data-source'] || []).map((o) => o.title || o.id),
+      });
+    }
+    if (child?.type === 'Footer') parts.push({ kind: 'footer', label: child.label });
+  }
+  return parts;
+}
+
+function simulateDryRun(flowJson, dataContract, maxSteps = 15) {
+  const screens = Array.isArray(flowJson?.screens) ? flowJson.screens : [];
+  if (screens.length === 0) {
+    return {
+      steps  : [],
+      summary: { totalSteps: 0, terminal: false, error: 'No screens found in flowJson' },
+    };
+  }
+
+  const routing    = flowJson?.routing_model || {};
+  const mockInputs = buildMockInputsFromContract(dataContract?.user_input || {});
+  const transcript = [];
+
+  let currentScreenId = screens[0].id;
+  const visited = new Set();
+
+  for (let step = 1; step <= maxSteps; step++) {
+    if (visited.has(currentScreenId)) {
+      transcript.push({
+        step,
+        screenId : currentScreenId,
+        warning  : 'Ciclo detectado — simulacion detenida',
+        terminal : true,
+      });
+      break;
+    }
+    visited.add(currentScreenId);
+
+    const screen = screens.find((s) => s.id === currentScreenId);
+    if (!screen) break;
+
+    const children      = screen?.layout?.children || [];
+    const inputsInScreen = collectScreenInputs(children);
+    const webhooks      = collectScreenWebhooks(children);
+
+    const providedInputs = {};
+    for (const inp of inputsInScreen) {
+      providedInputs[inp.name] =
+        mockInputs[inp.name] ??
+        generateMockValue(
+          inp.type === 'DatePicker' ? 'date' :
+          inp.type === 'RadioButtonsGroup' ? 'select' : 'text',
+          inp.name,
+        );
+    }
+
+    // Next screen: use routing_model first, then footer on-click-action
+    const possibleNext = Array.isArray(routing[currentScreenId])
+      ? routing[currentScreenId]
+      : [];
+    let nextScreenId = possibleNext.length > 0 ? possibleNext[0] : null;
+    if (!nextScreenId) {
+      for (const child of children) {
+        const nav = child?.['on-click-action']?.next?.name ||
+                    child?.['on-click-action']?.next?.id;
+        if (nav) { nextScreenId = nav; break; }
+      }
+    }
+
+    const isTerminal = screen.terminal === true || !nextScreenId ||
+                       nextScreenId === currentScreenId;
+
+    transcript.push({
+      step,
+      screenId       : currentScreenId,
+      screenTitle    : screen.title || currentScreenId,
+      inputs_in_screen: inputsInScreen.map((i) => ({ name: i.name, label: i.label })),
+      provided_inputs : providedInputs,
+      webhooks_detected: webhooks.length > 0 ? webhooks : undefined,
+      mock_webhook_response: webhooks.length > 0
+        ? { status: 200, body: { ok: true, message: '[mock response]' } }
+        : undefined,
+      next_screen_id : isTerminal ? null : nextScreenId,
+      terminal       : isTerminal,
+      channel        : { waba: buildWabaView(screen) },
+    });
+
+    if (isTerminal) break;
+    currentScreenId = nextScreenId;
+  }
+
+  return {
+    steps  : transcript,
+    summary: {
+      totalSteps      : transcript.length,
+      screensTraversed: transcript.map((t) => t.screenId),
+      terminal        : transcript[transcript.length - 1]?.terminal ?? false,
+      mockInputsUsed  : mockInputs,
+    },
   };
 }
 
