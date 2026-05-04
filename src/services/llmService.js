@@ -23,6 +23,9 @@ const logger = require('../utils/logger');
 
 const prisma = new PrismaClient();
 
+const LLM_DEFAULT_TIMEOUT_MS = 90000;
+const LLM_TRANSIENT_RETRIES = 1;
+
 // ─── Defaults ────────────────────────────────────────────────────────────────
 
 const GLOBAL_FALLBACK = {
@@ -31,7 +34,7 @@ const GLOBAL_FALLBACK = {
   model     : process.env.LLM_MODEL     || 'gpt-4o-mini',
   base_url  : process.env.LLM_BASE_URL  || 'https://api.openai.com/v1',
   max_tokens: 4096,
-  timeout_ms: 30000,
+  timeout_ms: LLM_DEFAULT_TIMEOUT_MS,
   temperature: 0.2,
 };
 
@@ -88,7 +91,7 @@ function mergeWithDefaults(cfg) {
     model,
     base_url   : cfg.base_url    || providerDefs.base_url,
     max_tokens : cfg.max_tokens  || 4096,
-    timeout_ms : cfg.timeout_ms  || 30000,
+    timeout_ms : cfg.timeout_ms  || LLM_DEFAULT_TIMEOUT_MS,
     temperature: cfg.temperature ?? 0.2,
   };
 }
@@ -168,37 +171,44 @@ async function callLlm(tenantId, systemPrompt, userPrompt) {
   const builder = cfg.provider === 'anthropic' ? buildAnthropicRequest : buildOpenAiRequest;
   const { url, body, headers } = builder(cfg, systemPrompt, userPrompt);
 
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), cfg.timeout_ms);
+  for (let attempt = 0; attempt <= LLM_TRANSIENT_RETRIES; attempt += 1) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), cfg.timeout_ms);
 
-  try {
-    const response = await fetch(url, { method: 'POST', headers, body, signal: controller.signal });
+    try {
+      const response = await fetch(url, { method: 'POST', headers, body, signal: controller.signal });
 
-    if (!response.ok) {
-      const errText = await response.text().catch(() => '(unreadable)');
-      logger.warn({ tenantId, status: response.status, errText }, 'llmService: provider returned error');
-      return null;
+      if (!response.ok) {
+        const errText = await response.text().catch(() => '(unreadable)');
+        const canRetry = attempt < LLM_TRANSIENT_RETRIES && (response.status >= 500 || response.status === 429);
+        logger.warn({ tenantId, status: response.status, attempt: attempt + 1, canRetry, errText }, 'llmService: provider returned error');
+        if (canRetry) continue;
+        return null;
+      }
+
+      const data = await response.json();
+      const text = extractText(cfg.provider, data);
+
+      if (!text) {
+        logger.warn({ tenantId, attempt: attempt + 1, data }, 'llmService: empty text in provider response');
+        return null;
+      }
+
+      return { text, provider: cfg.provider, model: cfg.model };
+    } catch (err) {
+      const canRetry = attempt < LLM_TRANSIENT_RETRIES;
+      if (err.name === 'AbortError') {
+        logger.warn({ tenantId, timeout_ms: cfg.timeout_ms, attempt: attempt + 1, canRetry }, 'llmService: request timed out');
+      } else {
+        logger.error({ tenantId, attempt: attempt + 1, canRetry, err: err.message }, 'llmService: unexpected error');
+      }
+      if (!canRetry) return null;
+    } finally {
+      clearTimeout(timer);
     }
-
-    const data = await response.json();
-    const text = extractText(cfg.provider, data);
-
-    if (!text) {
-      logger.warn({ tenantId, data }, 'llmService: empty text in provider response');
-      return null;
-    }
-
-    return { text, provider: cfg.provider, model: cfg.model };
-  } catch (err) {
-    if (err.name === 'AbortError') {
-      logger.warn({ tenantId, timeout_ms: cfg.timeout_ms }, 'llmService: request timed out');
-    } else {
-      logger.error({ tenantId, err: err.message }, 'llmService: unexpected error');
-    }
-    return null;
-  } finally {
-    clearTimeout(timer);
   }
+
+  return null;
 }
 
 /**
