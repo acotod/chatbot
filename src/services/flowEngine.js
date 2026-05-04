@@ -33,6 +33,7 @@ const { loadFlowDefinition } = require('../engine/flowLoader');
 const { executeNode }         = require('../engine/nodeExecutors');
 const contextStore            = require('../engine/contextStore');
 const integrationRunner       = require('../engine/integrationRunner');
+const convLogger              = require('../engine/conversationLogger');
 const logger                  = require('../utils/logger');
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -48,9 +49,10 @@ const logger                  = require('../utils/logger');
  * @param {string}      opts.input          - user's message / button id
  * @param {number}      [opts.userId]       - DB user id (needed for ContextStore)
  * @param {string}      [opts.sessionKey]   - phone or other session identifier
+ * @param {string}      [opts._conversationId] - internal: propagated through recursion
  * @returns {Promise<{ nodeId: string, content: object } | null>}
  */
-async function executeStep({ tenantId, currentNodeId, input, userId, sessionKey }) {
+async function executeStep({ tenantId, currentNodeId, input, userId, sessionKey, _conversationId }) {
   // Lazy-load LLM service to avoid circular imports
   const llmService = require('./llmService');
 
@@ -96,6 +98,16 @@ async function executeStep({ tenantId, currentNodeId, input, userId, sessionKey 
 
   const variables = state.variables ?? {};
 
+  // ── Conversation event-sourcing: ensure an active Conversation row exists ─
+  // conversationId is propagated through recursive calls so we don't re-create.
+  const userKey = sessionKey ?? (userId != null ? String(userId) : null);
+  let conversationId = _conversationId ?? null;
+  if (!conversationId && userKey) {
+    conversationId = await convLogger.getOrCreate(
+      tenantId, userKey, flowDef.flowId, flowDef.versionId ?? null,
+    );
+  }
+
   // ── Execute the node ─────────────────────────────────────────────────────
   const t0 = Date.now();
   let execResult;
@@ -110,6 +122,9 @@ async function executeStep({ tenantId, currentNodeId, input, userId, sessionKey 
     });
   } catch (err) {
     logger.error({ tenantId, nodeRef: resolvedNodeRef, message: err.message }, 'flowEngine: node execution error');
+    // Log error event before returning
+    await convLogger.log(conversationId, tenantId, resolvedNodeRef,
+      convLogger.EVENT.FLOW_ERROR, { error_message: err.message, node_type: node.type });
     return null;
   }
 
@@ -147,15 +162,31 @@ async function executeStep({ tenantId, currentNodeId, input, userId, sessionKey 
     }
   }
 
+  // ── Log conversation event ────────────────────────────────────────────────
+  await _logNodeEvent(conversationId, tenantId, resolvedNodeRef, node, input, execResult, updatedVars, durationMs);
+
+  // If terminal: end the conversation
+  if (execResult.terminal && conversationId) {
+    const finalStatus = node.type === 'handoff' ? 'abandoned' : 'completed';
+    await convLogger.end(conversationId, finalStatus, { variables: updatedVars });
+  } else if (conversationId && userKey) {
+    // Update context snapshot so the conversations row reflects current state
+    await convLogger.updateContext(conversationId, {
+      current_node: execResult.nextNodeId ?? resolvedNodeRef,
+      variables   : updatedVars,
+    });
+  }
+
   // ── For start nodes: auto-advance to entryPoint message ──────────────────
   // start nodes have no output — advance one more step automatically
   if (node.type === 'start' && execResult.nextNodeId) {
     return executeStep({
       tenantId,
-      currentNodeId: _toIntOrNull(execResult.nextNodeId),
+      currentNodeId  : _toIntOrNull(execResult.nextNodeId),
       input,
       userId,
       sessionKey,
+      _conversationId: conversationId,
     });
   }
 
@@ -164,10 +195,11 @@ async function executeStep({ tenantId, currentNodeId, input, userId, sessionKey 
     if (execResult.nextNodeId) {
       return executeStep({
         tenantId,
-        currentNodeId: _toIntOrNull(execResult.nextNodeId),
+        currentNodeId  : _toIntOrNull(execResult.nextNodeId),
         input,
         userId,
         sessionKey,
+        _conversationId: conversationId,
       });
     }
     return null;
@@ -187,6 +219,105 @@ async function executeStep({ tenantId, currentNodeId, input, userId, sessionKey 
 // ─────────────────────────────────────────────────────────────────────────────
 // Helpers
 // ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Derive the conversation event type and payload from a node execution result.
+ * Best-effort: errors are swallowed by convLogger.log internally.
+ */
+async function _logNodeEvent(conversationId, tenantId, nodeRef, node, input, execResult, updatedVars, durationMs) {
+  if (!conversationId) return;
+
+  const { EVENT } = convLogger;
+  let eventType;
+  let payload;
+
+  switch (node.type) {
+    case 'start':
+      eventType = EVENT.FLOW_START;
+      payload   = { node_ref: nodeRef };
+      break;
+
+    case 'message':
+      eventType = EVENT.MESSAGE_SENT;
+      payload   = { node_type: 'message', text: execResult.output?.text ?? null };
+      break;
+
+    case 'input':
+      if (execResult.output) {
+        // Showing the question to the user
+        eventType = EVENT.MESSAGE_SENT;
+        payload   = { node_type: 'input', text: execResult.output.text ?? null };
+      } else {
+        // Receiving user's answer
+        eventType = EVENT.USER_INPUT;
+        payload   = {
+          raw_input   : input ?? null,
+          variable_set: node.config?.variable ?? null,
+          value       : updatedVars[node.config?.variable] ?? null,
+        };
+      }
+      break;
+
+    case 'menu':
+      if (execResult.output) {
+        eventType = EVENT.MESSAGE_SENT;
+        payload   = {
+          node_type: 'menu',
+          text     : execResult.output.text ?? null,
+          options  : execResult.output.buttons ?? execResult.output.sections ?? null,
+        };
+      } else {
+        eventType = EVENT.MENU_SELECTION;
+        payload   = {
+          selected_id : input ?? null,
+          next_node   : execResult.nextNodeId ?? null,
+        };
+      }
+      break;
+
+    case 'condition':
+      eventType = EVENT.CONDITION_EVAL;
+      payload   = {
+        result   : execResult.nextNodeId != null,
+        next_node: execResult.nextNodeId ?? null,
+      };
+      break;
+
+    case 'action':
+      eventType = EVENT.API_CALL;
+      payload   = {
+        integration_ref: node.config?.integration ?? null,
+        duration_ms    : durationMs,
+        response_vars  : execResult.updatedVars ?? {},
+      };
+      break;
+
+    case 'llm':
+      eventType = EVENT.LLM_CALL;
+      payload   = {
+        node_type: 'llm',
+        duration_ms: durationMs,
+        output   : execResult.output?.text ?? null,
+      };
+      break;
+
+    case 'end':
+      eventType = EVENT.FLOW_END;
+      payload   = { final_variables: updatedVars };
+      break;
+
+    case 'handoff':
+      eventType = EVENT.FLOW_HANDOFF;
+      payload   = { reason: node.config?.reason ?? 'handoff', text: execResult.output?.text ?? null };
+      break;
+
+    default:
+      eventType = EVENT.MESSAGE_SENT;
+      payload   = { node_type: node.type };
+  }
+
+  await convLogger.log(conversationId, tenantId, nodeRef, eventType, payload);
+}
 
 function _toIntOrNull(ref) {
   if (ref == null) return null;

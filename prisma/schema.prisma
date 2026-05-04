@@ -38,6 +38,8 @@ model Tenant {
   flowExecutions       FlowExecution[]
   integrations         Integration[]
   flowVariables        FlowVariable[]
+  conversations        Conversation[]
+  conversationEvents   ConversationEvent[]
 
   @@map("tenants")
 }
@@ -291,6 +293,7 @@ model Flow {
   flowVersions FlowVersion[]
   executions   FlowExecution[]
   variables    FlowVariable[]
+  conversations Conversation[]
 
   @@map("flows")
 }
@@ -511,6 +514,7 @@ model FlowVersion {
   flow                 Flow      @relation(fields: [flowId], references: [id], onDelete: Cascade)
   creator              AdminUser? @relation("FlowVersionCreatedBy", fields: [createdByAdminUserId], references: [id], onDelete: SetNull)
   executions           FlowExecution[]
+  conversations        Conversation[]
 
   @@unique([flowId, versionNumber])
   @@index([tenantId, flowId, published])
@@ -621,4 +625,66 @@ model FlowVariable {
   @@unique([tenantId, flowId, nombre])
   @@index([tenantId, scope])
   @@map("flow_variables")
+}
+
+// ── Conversations (Event Sourcing) ────────────────────────────────────────────
+
+/// Una sesión conversacional completa de un usuario con un flujo.
+/// `context` JSONB: snapshot del estado actual (nodo, variables) para sesiones activas.
+model Conversation {
+  id              String    @id @default(uuid()) @db.Uuid
+  tenantId        String    @map("tenant_id") @db.Uuid
+  /// Identificador del usuario final (phone number u otro canal)
+  userKey         String    @map("user_key") @db.VarChar(120)
+  flowId          Int       @map("flow_id")
+  flowVersionId   Int?      @map("flow_version_id")
+  /// "active" | "completed" | "abandoned" | "error"
+  status          String    @default("active") @db.VarChar(20)
+  /// JSONB snapshot: { current_node: "node_5", variables: { name: "Juan" } }
+  context         Json      @default("{}")
+  startedAt       DateTime  @default(now()) @map("started_at")
+  endedAt         DateTime? @map("ended_at")
+  tenant          Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  flow            Flow      @relation(fields: [flowId], references: [id], onDelete: Cascade)
+  flowVersion     FlowVersion? @relation(fields: [flowVersionId], references: [id], onDelete: SetNull)
+  events          ConversationEvent[]
+
+  @@unique([tenantId, userKey, flowId, startedAt])
+  @@index([tenantId, status, startedAt])
+  @@index([tenantId, userKey])
+  @@index([flowId, status])
+  @@map("conversations")
+}
+
+/// Evento atómico dentro de una conversación — nunca se sobreescribe.
+/// Cada paso del flujo genera uno o más eventos (inmutable, append-only).
+///
+/// payload JSONB por tipo:
+///   flow_start      → { flow_id, flow_version, entry_point }
+///   message_sent    → { node_id, node_type, text, buttons?, sections? }
+///   user_input      → { node_id, raw_input, matched_button_id? }
+///   menu_selection  → { node_id, selected_id, selected_title }
+///   condition_eval  → { node_id, expression, resolved, result: true|false, next_node }
+///   api_call        → { node_id, integration_ref, endpoint, method, body_mapping }
+///   api_response    → { node_id, integration_ref, status_code, response_vars, duration_ms }
+///   llm_call        → { node_id, model, prompt_tokens, completion_tokens }
+///   variable_set    → { node_id, variable, value }
+///   flow_end        → { node_id, final_variables }
+///   flow_handoff    → { node_id, reason }
+///   flow_error      → { node_id, error_message }
+model ConversationEvent {
+  id             String   @id @default(uuid()) @db.Uuid
+  conversationId String   @map("conversation_id") @db.Uuid
+  tenantId       String   @map("tenant_id") @db.Uuid
+  nodeRef        String?  @map("node_ref") @db.VarChar(120)
+  /// See event types above
+  eventType      String   @map("event_type") @db.VarChar(50)
+  payload        Json     @default("{}")
+  createdAt      DateTime @default(now()) @map("created_at")
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId, createdAt])
+  @@index([tenantId, eventType, createdAt])
+  @@index([tenantId, createdAt])
+  @@map("conversation_events")
 }

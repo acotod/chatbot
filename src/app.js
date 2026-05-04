@@ -11,6 +11,7 @@ const auditRouter = require('./routes/auditLogs');
 const whatsappRouter = require('./routes/whatsapp');
 const llmRouter = require('./routes/llm');
 const eventsRouter = require('./routes/events');
+const conversationsRouter = require('./routes/conversations');
 const resolveTenant = require('./middleware/resolveTenant');
 const createRateLimiter = require('./middleware/rateLimiter');
 const errorHandler = require('./middleware/errorHandler');
@@ -89,6 +90,9 @@ app.use('/events', resolveTenant, tenantRateLimiter, eventsRouter);
 
 // Admin routes (protected by JWT — POST /auth/login to get a token)
 app.use('/admin', adminRouter);
+
+// Conversation event-sourcing routes (protected by JWT)
+app.use('/conversations', conversationsRouter);
 
 // RBAC routes (roles, permisos, admin users)
 app.use('/rbac', rbacRouter);
