@@ -339,6 +339,101 @@ async function executeHandoff({ node, variables }) {
 // Executor registry
 // ─────────────────────────────────────────────────────────────────────────────
 
+
+/**
+ * calendar node executor.
+ * Supported actions: show_availability, select_slot, create_appointment,
+ * reschedule_appointment, cancel_appointment.
+ */
+async function executeCalendar({ node, input, variables, tenantId }) {
+  const calSvc = require('../services/calendarService');
+  const cfg    = resolveConfig(node.config || {}, variables);
+  const action = node.action || cfg.action || 'show_availability';
+
+  if (action === 'show_availability') {
+    if (!cfg.calendar_id) {
+      logger.warn({ tenantId, nodeId: node.id }, 'calendar node: missing calendar_id');
+      return { output: null, nextNodeId: node.next, updatedVars: {}, terminal: false, fallback: false };
+    }
+    const slots = await calSvc.getAvailableSlots(cfg.calendar_id, cfg.range_days || 5);
+    if (!slots.length) {
+      return {
+        output: { type: 'text', text: cfg.no_slots_text || 'No hay horarios disponibles. Un agente te contactara.' },
+        nextNodeId: (node.branches && node.branches.no_slots) || node.next,
+        updatedVars: {}, terminal: false, fallback: false,
+      };
+    }
+    const buttons = slots.slice(0, 10).map(s => ({ id: s.id, title: _formatSlotLabel(s.startTime) }));
+    return {
+      output: {
+        type    : buttons.length <= 3 ? 'buttons' : 'list',
+        text    : cfg.prompt || 'Selecciona una fecha y hora:',
+        buttons,
+        sections: buttons.length > 3 ? [{ title: 'Horarios disponibles', rows: buttons }] : [],
+      },
+      nextNodeId: node.id, updatedVars: {}, terminal: false, fallback: false,
+    };
+  }
+
+  if (action === 'select_slot') {
+    if (!input) return executeCalendar({ node: Object.assign({}, node, { action: 'show_availability' }), input: null, variables, tenantId });
+    const bookResult = await calSvc.bookSlot({
+      calendarId: cfg.calendar_id, slotId: input, tenantId,
+      userKey: variables.phone || variables.user_key || 'unknown',
+      conversationId: variables.conversation_id || null,
+      metadata: { user_name: variables.name || null },
+    });
+    if (bookResult.error) {
+      const errText = bookResult.error === 'SLOT_TAKEN'
+        ? (cfg.slot_taken_text || 'Ese horario ya fue reservado. Elige otro.')
+        : (cfg.error_text || 'No pude completar la reserva. Intenta de nuevo.');
+      return { output: { type: 'text', text: errText }, nextNodeId: node.id, updatedVars: {}, terminal: false, fallback: false };
+    }
+    const a = bookResult.appointment;
+    return {
+      output: null, nextNodeId: node.next,
+      updatedVars: { appointment_id: a.id, appointment_start: a.startTime.toISOString(), appointment_end: a.endTime.toISOString(), appointment_status: 'scheduled' },
+      terminal: false, fallback: false,
+    };
+  }
+
+  if (action === 'create_appointment') {
+    const slotId = variables.selected_slot_id || cfg.slot_id;
+    if (!slotId || !cfg.calendar_id) {
+      return { output: null, nextNodeId: node.next, updatedVars: {}, terminal: false, fallback: false };
+    }
+    const bookResult = await calSvc.bookSlot({ calendarId: cfg.calendar_id, slotId, tenantId, userKey: variables.phone || 'unknown', conversationId: variables.conversation_id || null, metadata: { user_name: variables.name || null } });
+    if (bookResult.error) return { output: null, nextNodeId: (node.branches && node.branches.error) || node.next, updatedVars: {}, terminal: false, fallback: false };
+    const a = bookResult.appointment;
+    return { output: null, nextNodeId: node.next, updatedVars: { appointment_id: a.id, appointment_start: a.startTime.toISOString(), appointment_end: a.endTime.toISOString(), appointment_status: 'scheduled' }, terminal: false, fallback: false };
+  }
+
+  if (action === 'reschedule_appointment') {
+    const apptId    = variables.appointment_id;
+    const newSlotId = input || variables.new_slot_id;
+    if (!apptId || !newSlotId) return { output: null, nextNodeId: node.next, updatedVars: {}, terminal: false, fallback: false };
+    const result = await calSvc.rescheduleAppointment(apptId, newSlotId, tenantId);
+    if (result.error) return { output: null, nextNodeId: (node.branches && node.branches.error) || node.next, updatedVars: {}, terminal: false, fallback: false };
+    const a = result.appointment;
+    return { output: null, nextNodeId: node.next, updatedVars: { appointment_id: a.id, appointment_start: a.startTime.toISOString(), appointment_end: a.endTime.toISOString(), appointment_status: 'rescheduled' }, terminal: false, fallback: false };
+  }
+
+  if (action === 'cancel_appointment') {
+    const apptId = variables.appointment_id || cfg.appointment_id;
+    if (!apptId) return { output: null, nextNodeId: node.next, updatedVars: {}, terminal: false, fallback: false };
+    const result = await calSvc.cancelAppointment(apptId, tenantId);
+    return { output: null, nextNodeId: node.next, updatedVars: result.ok ? { appointment_status: 'cancelled' } : {}, terminal: false, fallback: false };
+  }
+
+  logger.warn({ tenantId, nodeId: node.id, action }, 'calendar node: unknown action');
+  return { output: null, nextNodeId: node.next, updatedVars: {}, terminal: false, fallback: false };
+}
+
+function _formatSlotLabel(date) {
+  if (!(date instanceof Date)) date = new Date(date);
+  return date.toLocaleDateString('es-MX', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+}
+
 const EXECUTORS = {
   start    : executeStart,
   message  : executeMessage,
@@ -351,6 +446,7 @@ const EXECUTORS = {
   delay    : executeDelay,
   end      : executeEnd,
   handoff  : executeHandoff,
+  calendar : executeCalendar,
 };
 
 /**

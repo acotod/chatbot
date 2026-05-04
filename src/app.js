@@ -12,6 +12,7 @@ const whatsappRouter = require('./routes/whatsapp');
 const llmRouter = require('./routes/llm');
 const eventsRouter = require('./routes/events');
 const conversationsRouter = require('./routes/conversations');
+const calendarRouter       = require('./routes/calendar');
 const resolveTenant = require('./middleware/resolveTenant');
 const createRateLimiter = require('./middleware/rateLimiter');
 const errorHandler = require('./middleware/errorHandler');
@@ -93,6 +94,7 @@ app.use('/admin', adminRouter);
 
 // Conversation event-sourcing routes (protected by JWT)
 app.use('/conversations', conversationsRouter);
+app.use('/calendar',       calendarRouter);
 
 // RBAC routes (roles, permisos, admin users)
 app.use('/rbac', rbacRouter);

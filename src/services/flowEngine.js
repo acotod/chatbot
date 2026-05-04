@@ -346,6 +346,31 @@ async function _logNodeEvent(conversationId, tenantId, nodeRef, node, input, exe
       break;
 
     default:
+          case 'calendar': {
+            const calAction = node.action || node.config?.action || 'show_availability';
+            if (calAction === 'show_availability') {
+              eventType = EVENT.CALENDAR_AVAILABILITY_SHOWN;
+              payload   = { calendar_id: node.config?.calendar_id ?? null, slots_shown: execResult.output?.buttons?.length ?? 0 };
+            } else if (calAction === 'select_slot') {
+              eventType = input ? EVENT.CALENDAR_SLOT_SELECTED : EVENT.CALENDAR_AVAILABILITY_SHOWN;
+              payload   = { calendar_id: node.config?.calendar_id ?? null, slot_id: input ?? null, appointment_id: updatedVars?.appointment_id ?? null };
+            } else if (calAction === 'create_appointment' || calAction === 'select_slot') {
+              eventType = EVENT.APPOINTMENT_CREATED;
+              payload   = { appointment_id: updatedVars?.appointment_id ?? null, calendar_id: node.config?.calendar_id ?? null };
+            } else if (calAction === 'reschedule_appointment') {
+              eventType = EVENT.APPOINTMENT_RESCHEDULED;
+              payload   = { appointment_id: updatedVars?.appointment_id ?? null };
+            } else if (calAction === 'cancel_appointment') {
+              eventType = EVENT.APPOINTMENT_CANCELLED;
+              payload   = { appointment_id: node.config?.appointment_id ?? updatedVars?.appointment_id ?? null };
+            } else {
+              eventType = EVENT.MESSAGE_SENT;
+              payload   = { node_type: 'calendar', action: calAction };
+            }
+            break;
+          }
+
+          default:
       eventType = EVENT.MESSAGE_SENT;
       payload   = { node_type: node.type };
   }

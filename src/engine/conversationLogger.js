@@ -40,9 +40,14 @@ const EVENT = Object.freeze({
   FLOW_END       : 'flow_end',
   FLOW_HANDOFF   : 'flow_handoff',
   FLOW_ERROR     : 'flow_error',
-  TASK_CREATED   : 'task_created',
-  TASK_WAITING   : 'task_waiting',
-  TASK_COMPLETED : 'task_completed',
+  TASK_CREATED              : 'task_created',
+  TASK_WAITING              : 'task_waiting',
+  TASK_COMPLETED            : 'task_completed',
+  CALENDAR_AVAILABILITY_SHOWN: 'calendar_availability_shown',
+  CALENDAR_SLOT_SELECTED    : 'calendar_slot_selected',
+  APPOINTMENT_CREATED       : 'appointment_created',
+  APPOINTMENT_RESCHEDULED   : 'appointment_rescheduled',
+  APPOINTMENT_CANCELLED     : 'appointment_cancelled',
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
