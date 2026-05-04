@@ -5,6 +5,7 @@ const { webhookValidationRules, validate } = require('../middleware/validate');
 const { getNextScreen } = require('../services/flowNavigation');
 const db = require('../services/database');
 const { getRedisClient } = require('../services/redis');
+const { ingestEvent } = require('../services/eventGateway');
 
 const router = express.Router();
 
@@ -67,6 +68,35 @@ router.post('/', verifyFlowsSignature, webhookValidationRules, validate, async (
 
     // Persist the flow event
     await db.saveEvent(userId, screen, data, tenantId);
+
+    // Dual-write to the UEG canonical event log (best-effort)
+    // Legacy webhook flow must continue even if UEG ingest fails.
+    try {
+      await ingestEvent({
+        tenantId,
+        correlationId: req.correlationId,
+        rawEvent: {
+          channel: 'whatsapp',
+          source: 'meta_flows',
+          eventType: 'flow_screen_submitted',
+          direction: 'inbound',
+          occurredAt: new Date().toISOString(),
+          payload: {
+            userId,
+            screen,
+            data,
+          },
+          metadata: {
+            route: '/webhook',
+          },
+        },
+      });
+    } catch (uegErr) {
+      logger.warn('UEG dual-write failed on /webhook', {
+        tenantId,
+        message: uegErr.message,
+      });
+    }
 
     // Persist solicitud when applicable
     if (screen === 'SOLICITUD_ESPACIO') {

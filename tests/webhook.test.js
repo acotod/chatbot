@@ -21,8 +21,13 @@ jest.mock('../src/services/database', () => ({
   getConfig: jest.fn().mockResolvedValue(null), // no tenant flow override by default
 }));
 
+jest.mock('../src/services/eventGateway', () => ({
+  ingestEvent: jest.fn().mockResolvedValue({ duplicate: false, queued: false }),
+}));
+
 const app = require('../src/app');
 const db = require('../src/services/database');
+const eventGateway = require('../src/services/eventGateway');
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -31,6 +36,7 @@ beforeEach(() => {
   db.saveEvent.mockResolvedValue({});
   db.saveSolicitud.mockResolvedValue({});
   db.getConfig.mockResolvedValue(null);
+  eventGateway.ingestEvent.mockResolvedValue({ duplicate: false, queued: false });
 });
 
 describe('POST /webhook – valid requests', () => {
@@ -44,6 +50,7 @@ describe('POST /webhook – valid requests', () => {
     expect(res.body).toEqual({ screen: 'ESTRES' });
     expect(db.findOrCreateUser).toHaveBeenCalledWith('1234567890', TEST_TENANT.id);
     expect(db.saveEvent).toHaveBeenCalled();
+    expect(eventGateway.ingestEvent).toHaveBeenCalled();
   });
 
   test('INICIO + opcion_inicio=hablar_alguien → 200 { screen: "HABLAR_ALGUIEN" }', async () => {
