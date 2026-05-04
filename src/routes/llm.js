@@ -452,9 +452,12 @@ router.post('/design-intelligent-flow', requirePermiso('MANAGE_LLM_RESCUE'), [
     logger.info({ tenantId, promptLen: prompt.length }, 'llm/design-intelligent-flow: starting pipeline');
 
     // ── Stage 1: Requirement analysis ─────────────────────────────────────────
-    const analysis = await analyzeRequirement(tenantId, prompt);
+    const [analysis, priorExamples] = await Promise.all([
+      analyzeRequirement(tenantId, prompt),
+      loadFlowExamples(tenantId),
+    ]);
     logger.info(
-      { tenantId, intent: analysis.intent, entities: analysis.entities.length, source: analysis._source },
+      { tenantId, intent: analysis.intent, entities: analysis.entities.length, source: analysis._source, priorExamples: priorExamples.length },
       'llm/design-intelligent-flow: analysis complete',
     );
 
@@ -463,7 +466,7 @@ router.post('/design-intelligent-flow', requirePermiso('MANAGE_LLM_RESCUE'), [
     const topEndpoints = integrations.suggested.slice(0, 3);
 
     // ── Stage 2: Build enriched prompt + generate flow ────────────────────────
-    const enrichedPrompt = buildEnrichedPrompt(prompt, analysis, topEndpoints);
+    const enrichedPrompt = buildEnrichedPrompt(prompt, analysis, topEndpoints, priorExamples);
     const generation = await generateFlowOrFallback(req, tenantId, enrichedPrompt);
 
     // ── Stage 4: Structural validation ───────────────────────────────────────
@@ -493,6 +496,7 @@ router.post('/design-intelligent-flow', requirePermiso('MANAGE_LLM_RESCUE'), [
         intent               : analysis.intent,
         entityCount          : analysis.entities.length,
         analysisSource       : analysis._source,
+        priorExamples        : priorExamples.length,
         validationStatus     : validation.status,
         suggestedIntegrations: integrations.suggested.length,
       },
@@ -523,7 +527,7 @@ router.post('/design-intelligent-flow', requirePermiso('MANAGE_LLM_RESCUE'), [
             key   : 'synthesize_flow',
             label : 'Proponer flujo estructurado',
             status: 'completed',
-            detail: { screenCount, enrichedPromptLen: enrichedPrompt.length },
+            detail: { screenCount, enrichedPromptLen: enrichedPrompt.length, priorExamples: priorExamples.length },
           },
           {
             key   : 'integration_mapping',
@@ -555,8 +559,11 @@ router.post('/design-intelligent-flow', requirePermiso('MANAGE_LLM_RESCUE'), [
         dryRunReady: true,
       },
       approval: {
-        required: true,
-        status  : 'pending_human_approval',
+        required   : true,
+        status     : 'pending_human_approval',
+        saveDraftUrl: '/llm/save-flow-draft',
+        approveUrl  : '/llm/approve-flow/:draftId',
+        feedbackUrl : '/llm/design-intelligent-flow/feedback',
       },
       legacy: {
         json    : generation.json,
@@ -667,7 +674,7 @@ async function analyzeRequirement(tenantId, prompt) {
  * Build an enriched generation prompt that includes the extracted requirement
  * structure and the top catalog endpoints as inline context for the flow LLM.
  */
-function buildEnrichedPrompt(prompt, analysis, topEndpoints) {
+function buildEnrichedPrompt(prompt, analysis, topEndpoints, priorExamples = []) {
   const lines = [
     '=== REQUERIMIENTO DEL USUARIO ===',
     prompt.trim(),
@@ -711,6 +718,20 @@ function buildEnrichedPrompt(prompt, analysis, topEndpoints) {
       lines.push(`- ${ep.name} [${ep.method} ${ep.url}]: ${ep.description || ''}`);
       if (ep.inputs.length  > 0) lines.push(`  inputs: ${ep.inputs.join(', ')}`);
       if (ep.outputs.length > 0) lines.push(`  outputs: ${ep.outputs.join(', ')}`);
+    });
+  }
+
+  if (priorExamples.length > 0) {
+    lines.push(
+      '',
+      '=== EJEMPLOS DE FLUJOS APROBADOS ANTERIORES (aprende de la estructura, no copies literal) ===',
+    );
+    priorExamples.forEach((ex, i) => {
+      lines.push(`Ejemplo ${i + 1}: intent=${ex.intent}, nombre="${ex.nombre}"`);
+      if (Array.isArray(ex.screens) && ex.screens.length > 0) {
+        const ids = ex.screens.map((s) => `${s.id}${s.terminal ? '(terminal)' : ''}`).join(' → ');
+        lines.push(`  Pantallas: ${ids}`);
+      }
     });
   }
 
@@ -1207,6 +1228,230 @@ function simulateDryRun(flowJson, dataContract, maxSteps = 15) {
       mockInputsUsed  : mockInputs,
     },
   };
+}
+
+// ── POST /llm/save-flow-draft ─────────────────────────────────────────────────
+// Save a flow design as an inactive (pending-approval) draft in the Flow table.
+// Body: { flowJson, nombre, tenantId, designReport? }
+// Returns: { draftId, nombre, status: "pending_approval" }
+
+router.post('/save-flow-draft', requirePermiso('EDIT_FLUJOS'), [
+  body('flowJson').notEmpty().withMessage('flowJson is required'),
+  body('nombre').notEmpty().withMessage('nombre is required').isLength({ max: 100 }),
+  body('tenantId').optional({ checkFalsy: true }).isUUID(),
+], async (req, res, next) => {
+  if (!validateRequest(req, res)) return;
+  try {
+    const tenantId = await resolveTenantId(req, req.body.tenantId);
+    if (!tenantId) return res.status(400).json({ error: 'tenantId is required' });
+
+    let flowJson = req.body.flowJson;
+    if (typeof flowJson === 'string') {
+      try { flowJson = JSON.parse(flowJson); } catch {
+        return res.status(400).json({ error: 'flowJson must be valid JSON' });
+      }
+    }
+
+    const nombre       = String(req.body.nombre).trim();
+    const designReport = req.body.designReport ?? null;
+
+    // Save as inactive draft — no nodes/edges, only metaJson snapshot
+    const draft = await prisma.flow.create({
+      data: {
+        tenantId,
+        nombre,
+        activo  : false,           // pending approval
+        metaJson: flowJson,
+      },
+    });
+
+    // Persist the full design report alongside the draft for audit/learning
+    if (designReport) {
+      await prisma.configuracion.upsert({
+        where : { tenantId_clave: { tenantId, clave: `flow_draft_report_${draft.id}` } },
+        create: { tenantId, clave: `flow_draft_report_${draft.id}`, valor: designReport },
+        update: { valor: designReport },
+      });
+    }
+
+    audit({
+      adminUserId: req.admin.adminUserId,
+      tenantId,
+      accion     : 'SAVE_FLOW_DRAFT',
+      entidad    : 'flow',
+      entidadId  : String(draft.id),
+      metadata   : { nombre, screens: Array.isArray(flowJson?.screens) ? flowJson.screens.length : 0 },
+    });
+
+    logger.info({ tenantId, draftId: draft.id, nombre }, 'llm/save-flow-draft: draft saved');
+
+    return res.status(201).json({
+      draftId: draft.id,
+      nombre,
+      status : 'pending_approval',
+      message: `Borrador "${nombre}" guardado. Requiere aprobación para publicarse.`,
+    });
+  } catch (err) { next(err); }
+});
+
+// ── POST /llm/approve-flow/:draftId ──────────────────────────────────────────
+// Approve a saved draft: sets activo=true and saves it as a learning example.
+// Gated by EDIT_FLUJOS permission.
+
+router.post('/approve-flow/:draftId', requirePermiso('EDIT_FLUJOS'), async (req, res, next) => {
+  try {
+    const draftId = Number(req.params.draftId);
+    if (Number.isNaN(draftId)) return res.status(400).json({ error: 'Invalid draftId' });
+
+    const draft = await prisma.flow.findUnique({ where: { id: draftId } });
+    if (!draft) return res.status(404).json({ error: 'Draft not found' });
+
+    // Tenant scope guard
+    if (!req.admin.superAdmin && draft.tenantId !== req.admin.tenantId) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+    if (draft.activo) {
+      return res.status(409).json({ error: 'Flow is already published', flowId: draftId });
+    }
+
+    // Publish
+    const published = await prisma.flow.update({
+      where: { id: draftId },
+      data : { activo: true },
+    });
+
+    // Persist as a learning example for future generations
+    const tenantId = draft.tenantId;
+    const reportKey = `flow_draft_report_${draftId}`;
+    const reportCfg = await prisma.configuracion.findUnique({
+      where: { tenantId_clave: { tenantId, clave: reportKey } },
+    });
+    const designReport = reportCfg?.valor ?? {};
+
+    await saveFlowExample(tenantId, {
+      flowId : draftId,
+      nombre : draft.nombre,
+      intent : designReport?.orchestration?.stages?.[0]?.detail?.intent ?? 'unknown',
+      summary: designReport?.orchestration?.stages?.[0]?.detail?.summary ?? '',
+      screens: Array.isArray(draft.metaJson?.screens)
+        ? draft.metaJson.screens.map((s) => ({ id: s.id, title: s.title, terminal: s.terminal }))
+        : [],
+      approvedAt : new Date().toISOString(),
+      approvedBy : req.admin.adminUserId,
+    });
+
+    audit({
+      adminUserId: req.admin.adminUserId,
+      tenantId,
+      accion     : 'APPROVE_FLOW',
+      entidad    : 'flow',
+      entidadId  : String(draftId),
+      metadata   : { nombre: draft.nombre },
+    });
+
+    logger.info({ tenantId, draftId, nombre: draft.nombre }, 'llm/approve-flow: flow published');
+
+    return res.json({
+      flowId   : published.id,
+      nombre   : published.nombre,
+      activo   : published.activo,
+      status   : 'published',
+      message  : `Flujo "${published.nombre}" aprobado y publicado correctamente.`,
+    });
+  } catch (err) { next(err); }
+});
+
+// ── POST /llm/design-intelligent-flow/feedback ───────────────────────────────
+// Record user feedback (rating + optional corrections) for the learning loop.
+// Body: { tenantId, prompt, intent, flowId?, rating: "good"|"bad", corrections? }
+
+router.post('/design-intelligent-flow/feedback', requirePermiso('MANAGE_LLM_RESCUE'), [
+  body('rating').isIn(['good', 'bad']).withMessage('rating must be "good" or "bad"'),
+  body('tenantId').optional({ checkFalsy: true }).isUUID(),
+], async (req, res, next) => {
+  if (!validateRequest(req, res)) return;
+  try {
+    const tenantId = await resolveTenantId(req, req.body.tenantId);
+    if (!tenantId) return res.status(400).json({ error: 'tenantId is required' });
+
+    const record = {
+      ts         : new Date().toISOString(),
+      rating     : req.body.rating,
+      prompt     : String(req.body.prompt || '').trim().slice(0, 500),
+      intent     : String(req.body.intent || '').trim().slice(0, 60),
+      flowId     : req.body.flowId ? Number(req.body.flowId) : null,
+      corrections: req.body.corrections
+        ? String(req.body.corrections).trim().slice(0, 1000)
+        : null,
+      adminUserId: req.admin.adminUserId,
+    };
+
+    // Append to tenant's feedback log (capped at 100 entries)
+    const clave = 'flow_design_feedback';
+    const existing = await prisma.configuracion.findUnique({
+      where: { tenantId_clave: { tenantId, clave } },
+    });
+    const prev = Array.isArray(existing?.valor) ? existing.valor : [];
+    const next = [...prev, record].slice(-100);
+
+    await prisma.configuracion.upsert({
+      where : { tenantId_clave: { tenantId, clave } },
+      create: { tenantId, clave, valor: next },
+      update: { valor: next },
+    });
+
+    audit({
+      adminUserId: req.admin.adminUserId,
+      tenantId,
+      accion     : 'FLOW_DESIGN_FEEDBACK',
+      entidad    : 'flow',
+      entidadId  : record.flowId ? String(record.flowId) : null,
+      metadata   : { rating: record.rating, intent: record.intent },
+    });
+
+    return res.json({ status: 'recorded', message: 'Feedback registrado. Gracias.' });
+  } catch (err) { next(err); }
+});
+
+// ── Learning loop helpers ─────────────────────────────────────────────────────
+
+const FLOW_EXAMPLES_KEY = 'flow_design_examples';
+const MAX_EXAMPLES      = 10;
+
+/**
+ * Persist a successful flow design as a few-shot example for future generations.
+ */
+async function saveFlowExample(tenantId, example) {
+  try {
+    const existing = await prisma.configuracion.findUnique({
+      where: { tenantId_clave: { tenantId, clave: FLOW_EXAMPLES_KEY } },
+    });
+    const prev = Array.isArray(existing?.valor) ? existing.valor : [];
+    const next = [...prev, example].slice(-MAX_EXAMPLES);
+
+    await prisma.configuracion.upsert({
+      where : { tenantId_clave: { tenantId, clave: FLOW_EXAMPLES_KEY } },
+      create: { tenantId, clave: FLOW_EXAMPLES_KEY, valor: next },
+      update: { valor: next },
+    });
+  } catch (err) {
+    logger.warn({ tenantId, err: err.message }, 'llm: could not save flow example (non-fatal)');
+  }
+}
+
+/**
+ * Load recent approved flow examples for the tenant to use as few-shot context.
+ * Returns [] if none found.
+ */
+async function loadFlowExamples(tenantId) {
+  try {
+    const cfg = await prisma.configuracion.findUnique({
+      where: { tenantId_clave: { tenantId, clave: FLOW_EXAMPLES_KEY } },
+    });
+    return Array.isArray(cfg?.valor) ? cfg.valor.slice(-5) : [];
+  } catch {
+    return [];
+  }
 }
 
 module.exports = router;
