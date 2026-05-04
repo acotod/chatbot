@@ -16,7 +16,7 @@
  * Event types (see EVENT constant below):
  *   flow_start | message_sent | user_input | menu_selection | condition_eval
  *   api_call   | api_response | llm_call   | variable_set   | flow_end
- *   flow_handoff | flow_error
+ *   flow_handoff | flow_error | task_created | task_waiting | task_completed
  */
 
 const { PrismaClient } = require('@prisma/client');
@@ -40,6 +40,9 @@ const EVENT = Object.freeze({
   FLOW_END       : 'flow_end',
   FLOW_HANDOFF   : 'flow_handoff',
   FLOW_ERROR     : 'flow_error',
+  TASK_CREATED   : 'task_created',
+  TASK_WAITING   : 'task_waiting',
+  TASK_COMPLETED : 'task_completed',
 });
 
 // ─────────────────────────────────────────────────────────────────────────────

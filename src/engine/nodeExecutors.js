@@ -16,7 +16,7 @@
  * dependency injection to keep them testable without network calls.
  *
  * Supported node types:
- *   start, message, input, menu, condition, action, llm, delay, end, handoff
+ *   start, message, input, menu, condition, action, task, llm, delay, end, handoff
  */
 
 const logger = require('../utils/logger');
@@ -223,6 +223,40 @@ async function executeAction({ node, variables, integrationRunner, tenantId }) {
 }
 
 /**
+ * task — orchestration hook for human-in-the-loop work.
+ * Supported actions:
+ *   create_task   => asks flowEngine to create/reuse a solicitud
+ *   wait_for_task => asks flowEngine to pause until status target is reached
+ */
+async function executeTask({ node, variables }) {
+  const cfg = resolveConfig(node.config, variables);
+  const action = String(cfg.action ?? '').trim().toLowerCase();
+
+  if (!action || !['create_task', 'wait_for_task'].includes(action)) {
+    return {
+      output     : null,
+      nextNodeId : node.next,
+      updatedVars: {},
+      terminal   : false,
+      fallback   : false,
+    };
+  }
+
+  return {
+    output     : null,
+    nextNodeId : node.next,
+    updatedVars: {},
+    terminal   : false,
+    fallback   : false,
+    control    : {
+      type: 'task',
+      action,
+      config: cfg,
+    },
+  };
+}
+
+/**
  * llm — generates a dynamic text reply via LLM and injects it into the response.
  */
 async function executeLlm({ node, input, variables, llmService, tenantId }) {
@@ -312,6 +346,7 @@ const EXECUTORS = {
   input    : executeInput,
   condition: executeCondition,
   action   : executeAction,
+  task     : executeTask,
   llm      : executeLlm,
   delay    : executeDelay,
   end      : executeEnd,

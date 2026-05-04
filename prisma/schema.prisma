@@ -39,7 +39,8 @@ model Tenant {
   integrations         Integration[]
   flowVariables        FlowVariable[]
   conversations        Conversation[]
-  conversationEvents   ConversationEvent[]
+  calendars            Calendar[]
+  appointments         Appointment[]
 
   @@map("tenants")
 }
@@ -125,15 +126,31 @@ model Solicitud {
   tenantId         String   @map("tenant_id") @db.Uuid
   userId           Int?     @map("user_id")
   agenteId         Int?     @map("agente_id")
+  flowId           Int?     @map("flow_id")
+  conversationId   String?  @map("conversation_id") @db.Uuid
+  origin           String   @default("manual") @db.VarChar(20)
+  titulo           String?  @db.VarChar(160)
+  prioridad        String?  @db.VarChar(20)
+  flowNodeRef      String?  @map("flow_node_ref") @db.VarChar(120)
   nombre           String?  @db.VarChar(100)
   telefonoContacto String?  @db.VarChar(20)   @map("telefono_contacto")
   horario          String?  @db.VarChar(20)
   estado           String?  @db.VarChar(50)
+  variablesJson    Json?    @map("variables_json")
+  attachmentsJson  Json     @default("[]") @map("attachments_json")
+  internalComments Json     @default("[]") @map("internal_comments_json")
   createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @default(now()) @updatedAt @map("updated_at")
+  completedAt      DateTime? @map("completed_at")
   tenant           Tenant   @relation(fields: [tenantId], references: [id])
   user             User?    @relation(fields: [userId], references: [id])
   agente           Agente?  @relation(fields: [agenteId], references: [id])
+  flow             Flow?    @relation(fields: [flowId], references: [id], onDelete: SetNull)
+  conversation     Conversation? @relation(fields: [conversationId], references: [id], onDelete: SetNull)
 
+  @@index([tenantId, estado, createdAt])
+  @@index([tenantId, conversationId])
+  @@index([tenantId, flowId])
   @@map("solicitudes")
 }
 
@@ -294,6 +311,7 @@ model Flow {
   executions   FlowExecution[]
   variables    FlowVariable[]
   conversations Conversation[]
+  solicitudes  Solicitud[]
 
   @@map("flows")
 }
@@ -648,6 +666,8 @@ model Conversation {
   flow            Flow      @relation(fields: [flowId], references: [id], onDelete: Cascade)
   flowVersion     FlowVersion? @relation(fields: [flowVersionId], references: [id], onDelete: SetNull)
   events          ConversationEvent[]
+  appointments    Appointment[]
+  solicitudes     Solicitud[]
 
   @@unique([tenantId, userKey, flowId, startedAt])
   @@index([tenantId, status, startedAt])
@@ -687,4 +707,76 @@ model ConversationEvent {
   @@index([tenantId, eventType, createdAt])
   @@index([tenantId, createdAt])
   @@map("conversation_events")
+}
+
+// ── Calendar Domain ───────────────────────────────────────────────────────────
+
+/// Represents a bookable calendar belonging to a tenant.
+/// config JSONB: { working_hours, slot_duration_min, buffer_min, advance_days,
+///                provider: "internal"|"google"|"outlook",
+///                provider_credentials: {}, sync: true }
+model Calendar {
+  id          String    @id @default(uuid()) @db.Uuid
+  tenantId    String    @map("tenant_id") @db.Uuid
+  name        String    @db.VarChar(200)
+  timezone    String    @default("America/Mexico_City") @db.VarChar(60)
+  activo      Boolean   @default(true)
+  /// Full calendar configuration (see JSDoc above)
+  config      Json      @default("{}")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  tenant      Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  slots       CalendarSlot[]
+  appointments Appointment[]
+
+  @@index([tenantId, activo])
+  @@map("calendars")
+}
+
+/// Pre-computed or blocked time slots for a calendar.
+/// Row per slot. "available" slots are consumed on booking → status = "booked".
+/// Concurrency is handled via SELECT FOR UPDATE on status='available'.
+model CalendarSlot {
+  id         String    @id @default(uuid()) @db.Uuid
+  calendarId String    @map("calendar_id") @db.Uuid
+  startTime  DateTime  @map("start_time") @db.Timestamptz
+  endTime    DateTime  @map("end_time") @db.Timestamptz
+  /// "available" | "booked" | "blocked"
+  status     String    @default("available") @db.VarChar(20)
+  /// Reference to the appointment that booked this slot (if booked)
+  appointmentId String? @map("appointment_id") @db.Uuid
+  createdAt  DateTime  @default(now()) @map("created_at")
+  updatedAt  DateTime  @updatedAt @map("updated_at")
+  calendar   Calendar  @relation(fields: [calendarId], references: [id], onDelete: Cascade)
+
+  @@index([calendarId, status, startTime])
+  @@index([calendarId, startTime, endTime])
+  @@map("calendar_slots")
+}
+
+/// A booked appointment within a calendar, tied to a conversation.
+/// metadata JSONB: { user_name, notes, reminder_sent, external_event_id, ... }
+model Appointment {
+  id             String    @id @default(uuid()) @db.Uuid
+  tenantId       String    @map("tenant_id") @db.Uuid
+  conversationId String?   @map("conversation_id") @db.Uuid
+  /// Phone number or other user identifier
+  userKey        String    @map("user_key") @db.VarChar(120)
+  calendarId     String    @map("calendar_id") @db.Uuid
+  startTime      DateTime  @map("start_time") @db.Timestamptz
+  endTime        DateTime  @map("end_time") @db.Timestamptz
+  /// "scheduled" | "cancelled" | "completed" | "no_show" | "rescheduled"
+  status         String    @default("scheduled") @db.VarChar(20)
+  metadata       Json      @default("{}")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+  tenant         Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  calendar       Calendar  @relation(fields: [calendarId], references: [id], onDelete: Cascade)
+  conversation   Conversation? @relation(fields: [conversationId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, status, startTime])
+  @@index([calendarId, startTime])
+  @@index([tenantId, userKey, startTime])
+  @@index([conversationId])
+  @@map("appointments")
 }

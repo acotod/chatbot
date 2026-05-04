@@ -4,6 +4,42 @@ const logger = require('../utils/logger');
 
 let prisma;
 
+const SOLICITUD_STATUS = Object.freeze({
+  OPEN: 'open',
+  IN_PROGRESS: 'in_progress',
+  PENDING_INFO: 'pending_info',
+  COMPLETED: 'completed',
+  REJECTED: 'rejected',
+});
+
+const SOLICITUD_STATUS_VALUES = Object.freeze(Object.values(SOLICITUD_STATUS));
+const SOLICITUD_ACTIVE_STATUS_VALUES = Object.freeze([
+  SOLICITUD_STATUS.OPEN,
+  SOLICITUD_STATUS.IN_PROGRESS,
+  SOLICITUD_STATUS.PENDING_INFO,
+]);
+
+function normalizeSolicitudStatus(status, fallback = SOLICITUD_STATUS.OPEN) {
+  const raw = String(status ?? '').trim().toLowerCase();
+  if (!raw) return fallback;
+
+  if (SOLICITUD_STATUS_VALUES.includes(raw)) return raw;
+
+  const aliasMap = {
+    pendiente: SOLICITUD_STATUS.OPEN,
+    open: SOLICITUD_STATUS.OPEN,
+    urgente: SOLICITUD_STATUS.IN_PROGRESS,
+    en_progreso: SOLICITUD_STATUS.IN_PROGRESS,
+    en_proceso: SOLICITUD_STATUS.IN_PROGRESS,
+    pendiente_info: SOLICITUD_STATUS.PENDING_INFO,
+    resuelto: SOLICITUD_STATUS.COMPLETED,
+    completado: SOLICITUD_STATUS.COMPLETED,
+    rechazado: SOLICITUD_STATUS.REJECTED,
+  };
+
+  return aliasMap[raw] ?? fallback;
+}
+
 function getPrismaClient() {
   if (!prisma) {
     try {
@@ -89,14 +125,37 @@ async function saveSolicitud(userId, data, tenantId) {
   const client = getPrismaClient();
   if (!client) return null;
 
+  let agenteId = null;
+  if (data.assign_to != null) {
+    const assignRaw = String(data.assign_to);
+    const match = assignRaw.match(/(\d+)/);
+    if (match) {
+      const parsed = Number(match[1]);
+      if (Number.isInteger(parsed) && parsed > 0) agenteId = parsed;
+    }
+  }
+
+  const estado = normalizeSolicitudStatus(data.estado, SOLICITUD_STATUS.OPEN);
+
   return client.solicitud.create({
     data: {
       tenantId,
       userId: userId || null,
+      flowId: data.flow_id != null ? Number(data.flow_id) : null,
+      conversationId: data.conversation_id || null,
+      origin: data.origin || 'manual',
+      titulo: data.title || data.titulo || null,
+      prioridad: data.priority || data.prioridad || null,
+      flowNodeRef: data.flow_node_ref || null,
+      agenteId,
       nombre: data.nombre || null,
       telefonoContacto: data.telefono_contacto || null,
       horario: data.horario || null,
-      estado: 'pendiente',
+      estado,
+      variablesJson: data.variables_json || null,
+      attachmentsJson: Array.isArray(data.attachments_json) ? data.attachments_json : [],
+      internalComments: Array.isArray(data.internal_comments_json) ? data.internal_comments_json : [],
+      completedAt: estado === SOLICITUD_STATUS.COMPLETED ? new Date() : null,
     },
   });
 }
@@ -150,9 +209,10 @@ async function setAgenteEstado(id, tenantId, estado) {
 async function listSolicitudes(tenantId, { estado, userId, page = 1, limit = 20 } = {}) {
   const client = getPrismaClient();
   if (!client) return [];
+  const normalizedEstado = estado ? normalizeSolicitudStatus(estado, '') : '';
   const where = {
     tenantId,
-    ...(estado ? { estado } : {}),
+    ...(normalizedEstado ? { estado: normalizedEstado } : {}),
     ...(userId !== undefined ? { userId: Number(userId) } : {}),
   };
   return client.solicitud.findMany({
@@ -160,7 +220,12 @@ async function listSolicitudes(tenantId, { estado, userId, page = 1, limit = 20 
     orderBy: { createdAt: 'desc' },
     skip: (page - 1) * limit,
     take: limit,
-    include: { agente: true, user: true },
+    include: {
+      agente: true,
+      user: true,
+      flow: { select: { id: true, nombre: true } },
+      conversation: { select: { id: true, status: true, startedAt: true, endedAt: true } },
+    },
   });
 }
 
@@ -180,13 +245,150 @@ async function countSolicitudesByEstado(tenantId) {
 async function updateSolicitudEstado(id, tenantId, estado) {
   const client = getPrismaClient();
   if (!client) return null;
-  return client.solicitud.updateMany({ where: { id, tenantId }, data: { estado } });
+  const normalized = normalizeSolicitudStatus(estado, SOLICITUD_STATUS.OPEN);
+  return client.solicitud.updateMany({
+    where: { id, tenantId },
+    data: {
+      estado: normalized,
+      completedAt: normalized === SOLICITUD_STATUS.COMPLETED ? new Date() : null,
+    },
+  });
 }
 
 async function assignAgenteToSolicitud(id, tenantId, agenteId) {
   const client = getPrismaClient();
   if (!client) return null;
   return client.solicitud.updateMany({ where: { id, tenantId }, data: { agenteId } });
+}
+
+async function getSolicitudById(id, tenantId) {
+  const client = getPrismaClient();
+  if (!client) return null;
+  return client.solicitud.findFirst({
+    where: { id, tenantId },
+    include: {
+      agente: true,
+      user: true,
+      flow: { select: { id: true, nombre: true } },
+      conversation: { select: { id: true, status: true, startedAt: true, endedAt: true } },
+    },
+  });
+}
+
+async function getSolicitudDetalle(id, tenantId) {
+  const client = getPrismaClient();
+  if (!client) return null;
+  return client.solicitud.findFirst({
+    where: { id, tenantId },
+    include: {
+      agente: true,
+      user: true,
+      flow: { select: { id: true, nombre: true } },
+      conversation: {
+        include: {
+          flow: { select: { id: true, nombre: true } },
+          events: {
+            orderBy: { createdAt: 'asc' },
+            select: { id: true, nodeRef: true, eventType: true, payload: true, createdAt: true },
+          },
+        },
+      },
+    },
+  });
+}
+
+async function listSolicitudesByConversationId(tenantId, conversationId) {
+  const client = getPrismaClient();
+  if (!client || !conversationId) return [];
+  return client.solicitud.findMany({
+    where: { tenantId, conversationId },
+    orderBy: { createdAt: 'desc' },
+    include: { agente: true },
+  });
+}
+
+async function createOrReuseFlowTask({
+  tenantId,
+  userId,
+  flowId,
+  conversationId,
+  flowNodeRef,
+  sessionKey,
+  title,
+  assignTo,
+  priority,
+  variables,
+  requestedStatus,
+}) {
+  const client = getPrismaClient();
+  if (!client) return null;
+
+  const whereOpen = {
+    tenantId,
+    flowNodeRef: flowNodeRef ?? null,
+    estado: { in: SOLICITUD_ACTIVE_STATUS_VALUES },
+  };
+  if (conversationId) whereOpen.conversationId = conversationId;
+  if (userId != null) whereOpen.userId = userId;
+
+  const existing = await client.solicitud.findFirst({
+    where: whereOpen,
+    orderBy: { createdAt: 'desc' },
+  });
+  if (existing) return { solicitud: existing, created: false };
+
+  let agenteId = null;
+  if (assignTo != null) {
+    const match = String(assignTo).match(/(\d+)/);
+    if (match) {
+      const parsed = Number(match[1]);
+      if (Number.isInteger(parsed) && parsed > 0) agenteId = parsed;
+    }
+  }
+
+  const estado = normalizeSolicitudStatus(requestedStatus, SOLICITUD_STATUS.OPEN);
+  const created = await client.solicitud.create({
+    data: {
+      tenantId,
+      userId: userId ?? null,
+      flowId: flowId ?? null,
+      conversationId: conversationId ?? null,
+      flowNodeRef: flowNodeRef ?? null,
+      origin: 'bot',
+      titulo: title || 'Tarea del flujo',
+      prioridad: priority || 'normal',
+      estado,
+      agenteId,
+      telefonoContacto: sessionKey || null,
+      variablesJson: variables || {},
+      attachmentsJson: [],
+      internalComments: [],
+    },
+  });
+
+  return { solicitud: created, created: true };
+}
+
+async function findTaskForWait({ tenantId, conversationId, userId, flowNodeRef, taskId }) {
+  const client = getPrismaClient();
+  if (!client) return null;
+
+  if (taskId != null) {
+    return client.solicitud.findFirst({
+      where: { id: Number(taskId), tenantId },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  const where = { tenantId };
+  if (conversationId) where.conversationId = conversationId;
+  if (userId != null) where.userId = userId;
+  if (flowNodeRef) where.flowNodeRef = flowNodeRef;
+
+  return client.solicitud.findFirst({
+    where,
+    orderBy: { createdAt: 'desc' },
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -356,7 +558,7 @@ async function findOpenSolicitudForUser(userId, tenantId) {
   const client = getPrismaClient();
   if (!client || !userId) return null;
   return client.solicitud.findFirst({
-    where: { userId, tenantId, estado: { in: ['pendiente', 'urgente'] } },
+    where: { userId, tenantId, estado: { in: SOLICITUD_ACTIVE_STATUS_VALUES } },
     orderBy: { createdAt: 'desc' },
   });
 }
@@ -502,10 +704,18 @@ module.exports = {
   setAgenteEstado,
   setAgenteLastSeen,
   // solicitudes
+  SOLICITUD_STATUS,
+  SOLICITUD_STATUS_VALUES,
+  normalizeSolicitudStatus,
   listSolicitudes,
   countSolicitudesByEstado,
   updateSolicitudEstado,
   assignAgenteToSolicitud,
+  getSolicitudById,
+  getSolicitudDetalle,
+  listSolicitudesByConversationId,
+  createOrReuseFlowTask,
+  findTaskForWait,
   findOpenSolicitudForUser,
   // metrics
   getMetrics,

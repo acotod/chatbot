@@ -105,7 +105,10 @@ function _buildFromVersion(flowVersion) {
     nodesMap[node.id] = {
       id                : node.id,
       type              : node.type ?? 'message',
-      config            : node.config ?? {},
+      config            : {
+        ...(node.config ?? {}),
+        ...(node.action ? { action: node.action } : {}),
+      },
       next              : node.next ?? null,
       branches          : node.branches ?? {},
       llm_classification: node.llm_classification ?? null,

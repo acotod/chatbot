@@ -72,7 +72,7 @@ services:
   # ── Admin panel (Next.js) ────────────────────────────────────────────────────
   admin:
     build:
-      context: ../admin
+      context: ./admin
       args:
         NEXT_PUBLIC_API_URL: "${NEXT_PUBLIC_API_URL:-http://localhost:3200}"
     restart: unless-stopped

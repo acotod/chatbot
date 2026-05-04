@@ -86,6 +86,17 @@ router.get('/', async (req, res, next) => {
         include: {
           flow: { select: { id: true, nombre: true } },
           _count: { select: { events: true } },
+          solicitudes: {
+            select: {
+              id: true,
+              titulo: true,
+              estado: true,
+              prioridad: true,
+              origin: true,
+              createdAt: true,
+            },
+            orderBy: { createdAt: 'desc' },
+          },
         },
       }),
       prisma.conversation.count({ where }),
@@ -103,6 +114,7 @@ router.get('/', async (req, res, next) => {
         ? Math.round((c.endedAt.getTime() - c.startedAt.getTime()) / 1000)
         : null,
       eventCount    : c._count.events,
+      solicitudes   : c.solicitudes,
     }));
 
     return res.json({ data, total, page, limit });
@@ -131,6 +143,13 @@ router.get('/:id', async (req, res, next) => {
         events      : {
           orderBy: { createdAt: 'asc' },
           select : { id: true, nodeRef: true, eventType: true, payload: true, createdAt: true },
+        },
+        solicitudes: {
+          orderBy: { createdAt: 'desc' },
+          include: {
+            agente: { select: { id: true, nombre: true, email: true, estado: true } },
+            user: { select: { id: true, phone: true } },
+          },
         },
       },
     });

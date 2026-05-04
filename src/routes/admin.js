@@ -9,6 +9,7 @@ const requireJwt = require('../middleware/requireJwt');
 const requirePermiso = require('../middleware/requirePermiso');
 const { audit } = require('../services/audit');
 const socketService = require('../services/socketService');
+const wa = require('../services/whatsapp');
 
 // Multer: store logos under /app/uploads/logos (persisted volume in prod)
 const UPLOADS_DIR = path.join(process.cwd(), 'uploads', 'logos');
@@ -65,6 +66,7 @@ function denyIfWrongTenant(req, res, tenantId) {
 
 const AGENDA_TYPES = new Set(['reunion', 'tarea', 'automatizacion', 'webhook']);
 const AGENDA_STATES = new Set(['pendiente', 'en_progreso', 'completado']);
+const SOLICITUD_STATES = new Set(db.SOLICITUD_STATUS_VALUES);
 
 function serializeAgendaEvent(event) {
     return {
@@ -142,6 +144,60 @@ async function runAgendaStartHooks({ tenantId, event, actorAdminUserId }) {
             metadata: { error: err.message },
         });
     }
+}
+
+async function sendFlowContentToUser({ tenantId, userPhone, content }) {
+    if (!userPhone || !content) return;
+
+    const creds = await db.getConfig(tenantId, 'wa_credentials');
+    const phoneNumberId = creds?.valor?.phoneNumberId;
+    const accessToken = creds?.valor?.accessToken;
+    if (!phoneNumberId || !accessToken) return;
+
+    if (content.type === 'text' || content.type === 'end' || content.type === 'handoff') {
+        const text = String(content.text || '').trim();
+        if (text) await wa.sendTextMessage(phoneNumberId, userPhone, text, accessToken);
+        return;
+    }
+
+    if (content.type === 'buttons' && Array.isArray(content.buttons) && content.buttons.length > 0) {
+        await wa.sendButtonMessage(phoneNumberId, userPhone, content.text || 'Selecciona una opción', content.buttons.slice(0, 3), accessToken);
+        return;
+    }
+
+    if (content.type === 'list' && Array.isArray(content.sections) && content.sections.length > 0) {
+        const firstSection = content.sections[0];
+        const rows = Array.isArray(firstSection?.rows) ? firstSection.rows : [];
+        const fallbackButtons = rows.slice(0, 3).map((row) => ({ id: row.id, title: row.title }));
+        if (fallbackButtons.length > 0) {
+            await wa.sendButtonMessage(phoneNumberId, userPhone, content.text || 'Selecciona una opción', fallbackButtons, accessToken);
+        }
+    }
+}
+
+async function resumeFlowForCompletedTask({ tenantId, solicitud }) {
+    if (!solicitud || solicitud.origin !== 'bot' || !solicitud.userId) return;
+
+    const { executeStep } = require('../services/flowEngine');
+
+    const result = await executeStep({
+        tenantId,
+        currentNodeId: null,
+        input: '',
+        userId: solicitud.userId,
+        sessionKey: solicitud.user?.phone || String(solicitud.userId),
+        _conversationId: solicitud.conversationId || undefined,
+    });
+
+    if (result?.content && solicitud.user?.phone) {
+        await sendFlowContentToUser({ tenantId, userPhone: solicitud.user.phone, content: result.content });
+    }
+
+    socketService.emit(tenantId, 'FLOW_RESUMED', {
+        solicitudId: solicitud.id,
+        conversationId: solicitud.conversationId || null,
+        nodeId: result?.nodeId ?? null,
+    });
 }
 
 // ---------------------------------------------------------------------------
@@ -349,13 +405,23 @@ router.post('/tenants/:slug/solicitudes', requirePermiso('EDIT_SOLICITUDES'), as
         const tenant = await db.findTenantBySlug(req.params.slug);
         if (!tenant) return res.status(404).json({ error: 'Tenant not found' });
         if (denyIfWrongTenant(req, res, tenant.id)) return;
-        const { userId, nombre, telefonoContacto, horario, estado } = req.body;
+        const { userId, nombre, telefonoContacto, horario, estado, flowId, conversationId, origin, titulo, prioridad, flowNodeRef } = req.body;
         if (!userId) return res.status(400).json({ error: 'userId is required' });
+        const normalizedEstado = db.normalizeSolicitudStatus(estado, db.SOLICITUD_STATUS.OPEN);
+        if (!SOLICITUD_STATES.has(normalizedEstado)) {
+            return res.status(400).json({ error: `estado must be one of: ${Array.from(SOLICITUD_STATES).join(', ')}` });
+        }
         const solicitud = await db.saveSolicitud(Number(userId), {
             nombre: nombre || null,
             telefono_contacto: telefonoContacto || null,
             horario: horario || null,
-            estado: estado || 'pendiente',
+            estado: normalizedEstado,
+            flow_id: flowId != null ? Number(flowId) : null,
+            conversation_id: conversationId || null,
+            origin: origin || 'manual',
+            title: titulo || null,
+            priority: prioridad || null,
+            flow_node_ref: flowNodeRef || null,
         }, tenant.id);
         audit({ adminUserId: req.admin?.adminUserId, tenantId: tenant.id, accion: 'CREATE_SOLICITUD', entidad: 'solicitud', entidadId: String(solicitud.id), ip: req.ip, userAgent: req.headers['user-agent'], metadata: { userId, nombre } });
         socketService.emit(tenant.id, 'SOLICITUD_CREATED', { solicitud });
@@ -384,6 +450,22 @@ router.get('/tenants/:slug/solicitudes', requirePermiso('VIEW_SOLICITUDES'), asy
     }
 });
 
+// GET /admin/tenants/:slug/solicitudes/:id — full detail for CRM-like view
+router.get('/tenants/:slug/solicitudes/:id', requirePermiso('VIEW_SOLICITUDES'), async (req, res, next) => {
+    try {
+        const tenant = await db.findTenantBySlug(req.params.slug);
+        if (!tenant) return res.status(404).json({ error: 'Tenant not found' });
+        if (denyIfWrongTenant(req, res, tenant.id)) return;
+
+        const solicitud = await db.getSolicitudDetalle(Number(req.params.id), tenant.id);
+        if (!solicitud) return res.status(404).json({ error: 'Solicitud not found' });
+
+        return res.json(solicitud);
+    } catch (err) {
+        next(err);
+    }
+});
+
 // PATCH /admin/tenants/:slug/solicitudes/:id/estado
 router.patch('/tenants/:slug/solicitudes/:id/estado', requirePermiso('EDIT_SOLICITUDES'), async (req, res, next) => {
     try {
@@ -392,10 +474,23 @@ router.patch('/tenants/:slug/solicitudes/:id/estado', requirePermiso('EDIT_SOLIC
         if (denyIfWrongTenant(req, res, tenant.id)) return;
         const { estado } = req.body;
         if (!estado) return res.status(400).json({ error: 'estado is required' });
-        const result = await db.updateSolicitudEstado(Number(req.params.id), tenant.id, estado);
+        const normalizedEstado = db.normalizeSolicitudStatus(estado, '');
+        if (!normalizedEstado || !SOLICITUD_STATES.has(normalizedEstado)) {
+            return res.status(400).json({ error: `estado must be one of: ${Array.from(SOLICITUD_STATES).join(', ')}` });
+        }
+
+        const result = await db.updateSolicitudEstado(Number(req.params.id), tenant.id, normalizedEstado);
+        const solicitud = await db.getSolicitudById(Number(req.params.id), tenant.id);
+        if (!solicitud) return res.status(404).json({ error: 'Solicitud not found' });
+
         // Audit + real-time
-        audit({ adminUserId: req.admin?.adminUserId, tenantId: tenant.id, accion: 'UPDATE_SOLICITUD_ESTADO', entidad: 'solicitud', entidadId: req.params.id, ip: req.ip, userAgent: req.headers['user-agent'], metadata: { estado } });
-        socketService.emit(tenant.id, 'STATUS_UPDATED', { solicitudId: Number(req.params.id), estado });
+        audit({ adminUserId: req.admin?.adminUserId, tenantId: tenant.id, accion: 'UPDATE_SOLICITUD_ESTADO', entidad: 'solicitud', entidadId: req.params.id, ip: req.ip, userAgent: req.headers['user-agent'], metadata: { estado: normalizedEstado } });
+        socketService.emit(tenant.id, 'STATUS_UPDATED', { solicitudId: Number(req.params.id), estado: normalizedEstado });
+
+        if (normalizedEstado === db.SOLICITUD_STATUS.COMPLETED) {
+            await resumeFlowForCompletedTask({ tenantId: tenant.id, solicitud });
+        }
+
         res.json(result);
     } catch (err) {
         next(err);

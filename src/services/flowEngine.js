@@ -34,6 +34,7 @@ const { executeNode }         = require('../engine/nodeExecutors');
 const contextStore            = require('../engine/contextStore');
 const integrationRunner       = require('../engine/integrationRunner');
 const convLogger              = require('../engine/conversationLogger');
+const db                      = require('./database');
 const logger                  = require('../utils/logger');
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -120,6 +121,21 @@ async function executeStep({ tenantId, currentNodeId, input, userId, sessionKey,
       llmService,
       integrationRunner,
     });
+
+    if (execResult?.control?.type === 'task') {
+      execResult = await _handleTaskControl({
+        tenantId,
+        flowDef,
+        node,
+        nodeRef: resolvedNodeRef,
+        execResult,
+        variables,
+        updatedVarsBase: execResult.updatedVars ?? {},
+        conversationId,
+        userId,
+        sessionKey,
+      });
+    }
   } catch (err) {
     logger.error({ tenantId, nodeRef: resolvedNodeRef, message: err.message }, 'flowEngine: node execution error');
     // Log error event before returning
@@ -190,7 +206,7 @@ async function executeStep({ tenantId, currentNodeId, input, userId, sessionKey,
     });
   }
 
-  if (!execResult.output && !execResult.terminal) {
+  if (!execResult.output && !execResult.terminal && !execResult.paused) {
     // Condition/action nodes with no output — advance silently
     if (execResult.nextNodeId) {
       return executeStep({
@@ -292,6 +308,24 @@ async function _logNodeEvent(conversationId, tenantId, nodeRef, node, input, exe
       };
       break;
 
+    case 'task': {
+      const action = execResult?.control?.action ?? node.config?.action ?? 'task';
+      if (action === 'create_task') {
+        eventType = EVENT.TASK_CREATED;
+      } else if (execResult?.paused) {
+        eventType = EVENT.TASK_WAITING;
+      } else {
+        eventType = EVENT.TASK_COMPLETED;
+      }
+      payload = {
+        action,
+        task_id: updatedVars?.task_id ?? null,
+        task_status: updatedVars?.task_status ?? null,
+        title: node.config?.title ?? null,
+      };
+      break;
+    }
+
     case 'llm':
       eventType = EVENT.LLM_CALL;
       payload   = {
@@ -323,6 +357,91 @@ function _toIntOrNull(ref) {
   if (ref == null) return null;
   const n = parseInt(ref, 10);
   return Number.isNaN(n) ? null : n;
+}
+
+async function _handleTaskControl({
+  tenantId,
+  flowDef,
+  node,
+  nodeRef,
+  execResult,
+  variables,
+  updatedVarsBase,
+  conversationId,
+  userId,
+  sessionKey,
+}) {
+  const action = execResult.control?.action;
+  const cfg = execResult.control?.config ?? {};
+
+  if (action === 'create_task') {
+    const created = await db.createOrReuseFlowTask({
+      tenantId,
+      userId,
+      flowId: flowDef.flowId,
+      conversationId,
+      flowNodeRef: nodeRef,
+      sessionKey,
+      title: cfg.title,
+      assignTo: cfg.assign_to,
+      priority: cfg.priority,
+      variables,
+      requestedStatus: cfg.status,
+    });
+
+    const solicitud = created?.solicitud ?? null;
+    const updatedVars = {
+      ...updatedVarsBase,
+      task_id: solicitud?.id ?? null,
+      task_status: solicitud?.estado ?? null,
+      task_origin: solicitud?.origin ?? 'bot',
+    };
+
+    return {
+      ...execResult,
+      output: cfg.user_message ? { type: 'text', text: String(cfg.user_message) } : execResult.output,
+      updatedVars,
+    };
+  }
+
+  if (action === 'wait_for_task') {
+    const targetStatus = db.normalizeSolicitudStatus(cfg.status, db.SOLICITUD_STATUS.COMPLETED);
+    const variableTaskId = cfg.task_id_var ? variables[cfg.task_id_var] : null;
+    const task = await db.findTaskForWait({
+      tenantId,
+      conversationId,
+      userId,
+      flowNodeRef: cfg.task_node_ref ?? nodeRef,
+      taskId: variableTaskId ?? variables.task_id ?? null,
+    });
+
+    const currentStatus = task?.estado ? db.normalizeSolicitudStatus(task.estado, db.SOLICITUD_STATUS.OPEN) : null;
+    const matched = currentStatus === targetStatus;
+
+    const updatedVars = {
+      ...updatedVarsBase,
+      task_id: task?.id ?? variables.task_id ?? null,
+      task_status: currentStatus,
+    };
+
+    if (matched) {
+      return {
+        ...execResult,
+        updatedVars,
+        paused: false,
+      };
+    }
+
+    return {
+      ...execResult,
+      nextNodeId: node.id,
+      output: cfg.wait_message ? { type: 'text', text: String(cfg.wait_message) } : null,
+      updatedVars,
+      paused: true,
+    };
+  }
+
+  return execResult;
 }
 
 /**
