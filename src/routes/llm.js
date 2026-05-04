@@ -384,13 +384,39 @@ router.post('/generate-flow', requirePermiso('MANAGE_LLM_RESCUE'), [
     if (!result) {
       const cfg = await getLlmConfig(resolvedTenantId);
       if (!cfg) {
-        return res.status(503).json({ error: 'LLM not configured or unavailable for this tenant' });
+        const json = buildDeterministicFallbackFlow(prompt);
+        audit({
+          adminUserId : req.admin.adminUserId,
+          tenantId: resolvedTenantId,
+          accion      : 'GENERATE_FLOW',
+          entidad     : 'flow',
+          entidadId   : null,
+          metadata    : { provider: 'fallback', model: 'deterministic-v1', promptLen: prompt.length, llmUnavailable: true, reason: 'not_configured' },
+        });
+        return res.json({
+          json,
+          provider: 'fallback',
+          model: 'deterministic-v1',
+          warning: 'LLM no configurado o no disponible. Se generó un flujo base para que puedas continuar.',
+          fallback: true,
+        });
       }
       logger.warn({ tenantId: resolvedTenantId, provider: cfg.provider, model: cfg.model }, 'llm/generate-flow: provider returned null');
-      return res.status(503).json({
-        error: 'LLM provider temporarily unavailable. Retry in a few seconds.',
-        provider: cfg.provider,
-        model: cfg.model,
+      const json = buildDeterministicFallbackFlow(prompt);
+      audit({
+        adminUserId : req.admin.adminUserId,
+        tenantId: resolvedTenantId,
+        accion      : 'GENERATE_FLOW',
+        entidad     : 'flow',
+        entidadId   : null,
+        metadata    : { provider: 'fallback', model: 'deterministic-v1', promptLen: prompt.length, llmUnavailable: true, llmProvider: cfg.provider, llmModel: cfg.model },
+      });
+      return res.json({
+        json,
+        provider: 'fallback',
+        model: 'deterministic-v1',
+        warning: 'Proveedor LLM temporalmente no disponible. Se generó un flujo base para que puedas continuar.',
+        fallback: true,
       });
     }
 
@@ -411,6 +437,90 @@ router.post('/generate-flow', requirePermiso('MANAGE_LLM_RESCUE'), [
 
 function tryParseJson(str) {
   try { return JSON.parse(str); } catch { return { raw: str }; }
+}
+
+function buildDeterministicFallbackFlow(prompt) {
+  const cleanPrompt = String(prompt || '').trim().slice(0, 220);
+  const intro = cleanPrompt
+    ? `Te ayudo con tu solicitud: ${cleanPrompt}. Elige una opcion para continuar.`
+    : 'Te ayudo con tu solicitud. Elige una opcion para continuar.';
+
+  return {
+    version: '7.1',
+    data_api_version: '3.0',
+    routing_model: {
+      INIT: ['CAPTURAR_DATOS', 'SOPORTE_HUMANO', 'CIERRE'],
+      CAPTURAR_DATOS: ['CIERRE'],
+      SOPORTE_HUMANO: ['CIERRE'],
+      CIERRE: [],
+    },
+    screens: [
+      {
+        id: 'INIT',
+        title: 'Bienvenida',
+        terminal: false,
+        layout: {
+          type: 'SingleColumnLayout',
+          children: [
+            { type: 'TextHeading', text: 'Inicio' },
+            { type: 'TextBody', text: intro },
+            {
+              type: 'RadioButtonsGroup',
+              name: 'accion',
+              label: 'Como prefieres continuar?',
+              'data-source': [
+                { id: 'capturar_datos', title: 'Completar datos' },
+                { id: 'soporte_humano', title: 'Hablar con soporte' },
+                { id: 'cerrar', title: 'Finalizar' },
+              ],
+            },
+            { type: 'Footer', label: 'Continuar', 'on-click-action': { name: 'navigate', next: { type: 'screen', name: 'CAPTURAR_DATOS' } } },
+          ],
+        },
+      },
+      {
+        id: 'CAPTURAR_DATOS',
+        title: 'Datos',
+        terminal: false,
+        layout: {
+          type: 'SingleColumnLayout',
+          children: [
+            { type: 'TextHeading', text: 'Datos principales' },
+            { type: 'TextBody', text: 'Comparte la informacion clave para completar tu solicitud.' },
+            { type: 'TextInput', name: 'nombre', label: 'Nombre' },
+            { type: 'TextInput', name: 'detalle', label: 'Detalle de la solicitud' },
+            { type: 'Footer', label: 'Enviar', 'on-click-action': { name: 'navigate', next: { type: 'screen', name: 'CIERRE' } } },
+          ],
+        },
+      },
+      {
+        id: 'SOPORTE_HUMANO',
+        title: 'Soporte',
+        terminal: false,
+        layout: {
+          type: 'SingleColumnLayout',
+          children: [
+            { type: 'TextHeading', text: 'Soporte humano' },
+            { type: 'TextBody', text: 'Te conectaremos con un agente para continuar.' },
+            { type: 'Footer', label: 'Continuar', 'on-click-action': { name: 'navigate', next: { type: 'screen', name: 'CIERRE' } } },
+          ],
+        },
+      },
+      {
+        id: 'CIERRE',
+        title: 'Listo',
+        terminal: true,
+        layout: {
+          type: 'SingleColumnLayout',
+          children: [
+            { type: 'TextHeading', text: 'Solicitud recibida' },
+            { type: 'TextBody', text: 'Gracias. Tu solicitud fue registrada.' },
+            { type: 'Footer', label: 'Finalizar', 'on-click-action': { name: 'complete' } },
+          ],
+        },
+      },
+    ],
+  };
 }
 
 module.exports = router;
