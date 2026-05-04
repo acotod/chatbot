@@ -20,10 +20,10 @@ const logger = require('../utils/logger');
 /**
  * Route a WhatsApp user input through the active chatbot engine.
  *
- * @param {{ tenantId: string, userId: number, input: string|null }} opts
+ * @param {{ tenantId: string, userId: number, input: string|null, phone?: string }} opts
  * @returns {Promise<{ response: object|null, fallbackToHuman: boolean }>}
  */
-async function routeMessage({ tenantId, userId, input }) {
+async function routeMessage({ tenantId, userId, input, phone }) {
   // Check if chatbot is enabled for this tenant
   const motorCfg = await db.getConfig(tenantId, 'motor_config');
   const engine = motorCfg?.valor?.engine ?? 'flow_engine';
@@ -32,13 +32,19 @@ async function routeMessage({ tenantId, userId, input }) {
     return { response: null, fallbackToHuman: false };
   }
 
-  // Load current conversation context
+  // Load current conversation context (legacy path still uses currentNodeId)
   const ctx = await db.getConversationContext(tenantId, userId);
   const currentNodeId = ctx?.currentNodeId ?? null;
 
   let result;
   try {
-    result = await executeStep({ tenantId, currentNodeId, input: input ?? '' });
+    result = await executeStep({
+      tenantId,
+      currentNodeId,
+      input     : input ?? '',
+      userId,
+      sessionKey: phone ?? String(userId),
+    });
   } catch (err) {
     logger.error('chatbotRouter: flow engine error', {
       tenantId,
@@ -70,8 +76,11 @@ async function routeMessage({ tenantId, userId, input }) {
     return { response: content, fallbackToHuman: false };
   }
 
-  // Update context to new node (only for non-terminal nodes)
-  await db.setConversationContext(tenantId, userId, { currentNodeId: result.nodeId });
+  // For legacy flows only: update ConversationContext.currentNodeId.
+  // For versioned flows, ContextStore already saved state inside executeStep.
+  if (typeof result.nodeId === 'number') {
+    await db.setConversationContext(tenantId, userId, { currentNodeId: result.nodeId });
+  }
 
   return { response: content, fallbackToHuman: false };
 }

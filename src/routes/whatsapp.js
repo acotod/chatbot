@@ -316,6 +316,7 @@ async function _runChatbot({ tenant, userId, phone, userInput, phoneNumberId, ac
     tenantId: tenant.id,
     userId,
     input: userInput,
+    phone,
   });
 
   if (fallbackToHuman) {

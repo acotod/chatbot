@@ -1,136 +1,212 @@
 'use strict';
 /**
- * Dynamic flow engine — Hybrid Rules + LLM.
+ * Flow Engine — enterprise orchestrator (hybrid JSON-driven + legacy fallback).
  *
- * Node navigation strategy (evaluated in order):
- *   1. Button / menu selection  → edge where condition === input  (deterministic)
- *   2. Default edge             → edge with no condition           (deterministic)
- *   3. LLM classification       → when node.content.llm_classification is defined
- *                                  and the user typed free text, classify intent
- *                                  and match edge where condition === classified_intent
+ * Architecture (fully decoupled):
  *
- * Node content examples:
+ *   FlowLoader        → loads flow definition (JSONB version OR legacy node/edge)
+ *   NodeExecutors     → pure stateless functions per node type
+ *   ContextStore      → reads/writes execution state (FlowExecution or ConversationContext)
+ *   IntegrationRunner → resolves and executes dynamic API integrations
  *
- *   // Deterministic menu node
- *   { "type": "menu", "text": "¿Cómo te sentís?",
- *     "buttons": [{"id": "estres", "title": "Estresado"},
- *                 {"id": "info",   "title": "Solo información"}] }
+ * Public interface (backward compatible with chatbotRouter):
  *
- *   // LLM classification node (free text → intent → next node)
- *   { "type": "input", "text": "Contame qué te pasa hoy",
- *     "llm_classification": { "intents": ["crisis", "estres", "info"] } }
- *   Edges from this node should have condition = "crisis" | "estres" | "info"
+ *   executeStep({ tenantId, currentNodeId, input })
+ *     → { nodeId, content } | null
  *
- *   // LLM generation node (generate a dynamic reply)
- *   { "type": "llm", "system_prompt": "You are a support agent...",
- *     "user_template": "User said: {{input}}" }
- *   The engine will call the LLM, embed the reply in content.text, and advance.
+ * The `currentNodeId` parameter is kept for backward compat.
+ * For versioned flows, nodeId is a string (ej: "node_1"); for legacy flows
+ * it remains an integer string representation.
+ *
+ * Node types supported:
+ *   start, message, input, menu, condition, action, llm, delay, end, handoff
+ *
+ * Node content returned (content.type):
+ *   "text"    → { type, text }
+ *   "buttons" → { type, text, buttons: [{id, title}] }
+ *   "list"    → { type, text, sections: [{title, rows: [{id, title}]}] }
+ *   "handoff" → { type, text }   triggers human fallback in chatbotRouter
+ *   "end"     → { type, text }   ends conversation
  */
-const { PrismaClient } = require('@prisma/client');
-const logger = require('../utils/logger');
 
-const prisma = new PrismaClient();
+const { loadFlowDefinition } = require('../engine/flowLoader');
+const { executeNode }         = require('../engine/nodeExecutors');
+const contextStore            = require('../engine/contextStore');
+const integrationRunner       = require('../engine/integrationRunner');
+const logger                  = require('../utils/logger');
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Public: executeStep
+// ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * Find the active flow for a tenant.
- */
-async function getActiveFlow(tenantId) {
-  return prisma.flow.findFirst({
-    where: { tenantId, activo: true },
-    include: {
-      nodes: true,
-      edges: true,
-    },
-    orderBy: { version: 'desc' },
-  });
-}
-
-/**
- * Execute one step of the flow.
+ * Execute one conversational step for a tenant user.
  *
- * @param {object} opts
+ * @param {object}      opts
  * @param {string}      opts.tenantId
- * @param {number|null} opts.currentNodeId  - null means "start"
- * @param {string}      opts.input          - user's answer / button id / free text
- * @returns {{ nodeId, content } | null}
+ * @param {number|null} opts.currentNodeId  - null = start of conversation (legacy compat)
+ * @param {string}      opts.input          - user's message / button id
+ * @param {number}      [opts.userId]       - DB user id (needed for ContextStore)
+ * @param {string}      [opts.sessionKey]   - phone or other session identifier
+ * @returns {Promise<{ nodeId: string, content: object } | null>}
  */
-async function executeStep({ tenantId, currentNodeId, input }) {
-  // Lazy-load to avoid circular dependency (llmService → (nothing) → flowEngine)
-  const { classifyIntent, callLlm } = require('./llmService');
+async function executeStep({ tenantId, currentNodeId, input, userId, sessionKey }) {
+  // Lazy-load LLM service to avoid circular imports
+  const llmService = require('./llmService');
 
-  const flow = await getActiveFlow(tenantId);
-  if (!flow) {
+  // ── Load flow definition ─────────────────────────────────────────────────
+  const flowDef = await loadFlowDefinition(tenantId);
+  if (!flowDef) {
     logger.warn({ tenantId }, 'flowEngine: no active flow found');
     return null;
   }
 
-  // ── Start: find first node ───────────────────────────────────────────────────
-  if (!currentNodeId) {
-    const startNode = flow.nodes.find((n) => n.type === 'start') ?? flow.nodes[0];
-    if (!startNode) return null;
-    return { nodeId: startNode.id, content: startNode.content };
+  // ── Resolve current node ─────────────────────────────────────────────────
+  // For versioned flows: load state from FlowExecution.
+  // For legacy flows: currentNodeId is the DB integer passed by chatbotRouter.
+  let resolvedNodeRef = null;
+
+  if (flowDef.source === 'version' && userId != null) {
+    const state = await contextStore.getState(tenantId, userId, 'version', flowDef.flowId);
+    resolvedNodeRef = state.currentNodeRef;
+  } else {
+    // Legacy: convert integer id → string key used in nodesMap
+    resolvedNodeRef = currentNodeId != null ? String(currentNodeId) : null;
   }
 
-  // ── Current node ─────────────────────────────────────────────────────────────
-  const currentNode = flow.nodes.find((n) => n.id === currentNodeId);
-  const content     = currentNode?.content ?? {};
-  const edges       = flow.edges.filter((e) => e.sourceNodeId === currentNodeId);
+  // ── Determine the node to execute ────────────────────────────────────────
+  // null = start of conversation → use entryPoint
+  if (!resolvedNodeRef) {
+    resolvedNodeRef = flowDef.entryPoint;
+  }
 
-  // ── 1. Deterministic: direct condition match ──────────────────────────────────
-  let matchedEdge =
-    edges.find((e) => e.condition && e.condition === input) ??
-    edges.find((e) => !e.condition); // default / unconditional edge
+  const node = flowDef.nodesMap[resolvedNodeRef];
+  if (!node) {
+    logger.warn({ tenantId, resolvedNodeRef }, 'flowEngine: node not found in definition');
+    return null;
+  }
 
-  // ── 2. LLM classification: free text → intent → edge ─────────────────────────
-  if (!matchedEdge && content.llm_classification?.intents?.length && input?.trim()) {
-    logger.info({ tenantId, currentNodeId, input }, 'flowEngine: routing via LLM classification');
+  // ── Get current execution state (variables, executionId) ─────────────────
+  let state = { source: flowDef.source === 'version' ? 'execution' : 'legacy',
+                executionId: null, variables: {}, currentNodeId: null };
 
-    const intent = await classifyIntent(tenantId, input.trim(), content.llm_classification.intents);
+  if (userId != null) {
+    state = await contextStore.getState(tenantId, userId, flowDef.source, flowDef.flowId);
+  }
 
-    if (intent) {
-      matchedEdge = edges.find((e) => e.condition === intent);
-    }
+  const variables = state.variables ?? {};
 
-    // Fallback: default edge if intent didn't match any edge condition
-    if (!matchedEdge) {
-      matchedEdge = edges.find((e) => !e.condition);
-      if (intent && !matchedEdge) {
-        logger.warn({ tenantId, currentNodeId, intent }, 'flowEngine: LLM intent has no mapped edge — end of flow');
-      }
+  // ── Execute the node ─────────────────────────────────────────────────────
+  const t0 = Date.now();
+  let execResult;
+
+  try {
+    execResult = await executeNode(node, {
+      input,
+      variables,
+      tenantId,
+      llmService,
+      integrationRunner,
+    });
+  } catch (err) {
+    logger.error({ tenantId, nodeRef: resolvedNodeRef, message: err.message }, 'flowEngine: node execution error');
+    return null;
+  }
+
+  const durationMs = Date.now() - t0;
+
+  // ── Merge updated variables ───────────────────────────────────────────────
+  const updatedVars = { ...variables, ...(execResult.updatedVars ?? {}) };
+
+  // ── Persist state ─────────────────────────────────────────────────────────
+  if (userId != null) {
+    const nextRef  = execResult.terminal ? null : (execResult.nextNodeId ?? null);
+    const { executionId } = await contextStore.saveState(tenantId, userId, {
+      source        : state.source,
+      executionId   : state.executionId,
+      flowId        : flowDef.flowId,
+      flowVersionId : flowDef.versionId,
+      sessionKey    : sessionKey ?? String(userId),
+      currentNodeRef: nextRef,
+      currentNodeId : nextRef != null ? _toIntOrNull(nextRef) : null,
+      variables     : updatedVars,
+      terminal      : execResult.terminal,
+    });
+
+    // Append execution log for versioned flows
+    if (state.source === 'execution' || flowDef.source === 'version') {
+      await contextStore.appendLog(executionId ?? state.executionId, tenantId, {
+        nodeRef     : resolvedNodeRef,
+        nodeType    : node.type,
+        input       : input != null ? { raw: input } : null,
+        output      : execResult.output,
+        durationMs,
+        status      : 'ok',
+        errorMessage: null,
+      });
     }
   }
 
-  // ── 3. LLM generation: build dynamic reply inline ────────────────────────────
-  if (content.type === 'llm' && content.system_prompt) {
-    const userMsg = content.user_template
-      ? content.user_template.replace('{{input}}', input ?? '')
-      : (input ?? '');
-
-    const llmResult = await callLlm(tenantId, content.system_prompt, userMsg);
-    const replyText = llmResult?.text ?? content.fallback_text ?? 'No pude generar una respuesta. Un agente te contactará.';
-
-    // Advance to the next node (default edge) while injecting the generated text
-    if (!matchedEdge) {
-      matchedEdge = edges.find((e) => !e.condition);
-    }
-    if (!matchedEdge) return null;
-
-    const nextNode = flow.nodes.find((n) => n.id === matchedEdge.targetNodeId);
-    if (!nextNode) return null;
-
-    return {
-      nodeId : nextNode.id,
-      content: { ...nextNode.content, llm_reply: replyText },
-    };
+  // ── For start nodes: auto-advance to entryPoint message ──────────────────
+  // start nodes have no output — advance one more step automatically
+  if (node.type === 'start' && execResult.nextNodeId) {
+    return executeStep({
+      tenantId,
+      currentNodeId: _toIntOrNull(execResult.nextNodeId),
+      input,
+      userId,
+      sessionKey,
+    });
   }
 
-  if (!matchedEdge) return null; // end of flow
+  if (!execResult.output && !execResult.terminal) {
+    // Condition/action nodes with no output — advance silently
+    if (execResult.nextNodeId) {
+      return executeStep({
+        tenantId,
+        currentNodeId: _toIntOrNull(execResult.nextNodeId),
+        input,
+        userId,
+        sessionKey,
+      });
+    }
+    return null;
+  }
 
-  const nextNode = flow.nodes.find((n) => n.id === matchedEdge.targetNodeId);
-  if (!nextNode) return null;
+  // ── Build nodeId for caller (chatbotRouter stores this as currentNodeId) ──
+  const outputNodeId = execResult.nextNodeId
+    ? _toIntOrNull(execResult.nextNodeId) ?? execResult.nextNodeId
+    : null;
 
-  return { nodeId: nextNode.id, content: nextNode.content };
+  return {
+    nodeId : outputNodeId,
+    content: execResult.output,
+  };
 }
 
-module.exports = { getActiveFlow, executeStep };
+// ─────────────────────────────────────────────────────────────────────────────
+// Helpers
+// ─────────────────────────────────────────────────────────────────────────────
+
+function _toIntOrNull(ref) {
+  if (ref == null) return null;
+  const n = parseInt(ref, 10);
+  return Number.isNaN(n) ? null : n;
+}
+
+/**
+ * @deprecated  Use executeStep. Kept for any direct callers of getActiveFlow.
+ */
+async function getActiveFlow(tenantId) {
+  const { PrismaClient } = require('@prisma/client');
+  const prisma = new PrismaClient();
+  return prisma.flow.findFirst({
+    where  : { tenantId, activo: true },
+    include: { nodes: true, edges: true },
+    orderBy: { version: 'desc' },
+  });
+}
+
+module.exports = { executeStep, getActiveFlow };
+
 

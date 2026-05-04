@@ -34,6 +34,10 @@ model Tenant {
   eventLogs            EventLog[]
   deadLetterEntries    DeadLetterQueue[]
   flowSessions         FlowSession[]
+  flowVersions         FlowVersion[]
+  flowExecutions       FlowExecution[]
+  integrations         Integration[]
+  flowVariables        FlowVariable[]
 
   @@map("tenants")
 }
@@ -189,6 +193,7 @@ model AdminUser {
   wabaRescueLogs  WabaRescueLog[]
   agendaEventsCreated AgendaEvent[]       @relation("AgendaEventCreatedBy")
   agendaEventLogs     AgendaEventLog[]
+  flowVersionsCreated FlowVersion[]       @relation("FlowVersionCreatedBy")
 
   @@map("admin_users")
 }
@@ -283,6 +288,9 @@ model Flow {
   edges        FlowEdge[]
   sessions     FlowSession[]
   agendaEvents AgendaEvent[]
+  flowVersions FlowVersion[]
+  executions   FlowExecution[]
+  variables    FlowVariable[]
 
   @@map("flows")
 }
@@ -423,15 +431,19 @@ model Mensaje {
 // ── Chatbot state ─────────────────────────────────────────────────────────────
 
 model ConversationContext {
-  id            Int      @id @default(autoincrement())
-  tenantId      String   @map("tenant_id") @db.Uuid
-  userId        Int      @map("user_id")
-  currentNodeId Int?     @map("current_node_id")
-  engine        String   @default("flow_engine") @db.VarChar(30)
-  variables     Json     @default("{}")
-  updatedAt     DateTime @default(now()) @updatedAt @map("updated_at")
-  tenant        Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id               Int      @id @default(autoincrement())
+  tenantId         String   @map("tenant_id") @db.Uuid
+  userId           Int      @map("user_id")
+  currentNodeId    Int?     @map("current_node_id")
+  /// For JSONB-based flows: string node ref (e.g. "node_1")
+  currentNodeRef   String?  @map("current_node_ref") @db.VarChar(120)
+  /// Link to active FlowExecution record (enterprise engine)
+  flowExecutionId  Int?     @map("flow_execution_id")
+  engine           String   @default("flow_engine") @db.VarChar(30)
+  variables        Json     @default("{}")
+  updatedAt        DateTime @default(now()) @updatedAt @map("updated_at")
+  tenant           Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([tenantId, userId])
   @@index([tenantId])
@@ -476,4 +488,137 @@ model WabaRescueLog {
 
   @@index([tenantId, createdAt])
   @@map("waba_rescue_logs")
+}
+
+// ── Enterprise: Versionado, Ejecución, Integraciones ─────────────────────────
+
+/// Snapshot inmutable de la definición de un flujo en un momento dado.
+/// La columna `definition` es JSONB y contiene la estructura completa de nodos,
+/// variables e integraciones — el motor de ejecución trabaja SOLO con este JSON.
+model FlowVersion {
+  id                   Int       @id @default(autoincrement())
+  tenantId             String    @map("tenant_id") @db.Uuid
+  flowId               Int       @map("flow_id")
+  versionNumber        Int       @map("version_number")
+  /// Full JSONB: { entry_point, nodes:[{id,type,config,next,integrationRef?}], variables:{}, metadata:{} }
+  definition           Json
+  changelog            String?   @db.Text
+  published            Boolean   @default(false)
+  publishedAt          DateTime? @map("published_at")
+  createdByAdminUserId Int?      @map("created_by_admin_user_id")
+  createdAt            DateTime  @default(now()) @map("created_at")
+  tenant               Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  flow                 Flow      @relation(fields: [flowId], references: [id], onDelete: Cascade)
+  creator              AdminUser? @relation("FlowVersionCreatedBy", fields: [createdByAdminUserId], references: [id], onDelete: SetNull)
+  executions           FlowExecution[]
+
+  @@unique([flowId, versionNumber])
+  @@index([tenantId, flowId, published])
+  @@index([tenantId, createdAt])
+  @@map("flow_versions")
+}
+
+/// Registro de ejecución de un flujo por usuario/sesión.
+/// Reemplaza ConversationContext para flujos versionados (JSONB-based).
+/// `variables` y `context` son JSONB para máxima flexibilidad.
+model FlowExecution {
+  id              Int       @id @default(autoincrement())
+  tenantId        String    @map("tenant_id") @db.Uuid
+  flowId          Int       @map("flow_id")
+  flowVersionId   Int?      @map("flow_version_id")
+  /// Identificador de sesión: phone number, socket id, etc.
+  sessionKey      String    @map("session_key") @db.VarChar(120)
+  /// "active" | "completed" | "error" | "abandoned"
+  status          String    @default("active") @db.VarChar(20)
+  /// ID del nodo actual dentro del JSON (ej: "node_1")
+  currentNodeRef  String?   @map("current_node_ref") @db.VarChar(120)
+  /// Variables de sesión dinámicas (capturadas durante el flujo)
+  variables       Json      @default("{}")
+  /// Contexto extra: intent, metadata de canal, etc.
+  context         Json      @default("{}")
+  errorCount      Int       @default(0) @map("error_count")
+  startedAt       DateTime  @default(now()) @map("started_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+  completedAt     DateTime? @map("completed_at")
+  tenant          Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  flow            Flow      @relation(fields: [flowId], references: [id], onDelete: Cascade)
+  flowVersion     FlowVersion? @relation(fields: [flowVersionId], references: [id], onDelete: SetNull)
+  logs            ExecutionLog[]
+
+  @@unique([tenantId, flowId, sessionKey])
+  @@index([tenantId, status, updatedAt])
+  @@index([flowId, status])
+  @@index([tenantId, updatedAt])
+  @@map("flow_executions")
+}
+
+/// Log atómico por nodo ejecutado dentro de un FlowExecution.
+/// Permite auditoría completa paso a paso y debugging de flujos.
+model ExecutionLog {
+  id           Int      @id @default(autoincrement())
+  executionId  Int      @map("execution_id")
+  tenantId     String   @map("tenant_id") @db.Uuid
+  /// Referencia al nodo en el JSON (ej: "node_3")
+  nodeRef      String   @map("node_ref") @db.VarChar(120)
+  nodeType     String   @map("node_type") @db.VarChar(50)
+  /// Input recibido en este paso
+  input        Json?
+  /// Output generado (texto, respuesta de API, etc.)
+  output       Json?
+  durationMs   Int?     @map("duration_ms")
+  /// "ok" | "error" | "skipped"
+  status       String   @default("ok") @db.VarChar(20)
+  errorMessage String?  @map("error_message") @db.Text
+  createdAt    DateTime @default(now()) @map("created_at")
+  execution    FlowExecution @relation(fields: [executionId], references: [id], onDelete: Cascade)
+
+  @@index([executionId, createdAt])
+  @@index([tenantId, createdAt])
+  @@map("execution_logs")
+}
+
+/// Configuración de integraciones dinámicas (webhooks, REST APIs, OAuth2).
+/// El motor de ejecución resuelve nodos tipo "action" contra esta tabla —
+/// sin hardcode de endpoints, headers ni lógica de autenticación.
+model Integration {
+  id        Int      @id @default(autoincrement())
+  tenantId  String   @map("tenant_id") @db.Uuid
+  nombre    String   @db.VarChar(100)
+  /// "webhook" | "rest_api" | "oauth2" | "apikey"
+  tipo      String   @db.VarChar(30)
+  /// JSONB: { endpoint, method, headers, auth:{type,key?,token?,oauth_config?},
+  ///          body_mapping:{}, response_mapping:{}, timeout_ms, retry_count }
+  config    Json
+  activo    Boolean  @default(true)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, nombre])
+  @@index([tenantId, activo])
+  @@map("integrations")
+}
+
+/// Definición de variables de flujo: globales (flowId=null) o por flujo.
+/// Permite al motor resolver plantillas {{variable}} sin hardcode.
+model FlowVariable {
+  id           Int      @id @default(autoincrement())
+  tenantId     String   @map("tenant_id") @db.Uuid
+  /// null = variable global del tenant
+  flowId       Int?     @map("flow_id")
+  nombre       String   @db.VarChar(100)
+  /// "string" | "number" | "boolean" | "object" | "array"
+  tipo         String   @default("string") @db.VarChar(20)
+  /// Valor por defecto serializado como JSONB
+  valorDefault Json?    @map("valor_default")
+  descripcion  String?  @db.VarChar(255)
+  /// "global" | "flow" | "session"
+  scope        String   @default("flow") @db.VarChar(20)
+  createdAt    DateTime @default(now()) @map("created_at")
+  tenant       Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  flow         Flow?    @relation(fields: [flowId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, flowId, nombre])
+  @@index([tenantId, scope])
+  @@map("flow_variables")
 }
