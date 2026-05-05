@@ -37,7 +37,6 @@ const NAV_ITEMS = [
   { icon: ScrollText, label: "Auditoría", href: "/auditoria" },
   { icon: ShieldCheck, label: "Roles", href: "/roles" },
   { icon: Building2, label: "Tenants", href: "/tenants" },
-  { icon: BarChart2, label: "Flujos", href: "/flujos" },
   { icon: Plug, label: "Integraciones", href: "/integraciones" },
   { icon: Variable, label: "Variables", href: "/variables" },
   { icon: Webhook, label: "WABA Flujos", href: "/waba-flujos" },
