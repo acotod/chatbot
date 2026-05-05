@@ -15,6 +15,7 @@ const conversationsRouter = require('./routes/conversations');
 const calendarRouter       = require('./routes/calendar');
 const integrationsRouter   = require('./routes/integrations');
 const variablesRouter      = require('./routes/variables');
+const flowsRouter          = require('./routes/flows');
 const wabaFlowsRouter      = require('./routes/waba-flows');
 const resolveTenant = require('./middleware/resolveTenant');
 const createRateLimiter = require('./middleware/rateLimiter');
@@ -112,6 +113,7 @@ app.use('/whatsapp', whatsappRouter);
 app.use('/llm', llmRouter);
 
 // Flow management (JWT-protected)
+app.use('/flows', flowsRouter);
 app.use('/integrations', integrationsRouter);
 app.use('/variables', variablesRouter);
 app.use('/waba-flows', wabaFlowsRouter);
