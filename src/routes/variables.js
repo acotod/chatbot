@@ -23,10 +23,31 @@ function tid(req) {
   return req.admin?.tenantId ?? req.user?.tenantId ?? req.user?.tenant_id;
 }
 
-function requireTenantId(req, res) {
-  const tenantId = tid(req);
+/**
+ * Resolves tenantId for the current request.
+ * - Normal admin: returns tenantId from JWT (req.admin.tenantId).
+ * - Superadmin: accepts ?tenantSlug or body.tenantSlug to work across tenants.
+ */
+async function resolveTenantId(req, explicitTenantSlug) {
+  if (!req.admin?.superAdmin) {
+    return tid(req) ?? null;
+  }
+  if (req.admin?.tenantId) return req.admin.tenantId;
+  if (explicitTenantSlug) {
+    const tenant = await prisma.tenant.findUnique({
+      where: { slug: explicitTenantSlug },
+      select: { id: true },
+    });
+    return tenant?.id ?? null;
+  }
+  return null;
+}
+
+async function requireTenantId(req, res) {
+  const slug = req.query.tenantSlug || req.body?.tenantSlug;
+  const tenantId = await resolveTenantId(req, slug);
   if (!tenantId) {
-    res.status(400).json({ error: 'tenantId is required in token context' });
+    res.status(400).json({ error: 'tenantId is required — pass ?tenantSlug= or use a tenant-scoped account' });
     return null;
   }
   return tenantId;
@@ -38,7 +59,7 @@ const VALID_SCOPES = ['global', 'flow', 'session'];
 // GET /variables
 router.get('/', async (req, res, next) => {
   try {
-    const tenantId = requireTenantId(req, res);
+    const tenantId = await requireTenantId(req, res);
     if (!tenantId) return;
     const { flowId, scope } = req.query;
     const where = { tenantId };
@@ -63,7 +84,7 @@ router.get('/', async (req, res, next) => {
 // POST /variables
 router.post('/', async (req, res, next) => {
   try {
-    const tenantId = requireTenantId(req, res);
+    const tenantId = await requireTenantId(req, res);
     if (!tenantId) return;
     const { flowId, nombre, tipo = 'string', valorDefault, descripcion, scope = 'flow' } = req.body;
 
@@ -101,7 +122,7 @@ router.post('/', async (req, res, next) => {
 // PUT /variables/:id
 router.put('/:id', async (req, res, next) => {
   try {
-    const tenantId = requireTenantId(req, res);
+    const tenantId = await requireTenantId(req, res);
     if (!tenantId) return;
     const existing = await prisma.flowVariable.findFirst({
       where: { id: Number(req.params.id), tenantId },
@@ -138,7 +159,7 @@ router.put('/:id', async (req, res, next) => {
 // DELETE /variables/:id
 router.delete('/:id', async (req, res, next) => {
   try {
-    const tenantId = requireTenantId(req, res);
+    const tenantId = await requireTenantId(req, res);
     if (!tenantId) return;
     const existing = await prisma.flowVariable.findFirst({
       where: { id: Number(req.params.id), tenantId },
@@ -155,7 +176,7 @@ router.delete('/:id', async (req, res, next) => {
 // Creates all standard chatbot variables for the tenant (skips already-existing ones).
 router.post('/seed-defaults', async (req, res, next) => {
   try {
-    const tenantId = requireTenantId(req, res);
+    const tenantId = await requireTenantId(req, res);
     if (!tenantId) return;
 
     const DEFAULTS = [
