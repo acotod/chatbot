@@ -83,6 +83,17 @@ interface SimulationStep {
   waiting_for_input?: boolean;
 }
 
+interface CatalogEndpoint {
+  id: string;
+  name: string;
+  method: string;
+  url: string;
+  inputs: string[];
+  outputs: string[];
+  description?: string;
+  sessionInit?: boolean;
+}
+
 type TabKey = "list" | "builder" | "versions" | "simulate" | "import-logs";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -383,107 +394,392 @@ function NodeCard({
 // Sub-component: NodeEditModal
 // ─────────────────────────────────────────────────────────────────────────────
 const NODE_TYPES = ["message", "input", "menu", "condition", "action", "delay", "end", "handoff", "llm"];
+const HTTP_METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE"];
+const CONDITION_OPS = ["equals", "not_equals", "contains", "starts_with", "ends_with", "greater_than", "less_than", "is_empty", "is_not_empty"];
 
 function NodeEditModal({
   node,
   allNodeIds,
-  integrations,
+  catalogEndpoints,
   onSave,
   onClose,
 }: {
   node: Partial<NodeDef>;
   allNodeIds: string[];
-  integrations: { id: number; nombre: string; tipo: string }[];
+  catalogEndpoints: CatalogEndpoint[];
   onSave: (n: NodeDef) => void;
   onClose: () => void;
 }) {
+  const cfg = (node.config ?? {}) as Record<string, unknown>;
   const [id, setId]     = useState(node.id ?? "");
   const [type, setType] = useState(node.type ?? "message");
-  const [configJson, setConfigJson] = useState(JSON.stringify(node.config ?? { text: "" }, null, 2));
   const [next, setNext] = useState(node.next ?? "");
   const [branchesJson, setBranchesJson] = useState(JSON.stringify(node.branches ?? {}, null, 2));
   const [err, setErr]   = useState("");
+  const [showJson, setShowJson] = useState(false);
+  const [rawJson, setRawJson]   = useState(JSON.stringify(cfg, null, 2));
+
+  // per-type state
+  const [text, setText]               = useState(String(cfg.text ?? ""));
+  const [inputText, setInputText]     = useState(String(cfg.text ?? ""));
+  const [inputVar, setInputVar]       = useState(String(cfg.variable ?? ""));
+  const [menuText, setMenuText]       = useState(String(cfg.text ?? ""));
+  const [menuOptions, setMenuOptions] = useState<{ id: string; title: string; next: string }[]>(
+    Array.isArray(cfg.options) ? (cfg.options as { id: string; title: string; next: string }[]) : []
+  );
+  const [condVar, setCondVar]         = useState(String(cfg.variable ?? ""));
+  const [condOp, setCondOp]           = useState(String(cfg.operator ?? "equals"));
+  const [condVal, setCondVal]         = useState(String(cfg.value ?? ""));
+  const [delaySeconds, setDelaySeconds] = useState(Number(cfg.seconds ?? 3));
+  const [endMsg, setEndMsg]           = useState(String(cfg.message ?? ""));
+  const [handoffDept, setHandoffDept] = useState(String(cfg.department ?? ""));
+  const [handoffMsg, setHandoffMsg]   = useState(String(cfg.message ?? ""));
+  const [llmPrompt, setLlmPrompt]     = useState(String(cfg.prompt ?? ""));
+  const [llmVar, setLlmVar]           = useState(String(cfg.variable ?? ""));
+  // action
+  const [actionRef, setActionRef]       = useState(String(cfg.integration_ref ?? ""));
+  const [actionUrl, setActionUrl]       = useState(String((cfg.endpoint ?? (cfg as Record<string,unknown>).url) ?? ""));
+  const [actionMethod, setActionMethod] = useState(String(cfg.method ?? "POST"));
+  const [actionBody, setActionBody]     = useState<{ key: string; value: string }[]>(
+    Object.entries((cfg.body as Record<string, string>) ?? {}).map(([k, v]) => ({ key: k, value: v }))
+  );
+  const [actionResponse, setActionResponse] = useState<{ key: string; value: string }[]>(
+    Object.entries((cfg.response_mapping as Record<string, string>) ?? {}).map(([k, v]) => ({ key: k, value: v }))
+  );
+
+  const selectedEp = catalogEndpoints.find((ep) => ep.id === actionRef);
+
+  function applyEndpoint(ep: CatalogEndpoint) {
+    setActionRef(ep.id);
+    setActionUrl(ep.url);
+    setActionMethod(ep.method);
+    setActionBody(ep.inputs.map((f) => ({ key: f, value: actionBody.find((b) => b.key === f)?.value ?? "" })));
+    setActionResponse(ep.outputs.map((f) => ({ key: f, value: actionResponse.find((r) => r.key === f)?.value ?? `variables.${f}` })));
+  }
+
+  function buildConfig(): Record<string, unknown> {
+    switch (type) {
+      case "message":   return { text };
+      case "input":     return { text: inputText, variable: inputVar };
+      case "menu":      return { text: menuText, options: menuOptions };
+      case "condition": return { variable: condVar, operator: condOp, value: condVal };
+      case "delay":     return { seconds: delaySeconds };
+      case "end":       return { message: endMsg };
+      case "handoff":   return { department: handoffDept, message: handoffMsg };
+      case "llm":       return { prompt: llmPrompt, variable: llmVar };
+      case "action": {
+        const body: Record<string, string> = {};
+        actionBody.forEach((r) => { if (r.key.trim()) body[r.key.trim()] = r.value; });
+        const response_mapping: Record<string, string> = {};
+        actionResponse.forEach((r) => { if (r.key.trim()) response_mapping[r.key.trim()] = r.value; });
+        return { ...(actionRef ? { integration_ref: actionRef } : {}), endpoint: actionUrl, method: actionMethod, body, response_mapping };
+      }
+      default: { try { return JSON.parse(rawJson); } catch { return {}; } }
+    }
+  }
 
   function handleSave() {
     if (!id.trim()) { setErr("El ID del nodo es obligatorio"); return; }
-    let config: Record<string, unknown>;
     let branches: Record<string, string>;
-    try { config = JSON.parse(configJson); } catch { setErr("config JSON inválido"); return; }
     try { branches = JSON.parse(branchesJson); } catch { setErr("branches JSON inválido"); return; }
+    let config: Record<string, unknown>;
+    if (showJson) {
+      try { config = JSON.parse(rawJson); } catch { setErr("config JSON inválido"); return; }
+    } else {
+      config = buildConfig();
+    }
     onSave({ id: id.trim(), type, config, next: next || null, branches });
   }
 
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-xl flex flex-col max-h-[90vh]">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl flex flex-col max-h-[90vh]">
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
           <h2 className="font-semibold text-slate-800">{node.id ? "Editar nodo" : "Nuevo nodo"}</h2>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-600"><X className="w-5 h-5" /></button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => { setRawJson(JSON.stringify(buildConfig(), null, 2)); setShowJson((v) => !v); }}
+              className={`text-xs px-2.5 py-1 rounded-lg border transition ${
+                showJson ? "bg-slate-800 text-white border-slate-700" : "border-slate-200 text-slate-500 hover:bg-slate-50"
+              }`}
+            >
+              {showJson ? "Formulario" : "JSON"}
+            </button>
+            <button onClick={onClose} className="text-slate-400 hover:text-slate-600"><X className="w-5 h-5" /></button>
+          </div>
         </div>
+
         <div className="overflow-y-auto flex-1 px-6 py-4 space-y-4">
+          {/* ID + Type */}
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-xs font-medium text-slate-600 mb-1">ID del nodo</label>
-              <input
-                value={id}
-                onChange={(e) => setId(e.target.value)}
-                placeholder="node_1"
-                className="w-full rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500"
-                disabled={!!node.id}
-              />
+              <input value={id} onChange={(e) => setId(e.target.value)} placeholder="node_1" disabled={!!node.id}
+                className="w-full rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-slate-50" />
             </div>
             <div>
               <label className="block text-xs font-medium text-slate-600 mb-1">Tipo</label>
-              <select
-                value={type}
-                onChange={(e) => setType(e.target.value)}
-                className="w-full rounded-lg border border-slate-200 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
+              <select value={type} onChange={(e) => setType(e.target.value)}
+                className="w-full rounded-lg border border-slate-200 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
                 {NODE_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
               </select>
             </div>
           </div>
 
-          <div>
-            <label className="block text-xs font-medium text-slate-600 mb-1">Config (JSON)</label>
-            {type === "action" && integrations.length > 0 && (
-              <div className="mb-2">
-                <p className="text-xs text-slate-500 mb-1">Integraciones disponibles:</p>
-                <div className="flex flex-wrap gap-1">
-                  {integrations.map((i) => (
-                    <button
-                      key={i.id}
-                      onClick={() => {
-                        try {
-                          const c = JSON.parse(configJson) as Record<string, unknown>;
-                          c.integration_ref = i.nombre;
-                          setConfigJson(JSON.stringify(c, null, 2));
-                        } catch { setConfigJson(JSON.stringify({ integration_ref: i.nombre }, null, 2)); }
-                      }}
-                      className="text-xs px-2 py-0.5 rounded-lg bg-green-50 text-green-700 hover:bg-green-100"
-                    >
-                      {i.nombre}
-                    </button>
-                  ))}
+          {/* Config */}
+          {showJson ? (
+            <div>
+              <label className="block text-xs font-medium text-slate-600 mb-1">Config (JSON)</label>
+              <textarea value={rawJson} onChange={(e) => setRawJson(e.target.value)} rows={8}
+                className="w-full rounded-xl border border-slate-200 px-3 py-2 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {/* message */}
+              {type === "message" && (
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">Mensaje</label>
+                  <textarea value={text} onChange={(e) => setText(e.target.value)} rows={3}
+                    placeholder="Hola {{variables.nombre}}, ¿en qué te puedo ayudar?"
+                    className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
                 </div>
-              </div>
-            )}
-            <textarea
-              value={configJson}
-              onChange={(e) => setConfigJson(e.target.value)}
-              rows={6}
-              className="w-full rounded-xl border border-slate-200 px-3 py-2 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-          </div>
+              )}
+              {/* input */}
+              {type === "input" && (
+                <>
+                  <div>
+                    <label className="block text-xs font-medium text-slate-600 mb-1">Pregunta al usuario</label>
+                    <textarea value={inputText} onChange={(e) => setInputText(e.target.value)} rows={2}
+                      placeholder="¿Cuál es tu número de cédula?"
+                      className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-slate-600 mb-1">Guardar respuesta en variable</label>
+                    <input value={inputVar} onChange={(e) => setInputVar(e.target.value)} placeholder="variables.cedula"
+                      className="w-full rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                  </div>
+                </>
+              )}
+              {/* menu */}
+              {type === "menu" && (
+                <>
+                  <div>
+                    <label className="block text-xs font-medium text-slate-600 mb-1">Texto del menú</label>
+                    <textarea value={menuText} onChange={(e) => setMenuText(e.target.value)} rows={2}
+                      placeholder="¿En qué te puedo ayudar?"
+                      className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                  </div>
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="text-xs font-medium text-slate-600">Opciones</label>
+                      <button onClick={() => setMenuOptions((o) => [...o, { id: `opt_${o.length + 1}`, title: "", next: "" }])}
+                        className="flex items-center gap-0.5 text-xs text-blue-600 hover:text-blue-800">
+                        <Plus className="w-3 h-3" /> Agregar opción
+                      </button>
+                    </div>
+                    <div className="space-y-2">
+                      {menuOptions.map((opt, i) => (
+                        <div key={i} className="flex gap-2 items-center">
+                          <input value={opt.id} onChange={(e) => setMenuOptions((o) => o.map((x, j) => j === i ? { ...x, id: e.target.value } : x))}
+                            placeholder="id" className="w-16 rounded-lg border border-slate-200 px-2 py-1 text-xs font-mono focus:outline-none" />
+                          <input value={opt.title} onChange={(e) => setMenuOptions((o) => o.map((x, j) => j === i ? { ...x, title: e.target.value } : x))}
+                            placeholder="Título" className="flex-1 rounded-lg border border-slate-200 px-2 py-1 text-xs focus:outline-none" />
+                          <select value={opt.next} onChange={(e) => setMenuOptions((o) => o.map((x, j) => j === i ? { ...x, next: e.target.value } : x))}
+                            className="w-32 rounded-lg border border-slate-200 px-2 py-1 text-xs focus:outline-none">
+                            <option value="">— ninguno —</option>
+                            {allNodeIds.map((nid) => <option key={nid} value={nid}>{nid}</option>)}
+                          </select>
+                          <button onClick={() => setMenuOptions((o) => o.filter((_, j) => j !== i))}
+                            className="text-red-400 hover:text-red-600"><Trash2 className="w-3.5 h-3.5" /></button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </>
+              )}
+              {/* condition */}
+              {type === "condition" && (
+                <div className="grid grid-cols-3 gap-2">
+                  <div>
+                    <label className="block text-xs font-medium text-slate-600 mb-1">Variable</label>
+                    <input value={condVar} onChange={(e) => setCondVar(e.target.value)} placeholder="variables.estatus"
+                      className="w-full rounded-lg border border-slate-200 px-2 py-1.5 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-slate-600 mb-1">Operador</label>
+                    <select value={condOp} onChange={(e) => setCondOp(e.target.value)}
+                      className="w-full rounded-lg border border-slate-200 px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500">
+                      {CONDITION_OPS.map((op) => <option key={op} value={op}>{op}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-slate-600 mb-1">Valor</label>
+                    <input value={condVal} onChange={(e) => setCondVal(e.target.value)} placeholder="activo"
+                      className="w-full rounded-lg border border-slate-200 px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                  </div>
+                </div>
+              )}
+              {/* delay */}
+              {type === "delay" && (
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">Duración (segundos)</label>
+                  <input type="number" min={1} value={delaySeconds} onChange={(e) => setDelaySeconds(Number(e.target.value))}
+                    className="w-32 rounded-lg border border-slate-200 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                </div>
+              )}
+              {/* end */}
+              {type === "end" && (
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">Mensaje de cierre (opcional)</label>
+                  <textarea value={endMsg} onChange={(e) => setEndMsg(e.target.value)} rows={2}
+                    placeholder="Gracias por contactarnos. ¡Hasta pronto!"
+                    className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                </div>
+              )}
+              {/* handoff */}
+              {type === "handoff" && (
+                <>
+                  <div>
+                    <label className="block text-xs font-medium text-slate-600 mb-1">Departamento / Agente</label>
+                    <input value={handoffDept} onChange={(e) => setHandoffDept(e.target.value)} placeholder="soporte_tecnico"
+                      className="w-full rounded-lg border border-slate-200 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-slate-600 mb-1">Mensaje al transferir</label>
+                    <textarea value={handoffMsg} onChange={(e) => setHandoffMsg(e.target.value)} rows={2}
+                      placeholder="Te transfiero con un agente..."
+                      className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                  </div>
+                </>
+              )}
+              {/* llm */}
+              {type === "llm" && (
+                <>
+                  <div>
+                    <label className="block text-xs font-medium text-slate-600 mb-1">Prompt</label>
+                    <textarea value={llmPrompt} onChange={(e) => setLlmPrompt(e.target.value)} rows={4}
+                      placeholder="Dado el contexto {{variables.contexto}}, genera una respuesta..."
+                      className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-slate-600 mb-1">Guardar respuesta en</label>
+                    <input value={llmVar} onChange={(e) => setLlmVar(e.target.value)} placeholder="variables.respuesta_llm"
+                      className="w-full rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                  </div>
+                </>
+              )}
+              {/* action */}
+              {type === "action" && (
+                <div className="space-y-4">
+                  {/* Catalog endpoint picker */}
+                  {catalogEndpoints.length > 0 && (
+                    <div>
+                      <label className="block text-xs font-medium text-slate-600 mb-2">Endpoint del catálogo</label>
+                      <div className="flex flex-wrap gap-1.5">
+                        {catalogEndpoints.map((ep) => (
+                          <button key={ep.id} onClick={() => applyEndpoint(ep)}
+                            className={`text-xs px-2.5 py-1 rounded-lg border transition ${
+                              actionRef === ep.id
+                                ? "bg-blue-600 text-white border-blue-600"
+                                : "bg-white text-slate-600 border-slate-200 hover:border-blue-400 hover:text-blue-600"
+                            }`}>
+                            {ep.sessionInit ? "⚡ " : ""}{ep.name}
+                          </button>
+                        ))}
+                        {actionRef && (
+                          <button onClick={() => setActionRef("")}
+                            className="text-xs px-2 py-1 rounded-lg border border-slate-200 text-slate-400 hover:text-red-500">
+                            × Personalizado
+                          </button>
+                        )}
+                      </div>
+                      {selectedEp?.description && (
+                        <p className="text-xs text-slate-400 mt-1 italic">{selectedEp.description}</p>
+                      )}
+                    </div>
+                  )}
+                  {/* Method + URL */}
+                  <div className="flex gap-2">
+                    <div className="w-28 shrink-0">
+                      <label className="block text-xs font-medium text-slate-600 mb-1">Método</label>
+                      <select value={actionMethod} onChange={(e) => setActionMethod(e.target.value)}
+                        className="w-full rounded-lg border border-slate-200 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        {HTTP_METHODS.map((m) => <option key={m} value={m}>{m}</option>)}
+                      </select>
+                    </div>
+                    <div className="flex-1">
+                      <label className="block text-xs font-medium text-slate-600 mb-1">URL del endpoint</label>
+                      <input value={actionUrl} onChange={(e) => setActionUrl(e.target.value)} placeholder="/api/billing/balance"
+                        className="w-full rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                    </div>
+                  </div>
+                  {/* Body params */}
+                  <div className="rounded-xl border border-slate-200 p-3 bg-slate-50">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-xs font-semibold text-slate-600">Parámetros del body (inputs)</span>
+                      <button onClick={() => setActionBody((b) => [...b, { key: "", value: "" }])}
+                        className="flex items-center gap-0.5 text-xs text-blue-600 hover:text-blue-800">
+                        <Plus className="w-3 h-3" /> Agregar
+                      </button>
+                    </div>
+                    {actionBody.length === 0 && (
+                      <p className="text-xs text-slate-400 italic">Sin parámetros. Selecciona un endpoint del catálogo o haz click en &quot;+ Agregar&quot;.</p>
+                    )}
+                    <div className="space-y-1.5">
+                      {actionBody.map((row, i) => (
+                        <div key={i} className="flex gap-2 items-center">
+                          <input value={row.key} onChange={(e) => setActionBody((b) => b.map((r, j) => j === i ? { ...r, key: e.target.value } : r))}
+                            placeholder="campo_api"
+                            className="w-36 rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-blue-500" />
+                          <span className="text-slate-400 text-xs shrink-0">→</span>
+                          <input value={row.value} onChange={(e) => setActionBody((b) => b.map((r, j) => j === i ? { ...r, value: e.target.value } : r))}
+                            placeholder="variables.cedula o valor fijo"
+                            className="flex-1 rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-blue-500" />
+                          <button onClick={() => setActionBody((b) => b.filter((_, j) => j !== i))}
+                            className="text-red-400 hover:text-red-600 shrink-0"><Trash2 className="w-3.5 h-3.5" /></button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  {/* Response mapping */}
+                  <div className="rounded-xl border border-slate-200 p-3 bg-slate-50">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-xs font-semibold text-slate-600">Mapeo de respuesta (outputs → variables)</span>
+                      <button onClick={() => setActionResponse((r) => [...r, { key: "", value: "" }])}
+                        className="flex items-center gap-0.5 text-xs text-blue-600 hover:text-blue-800">
+                        <Plus className="w-3 h-3" /> Agregar
+                      </button>
+                    </div>
+                    {actionResponse.length === 0 && (
+                      <p className="text-xs text-slate-400 italic">Sin mapeo. Selecciona un endpoint del catálogo o haz click en &quot;+ Agregar&quot;.</p>
+                    )}
+                    <div className="space-y-1.5">
+                      {actionResponse.map((row, i) => (
+                        <div key={i} className="flex gap-2 items-center">
+                          <input value={row.key} onChange={(e) => setActionResponse((r) => r.map((x, j) => j === i ? { ...x, key: e.target.value } : x))}
+                            placeholder="campo_respuesta"
+                            className="w-36 rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-blue-500" />
+                          <span className="text-slate-400 text-xs shrink-0">→</span>
+                          <input value={row.value} onChange={(e) => setActionResponse((r) => r.map((x, j) => j === i ? { ...x, value: e.target.value } : x))}
+                            placeholder="variables.saldo"
+                            className="flex-1 rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-blue-500" />
+                          <button onClick={() => setActionResponse((r) => r.filter((_, j) => j !== i))}
+                            className="text-red-400 hover:text-red-600 shrink-0"><Trash2 className="w-3.5 h-3.5" /></button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
 
-          <div className="grid grid-cols-2 gap-3">
+          {/* Next + Branches */}
+          <div className="grid grid-cols-2 gap-3 pt-2 border-t border-slate-100">
             <div>
               <label className="block text-xs font-medium text-slate-600 mb-1">Siguiente nodo (next)</label>
-              <select
-                value={next}
-                onChange={(e) => setNext(e.target.value)}
-                className="w-full rounded-lg border border-slate-200 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
+              <select value={next} onChange={(e) => setNext(e.target.value)}
+                className="w-full rounded-lg border border-slate-200 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
                 <option value="">— ninguno —</option>
                 {allNodeIds.filter((nid) => nid !== id).map((nid) => (
                   <option key={nid} value={nid}>{nid}</option>
@@ -492,12 +788,8 @@ function NodeEditModal({
             </div>
             <div>
               <label className="block text-xs font-medium text-slate-600 mb-1">Branches (JSON)</label>
-              <textarea
-                value={branchesJson}
-                onChange={(e) => setBranchesJson(e.target.value)}
-                rows={3}
-                className="w-full rounded-xl border border-slate-200 px-3 py-2 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
+              <textarea value={branchesJson} onChange={(e) => setBranchesJson(e.target.value)} rows={2}
+                className="w-full rounded-xl border border-slate-200 px-3 py-1.5 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-blue-500" />
             </div>
           </div>
 
@@ -505,10 +797,8 @@ function NodeEditModal({
         </div>
         <div className="px-6 py-4 border-t border-slate-100 flex justify-end gap-3">
           <button onClick={onClose} className="px-4 py-2 text-sm text-slate-600 hover:text-slate-800">Cancelar</button>
-          <button
-            onClick={handleSave}
-            className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-blue-600 text-white text-sm font-medium hover:bg-blue-700"
-          >
+          <button onClick={handleSave}
+            className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-blue-600 text-white text-sm font-medium hover:bg-blue-700">
             Guardar nodo
           </button>
         </div>
@@ -540,6 +830,7 @@ function FlowBuilder({
   const [validation, setValidation] = useState<{ internal: { valid: boolean; errors: string[]; warnings: string[] }; waba: { valid: boolean; errors: string[] } } | null>(null);
   const [changelog, setChangelog] = useState("");
   const [integrations, setIntegrations] = useState<{ id: number; nombre: string; tipo: string }[]>([]);
+  const [catalogEndpoints, setCatalogEndpoints] = useState<CatalogEndpoint[]>([]);
   const validationErrors = validation?.internal?.errors ?? [];
   const validationWarnings = validation?.internal?.warnings ?? [];
   const wabaValidationErrors = validation?.waba?.errors ?? [];
@@ -574,6 +865,12 @@ function FlowBuilder({
         setIntegrations(normalized);
       })
       .catch(() => setIntegrations([]));
+    integrationsApi.getCatalog()
+      .then(({ data }) => {
+        const eps = Array.isArray(data) ? data : Array.isArray((data as { endpoints?: CatalogEndpoint[] })?.endpoints) ? (data as { endpoints: CatalogEndpoint[] }).endpoints : [];
+        setCatalogEndpoints(eps);
+      })
+      .catch(() => setCatalogEndpoints([]));
   }, [loadLatestVersion]);
 
   function handleAddNode() {
@@ -841,7 +1138,7 @@ function FlowBuilder({
         <NodeEditModal
           node={editingNode}
           allNodeIds={definition?.nodes.map((n) => n.id) ?? []}
-          integrations={integrations}
+          catalogEndpoints={catalogEndpoints}
           onSave={handleSaveNode}
           onClose={() => setEditingNode(null)}
         />
