@@ -546,7 +546,12 @@ function FlowBuilder({
 
   const loadLatestVersion = useCallback(async () => {
     try {
-      const { data: versions } = await wabaFlowsApi.listVersions(flow.id);
+      const { data } = await wabaFlowsApi.listVersions(flow.id);
+      const versions = Array.isArray(data)
+        ? data
+        : Array.isArray((data as { versions?: FlowVersion[] })?.versions)
+          ? (data as { versions: FlowVersion[] }).versions
+          : [];
       if (!versions.length) return;
       const latest = versions[0];
       const { data: vd } = await wabaFlowsApi.getVersion(flow.id, latest.id);
@@ -558,7 +563,17 @@ function FlowBuilder({
 
   useEffect(() => {
     loadLatestVersion();
-    integrationsApi.list({ activo: true }).then(({ data }) => setIntegrations(data));
+    integrationsApi
+      .list({ activo: true })
+      .then(({ data }) => {
+        const normalized = Array.isArray(data)
+          ? data
+          : Array.isArray((data as { integrations?: { id: number; nombre: string; tipo: string }[] })?.integrations)
+            ? (data as { integrations: { id: number; nombre: string; tipo: string }[] }).integrations
+            : [];
+        setIntegrations(normalized);
+      })
+      .catch(() => setIntegrations([]));
   }, [loadLatestVersion]);
 
   function handleAddNode() {
@@ -848,7 +863,12 @@ function VersionsPanel({ flow, onRefresh }: { flow: WabaFlow; onRefresh: () => v
     setLoading(true);
     try {
       const { data } = await wabaFlowsApi.listVersions(flow.id);
-      setVersions(data);
+      const normalized = Array.isArray(data)
+        ? data
+        : Array.isArray((data as { versions?: FlowVersion[] })?.versions)
+          ? ((data as { versions: FlowVersion[] }).versions)
+          : [];
+      setVersions(normalized);
     } finally { setLoading(false); }
   }, [flow.id]);
 
@@ -944,7 +964,7 @@ function SimulatePanel({ flow }: { flow: WabaFlow }) {
     setRunning(true);
     try {
       const { data } = await wabaFlowsApi.simulate(flow.id, { inputs });
-      setTrace(data.trace ?? []);
+      setTrace(Array.isArray(data?.trace) ? data.trace : []);
     } catch { /* ignore */ } finally { setRunning(false); }
   }
 
@@ -1078,7 +1098,12 @@ export default function WabaFlujos() {
     setLoading(true);
     try {
       const { data } = await wabaFlowsApi.list({ activo: true, tenantSlug });
-      setFlows(data.flows ?? data);
+      const normalized = Array.isArray(data?.flows)
+        ? data.flows
+        : Array.isArray(data)
+          ? data
+          : [];
+      setFlows(normalized);
     } finally { setLoading(false); }
   }, [tenantSlug]);
 
@@ -1091,9 +1116,17 @@ export default function WabaFlujos() {
     setLogsLoading(true);
     try {
       const { data } = await wabaFlowsApi.importLogs({ tenantSlug });
-      setImportLogs(data);
+      const normalized = Array.isArray(data)
+        ? data
+        : Array.isArray((data as { logs?: unknown[] })?.logs)
+          ? (data as { logs: unknown[] }).logs
+          : [];
+      setImportLogs(normalized);
     } finally { setLogsLoading(false); }
   }, [tenantSlug]);
+
+  const safeFlows = Array.isArray(flows) ? flows : [];
+  const safeImportLogs = Array.isArray(importLogs) ? importLogs : [];
 
   useEffect(() => { loadFlows(); }, [loadFlows]);
 
@@ -1239,9 +1272,9 @@ export default function WabaFlujos() {
             </div>
           )}
 
-          {!loading && flows.length > 0 && (
+          {!loading && safeFlows.length > 0 && (
             <div className="grid gap-4">
-              {flows.map((flow) => {
+              {safeFlows.map((flow) => {
                 const latestVersion = flow.flowVersions?.[0];
                 const isPublished = latestVersion?.published ?? false;
                 const valStatus = latestVersion?.wabaValidationStatus ?? "draft";
@@ -1364,10 +1397,10 @@ export default function WabaFlujos() {
       {tab === "import-logs" && (
         <div className="space-y-3">
           {logsLoading && <div className="flex justify-center py-8"><RefreshCw className="w-6 h-6 animate-spin text-slate-400" /></div>}
-          {!logsLoading && importLogs.length === 0 && (
+          {!logsLoading && safeImportLogs.length === 0 && (
             <div className="text-center py-10 text-slate-400 text-sm">Sin registros de importación</div>
           )}
-          {(importLogs as Array<{ id: number; flowId?: number; source: string; parsedNodes: number; status: string; createdAt: string; validationErrors?: string[] }>).map((log) => (
+          {(safeImportLogs as Array<{ id: number; flowId?: number; source: string; parsedNodes: number; status: string; createdAt: string; validationErrors?: string[] }>).map((log) => (
             <div key={log.id} className="bg-white rounded-2xl border border-slate-200 p-4 flex items-center justify-between gap-4">
               <div className="flex items-start gap-3">
                 <div className={`w-8 h-8 rounded-xl flex items-center justify-center text-xs font-bold ${
