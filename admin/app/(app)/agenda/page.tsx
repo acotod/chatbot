@@ -342,7 +342,7 @@ export default function AgendaPage() {
           <CardContent className="space-y-4">
             <div className="rounded-xl border border-slate-200 overflow-hidden">
               <FullCalendar
-                plugins={[dayGridPlugin]}
+                plugins={[dayGridPlugin, interactionPlugin]}
                 initialView="dayGridMonth"
                 headerToolbar={{ left: "", center: "title", right: "prev,next" }}
                 fixedWeekCount={false}
