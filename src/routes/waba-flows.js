@@ -2,7 +2,7 @@
 /**
  * WABA Flow Integration Module — REST API
  *
- * All routes are JWT-protected. tenantId from req.user.
+ * All routes are JWT-protected. tenantId from req.admin.
  *
  * GET    /waba-flows                          — list flows (+ latest version info)
  * POST   /waba-flows                          — create new flow with initial definition
@@ -45,8 +45,8 @@ router.use(requireJwt);
 // ─────────────────────────────────────────────────────────────────────────────
 // Helpers
 // ─────────────────────────────────────────────────────────────────────────────
-function tid(req) { return req.user?.tenantId ?? req.user?.tenant_id; }
-function uid(req) { return req.user?.id ?? req.user?.adminUserId; }
+function tid(req) { return req.admin?.tenantId ?? req.user?.tenantId ?? req.user?.tenant_id; }
+function uid(req) { return req.admin?.adminUserId ?? req.user?.adminUserId ?? req.user?.id; }
 function notFound(res, entity = 'Flow') { return res.status(404).json({ error: `${entity} not found` }); }
 
 async function _getIntegrationMap(tenantId) {
