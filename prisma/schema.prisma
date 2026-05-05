@@ -502,22 +502,25 @@ model FlowEdge {
 // ── WhatsApp Business Cloud API ───────────────────────────────────────────────
 
 model Mensaje {
-  id        Int      @id @default(autoincrement())
-  tenantId  String   @map("tenant_id") @db.Uuid
-  userId    Int?     @map("user_id")
-  waMsgId   String?  @unique @map("wa_msg_id") @db.VarChar(100)
+  id             Int          @id @default(autoincrement())
+  tenantId       String       @map("tenant_id") @db.Uuid
+  userId         Int?         @map("user_id")
+  conversationId String?      @map("conversation_id") @db.Uuid
+  waMsgId        String?      @unique @map("wa_msg_id") @db.VarChar(100)
   /// "entrada" | "salida"
-  direccion String   @db.VarChar(10)
+  direccion      String       @db.VarChar(10)
   /// "text" | "interactive" | "image" | "audio" | "document" | "template"
-  tipo      String   @db.VarChar(30)
-  contenido Json
-  leido     Boolean  @default(false)
-  createdAt DateTime @default(now()) @map("created_at")
-  tenant    Tenant   @relation(fields: [tenantId], references: [id])
-  user      User?    @relation(fields: [userId], references: [id])
+  tipo           String       @db.VarChar(30)
+  contenido      Json
+  leido          Boolean      @default(false)
+  createdAt      DateTime     @default(now()) @map("created_at")
+  tenant         Tenant       @relation(fields: [tenantId], references: [id])
+  user           User?        @relation(fields: [userId], references: [id])
+  conversation   Conversation? @relation(fields: [conversationId], references: [id], onDelete: SetNull)
 
   @@index([tenantId, userId])
   @@index([tenantId, createdAt])
+  @@index([conversationId])
   @@map("mensajes")
 }
 
@@ -745,6 +748,7 @@ model Conversation {
   events          ConversationEvent[]
   appointments    Appointment[]
   solicitudes     Solicitud[]
+  mensajes        Mensaje[]
 
   @@unique([tenantId, userKey, flowId, startedAt])
   @@index([tenantId, status, startedAt])

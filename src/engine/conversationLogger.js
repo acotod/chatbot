@@ -43,6 +43,7 @@ const EVENT = Object.freeze({
   TASK_CREATED              : 'task_created',
   TASK_WAITING              : 'task_waiting',
   TASK_COMPLETED            : 'task_completed',
+  TASK_STATUS_CHANGE        : 'task_status_change',
   CALENDAR_AVAILABILITY_SHOWN: 'calendar_availability_shown',
   CALENDAR_SLOT_SELECTED    : 'calendar_slot_selected',
   APPOINTMENT_CREATED       : 'appointment_created',
@@ -187,6 +188,39 @@ async function end(conversationId, status = 'completed', finalContext = {}) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// logTaskStatusChange  (best-effort — looks up conversationId from solicitud)
+// ─────────────────────────────────────────────────────────────────────────────
+/**
+ * Append a task_status_change event to the conversation linked to a solicitud.
+ * No-ops silently if the solicitud has no conversationId.
+ *
+ * @param {object}  opts
+ * @param {string}  opts.tenantId
+ * @param {number}  opts.solicitudId
+ * @param {string}  opts.fromStatus
+ * @param {string}  opts.toStatus
+ * @param {number|null} [opts.agenteId]
+ */
+async function logTaskStatusChange({ tenantId, solicitudId, fromStatus, toStatus, agenteId = null }) {
+  try {
+    const row = await prisma.solicitud.findUnique({
+      where:  { id: solicitudId },
+      select: { conversationId: true },
+    });
+    if (!row?.conversationId) return;
+    await log(row.conversationId, tenantId, null, EVENT.TASK_STATUS_CHANGE, {
+      solicitud_id: solicitudId,
+      from_status:  fromStatus,
+      to_status:    toStatus,
+      agente_id:    agenteId,
+    });
+  } catch (err) {
+    logger.error({ tenantId, solicitudId, message: err.message },
+      'conversationLogger.logTaskStatusChange failed');
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Exports
 // ─────────────────────────────────────────────────────────────────────────────
 module.exports = {
@@ -195,4 +229,5 @@ module.exports = {
   log,
   updateContext,
   end,
+  logTaskStatusChange,
 };

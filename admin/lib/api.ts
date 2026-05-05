@@ -501,3 +501,18 @@ export const crmApi = {
     apiClient.delete(`/crm/tasks/${id}`),
 };
 
+// ── Conversations (event-sourced) ─────────────────────────────────────────────
+export const conversationsApi = {
+  /** Paginated list of conversations for a tenant */
+  list: (params: { tenantSlug?: string; status?: string; flowId?: number; userKey?: string; from?: string; to?: string; page?: number; limit?: number }) =>
+    apiClient.get('/conversations', { params }),
+  /** Full conversation detail with event timeline */
+  getById: (id: string) =>
+    apiClient.get(`/conversations/${id}`),
+  /** Lazy-load events for a conversation (supports cursor-based pagination) */
+  getEvents: (id: string, params?: { eventType?: string; after?: string; limit?: number }) =>
+    apiClient.get(`/conversations/${id}/events`, { params }),
+  /** Admin force-close a conversation */
+  updateStatus: (id: string, status: 'completed' | 'abandoned' | 'error') =>
+    apiClient.patch(`/conversations/${id}`, { status }),
+};

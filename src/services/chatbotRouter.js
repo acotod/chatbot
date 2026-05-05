@@ -63,17 +63,18 @@ async function routeMessage({ tenantId, userId, input, phone }) {
 
   const content = result.content ?? {};
   const type = content.type ?? 'text';
+  const conversationId = result.conversationId ?? null;
 
   // Explicit handoff node → human agent (clear context, do NOT persist handoff node)
   if (type === 'handoff') {
     await db.clearConversationContext(tenantId, userId);
-    return { response: content, fallbackToHuman: true };
+    return { response: content, fallbackToHuman: true, conversationId };
   }
 
   // End node → clear context, no further messages
   if (type === 'end') {
     await db.clearConversationContext(tenantId, userId);
-    return { response: content, fallbackToHuman: false };
+    return { response: content, fallbackToHuman: false, conversationId };
   }
 
   // For legacy flows only: update ConversationContext.currentNodeId.
@@ -82,7 +83,7 @@ async function routeMessage({ tenantId, userId, input, phone }) {
     await db.setConversationContext(tenantId, userId, { currentNodeId: result.nodeId });
   }
 
-  return { response: content, fallbackToHuman: false };
+  return { response: content, fallbackToHuman: false, conversationId };
 }
 
 module.exports = { routeMessage };

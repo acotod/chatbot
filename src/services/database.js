@@ -439,17 +439,18 @@ async function findTenantByWaPhoneNumberId(phoneNumberId) {
 /**
  * Persist a WhatsApp message (inbound or outbound).
  */
-async function saveMensaje({ tenantId, userId, waMsgId, direccion, tipo, contenido }) {
+async function saveMensaje({ tenantId, userId, waMsgId, direccion, tipo, contenido, conversationId }) {
   const client = getPrismaClient();
   if (!client) return null;
   return client.mensaje.create({
     data: {
       tenantId,
-      userId:    userId ?? null,
-      waMsgId:   waMsgId ?? null,
+      userId:         userId ?? null,
+      waMsgId:        waMsgId ?? null,
       direccion,
       tipo,
       contenido,
+      conversationId: conversationId ?? null,
     },
   });
 }

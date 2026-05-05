@@ -249,6 +249,8 @@ async function _handleIncomingMessage({ msg, contacts, tenant, phoneNumberId, ac
     tipo,
     contenido,
   });
+  // Store mensaje.id so we can back-fill conversationId after the chatbot runs
+  const mensajeId = mensaje.id;
 
   await _ingestUegBestEffort({
     tenantId: tenant.id,
@@ -311,20 +313,28 @@ async function _handleIncomingMessage({ msg, contacts, tenant, phoneNumberId, ac
 
   // ── Chatbot engine ───────────────────────────────────────────────────────
   if (userId !== null && userInput !== null && accessToken) {
-    _runChatbot({ tenant, userId, phone, userInput, phoneNumberId, accessToken, correlationId })
+    _runChatbot({ tenant, userId, phone, userInput, phoneNumberId, accessToken, correlationId, inboundMensajeId: mensajeId })
       .catch((err) => logger.error('_runChatbot error', { tenantId: tenant.id, message: err.message }));
   }
 }
 
 // ── Chatbot dispatcher ────────────────────────────────────────────────────────
 
-async function _runChatbot({ tenant, userId, phone, userInput, phoneNumberId, accessToken, correlationId }) {
-  const { response, fallbackToHuman } = await chatbotRouter.routeMessage({
+async function _runChatbot({ tenant, userId, phone, userInput, phoneNumberId, accessToken, correlationId, inboundMensajeId }) {
+  const { response, fallbackToHuman, conversationId } = await chatbotRouter.routeMessage({
     tenantId: tenant.id,
     userId,
     input: userInput,
     phone,
   });
+
+  // Back-fill conversationId on the inbound message that triggered this run
+  if (conversationId && inboundMensajeId) {
+    getPrismaClient().mensaje.update({
+      where: { id: inboundMensajeId },
+      data:  { conversationId },
+    }).catch(() => {});
+  }
 
   if (fallbackToHuman) {
     await _handleFallbackToHuman({
@@ -335,6 +345,7 @@ async function _runChatbot({ tenant, userId, phone, userInput, phoneNumberId, ac
       phoneNumberId,
       accessToken,
       correlationId,
+      conversationId,
     });
   } else if (response) {
     await _sendChatbotResponse({
@@ -345,11 +356,12 @@ async function _runChatbot({ tenant, userId, phone, userInput, phoneNumberId, ac
       accessToken,
       response,
       correlationId,
+      conversationId,
     });
   }
 }
 
-async function _handleFallbackToHuman({ tenant, userId, phone, response, phoneNumberId, accessToken, correlationId }) {
+async function _handleFallbackToHuman({ tenant, userId, phone, response, phoneNumberId, accessToken, correlationId, conversationId }) {
   // Send handoff message to user if provided
   if (response?.text) {
     await _sendText(phoneNumberId, phone, response.text, accessToken, tenant, userId, correlationId);
@@ -370,7 +382,7 @@ async function _handleFallbackToHuman({ tenant, userId, phone, response, phoneNu
   });
 }
 
-async function _sendChatbotResponse({ tenant, userId, phone, phoneNumberId, accessToken, response, correlationId }) {
+async function _sendChatbotResponse({ tenant, userId, phone, phoneNumberId, accessToken, response, correlationId, conversationId }) {
   const type = response?.type ?? 'text';
 
   try {
@@ -385,12 +397,13 @@ async function _sendChatbotResponse({ tenant, userId, phone, phoneNumberId, acce
 
     // Persist outbound message
     const outboundMsg = await db.saveMensaje({
-      tenantId:  tenant.id,
+      tenantId:       tenant.id,
       userId,
-      waMsgId:   waResp?.messages?.[0]?.id ?? null,
-      direccion: 'salida',
-      tipo:      type === 'buttons' ? 'interactive' : 'text',
-      contenido: response,
+      waMsgId:        waResp?.messages?.[0]?.id ?? null,
+      direccion:      'salida',
+      tipo:           type === 'buttons' ? 'interactive' : 'text',
+      contenido:      response,
+      conversationId: conversationId ?? undefined,
     });
 
     await _ingestUegBestEffort({

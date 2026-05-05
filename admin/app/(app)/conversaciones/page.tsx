@@ -5,6 +5,7 @@ import {
   AlertTriangle,
   ChevronDown,
   ClipboardList,
+  GitBranch,
   Search,
   Send,
   StickyNote,
@@ -12,11 +13,12 @@ import {
   Wifi,
   WifiOff,
   X,
+  Zap,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuthStore } from "@/store/auth";
-import { agentesApi, solicitudesApi, whatsappApi } from "@/lib/api";
+import { agentesApi, conversationsApi, solicitudesApi, whatsappApi } from "@/lib/api";
 import { useWaSocket } from "@/hooks/useSocket";
 import { getSocket } from "@/lib/socket";
 
@@ -56,6 +58,24 @@ interface Solicitud {
   horario: string | null;
   createdAt: string;
   agente?: { id: number; nombre: string } | null;
+}
+
+interface ConvEvent {
+  id: string;
+  eventType: string;
+  nodeRef: string | null;
+  payload: Record<string, unknown>;
+  createdAt: string;
+}
+
+interface ConvRecord {
+  id: string;
+  userKey: string;
+  status: string;
+  startedAt: string;
+  endedAt: string | null;
+  flow?: { nombre: string } | null;
+  events?: ConvEvent[];
 }
 
 interface Agente {
@@ -110,6 +130,98 @@ function SocketIndicator({ tenantId }: { tenantId: string | null }) {
   );
 }
 
+// ── ConvHistoryCard ────────────────────────────────────────────────────────────
+
+const EVENT_LABELS: Record<string, { label: string; color: string }> = {
+  conversation_started:  { label: "Inicio",          color: "text-green-600 bg-green-50 border-green-200" },
+  message_sent:          { label: "Bot envió",        color: "text-blue-600 bg-blue-50 border-blue-200" },
+  user_input:            { label: "Usuario escribió", color: "text-slate-600 bg-slate-50 border-slate-200" },
+  condition_evaluated:   { label: "Condición",        color: "text-violet-600 bg-violet-50 border-violet-200" },
+  api_call:              { label: "API call",         color: "text-orange-600 bg-orange-50 border-orange-200" },
+  task_status_change:    { label: "Estado tarea",     color: "text-yellow-700 bg-yellow-50 border-yellow-200" },
+  conversation_ended:    { label: "Fin",              color: "text-slate-500 bg-slate-100 border-slate-200" },
+};
+
+function ConvHistoryCard({ conv }: { conv: ConvRecord }) {
+  const [open, setOpen] = useState(false);
+  const { data: eventsData } = useQuery({
+    queryKey: ["convEvents", conv.id],
+    queryFn: () => conversationsApi.getEvents(conv.id, { limit: 50 }).then((r) => r.data),
+    enabled: open,
+    staleTime: 60_000,
+  });
+  const events: ConvEvent[] = (eventsData as { data?: ConvEvent[] })?.data ?? (Array.isArray(eventsData) ? eventsData : []);
+
+  const statusColor =
+    conv.status === "active"     ? "text-green-600 bg-green-50"  :
+    conv.status === "completed"  ? "text-slate-500 bg-slate-100" :
+    conv.status === "abandoned"  ? "text-yellow-700 bg-yellow-50":
+    "text-red-600 bg-red-50";
+
+  return (
+    <div className="border border-slate-200 rounded-xl overflow-hidden">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="w-full flex items-start gap-2 p-2.5 text-left hover:bg-slate-50 transition"
+      >
+        <GitBranch size={13} className="mt-0.5 text-slate-400 shrink-0" />
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-1.5">
+            <span className="text-xs font-medium text-slate-800 truncate">
+              {conv.flow?.nombre ?? "Flujo desconocido"}
+            </span>
+            <span className={cn("text-[10px] font-semibold px-1.5 py-0.5 rounded-full shrink-0", statusColor)}>
+              {conv.status}
+            </span>
+          </div>
+          <p className="text-[11px] text-slate-400 mt-0.5">
+            {new Date(conv.startedAt).toLocaleString("es", { dateStyle: "short", timeStyle: "short" })}
+          </p>
+        </div>
+        <ChevronDown size={13} className={cn("text-slate-400 shrink-0 transition-transform mt-0.5", open && "rotate-180")} />
+      </button>
+
+      {open && (
+        <div className="border-t border-slate-100 divide-y divide-slate-50">
+          {events.length === 0 && (
+            <p className="text-xs text-slate-400 px-3 py-3 text-center">Sin eventos</p>
+          )}
+          {events.map((ev) => {
+            const meta = EVENT_LABELS[ev.eventType] ?? { label: ev.eventType, color: "text-slate-500 bg-slate-50 border-slate-200" };
+            const payload = ev.payload as Record<string, unknown>;
+            const detail =
+              (payload.content as string) ??
+              (payload.input as string) ??
+              (payload.toStatus ? `→ ${payload.toStatus}` : null) ??
+              null;
+            return (
+              <div key={ev.id} className="flex items-start gap-2 px-3 py-2">
+                <Zap size={11} className="mt-0.5 text-slate-300 shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-1.5">
+                    <span className={cn("text-[10px] font-semibold px-1.5 py-px rounded border", meta.color)}>
+                      {meta.label}
+                    </span>
+                    {ev.nodeRef && (
+                      <span className="text-[10px] text-slate-400 truncate">{ev.nodeRef}</span>
+                    )}
+                  </div>
+                  {detail && (
+                    <p className="text-[11px] text-slate-600 mt-0.5 truncate">{detail}</p>
+                  )}
+                  <p className="text-[10px] text-slate-300 mt-0.5">
+                    {new Date(ev.createdAt).toLocaleTimeString("es", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+                  </p>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 export default function ConversacionesPage() {
@@ -122,7 +234,7 @@ export default function ConversacionesPage() {
   const [search, setSearch] = useState("");
 
   // Context panel state
-  const [contextTab, setContextTab] = useState<"solicitudes" | "agentes" | "notas">("solicitudes");
+  const [contextTab, setContextTab] = useState<"solicitudes" | "agentes" | "notas" | "historial">("solicitudes");
   const [nota, setNota] = useState("");
   const [savedNota, setSavedNota] = useState("");
   const [showEscalarForm, setShowEscalarForm] = useState(false);
@@ -181,6 +293,16 @@ export default function ConversacionesPage() {
     staleTime: 60_000,
   });
   const agentes: Agente[] = Array.isArray(agentesData) ? agentesData : (agentesData?.data ?? []);
+
+  // Conversation history from event-sourced model
+  const { data: convHistoryData } = useQuery({
+    queryKey: ["convHistory", tenantId, activeThread?.user?.phone],
+    queryFn: () =>
+      conversationsApi.list({ userKey: activeThread!.user!.phone!, limit: 10 }).then((r) => r.data),
+    enabled: !!tenantId && !!activeThread?.user?.phone && contextTab === "historial",
+    staleTime: 30_000,
+  });
+  const convHistory: ConvRecord[] = (convHistoryData as { data?: ConvRecord[] })?.data ?? (Array.isArray(convHistoryData) ? convHistoryData : []);
 
   // Auto-scroll to bottom on new messages
   useEffect(() => {
@@ -514,9 +636,9 @@ export default function ConversacionesPage() {
 
           {/* Tabs */}
           <div className="flex border-b border-slate-100">
-            {(["solicitudes", "agentes", "notas"] as const).map((tab) => {
-              const icons = { solicitudes: ClipboardList, agentes: UserCheck, notas: StickyNote };
-              const labels = { solicitudes: "Solicitudes", agentes: "Agentes", notas: "Notas" };
+            {(["solicitudes", "agentes", "notas", "historial"] as const).map((tab) => {
+              const icons = { solicitudes: ClipboardList, agentes: UserCheck, notas: StickyNote, historial: GitBranch };
+              const labels = { solicitudes: "Solicitudes", agentes: "Agentes", notas: "Notas", historial: "Flujo" };
               const Icon = icons[tab];
               return (
                 <button
@@ -651,6 +773,22 @@ export default function ConversacionesPage() {
                 >
                   Guardar nota
                 </button>
+              </div>
+            )}
+
+            {/* Historial del flujo tab */}
+            {contextTab === "historial" && (
+              <div className="p-3 space-y-3">
+                {convHistory.length === 0 && (
+                  <div className="flex flex-col items-center justify-center py-8 text-slate-400 text-xs text-center gap-2">
+                    <GitBranch size={24} className="text-slate-200" />
+                    <p>Sin conversaciones registradas</p>
+                    <p className="text-slate-300">Las conversaciones del flujo aparecen aquí</p>
+                  </div>
+                )}
+                {convHistory.map((conv) => (
+                  <ConvHistoryCard key={conv.id} conv={conv} />
+                ))}
               </div>
             )}
           </div>

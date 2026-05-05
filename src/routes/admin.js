@@ -10,6 +10,7 @@ const requirePermiso = require('../middleware/requirePermiso');
 const { audit } = require('../services/audit');
 const socketService = require('../services/socketService');
 const wa = require('../services/whatsapp');
+const convLogger = require('../engine/conversationLogger');
 
 // Multer: store logos under /app/uploads/logos (persisted volume in prod)
 const UPLOADS_DIR = path.join(process.cwd(), 'uploads', 'logos');
@@ -482,6 +483,15 @@ router.patch('/tenants/:slug/solicitudes/:id/estado', requirePermiso('EDIT_SOLIC
         const result = await db.updateSolicitudEstado(Number(req.params.id), tenant.id, normalizedEstado);
         const solicitud = await db.getSolicitudById(Number(req.params.id), tenant.id);
         if (!solicitud) return res.status(404).json({ error: 'Solicitud not found' });
+
+        // Log status change to conversation timeline (best-effort)
+        convLogger.logTaskStatusChange({
+          tenantId:    tenant.id,
+          solicitudId: Number(req.params.id),
+          fromStatus:  solicitud.estado ?? 'unknown',
+          toStatus:    normalizedEstado,
+          agenteId:    solicitud.agenteId ?? null,
+        }).catch(() => {});
 
         // Audit + real-time
         audit({ adminUserId: req.admin?.adminUserId, tenantId: tenant.id, accion: 'UPDATE_SOLICITUD_ESTADO', entidad: 'solicitud', entidadId: req.params.id, ip: req.ip, userAgent: req.headers['user-agent'], metadata: { estado: normalizedEstado } });

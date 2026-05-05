@@ -246,8 +246,9 @@ async function executeStep({ tenantId, currentNodeId, input, userId, sessionKey,
     : null;
 
   return {
-    nodeId : outputNodeId,
-    content: execResult.output,
+    nodeId         : outputNodeId,
+    content        : execResult.output,
+    conversationId,
   };
 }
 
