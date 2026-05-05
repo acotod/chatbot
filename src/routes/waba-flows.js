@@ -49,6 +49,35 @@ function tid(req) { return req.admin?.tenantId ?? req.user?.tenantId ?? req.user
 function uid(req) { return req.admin?.adminUserId ?? req.user?.adminUserId ?? req.user?.id; }
 function notFound(res, entity = 'Flow') { return res.status(404).json({ error: `${entity} not found` }); }
 
+/**
+ * Merge FlowVariable DB records into definition.variables.
+ * DB records take precedence over any values already in definition.variables
+ * (so designer defaults are overwritten by admin-configured values).
+ */
+async function _syncVariablesIntoDefinition(tenantId, flowId, definition) {
+  const rows = await prisma.flowVariable.findMany({
+    where: {
+      tenantId,
+      OR: [
+        { scope: 'global', flowId: null },
+        { flowId },
+      ],
+    },
+    orderBy: { id: 'asc' },
+  });
+
+  const vars = Object.assign({}, definition.variables ?? {});
+  for (const row of rows) {
+    vars[row.nombre] = {
+      tipo: row.tipo,
+      valorDefault: row.valorDefault,
+      scope: row.scope,
+      descripcion: row.descripcion ?? undefined,
+    };
+  }
+  return { ...definition, variables: vars };
+}
+
 async function resolveTenantId(req, explicitTenantSlug) {
   if (!req.admin?.superAdmin) {
     return tid(req) ?? null;
@@ -530,6 +559,9 @@ router.post('/:id/versions', async (req, res, next) => {
     const existing = await prisma.flow.findFirst({ where: { id: flowId, tenantId } });
     if (!existing) return notFound(res);
 
+    // Sync DB variables into definition before saving
+    const enrichedDefinition = await _syncVariablesIntoDefinition(tenantId, flowId, definition);
+
     // Get next version number
     const latest = await prisma.flowVersion.findFirst({
       where: { flowId, tenantId },
@@ -538,14 +570,14 @@ router.post('/:id/versions', async (req, res, next) => {
     });
     const versionNumber = (latest?.versionNumber ?? 0) + 1;
 
-    const validation = validateInternalDefinition(definition);
+    const validation = validateInternalDefinition(enrichedDefinition);
 
     const version = await prisma.flowVersion.create({
       data: {
         tenantId,
         flowId,
         versionNumber,
-        definition,
+        definition: enrichedDefinition,
         changelog: changelog ?? `Versión ${versionNumber}`,
         published: false,
         createdByAdminUserId: adminUserId,
@@ -558,7 +590,7 @@ router.post('/:id/versions', async (req, res, next) => {
     // Update flow version counter & metaJson snapshot
     await prisma.flow.update({
       where: { id: flowId },
-      data: { version: versionNumber, metaJson: exportToWaba(definition) },
+      data: { version: versionNumber, metaJson: exportToWaba(enrichedDefinition) },
     });
 
     logger.info({ tenantId, flowId, versionNumber }, 'waba-flows: new version saved');
@@ -579,6 +611,12 @@ router.put('/:id/versions/:vId/publish', async (req, res, next) => {
     const version = await prisma.flowVersion.findFirst({ where: { id: vId, flowId, tenantId } });
     if (!version) return notFound(res, 'Version');
 
+    // On publish, re-sync DB variables so the published snapshot is always up-to-date
+    let finalDefinition = version.definition;
+    if (publish) {
+      finalDefinition = await _syncVariablesIntoDefinition(tenantId, flowId, version.definition);
+    }
+
     await prisma.$transaction(async (tx) => {
       if (publish) {
         // Unpublish all other versions first
@@ -592,6 +630,7 @@ router.put('/:id/versions/:vId/publish', async (req, res, next) => {
         data: {
           published: Boolean(publish),
           publishedAt: publish ? new Date() : null,
+          ...(publish ? { definition: finalDefinition } : {}),
         },
       });
     });
