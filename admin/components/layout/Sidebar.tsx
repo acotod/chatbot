@@ -1,11 +1,9 @@
 "use client";
 
 import { authApi, tenantApi } from "@/lib/api";
-import { canAccess } from "@/lib/permissions";
 import { cn } from "@/lib/utils";
 import { useAuthStore } from "@/store/auth";
 import {
-  BarChart2,
   Bell,
   Building2,
   CalendarDays,
