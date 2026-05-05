@@ -207,6 +207,8 @@ export default function VariablesPage() {
   const [editing, setEditing] = useState<FlowVariable | null>(null);
   const [toDelete, setToDelete] = useState<FlowVariable | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [seeding, setSeeding] = useState(false);
+  const [seedMsg, setSeedMsg] = useState("");
   const [search, setSearch] = useState("");
   const [filterScope, setFilterScope] = useState<string>("all");
   const [filterFlowId, setFilterFlowId] = useState<string>("");
@@ -229,6 +231,22 @@ export default function VariablesPage() {
   }
 
   useEffect(() => { load(); }, [filterScope, filterFlowId]);
+
+  async function handleSeedDefaults() {
+    setSeeding(true);
+    setSeedMsg("");
+    try {
+      const res = await variablesApi.seedDefaults();
+      const { created, skipped } = res.data as { created: number; skipped: number };
+      setSeedMsg(`✓ ${created} variables creadas, ${skipped} ya existían`);
+      await load();
+    } catch {
+      setSeedMsg("Error al crear variables predeterminadas");
+    } finally {
+      setSeeding(false);
+      setTimeout(() => setSeedMsg(""), 5000);
+    }
+  }
 
   async function handleDelete() {
     if (!toDelete) return;
@@ -276,6 +294,18 @@ export default function VariablesPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          {seedMsg && (
+            <span className="text-xs text-green-700 bg-green-50 border border-green-200 rounded-lg px-3 py-1.5">{seedMsg}</span>
+          )}
+          <button
+            onClick={handleSeedDefaults}
+            disabled={seeding}
+            className="flex items-center gap-2 px-3 py-2 text-sm border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 disabled:opacity-50"
+            title="Crea las variables estándar del chatbot (conversaciones, solicitudes, agenda, agentes, horarios)"
+          >
+            {seeding ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Layers className="w-4 h-4" />}
+            Cargar predeterminadas
+          </button>
           <button onClick={load} className="p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg">
             <RefreshCw className="w-4 h-4" />
           </button>

@@ -423,6 +423,7 @@ export const variablesApi = {
     data: { nombre?: string; tipo?: string; valorDefault?: unknown; descripcion?: string; scope?: string }
   ) => apiClient.put(`/variables/${id}`, data),
   remove: (id: number) => apiClient.delete(`/variables/${id}`),
+  seedDefaults: () => apiClient.post("/variables/seed-defaults"),
 };
 
 // ── WABA Flow Integration ─────────────────────────────────────────────────────

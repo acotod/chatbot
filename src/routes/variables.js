@@ -138,4 +138,91 @@ router.delete('/:id', async (req, res, next) => {
   }
 });
 
+// POST /variables/seed-defaults
+// Creates all standard chatbot variables for the tenant (skips already-existing ones).
+router.post('/seed-defaults', async (req, res, next) => {
+  try {
+    const tenantId = tid(req);
+
+    const DEFAULTS = [
+      // ── Sesión / Cliente ────────────────────────────────────────────────────
+      { nombre: 'cliente_id',           tipo: 'string',  scope: 'session', valorDefault: '',    descripcion: 'ID interno del cliente' },
+      { nombre: 'cliente_nombre',       tipo: 'string',  scope: 'session', valorDefault: '',    descripcion: 'Nombre completo del cliente' },
+      { nombre: 'cliente_telefono',     tipo: 'string',  scope: 'session', valorDefault: '',    descripcion: 'Teléfono del cliente' },
+      { nombre: 'cliente_cedula',       tipo: 'string',  scope: 'session', valorDefault: '',    descripcion: 'Cédula / documento del cliente' },
+      { nombre: 'cliente_saldo',        tipo: 'string',  scope: 'session', valorDefault: '',    descripcion: 'Saldo o estado de cuenta del cliente' },
+      { nombre: 'cliente_estatus',      tipo: 'string',  scope: 'session', valorDefault: '',    descripcion: 'Estatus del cliente (activo, suspendido, etc.)' },
+      { nombre: 'cliente_plan',         tipo: 'string',  scope: 'session', valorDefault: '',    descripcion: 'Plan o categoría del cliente' },
+
+      // ── Conversaciones ──────────────────────────────────────────────────────
+      { nombre: 'conversacion_id',           tipo: 'string',  scope: 'session', valorDefault: '',    descripcion: 'UUID de la conversación activa' },
+      { nombre: 'conversacion_estado',       tipo: 'string',  scope: 'session', valorDefault: '',    descripcion: 'Estado de la conversación (active, completed, abandoned)' },
+      { nombre: 'conversacion_canal',        tipo: 'string',  scope: 'session', valorDefault: '',    descripcion: 'Canal de entrada (whatsapp, web, etc.)' },
+      { nombre: 'historial_conversaciones',  tipo: 'array',   scope: 'session', valorDefault: [],    descripcion: 'Lista de conversaciones anteriores del usuario' },
+
+      // ── Solicitudes ─────────────────────────────────────────────────────────
+      { nombre: 'solicitud_id',             tipo: 'string',  scope: 'session', valorDefault: '',    descripcion: 'ID de la solicitud creada / consultada' },
+      { nombre: 'solicitud_titulo',         tipo: 'string',  scope: 'session', valorDefault: '',    descripcion: 'Título de la solicitud' },
+      { nombre: 'solicitud_estado',         tipo: 'string',  scope: 'session', valorDefault: '',    descripcion: 'Estado de la solicitud (pendiente, en_proceso, completada)' },
+      { nombre: 'solicitud_prioridad',      tipo: 'string',  scope: 'session', valorDefault: '',    descripcion: 'Prioridad de la solicitud (baja, media, alta)' },
+      { nombre: 'solicitudes_activas',      tipo: 'array',   scope: 'session', valorDefault: [],    descripcion: 'Lista de solicitudes activas del usuario en esta sesión' },
+      { nombre: 'solicitud_agente_nombre',  tipo: 'string',  scope: 'session', valorDefault: '',    descripcion: 'Nombre del agente asignado a la solicitud' },
+
+      // ── Agenda / Citas ───────────────────────────────────────────────────────
+      { nombre: 'agenda_fecha_seleccionada',  tipo: 'string',  scope: 'session', valorDefault: '',    descripcion: 'Fecha seleccionada por el usuario para agendar (YYYY-MM-DD)' },
+      { nombre: 'agenda_hora_seleccionada',   tipo: 'string',  scope: 'session', valorDefault: '',    descripcion: 'Hora seleccionada por el usuario para agendar (HH:MM)' },
+      { nombre: 'agenda_cita_id',             tipo: 'string',  scope: 'session', valorDefault: '',    descripcion: 'ID del evento / cita creado o consultado' },
+      { nombre: 'agenda_cita_estado',         tipo: 'string',  scope: 'session', valorDefault: '',    descripcion: 'Estado del evento de agenda (pendiente, confirmada, cancelada)' },
+      { nombre: 'agenda_motivo',              tipo: 'string',  scope: 'session', valorDefault: '',    descripcion: 'Motivo o tipo de cita seleccionado por el usuario' },
+      { nombre: 'agenda_horarios_disponibles',tipo: 'array',   scope: 'session', valorDefault: [],    descripcion: 'Horarios disponibles devueltos por el sistema para la fecha seleccionada' },
+      { nombre: 'agenda_citas_usuario',       tipo: 'array',   scope: 'session', valorDefault: [],    descripcion: 'Citas / eventos del usuario obtenidos de la agenda' },
+      { nombre: 'agenda_confirmacion',        tipo: 'string',  scope: 'session', valorDefault: '',    descripcion: 'Código o mensaje de confirmación de la cita agendada' },
+
+      // ── Agentes disponibles ─────────────────────────────────────────────────
+      { nombre: 'agentes_disponibles',      tipo: 'array',   scope: 'global',  valorDefault: [],    descripcion: 'Lista de agentes/personas disponibles para atención (actualizada en tiempo real)' },
+      { nombre: 'agente_asignado_id',       tipo: 'string',  scope: 'session', valorDefault: '',    descripcion: 'ID del agente asignado a la sesión actual' },
+      { nombre: 'agente_asignado_nombre',   tipo: 'string',  scope: 'session', valorDefault: '',    descripcion: 'Nombre del agente asignado a la sesión actual' },
+      { nombre: 'agente_asignado_email',    tipo: 'string',  scope: 'session', valorDefault: '',    descripcion: 'Email del agente asignado a la sesión actual' },
+      { nombre: 'agente_esta_disponible',   tipo: 'boolean', scope: 'session', valorDefault: false, descripcion: 'Indica si hay un agente humano disponible para tomar la conversación' },
+
+      // ── Horarios de atención ─────────────────────────────────────────────────
+      { nombre: 'horario_atencion',          tipo: 'object',  scope: 'global',  valorDefault: {},    descripcion: 'Horario de atención del negocio (lun-vie, sábados, etc.)' },
+      { nombre: 'en_horario_atencion',       tipo: 'boolean', scope: 'session', valorDefault: false, descripcion: 'True si la conversación ocurre dentro del horario de atención' },
+      { nombre: 'proxima_hora_disponible',   tipo: 'string',  scope: 'session', valorDefault: '',    descripcion: 'Próxima franja horaria de atención disponible' },
+
+      // ── Generales de flujo ───────────────────────────────────────────────────
+      { nombre: 'intencion_detectada',  tipo: 'string',  scope: 'session', valorDefault: '',    descripcion: 'Intención principal detectada (pago, soporte, agenda, consulta, etc.)' },
+      { nombre: 'opcion_seleccionada',  tipo: 'string',  scope: 'session', valorDefault: '',    descripcion: 'Última opción de menú seleccionada por el usuario' },
+      { nombre: 'contador_reintentos',  tipo: 'number',  scope: 'session', valorDefault: 0,     descripcion: 'Número de reintentos del paso actual del flujo' },
+      { nombre: 'flujo_completado',     tipo: 'boolean', scope: 'session', valorDefault: false, descripcion: 'True cuando el flujo finalizó satisfactoriamente' },
+      { nombre: 'ultimo_error',         tipo: 'string',  scope: 'session', valorDefault: '',    descripcion: 'Último mensaje de error registrado en el flujo' },
+    ];
+
+    // Fetch already existing names for this tenant to skip duplicates
+    const existing = await prisma.flowVariable.findMany({
+      where: { tenantId },
+      select: { nombre: true },
+    });
+    const existingNames = new Set(existing.map(v => v.nombre));
+
+    const toCreate = DEFAULTS.filter(d => !existingNames.has(d.nombre));
+
+    if (toCreate.length === 0) {
+      return res.json({ created: 0, skipped: DEFAULTS.length, message: 'All default variables already exist' });
+    }
+
+    await prisma.flowVariable.createMany({
+      data: toCreate.map(d => ({ ...d, tenantId })),
+    });
+
+    res.status(201).json({
+      created: toCreate.length,
+      skipped: DEFAULTS.length - toCreate.length,
+      variables: toCreate.map(d => d.nombre),
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
 module.exports = router;
