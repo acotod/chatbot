@@ -184,6 +184,13 @@ router.post('/import', async (req, res, next) => {
     // Validate WABA JSON structure first
     const wabaValidation = validateWabaJson(wabaJson);
 
+    if (!wabaValidation.valid) {
+      return res.status(400).json({
+        error: 'Invalid WABA JSON',
+        validation: wabaValidation,
+      });
+    }
+
     // Convert to internal definition
     const { definition, nodeCount, warnings } = importFromWaba(wabaJson, nombre);
 

@@ -38,6 +38,10 @@ const VALID_INTERNAL_NODE_TYPES = new Set([
   'message', 'input', 'menu', 'condition', 'action', 'delay', 'end', 'start', 'handoff', 'llm',
 ]);
 
+function asArray(value) {
+  return Array.isArray(value) ? value : [];
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Validation
 // ─────────────────────────────────────────────────────────────────────────────
@@ -151,11 +155,11 @@ function validateWabaJson(wabaJson) {
     if (!screen.id) errors.push(`Screen at index ${idx} missing "id"`);
     if (!screen.title) warnings.push(`${prefix}: missing "title"`);
     if (!Array.isArray(screen.layout?.children) && !Array.isArray(screen.children)) {
-      warnings.push(`${prefix}: no children/layout components found`);
+      errors.push(`${prefix}: "layout.children" or "children" must be an array`);
     }
 
     // Validate on_click_action routing
-    const children = screen.layout?.children ?? screen.children ?? [];
+    const children = asArray(screen.layout?.children ?? screen.children);
     children.forEach((comp) => {
       if (comp.on_click_action?.navigate) {
         const target = comp.on_click_action.navigate.screen ?? comp.on_click_action.navigate;
@@ -186,7 +190,7 @@ function importFromWaba(wabaJson, flowName) {
 
   screens.forEach((screen, idx) => {
     const nodeId = `node_${idx + 1}`;
-    const children = screen.layout?.children ?? screen.children ?? [];
+    const children = asArray(screen.layout?.children ?? screen.children);
 
     // Determine primary type from components
     const hasInput = children.some((c) => ['TextInput', 'TextArea', 'DatePicker', 'OptIn'].includes(c.type));
@@ -204,7 +208,7 @@ function importFromWaba(wabaJson, flowName) {
 
     // Extract options for menu nodes
     const menuComp = children.find((c) => ['Dropdown', 'RadioButtonsGroup', 'CheckboxGroup'].includes(c.type));
-    const options = menuComp?.data_source?.map((o) => ({
+    const options = asArray(menuComp?.data_source).map((o) => ({
       id: String(o.id ?? o.value ?? o),
       title: String(o.title ?? o.label ?? o),
     })) ?? [];
