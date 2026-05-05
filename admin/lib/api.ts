@@ -372,3 +372,44 @@ export const configApi = {
     apiClient.put(`/admin/tenants/${slug}/config/${clave}`, { valor }),
 };
 
+// ── Flows CRUD ────────────────────────────────────────────────────────────────
+export const flowsApi = {
+  list: (tenantId?: string) =>
+    apiClient.get("/flows", { params: tenantId ? { tenantId } : {} }),
+  get: (id: number) =>
+    apiClient.get(`/flows/${id}`),
+  create: (body: { tenantId: string; nombre: string; metaJson?: unknown }) =>
+    apiClient.post("/flows", body),
+  update: (id: number, body: { nombre?: string; metaJson?: unknown; activo?: boolean; nodes?: unknown[]; edges?: unknown[] }) =>
+    apiClient.put(`/flows/${id}`, body),
+  remove: (id: number) =>
+    apiClient.delete(`/flows/${id}`),
+  /** Alias for remove — used in some mutation calls */
+  delete: (id: number) =>
+    apiClient.delete(`/flows/${id}`),
+  /** Save nodes + edges as individual DB rows */
+  saveGraph: (id: number, body: { nodes: unknown[]; edges: unknown[] }) =>
+    apiClient.put(`/flows/${id}/graph`, body),
+  /** GET /flows/:id/versions — version history */
+  versions: (id: number) =>
+    apiClient.get(`/flows/${id}/versions`),
+  /** POST /flows/:id/versions — create a snapshot */
+  createVersion: (id: number, body: { description?: string }) =>
+    apiClient.post(`/flows/${id}/versions`, body),
+  /** POST /flows/:id/versions/:ver/restore — rollback */
+  restoreVersion: (id: number, ver: number) =>
+    apiClient.post(`/flows/${id}/versions/${ver}/restore`),
+  /** GET /flows/endpoints-catalog — endpoint definitions available for webhooks */
+  getEndpointsCatalog: (params?: { tenantSlug?: string }) =>
+      apiClient.get("/flows/endpoints-catalog", { params }),
+    /** GET /flows/:id/export — export flow as JSON */
+    exportJson: (body: { nodes?: unknown[]; edges?: unknown[]; tenantSlug?: string; flowId?: number }) =>
+      apiClient.post("/flows/export", body),
+    /** POST /flows/:id/import — import flow from JSON */
+    importJson: (id: number, body: { json: unknown }) =>
+        apiClient.post(`/flows/${id}/import`, body),
+      /** POST /flows/:id/execute — run a step in testing sandbox */
+      execute: (id: number, body: { sessionId?: string; mensaje: string; tenantId?: string | null }) =>
+        apiClient.post(`/flows/${id}/execute`, body),
+};
+

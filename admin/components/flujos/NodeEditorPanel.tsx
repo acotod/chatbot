@@ -1,0 +1,182 @@
+"use client";
+import { useState, useEffect } from "react";
+import { X, Trash2, Check } from "lucide-react";
+import type { Node } from "reactflow";
+import {
+  NODE_META, resolveNodeType,
+  type NodeType, type EndpointDef,
+  type ConditionContent, type WebhookContent, type EndpointMapping,
+} from "@/lib/flowTypes";
+
+interface NodeEditorPanelProps {
+  node: Node;
+  endpointCatalog: EndpointDef[];
+  onApply: (nodeId: string, data: Partial<Node["data"]>) => void;
+  onCancel: () => void;
+  onDelete: (nodeId: string) => void;
+}
+
+export default function NodeEditorPanel({
+  node, endpointCatalog, onApply, onCancel, onDelete,
+}: NodeEditorPanelProps) {
+  const nodeType = resolveNodeType((node.data.nodeType ?? "screen") as NodeType);
+  const meta = NODE_META[nodeType] ?? NODE_META.screen;
+  const [content, setContent] = useState<Record<string, unknown>>({ ...node.data.content });
+
+  useEffect(() => {
+    setContent({ ...node.data.content });
+  }, [node.id, node.data.content]);
+
+  function patch(key: string, value: unknown) {
+    setContent(prev => ({ ...prev, [key]: value }));
+  }
+
+  function handleApply() {
+    onApply(node.id, { content, label: (content.label as string) ?? node.data.label });
+  }
+
+  const inputCls = "w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400";
+  const labelCls = "text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1";
+
+  return (
+    <div className="w-72 flex-shrink-0 bg-white rounded-xl border shadow-sm flex flex-col overflow-hidden">
+      {/* Header */}
+      <div className="flex items-center justify-between px-4 py-3 border-b" style={{ background: meta.bg }}>
+        <div>
+          <span className="text-xs font-bold uppercase tracking-wide" style={{ color: meta.color }}>
+            {meta.label}
+          </span>
+          <p className="text-sm font-semibold text-gray-800 truncate">{node.id}</p>
+        </div>
+        <button onClick={onCancel} className="p-1 rounded-lg hover:bg-black/10">
+          <X className="w-4 h-4 text-gray-500" />
+        </button>
+      </div>
+
+      {/* Fields */}
+      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+        {/* Label — all types */}
+        <div>
+          <p className={labelCls}>Etiqueta</p>
+          <input className={inputCls} value={(content.label as string) ?? ""} onChange={e => patch("label", e.target.value)} />
+        </div>
+
+        {/* Screen / message */}
+        {(nodeType === "screen") && (
+          <>
+            <div>
+              <p className={labelCls}>Screen ID (MAYÚSCULAS)</p>
+              <input className={inputCls} value={(content.screenId as string) ?? ""} onChange={e => patch("screenId", e.target.value.toUpperCase().replace(/\s/g, "_"))} placeholder="BIENVENIDA" />
+            </div>
+            <div>
+              <p className={labelCls}>Título</p>
+              <input className={inputCls} value={(content.title as string) ?? ""} onChange={e => patch("title", e.target.value)} />
+            </div>
+            <div>
+              <p className={labelCls}>Pantalla terminal</p>
+              <label className="flex items-center gap-2 text-sm cursor-pointer">
+                <input type="checkbox" checked={!!(content.terminal)} onChange={e => patch("terminal", e.target.checked)} />
+                Marcar como pantalla final
+              </label>
+            </div>
+          </>
+        )}
+
+        {/* Input */}
+        {nodeType === "input" && (
+          <>
+            <div>
+              <p className={labelCls}>Nombre de variable</p>
+              <input className={inputCls} value={(content.name as string) ?? ""} onChange={e => patch("name", e.target.value)} placeholder="nombre_cliente" />
+            </div>
+            <div>
+              <p className={labelCls}>Tipo de entrada</p>
+              <select className={inputCls} value={(content.inputType as string) ?? "text"} onChange={e => patch("inputType", e.target.value)}>
+                {["text","number","email","phone","select","date"].map(t => (
+                  <option key={t} value={t}>{t}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <p className={labelCls}>Placeholder</p>
+              <input className={inputCls} value={(content.placeholder as string) ?? ""} onChange={e => patch("placeholder", e.target.value)} />
+            </div>
+          </>
+        )}
+
+        {/* Condition */}
+        {nodeType === "condition" && (
+          <>
+            <div>
+              <p className={labelCls}>Variable a evaluar</p>
+              <input className={inputCls} value={(content as unknown as ConditionContent).variable ?? ""} onChange={e => patch("variable", e.target.value)} placeholder="{{webhook.response.status}}" />
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <p className={labelCls}>Rama TRUE</p>
+                <input className={inputCls} value={(content as unknown as ConditionContent).trueLabel ?? "Sí"} onChange={e => patch("trueLabel", e.target.value)} />
+              </div>
+              <div>
+                <p className={labelCls}>Rama FALSE</p>
+                <input className={inputCls} value={(content as unknown as ConditionContent).falseLabel ?? "No"} onChange={e => patch("falseLabel", e.target.value)} />
+              </div>
+            </div>
+          </>
+        )}
+
+        {/* Webhook */}
+        {nodeType === "webhook" && (
+          <>
+            <div>
+              <p className={labelCls}>Endpoint</p>
+              <select
+                className={inputCls}
+                value={((content as unknown as WebhookContent).endpoint as EndpointMapping)?.endpointId ?? ""}
+                onChange={e => {
+                  const ep = endpointCatalog.find(x => x.id === e.target.value);
+                  if (!ep) { patch("endpoint", null); return; }
+                  patch("endpoint", { endpointId: ep.id, body: {}, responseMapping: {} } as EndpointMapping);
+                }}
+              >
+                <option value="">— Sin endpoint —</option>
+                {endpointCatalog.map(ep => (
+                  <option key={ep.id} value={ep.id}>{ep.name}</option>
+                ))}
+              </select>
+            </div>
+            {((content as unknown as WebhookContent).endpoint as EndpointMapping)?.endpointId && (
+              <div>
+                <p className={labelCls}>Screen fallback ID</p>
+                <input className={inputCls} value={(content as unknown as WebhookContent).fallbackScreenId ?? ""} onChange={e => patch("fallbackScreenId", e.target.value)} placeholder="ERROR" />
+              </div>
+            )}
+          </>
+        )}
+
+        {/* End */}
+        {nodeType === "end" && (
+          <div>
+            <p className={labelCls}>Mensaje de cierre</p>
+            <textarea className={inputCls} rows={3} value={(content.message as string) ?? ""} onChange={e => patch("message", e.target.value)} placeholder="Gracias por contactarnos." />
+          </div>
+        )}
+      </div>
+
+      {/* Footer */}
+      <div className="border-t px-4 py-3 flex gap-2">
+        <button
+          onClick={handleApply}
+          className="flex-1 flex items-center justify-center gap-1.5 bg-blue-600 text-white text-sm font-medium rounded-lg py-2 hover:bg-blue-700"
+        >
+          <Check className="w-4 h-4" /> Aplicar
+        </button>
+        <button
+          onClick={() => onDelete(node.id)}
+          className="flex items-center justify-center gap-1 border border-red-200 text-red-500 text-sm rounded-lg px-3 py-2 hover:bg-red-50"
+        >
+          <Trash2 className="w-4 h-4" />
+        </button>
+      </div>
+    </div>
+  );
+}
