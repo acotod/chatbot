@@ -344,7 +344,7 @@ export default function FlujoSPage() {
 
   const { data: flows = [], isLoading } = useQuery<DbFlow[]>({
     queryKey: ["flows", tenantSlug],
-    queryFn: () => flowsApi.list(tenantSlug || undefined).then(r => r.data),
+    queryFn: () => flowsApi.list(tenantSlug ? { tenantSlug } : undefined).then(r => r.data),
   });
 
   const selectedTenantId = tenantSlug
