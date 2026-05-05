@@ -27,6 +27,7 @@ import {
   Zap,
 } from "lucide-react";
 import { wabaFlowsApi, integrationsApi } from "@/lib/api";
+import { useAuthStore } from "@/store/auth";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
@@ -117,7 +118,7 @@ function fmtDate(iso?: string) {
 // ─────────────────────────────────────────────────────────────────────────────
 // Sub-component: ImportModal
 // ─────────────────────────────────────────────────────────────────────────────
-function ImportModal({ onClose, onImported }: { onClose: () => void; onImported: () => void }) {
+function ImportModal({ onClose, onImported, tenantSlug }: { onClose: () => void; onImported: () => void; tenantSlug: string }) {
   const [json, setJson]     = useState("");
   const [nombre, setNombre] = useState("");
   const [error, setError]   = useState("");
@@ -126,6 +127,10 @@ function ImportModal({ onClose, onImported }: { onClose: () => void; onImported:
 
   async function handleImport() {
     setError("");
+    if (!tenantSlug) {
+      setError("Selecciona un tenant antes de importar.");
+      return;
+    }
     let parsed: unknown;
     try {
       parsed = JSON.parse(json);
@@ -135,7 +140,7 @@ function ImportModal({ onClose, onImported }: { onClose: () => void; onImported:
     }
     setLoading(true);
     try {
-      const { data } = await wabaFlowsApi.import({ wabaJson: parsed, nombre: nombre || undefined });
+      const { data } = await wabaFlowsApi.import({ wabaJson: parsed, nombre: nombre || undefined, tenantSlug });
       setResult(data);
       onImported();
     } catch (e: unknown) {
@@ -1053,6 +1058,7 @@ function SimulatePanel({ flow }: { flow: WabaFlow }) {
 // Main page
 // ─────────────────────────────────────────────────────────────────────────────
 export default function WabaFlujos() {
+  const { tenantSlug } = useAuthStore();
   const [flows, setFlows]           = useState<WabaFlow[]>([]);
   const [loading, setLoading]       = useState(true);
   const [tab, setTab]               = useState<TabKey>("list");
@@ -1063,20 +1069,30 @@ export default function WabaFlujos() {
   const [logsLoading, setLogsLoading] = useState(false);
 
   const loadFlows = useCallback(async () => {
+    if (!tenantSlug) {
+      setFlows([]);
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     try {
-      const { data } = await wabaFlowsApi.list({ activo: true });
+      const { data } = await wabaFlowsApi.list({ activo: true, tenantSlug });
       setFlows(data.flows ?? data);
     } finally { setLoading(false); }
-  }, []);
+  }, [tenantSlug]);
 
   const loadImportLogs = useCallback(async () => {
+    if (!tenantSlug) {
+      setImportLogs([]);
+      setLogsLoading(false);
+      return;
+    }
     setLogsLoading(true);
     try {
-      const { data } = await wabaFlowsApi.importLogs();
+      const { data } = await wabaFlowsApi.importLogs({ tenantSlug });
       setImportLogs(data);
     } finally { setLogsLoading(false); }
-  }, []);
+  }, [tenantSlug]);
 
   useEffect(() => { loadFlows(); }, [loadFlows]);
 
@@ -1170,6 +1186,12 @@ export default function WabaFlujos() {
           </button>
         </div>
       </div>
+
+      {!tenantSlug && (
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          Selecciona un tenant en el encabezado para listar o importar flujos WABA.
+        </div>
+      )}
 
       {/* Tab bar */}
       <div className="flex items-center gap-1 bg-slate-100 rounded-xl p-1 w-fit">
@@ -1379,6 +1401,7 @@ export default function WabaFlujos() {
       {/* Modals */}
       {showImport && (
         <ImportModal
+          tenantSlug={tenantSlug}
           onClose={() => setShowImport(false)}
           onImported={() => { setShowImport(false); loadFlows(); }}
         />

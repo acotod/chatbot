@@ -424,15 +424,15 @@ export const variablesApi = {
 
 // ── WABA Flow Integration ─────────────────────────────────────────────────────
 export const wabaFlowsApi = {
-  list: (params?: { activo?: boolean; page?: number; limit?: number }) =>
+  list: (params?: { activo?: boolean; page?: number; limit?: number; tenantSlug?: string }) =>
     apiClient.get("/waba-flows", { params }),
   get: (id: number) => apiClient.get(`/waba-flows/${id}`),
-  create: (data: { nombre: string; definition?: unknown; changelog?: string }) =>
+  create: (data: { nombre: string; definition?: unknown; changelog?: string; tenantSlug?: string }) =>
     apiClient.post("/waba-flows", data),
   update: (id: number, data: { nombre?: string; activo?: boolean }) =>
     apiClient.put(`/waba-flows/${id}`, data),
   remove: (id: number) => apiClient.delete(`/waba-flows/${id}`),
-  import: (data: { wabaJson: unknown; nombre?: string; changelog?: string }) =>
+  import: (data: { wabaJson: unknown; nombre?: string; changelog?: string; tenantSlug?: string }) =>
     apiClient.post("/waba-flows/import", data),
   export: (id: number, params?: { versionId?: number; download?: boolean }) =>
     apiClient.get(`/waba-flows/${id}/export`, { params }),
@@ -450,7 +450,7 @@ export const wabaFlowsApi = {
     apiClient.put(`/waba-flows/${id}/versions/${vId}/publish`, { publish }),
   rollback: (id: number, vId: number) =>
     apiClient.post(`/waba-flows/${id}/versions/${vId}/rollback`),
-  importLogs: (params?: { page?: number; limit?: number }) =>
+  importLogs: (params?: { page?: number; limit?: number; tenantSlug?: string }) =>
     apiClient.get("/waba-flows/import-logs", { params }),
   flowsApi: (id: number) => apiClient.get(`/waba-flows/${id}`),
 };

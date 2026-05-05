@@ -49,6 +49,26 @@ function tid(req) { return req.admin?.tenantId ?? req.user?.tenantId ?? req.user
 function uid(req) { return req.admin?.adminUserId ?? req.user?.adminUserId ?? req.user?.id; }
 function notFound(res, entity = 'Flow') { return res.status(404).json({ error: `${entity} not found` }); }
 
+async function resolveTenantId(req, explicitTenantSlug) {
+  if (!req.admin?.superAdmin) {
+    return tid(req) ?? null;
+  }
+
+  if (req.admin?.tenantId) {
+    return req.admin.tenantId;
+  }
+
+  if (explicitTenantSlug) {
+    const tenant = await prisma.tenant.findUnique({
+      where: { slug: explicitTenantSlug },
+      select: { id: true },
+    });
+    return tenant?.id ?? null;
+  }
+
+  return null;
+}
+
 async function _getIntegrationMap(tenantId) {
   const integrations = await prisma.integration.findMany({
     where: { tenantId, activo: true },
@@ -61,7 +81,8 @@ async function _getIntegrationMap(tenantId) {
 // ─────────────────────────────────────────────────────────────────────────────
 router.get('/', async (req, res, next) => {
   try {
-    const tenantId = tid(req);
+    const tenantId = await resolveTenantId(req, req.query.tenantSlug);
+    if (!tenantId) return res.status(400).json({ error: 'tenantSlug is required for WABA flows' });
     const { activo, page = 1, limit = 20 } = req.query;
     const where = { tenantId };
     if (activo !== undefined) where.activo = activo === 'true';
@@ -102,7 +123,8 @@ router.get('/', async (req, res, next) => {
 // ─────────────────────────────────────────────────────────────────────────────
 router.get('/import-logs', async (req, res, next) => {
   try {
-    const tenantId = tid(req);
+    const tenantId = await resolveTenantId(req, req.query.tenantSlug);
+    if (!tenantId) return res.status(400).json({ error: 'tenantSlug is required for WABA import logs' });
     const { page = 1, limit = 30 } = req.query;
     const logs = await prisma.wabaImportLog.findMany({
       where: { tenantId },
@@ -119,7 +141,8 @@ router.get('/import-logs', async (req, res, next) => {
 // ─────────────────────────────────────────────────────────────────────────────
 router.post('/', async (req, res, next) => {
   try {
-    const tenantId = tid(req);
+    const tenantId = await resolveTenantId(req, req.body?.tenantSlug);
+    if (!tenantId) return res.status(400).json({ error: 'tenantSlug is required for WABA flows' });
     const adminUserId = uid(req);
     const { nombre, definition, changelog } = req.body;
 
@@ -173,12 +196,12 @@ router.post('/', async (req, res, next) => {
 // ─────────────────────────────────────────────────────────────────────────────
 router.post('/import', async (req, res, next) => {
   try {
-    const tenantId = tid(req);
+    const tenantId = await resolveTenantId(req, req.body?.tenantSlug);
     const adminUserId = uid(req);
     const { wabaJson, nombre, changelog } = req.body;
 
     if (!tenantId) {
-      return res.status(400).json({ error: 'tenantId is required for WABA import' });
+      return res.status(400).json({ error: 'tenantSlug is required for WABA import' });
     }
 
     if (!wabaJson || typeof wabaJson !== 'object') {
