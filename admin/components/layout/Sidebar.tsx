@@ -1,6 +1,6 @@
 "use client";
 
-import { authApi } from "@/lib/api";
+import { authApi, tenantApi } from "@/lib/api";
 import { canAccess } from "@/lib/permissions";
 import { cn } from "@/lib/utils";
 import { useAuthStore } from "@/store/auth";
@@ -24,6 +24,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
+import { useEffect, useRef, useState } from "react";
 
 const NAV_ITEMS = [
   { icon: LayoutDashboard, label: "Dashboard", href: "/dashboard" },
@@ -44,7 +45,28 @@ const NAV_ITEMS = [
 export function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
-  const { logout, tenantSlug, superAdmin, permissions } = useAuthStore();
+  const { logout, tenantSlug, setTenantSlug, superAdmin, permissions } = useAuthStore();
+  const [tenants, setTenants] = useState<{ slug: string; nombre: string }[]>([]);
+  const [open, setOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!superAdmin) return;
+    tenantApi.list().then((res) => {
+      const data = Array.isArray(res.data) ? res.data : (res.data?.data ?? []);
+      setTenants(data);
+    }).catch(() => {});
+  }, [superAdmin]);
+
+  useEffect(() => {
+    function onClickOutside(e: MouseEvent) {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", onClickOutside);
+    return () => document.removeEventListener("mousedown", onClickOutside);
+  }, []);
 
   async function handleLogout() {
     try {
@@ -76,7 +98,41 @@ export function Sidebar() {
         <span className="text-slate-900 font-semibold text-lg">Zentra Bot</span>
       </div>
 
-      {/* Navigation */}
+      {/* Tenant selector */}
+      <div className="px-4 py-3 border-b border-slate-100 relative" ref={dropdownRef}>
+        <button
+          onClick={() => superAdmin && setOpen((o) => !o)}
+          className={cn(
+            "w-full flex items-center justify-between px-3 py-2 rounded-lg bg-slate-50 transition text-sm",
+            superAdmin ? "hover:bg-slate-100 cursor-pointer" : "cursor-default"
+          )}
+        >
+          <span className="text-slate-600 truncate">
+            {tenantSlug || (superAdmin ? "Seleccionar tenant" : "—")}
+          </span>
+          {superAdmin && <ChevronDown className={cn("w-4 h-4 text-slate-400 shrink-0 ml-2 transition-transform", open && "rotate-180")} />}
+        </button>
+        {open && superAdmin && (
+          <div className="absolute left-4 right-4 top-full mt-1 bg-white border border-slate-200 rounded-lg shadow-lg z-50 max-h-56 overflow-y-auto">
+            {tenants.length === 0 ? (
+              <p className="px-3 py-2 text-xs text-slate-400">Sin tenants</p>
+            ) : (
+              tenants.map((t) => (
+                <button
+                  key={t.slug}
+                  onClick={() => { setTenantSlug(t.slug); setOpen(false); }}
+                  className={cn(
+                    "w-full text-left px-3 py-2 text-sm hover:bg-blue-50 hover:text-blue-700 transition",
+                    tenantSlug === t.slug && "bg-blue-50 text-blue-700 font-medium"
+                  )}
+                >
+                  {t.nombre || t.slug}
+                </button>
+              ))
+            )}
+          </div>
+        )}
+      </div>
       <nav className="flex-1 min-h-0 px-3 py-4 overflow-y-auto space-y-0.5">
         {filteredNavItems.map((item) => {
           const active = pathname.startsWith(item.href);
