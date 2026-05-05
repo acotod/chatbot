@@ -89,7 +89,7 @@ export function Sidebar() {
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 px-3 py-4 overflow-y-auto scrollbar-thin space-y-1">
+      <nav className="flex-1 min-h-0 px-3 py-4 overflow-y-auto space-y-0.5">
         {filteredNavItems.map((item) => {
           const active = pathname.startsWith(item.href);
           return (
@@ -97,7 +97,7 @@ export function Sidebar() {
               key={item.href}
               href={item.href}
               className={cn(
-                "flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all",
+                "flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-medium transition-all",
                 active
                   ? "bg-blue-50 text-blue-700"
                   : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
