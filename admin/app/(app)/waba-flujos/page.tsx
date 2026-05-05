@@ -139,8 +139,10 @@ function ImportModal({ onClose, onImported }: { onClose: () => void; onImported:
       setResult(data);
       onImported();
     } catch (e: unknown) {
-      const msg = (e as { response?: { data?: { error?: string } } })?.response?.data?.error;
-      setError(msg ?? "Error al importar el flujo.");
+      const responseData = (e as { response?: { data?: { error?: string; validation?: { errors?: string[] } } } })?.response?.data;
+      const validationErrors = Array.isArray(responseData?.validation?.errors) ? responseData.validation.errors : [];
+      const msg = responseData?.error;
+      setError(validationErrors.length > 0 ? `${msg ?? "Error al importar el flujo."} ${validationErrors.join(" | ")}` : (msg ?? "Error al importar el flujo."));
     } finally {
       setLoading(false);
     }
@@ -532,6 +534,9 @@ function FlowBuilder({
   const [validation, setValidation] = useState<{ internal: { valid: boolean; errors: string[]; warnings: string[] }; waba: { valid: boolean; errors: string[] } } | null>(null);
   const [changelog, setChangelog] = useState("");
   const [integrations, setIntegrations] = useState<{ id: number; nombre: string; tipo: string }[]>([]);
+  const validationErrors = validation?.internal?.errors ?? [];
+  const validationWarnings = validation?.internal?.warnings ?? [];
+  const wabaValidationErrors = validation?.waba?.errors ?? [];
 
   const loadLatestVersion = useCallback(async () => {
     try {
@@ -605,7 +610,17 @@ function FlowBuilder({
     setValidating(true);
     try {
       const { data } = await wabaFlowsApi.validate(flow.id, { definition });
-      setValidation(data);
+      setValidation({
+        internal: {
+          valid: Boolean(data?.internal?.valid),
+          errors: Array.isArray(data?.internal?.errors) ? data.internal.errors : [],
+          warnings: Array.isArray(data?.internal?.warnings) ? data.internal.warnings : [],
+        },
+        waba: {
+          valid: Boolean(data?.waba?.valid),
+          errors: Array.isArray(data?.waba?.errors) ? data.waba.errors : [],
+        },
+      });
     } catch { /* ignore */ } finally { setValidating(false); }
   }
 
@@ -683,16 +698,16 @@ function FlowBuilder({
               ? <CheckCircle2 className="w-4 h-4 text-green-600" />
               : <XCircle className="w-4 h-4 text-red-600" />}
             <span className={validation.internal.valid ? "text-green-700" : "text-red-700"}>
-              {validation.internal.valid ? "Flujo válido" : `${validation.internal.errors.length} error(es) encontrados`}
+              {validation.internal.valid ? "Flujo válido" : `${validationErrors.length} error(es) encontrados`}
             </span>
           </div>
-          {validation.internal.errors.map((e, i) => (
+          {validationErrors.map((e, i) => (
             <p key={i} className="text-red-600 text-xs ml-6">• {e}</p>
           ))}
-          {validation.internal.warnings.map((w, i) => (
+          {validationWarnings.map((w, i) => (
             <p key={i} className="text-amber-600 text-xs ml-6">⚠ {w}</p>
           ))}
-          {!validation.waba.valid && validation.waba.errors.map((e, i) => (
+          {!validation.waba.valid && wabaValidationErrors.map((e, i) => (
             <p key={i} className="text-orange-600 text-xs ml-6">WABA: {e}</p>
           ))}
         </div>

@@ -42,6 +42,47 @@ function asArray(value) {
   return Array.isArray(value) ? value : [];
 }
 
+function getActionConfig(component) {
+  return component?.on_click_action ?? component?.['on-click-action'] ?? null;
+}
+
+function getDataSource(component) {
+  return asArray(component?.data_source ?? component?.['data-source']);
+}
+
+function flattenComponents(children) {
+  const flat = [];
+
+  asArray(children).forEach((child) => {
+    if (!child || typeof child !== 'object') return;
+    flat.push(child);
+    if (Array.isArray(child.children)) {
+      flat.push(...flattenComponents(child.children));
+    }
+  });
+
+  return flat;
+}
+
+function resolveTargetScreen(actionConfig) {
+  if (!actionConfig || typeof actionConfig !== 'object') return null;
+
+  const navigate = actionConfig.navigate;
+  if (navigate && typeof navigate === 'object') {
+    return navigate.screen ?? navigate.name ?? null;
+  }
+
+  const next = actionConfig.next;
+  if (next && typeof next === 'object') {
+    return next.screen ?? next.name ?? null;
+  }
+
+  if (typeof navigate === 'string') return navigate;
+  if (typeof next === 'string') return next;
+
+  return null;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Validation
 // ─────────────────────────────────────────────────────────────────────────────
@@ -159,10 +200,11 @@ function validateWabaJson(wabaJson) {
     }
 
     // Validate on_click_action routing
-    const children = asArray(screen.layout?.children ?? screen.children);
+    const children = flattenComponents(screen.layout?.children ?? screen.children);
     children.forEach((comp) => {
-      if (comp.on_click_action?.navigate) {
-        const target = comp.on_click_action.navigate.screen ?? comp.on_click_action.navigate;
+      const actionConfig = getActionConfig(comp);
+      const target = resolveTargetScreen(actionConfig);
+      if (target) {
         if (target && !screenIds.has(target)) {
           errors.push(`${prefix} → component "${comp.name ?? comp.type}": navigate targets unknown screen "${target}"`);
         }
@@ -187,10 +229,12 @@ function importFromWaba(wabaJson, flowName) {
   const warnings = [];
   const screens = wabaJson.screens ?? [];
   const nodes = [];
+  const screenToNodeId = new Map(screens.map((screen, idx) => [screen.id, `node_${idx + 1}`]));
 
   screens.forEach((screen, idx) => {
     const nodeId = `node_${idx + 1}`;
-    const children = asArray(screen.layout?.children ?? screen.children);
+    const children = flattenComponents(screen.layout?.children ?? screen.children);
+    const routeTargets = asArray(wabaJson.routing_model?.[screen.id]);
 
     // Determine primary type from components
     const hasInput = children.some((c) => ['TextInput', 'TextArea', 'DatePicker', 'OptIn'].includes(c.type));
@@ -208,7 +252,7 @@ function importFromWaba(wabaJson, flowName) {
 
     // Extract options for menu nodes
     const menuComp = children.find((c) => ['Dropdown', 'RadioButtonsGroup', 'CheckboxGroup'].includes(c.type));
-    const options = asArray(menuComp?.data_source).map((o) => ({
+    const options = getDataSource(menuComp).map((o) => ({
       id: String(o.id ?? o.value ?? o),
       title: String(o.title ?? o.label ?? o),
     })) ?? [];
@@ -219,16 +263,22 @@ function importFromWaba(wabaJson, flowName) {
 
     // Determine next node
     const footerComp = children.find((c) => c.type === 'Footer');
-    let nextScreenId = null;
-    if (footerComp?.on_click_action?.navigate?.screen) {
-      nextScreenId = footerComp.on_click_action.navigate.screen;
-    }
+    const nextFromFooter = resolveTargetScreen(getActionConfig(footerComp));
+    const nextScreenId = nextFromFooter ?? (routeTargets.length === 1 ? routeTargets[0] : null);
     const nextIdx = nextScreenId
       ? screens.findIndex((s) => s.id === nextScreenId)
       : idx + 1;
     const next = nextIdx >= 0 && nextIdx < screens.length && !isEnd
       ? `node_${nextIdx + 1}`
       : null;
+
+    const branches = nodeType === 'menu'
+      ? Object.fromEntries(
+          options
+            .filter((option) => screenToNodeId.has(option.id))
+            .map((option) => [option.id, screenToNodeId.get(option.id)])
+        )
+      : {};
 
     const config = { text };
     if (nodeType === 'menu' && options.length) config.options = options;
@@ -243,7 +293,7 @@ function importFromWaba(wabaJson, flowName) {
       type: nodeType,
       config,
       next,
-      branches: {},
+      branches,
       _waba_screen_id: screen.id,
     });
   });

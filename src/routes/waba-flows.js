@@ -177,6 +177,10 @@ router.post('/import', async (req, res, next) => {
     const adminUserId = uid(req);
     const { wabaJson, nombre, changelog } = req.body;
 
+    if (!tenantId) {
+      return res.status(400).json({ error: 'tenantId is required for WABA import' });
+    }
+
     if (!wabaJson || typeof wabaJson !== 'object') {
       return res.status(400).json({ error: 'wabaJson must be a non-null object' });
     }
