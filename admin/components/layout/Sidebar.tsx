@@ -9,6 +9,7 @@ import {
   Bell,
   Building2,
   CalendarDays,
+  ChevronDown,
   CreditCard,
   LayoutDashboard,
   LogOut,
