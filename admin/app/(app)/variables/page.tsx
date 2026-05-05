@@ -48,11 +48,15 @@ const SCOPE_CONFIG = {
 function VariableModal({
   initial,
   flows,
+  tenantSlug,
+  superAdmin,
   onClose,
   onSaved,
 }: {
   initial?: FlowVariable;
   flows: FlowOption[];
+  tenantSlug?: string;
+  superAdmin: boolean;
   onClose: () => void;
   onSaved: (v: FlowVariable) => void;
 }) {
@@ -69,6 +73,9 @@ function VariableModal({
 
   async function handleSave() {
     if (!nombre.trim()) return setError("Name is required");
+    if (superAdmin && !tenantSlug) {
+      return setError("Selecciona un tenant antes de guardar variables.");
+    }
     let parsedDefault: unknown = null;
     if (valorDefault.trim()) {
       try { parsedDefault = JSON.parse(valorDefault); } catch { parsedDefault = valorDefault; }
@@ -80,6 +87,7 @@ function VariableModal({
       valorDefault: parsedDefault,
       descripcion: descripcion || undefined,
       flowId: flowId ? Number(flowId) : undefined,
+      tenantSlug: tenantSlug || undefined,
     };
     setError("");
     setLoading(true);
@@ -201,7 +209,7 @@ function VariableModal({
 // Main Page
 // ─────────────────────────────────────────────────────────────────────────────
 export default function VariablesPage() {
-  const { tenantSlug } = useAuthStore();
+  const { tenantSlug, superAdmin } = useAuthStore();
   const [variables, setVariables] = useState<FlowVariable[]>([]);
   const [flows, setFlows] = useState<FlowOption[]>([]);
   const [loading, setLoading] = useState(true);
@@ -218,13 +226,19 @@ export default function VariablesPage() {
   async function load() {
     setLoading(true);
     try {
+      if (superAdmin && !tenantSlug) {
+        setVariables([]);
+        setFlows([]);
+        return;
+      }
+
       const params: Record<string, unknown> = {};
       if (tenantSlug) params.tenantSlug = tenantSlug;
       if (filterScope !== "all") params.scope = filterScope;
       if (filterFlowId) params.flowId = filterFlowId;
       const [varRes, flowRes] = await Promise.all([
         variablesApi.list(params),
-        flowsApi.list({ limit: 200 }),
+        flowsApi.list({ limit: 200, ...(tenantSlug ? { tenantSlug } : {}) }),
       ]);
       setVariables(varRes.data);
       setFlows(Array.isArray(flowRes.data) ? flowRes.data : (flowRes.data?.data ?? []));
@@ -233,9 +247,13 @@ export default function VariablesPage() {
     }
   }
 
-  useEffect(() => { load(); }, [filterScope, filterFlowId, tenantSlug]);
+  useEffect(() => { load(); }, [filterScope, filterFlowId, tenantSlug, superAdmin]);
 
   async function handleSeedDefaults() {
+    if (superAdmin && !tenantSlug) {
+      setSeedMsg("Selecciona un tenant antes de cargar variables predeterminadas");
+      return;
+    }
     setSeeding(true);
     setSeedMsg("");
     try {
@@ -253,9 +271,10 @@ export default function VariablesPage() {
 
   async function handleDelete() {
     if (!toDelete) return;
+    if (superAdmin && !tenantSlug) return;
     setDeleting(true);
     try {
-      await variablesApi.remove(toDelete.id);
+      await variablesApi.remove(toDelete.id, tenantSlug || undefined);
       setVariables((prev) => prev.filter((v) => v.id !== toDelete.id));
       setToDelete(null);
     } finally {
@@ -437,6 +456,8 @@ export default function VariablesPage() {
         <VariableModal
           initial={editing ?? undefined}
           flows={flows}
+          tenantSlug={tenantSlug || undefined}
+          superAdmin={superAdmin}
           onClose={() => { setShowModal(false); setEditing(null); }}
           onSaved={handleSaved}
         />

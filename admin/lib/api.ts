@@ -421,9 +421,19 @@ export const variablesApi = {
   }) => apiClient.post("/variables", data),
   update: (
     id: number,
-    data: { nombre?: string; tipo?: string; valorDefault?: unknown; descripcion?: string; scope?: string }
+    data: {
+      nombre?: string;
+      tipo?: string;
+      valorDefault?: unknown;
+      descripcion?: string;
+      scope?: string;
+      tenantSlug?: string;
+    }
   ) => apiClient.put(`/variables/${id}`, data),
-  remove: (id: number) => apiClient.delete(`/variables/${id}`),
+  remove: (id: number, tenantSlug?: string) =>
+    apiClient.delete(`/variables/${id}`, {
+      params: tenantSlug ? { tenantSlug } : undefined,
+    }),
   seedDefaults: (tenantSlug?: string) =>
     apiClient.post("/variables/seed-defaults", tenantSlug ? { tenantSlug } : {}),
 };
