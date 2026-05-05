@@ -29,13 +29,17 @@
  *   "end"     → { type, text }   ends conversation
  */
 
+const { PrismaClient }        = require('@prisma/client');
 const { loadFlowDefinition } = require('../engine/flowLoader');
 const { executeNode }         = require('../engine/nodeExecutors');
 const contextStore            = require('../engine/contextStore');
 const integrationRunner       = require('../engine/integrationRunner');
 const convLogger              = require('../engine/conversationLogger');
+const { getCatalog }          = require('./endpointCatalog');
 const db                      = require('./database');
 const logger                  = require('../utils/logger');
+
+const prisma = new PrismaClient();
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Public: executeStep
@@ -97,7 +101,22 @@ async function executeStep({ tenantId, currentNodeId, input, userId, sessionKey,
     state = await contextStore.getState(tenantId, userId, flowDef.source, flowDef.flowId);
   }
 
-  const variables = state.variables ?? {};
+  const isInitialExecution =
+    flowDef.source === 'version' &&
+    userId != null &&
+    !state.executionId &&
+    !state.currentNodeRef;
+
+  let variables = state.variables ?? {};
+  if (isInitialExecution) {
+    variables = await _bootstrapExecutionVariables({
+      tenantId,
+      flowId: flowDef.flowId,
+      definitionVariables: flowDef.variables,
+      sessionKey,
+      variables,
+    });
+  }
 
   // ── Conversation event-sourcing: ensure an active Conversation row exists ─
   // conversationId is propagated through recursive calls so we don't re-create.
@@ -381,6 +400,124 @@ function _toIntOrNull(ref) {
   if (ref == null) return null;
   const n = parseInt(ref, 10);
   return Number.isNaN(n) ? null : n;
+}
+
+async function _bootstrapExecutionVariables({ tenantId, flowId, definitionVariables, sessionKey, variables }) {
+  const definitionDefaults = _extractDefinitionDefaults(definitionVariables);
+  const dbDefaults = await _loadDefaultVariables(tenantId, flowId);
+
+  let merged = {
+    ...definitionDefaults,
+    ...dbDefaults,
+    ...(variables ?? {}),
+  };
+
+  if (sessionKey) {
+    if (merged.session_key == null) merged.session_key = sessionKey;
+    if (merged.telefono == null) merged.telefono = sessionKey;
+  }
+
+  merged = await _runSessionInitEndpoints(tenantId, merged);
+  return merged;
+}
+
+async function _loadDefaultVariables(tenantId, flowId) {
+  try {
+    const variables = await prisma.flowVariable.findMany({
+      where: {
+        tenantId,
+        OR: [
+          { scope: 'global', flowId: null },
+          { scope: 'flow', flowId },
+        ],
+      },
+      select: {
+        nombre: true,
+        valorDefault: true,
+        flowId: true,
+      },
+      orderBy: [
+        { flowId: 'asc' },
+        { id: 'asc' },
+      ],
+    });
+
+    return variables.reduce((acc, variable) => {
+      acc[variable.nombre] = variable.valorDefault ?? null;
+      return acc;
+    }, {});
+  } catch (err) {
+    logger.warn({ tenantId, flowId, message: err.message }, 'flowEngine: failed to load default variables');
+    return {};
+  }
+}
+
+function _extractDefinitionDefaults(definitionVariables) {
+  if (!definitionVariables || typeof definitionVariables !== 'object') return {};
+
+  return Object.entries(definitionVariables).reduce((acc, [name, value]) => {
+    if (value && typeof value === 'object' && !Array.isArray(value)) {
+      if (Object.prototype.hasOwnProperty.call(value, 'valorDefault')) {
+        acc[name] = value.valorDefault;
+        return acc;
+      }
+      if (Object.prototype.hasOwnProperty.call(value, 'default')) {
+        acc[name] = value.default;
+        return acc;
+      }
+      if (Object.prototype.hasOwnProperty.call(value, 'value')) {
+        acc[name] = value.value;
+        return acc;
+      }
+    }
+
+    acc[name] = value;
+    return acc;
+  }, {});
+}
+
+async function _runSessionInitEndpoints(tenantId, variables) {
+  let catalog;
+
+  try {
+    catalog = await getCatalog(tenantId);
+  } catch (err) {
+    logger.warn({ tenantId, message: err.message }, 'flowEngine: failed to load endpoint catalog');
+    return variables;
+  }
+
+  const sessionInitEndpoints = Array.isArray(catalog?.endpoints)
+    ? catalog.endpoints.filter((endpoint) => endpoint?.sessionInit)
+    : [];
+
+  if (sessionInitEndpoints.length === 0) return variables;
+
+  let merged = { ...variables };
+
+  for (const endpoint of sessionInitEndpoints) {
+    const candidateRefs = [...new Set([endpoint?.id, endpoint?.name].filter(Boolean))];
+    let resolved = false;
+
+    for (const integrationRef of candidateRefs) {
+      try {
+        const { responseVars } = await integrationRunner.run(tenantId, integrationRef, merged);
+        merged = { ...merged, ...(responseVars ?? {}) };
+        resolved = true;
+        break;
+      } catch (err) {
+        logger.warn({ tenantId, integrationRef, message: err.message }, 'flowEngine: session init integration failed');
+      }
+    }
+
+    if (!resolved) {
+      logger.warn(
+        { tenantId, endpointId: endpoint?.id, endpointName: endpoint?.name },
+        'flowEngine: no session init integration could be resolved'
+      );
+    }
+  }
+
+  return merged;
 }
 
 async function _handleTaskControl({
