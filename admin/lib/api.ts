@@ -383,6 +383,9 @@ export const integrationsApi = {
     apiClient.put(`/integrations/${id}`, data),
   remove: (id: number) => apiClient.delete(`/integrations/${id}`),
   test: (id: number) => apiClient.post(`/integrations/${id}/test`),
+  getCatalog: () => apiClient.get("/integrations/catalog/endpoints"),
+  saveCatalog: (endpoints: unknown[]) =>
+    apiClient.put("/integrations/catalog/endpoints", { endpoints }),
 };
 
 // ── Flows ─────────────────────────────────────────────────────────────────────
@@ -400,7 +403,7 @@ export const flowsApi = {
   execute: (id: number, data: Record<string, unknown>) =>
     apiClient.post(`/flows/${id}/execute`, data),
   getEndpointsCatalog: (params?: Record<string, unknown>) =>
-    apiClient.get("/flows/endpoints-catalog", { params }),
+    apiClient.get("/integrations/catalog/endpoints", { params }),
 };
 
 // ── Variables ─────────────────────────────────────────────────────────────────

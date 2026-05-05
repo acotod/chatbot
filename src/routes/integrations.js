@@ -2,12 +2,14 @@
 /**
  * Integration Manager API
  *
- * GET    /integrations          — list all integrations for tenant
- * GET    /integrations/:id      — get single integration
- * POST   /integrations          — create integration
- * PUT    /integrations/:id      — update integration
- * DELETE /integrations/:id      — delete integration
- * POST   /integrations/:id/test — test live HTTP connectivity
+ * GET    /integrations                  — list all integrations for tenant
+ * GET    /integrations/:id              — get single integration
+ * POST   /integrations                  — create integration
+ * PUT    /integrations/:id              — update integration
+ * DELETE /integrations/:id              — delete integration
+ * POST   /integrations/:id/test         — test live HTTP connectivity
+ * GET    /integrations/catalog/endpoints — get endpoint catalog for tenant
+ * PUT    /integrations/catalog/endpoints — save endpoint catalog for tenant
  *
  * All routes require JWT. tenantId from req.user.
  */
@@ -15,6 +17,7 @@
 const express = require('express');
 const { PrismaClient } = require('@prisma/client');
 const requireJwt = require('../middleware/requireJwt');
+const { getCatalog, saveCatalog } = require('../services/endpointCatalog');
 
 const router = express.Router();
 const prisma = new PrismaClient();
@@ -165,6 +168,32 @@ router.post('/:id/test', async (req, res, next) => {
       clearTimeout(timeoutId);
       res.json({ ok: false, error: fetchErr.message });
     }
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /integrations/catalog/endpoints — get endpoint catalog for tenant
+router.get('/catalog/endpoints', async (req, res, next) => {
+  try {
+    const tenantId = tid(req);
+    const catalog = await getCatalog(tenantId);
+    res.json({ data: catalog });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// PUT /integrations/catalog/endpoints — upsert endpoint catalog for tenant
+router.put('/catalog/endpoints', async (req, res, next) => {
+  try {
+    const tenantId = tid(req);
+    const { endpoints } = req.body;
+    if (!Array.isArray(endpoints)) {
+      return res.status(400).json({ error: '"endpoints" must be an array' });
+    }
+    await saveCatalog(tenantId, { endpoints });
+    res.json({ ok: true, data: { endpoints } });
   } catch (err) {
     next(err);
   }
