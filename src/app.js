@@ -13,6 +13,9 @@ const llmRouter = require('./routes/llm');
 const eventsRouter = require('./routes/events');
 const conversationsRouter = require('./routes/conversations');
 const calendarRouter       = require('./routes/calendar');
+const flowsRouter          = require('./routes/flows');
+const integrationsRouter   = require('./routes/integrations');
+const variablesRouter      = require('./routes/variables');
 const resolveTenant = require('./middleware/resolveTenant');
 const createRateLimiter = require('./middleware/rateLimiter');
 const errorHandler = require('./middleware/errorHandler');
@@ -107,6 +110,11 @@ app.use('/whatsapp', whatsappRouter);
 
 // LLM / WABA Rescue (JWT-protected)
 app.use('/llm', llmRouter);
+
+// Flow management (JWT-protected)
+app.use('/flows', flowsRouter);
+app.use('/integrations', integrationsRouter);
+app.use('/variables', variablesRouter);
 
 app.use(errorHandler);
 

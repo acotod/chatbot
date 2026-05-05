@@ -1,6 +1,7 @@
 "use client";
 
 import { authApi } from "@/lib/api";
+import { canAccess } from "@/lib/permissions";
 import { cn } from "@/lib/utils";
 import { useAuthStore } from "@/store/auth";
 import {
@@ -39,7 +40,7 @@ const NAV_ITEMS = [
 export function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
-  const { logout, tenantSlug } = useAuthStore();
+  const { logout, tenantSlug, superAdmin, permissions } = useAuthStore();
 
   async function handleLogout() {
     try {
@@ -55,6 +56,15 @@ export function Sidebar() {
       router.push("/login");
     }
   }
+
+  // Filter nav items based on permissions
+  const filteredNavItems = NAV_ITEMS.filter((item) => {
+    // Flujos requires VIEW_FLUJOS permission
+    if (item.label === "Flujos") {
+      return superAdmin || permissions.includes("VIEW_FLUJOS");
+    }
+    return true;
+  });
 
   return (
     <aside className="w-64 bg-white border-r border-slate-200 flex flex-col h-screen sticky top-0">
@@ -78,7 +88,7 @@ export function Sidebar() {
 
       {/* Navigation */}
       <nav className="flex-1 px-3 py-4 overflow-y-auto scrollbar-thin space-y-1">
-        {NAV_ITEMS.map((item) => {
+        {filteredNavItems.map((item) => {
           const active = pathname.startsWith(item.href);
           return (
             <Link
