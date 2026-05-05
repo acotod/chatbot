@@ -31,6 +31,20 @@ export default function NodeEditorPanel({
     setContent(prev => ({ ...prev, [key]: value }));
   }
 
+  function patchBody(param: string, value: string) {
+    setContent(prev => {
+      const ep = (prev.endpoint as EndpointMapping) ?? { endpointId: "", body: {}, responseMapping: {} };
+      return { ...prev, endpoint: { ...ep, body: { ...ep.body, [param]: value } } };
+    });
+  }
+
+  function patchResponseMapping(output: string, value: string) {
+    setContent(prev => {
+      const ep = (prev.endpoint as EndpointMapping) ?? { endpointId: "", body: {}, responseMapping: {} };
+      return { ...prev, endpoint: { ...ep, responseMapping: { ...ep.responseMapping, [output]: value } } };
+    });
+  }
+
   function handleApply() {
     onApply(node.id, { content, label: (content.label as string) ?? node.data.label });
   }
@@ -125,33 +139,100 @@ export default function NodeEditorPanel({
         )}
 
         {/* Webhook */}
-        {nodeType === "webhook" && (
-          <>
-            <div>
-              <p className={labelCls}>Endpoint</p>
-              <select
-                className={inputCls}
-                value={((content as unknown as WebhookContent).endpoint as EndpointMapping)?.endpointId ?? ""}
-                onChange={e => {
-                  const ep = endpointCatalog.find(x => x.id === e.target.value);
-                  if (!ep) { patch("endpoint", null); return; }
-                  patch("endpoint", { endpointId: ep.id, body: {}, responseMapping: {} } as EndpointMapping);
-                }}
-              >
-                <option value="">— Sin endpoint —</option>
-                {endpointCatalog.map(ep => (
-                  <option key={ep.id} value={ep.id}>{ep.name}</option>
-                ))}
-              </select>
-            </div>
-            {((content as unknown as WebhookContent).endpoint as EndpointMapping)?.endpointId && (
+        {nodeType === "webhook" && (() => {
+          const wc = content as unknown as WebhookContent;
+          const ep = wc.endpoint as EndpointMapping | null;
+          const selectedEp = ep?.endpointId
+            ? endpointCatalog.find(x => x.id === ep.endpointId) ?? null
+            : null;
+          return (
+            <>
+              {/* Endpoint selector */}
               <div>
-                <p className={labelCls}>Screen fallback ID</p>
-                <input className={inputCls} value={(content as unknown as WebhookContent).fallbackScreenId ?? ""} onChange={e => patch("fallbackScreenId", e.target.value)} placeholder="ERROR" />
+                <p className={labelCls}>Endpoint disponible</p>
+                <select
+                  className={inputCls}
+                  value={ep?.endpointId ?? ""}
+                  onChange={e => {
+                    const found = endpointCatalog.find(x => x.id === e.target.value);
+                    if (!found) { patch("endpoint", null); return; }
+                    patch("endpoint", { endpointId: found.id, body: {}, responseMapping: {} } as EndpointMapping);
+                  }}
+                >
+                  <option value="">— Sin endpoint —</option>
+                  {endpointCatalog.map(def => (
+                    <option key={def.id} value={def.id}>[{def.method}] {def.name}</option>
+                  ))}
+                </select>
+                {selectedEp && (
+                  <p className="mt-1 text-[10px] font-mono text-gray-400 truncate">
+                    {selectedEp.method} {selectedEp.url}
+                  </p>
+                )}
+                {selectedEp?.description && (
+                  <p className="mt-0.5 text-[10px] text-gray-400">{selectedEp.description}</p>
+                )}
               </div>
-            )}
-          </>
-        )}
+
+              {/* Body mapping — inputs */}
+              {selectedEp && selectedEp.inputs.length > 0 && (
+                <div className="rounded-lg border border-blue-100 bg-blue-50 p-3 space-y-2">
+                  <p className="text-xs font-semibold uppercase tracking-wide mb-1" style={{ color: "#1d4ed8" }}>
+                    ↑ Datos de entrada ({selectedEp.method})
+                  </p>
+                  {selectedEp.inputs.map(param => (
+                    <div key={param}>
+                      <p className="text-[10px] font-mono text-blue-700 mb-0.5">{param}</p>
+                      <input
+                        className={inputCls}
+                        placeholder={`{{${param}}}`}
+                        value={ep?.body?.[param] ?? ""}
+                        onChange={e => patchBody(param, e.target.value)}
+                      />
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Response mapping — outputs */}
+              {selectedEp && selectedEp.outputs.length > 0 && (
+                <div className="rounded-lg border border-green-100 bg-green-50 p-3 space-y-2">
+                  <p className="text-xs font-semibold uppercase tracking-wide mb-1" style={{ color: "#15803d" }}>
+                    ↓ Variables de respuesta
+                  </p>
+                  {selectedEp.outputs.map(output => (
+                    <div key={output} className="flex items-center gap-2">
+                      <span className="text-[10px] font-mono text-green-700 w-20 truncate shrink-0">{output}</span>
+                      <span className="text-gray-400 text-xs">→</span>
+                      <input
+                        className={inputCls}
+                        placeholder={output}
+                        value={ep?.responseMapping?.[output] ?? ""}
+                        onChange={e => patchResponseMapping(output, e.target.value)}
+                      />
+                    </div>
+                  ))}
+                  <p className="text-[10px] text-green-600">
+                    Usa estas variables con <code className="bg-green-100 px-1 rounded">{`{{nombre}}`}</code>
+                  </p>
+                </div>
+              )}
+
+              {/* Fallback screen */}
+              {ep?.endpointId && (
+                <div>
+                  <p className={labelCls}>Screen fallback ID (si falla)</p>
+                  <input
+                    className={inputCls}
+                    value={wc.fallbackScreenId ?? ""}
+                    onChange={e => patch("fallbackScreenId", e.target.value)}
+                    placeholder="ERROR"
+                  />
+                </div>
+              )}
+            </>
+          );
+        })()}
 
         {/* End */}
         {nodeType === "end" && (
