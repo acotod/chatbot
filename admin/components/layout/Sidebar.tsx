@@ -9,6 +9,7 @@ import {
   CalendarDays,
   ChevronDown,
   CreditCard,
+  GitBranch,
   LayoutDashboard,
   LogOut,
   MessageCircle,
@@ -38,33 +39,37 @@ const NAV_ITEMS = [
   { icon: Building2, label: "Tenants", href: "/tenants" },
   { icon: Plug, label: "Integraciones", href: "/integraciones" },
   { icon: Variable, label: "Variables", href: "/variables" },
+  { icon: GitBranch, label: "Flujos", href: "/flujos" },
   { icon: Webhook, label: "WABA Flujos", href: "/waba-flujos" },
 ];
 
 export function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
-  const { logout, tenantSlug, setTenantSlug, superAdmin, permissions } = useAuthStore();
+  const { logout, tenantSlug, superAdmin, permissions, setTenantSlug } = useAuthStore();
+
   const [tenants, setTenants] = useState<{ slug: string; nombre: string }[]>([]);
-  const [open, setOpen] = useState(false);
+  const [dropdownOpen, setDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
+  // Fetch tenant list for superAdmins
   useEffect(() => {
     if (!superAdmin) return;
     tenantApi.list().then((res) => {
-      const data = Array.isArray(res.data) ? res.data : (res.data?.data ?? []);
+      const data = (res.data as { slug: string; nombre: string }[]) ?? [];
       setTenants(data);
     }).catch(() => {});
   }, [superAdmin]);
 
+  // Close dropdown on outside click
   useEffect(() => {
-    function onClickOutside(e: MouseEvent) {
+    function handleClick(e: MouseEvent) {
       if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
-        setOpen(false);
+        setDropdownOpen(false);
       }
     }
-    document.addEventListener("mousedown", onClickOutside);
-    return () => document.removeEventListener("mousedown", onClickOutside);
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
   }, []);
 
   async function handleLogout() {
@@ -97,41 +102,40 @@ export function Sidebar() {
         <span className="text-slate-900 font-semibold text-lg">Zentra Bot</span>
       </div>
 
-      {/* Tenant selector */}
-      <div className="px-4 py-3 border-b border-slate-100 relative" ref={dropdownRef}>
-        <button
-          onClick={() => superAdmin && setOpen((o) => !o)}
-          className={cn(
-            "w-full flex items-center justify-between px-3 py-2 rounded-lg bg-slate-50 transition text-sm",
-            superAdmin ? "hover:bg-slate-100 cursor-pointer" : "cursor-default"
-          )}
-        >
-          <span className="text-slate-600 truncate">
-            {tenantSlug || (superAdmin ? "Seleccionar tenant" : "—")}
-          </span>
-          {superAdmin && <ChevronDown className={cn("w-4 h-4 text-slate-400 shrink-0 ml-2 transition-transform", open && "rotate-180")} />}
-        </button>
-        {open && superAdmin && (
-          <div className="absolute left-4 right-4 top-full mt-1 bg-white border border-slate-200 rounded-lg shadow-lg z-50 max-h-56 overflow-y-auto">
-            {tenants.length === 0 ? (
-              <p className="px-3 py-2 text-xs text-slate-400">Sin tenants</p>
-            ) : (
-              tenants.map((t) => (
+      {/* Tenant selector — only visible to superAdmin */}
+      {superAdmin && (
+        <div className="px-3 py-2 border-b border-slate-100" ref={dropdownRef}>
+          <button
+            onClick={() => setDropdownOpen((o) => !o)}
+            className="w-full flex items-center justify-between gap-2 px-3 py-2 rounded-lg bg-slate-50 hover:bg-slate-100 text-sm text-slate-700 transition"
+          >
+            <span className="flex items-center gap-2 min-w-0">
+              <Building2 size={14} className="text-slate-400 shrink-0" />
+              <span className="truncate">{tenantSlug || "Seleccionar empresa"}</span>
+            </span>
+            <ChevronDown size={14} className={cn("text-slate-400 shrink-0 transition-transform", dropdownOpen && "rotate-180")} />
+          </button>
+          {dropdownOpen && (
+            <div className="mt-1 bg-white border border-slate-200 rounded-lg shadow-md overflow-hidden z-50">
+              {tenants.length === 0 && (
+                <p className="px-3 py-2 text-xs text-slate-400">Sin tenants</p>
+              )}
+              {tenants.map((t) => (
                 <button
                   key={t.slug}
-                  onClick={() => { setTenantSlug(t.slug); setOpen(false); }}
+                  onClick={() => { setTenantSlug(t.slug); setDropdownOpen(false); }}
                   className={cn(
-                    "w-full text-left px-3 py-2 text-sm hover:bg-blue-50 hover:text-blue-700 transition",
-                    tenantSlug === t.slug && "bg-blue-50 text-blue-700 font-medium"
+                    "w-full text-left px-3 py-2 text-sm hover:bg-blue-50 transition",
+                    tenantSlug === t.slug ? "text-blue-700 font-semibold bg-blue-50" : "text-slate-700"
                   )}
                 >
-                  {t.nombre || t.slug}
+                  {t.nombre ?? t.slug}
                 </button>
-              ))
-            )}
-          </div>
-        )}
-      </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
       <nav className="flex-1 min-h-0 px-3 py-4 overflow-y-auto space-y-0.5">
         {filteredNavItems.map((item) => {
           const active = pathname.startsWith(item.href);
