@@ -6,6 +6,7 @@ const { getNextScreen } = require('../services/flowNavigation');
 const db = require('../services/database');
 const { getRedisClient } = require('../services/redis');
 const { ingestEvent } = require('../services/eventGateway');
+const crmSync = require('../services/crmSync');
 
 const router = express.Router();
 
@@ -68,6 +69,11 @@ router.post('/', verifyFlowsSignature, webhookValidationRules, validate, async (
 
     // Persist the flow event
     await db.saveEvent(userId, screen, data, tenantId);
+
+    // ── CRM auto-sync (best-effort) ───────────────────────────────────
+    if (userId !== null) {
+      crmSync.touch({ userId, prisma: db.getPrismaClient(), canal: 'flows' }).catch(() => {});
+    }
 
     // Dual-write to the UEG canonical event log (best-effort)
     // Legacy webhook flow must continue even if UEG ingest fails.

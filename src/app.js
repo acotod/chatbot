@@ -17,6 +17,7 @@ const integrationsRouter   = require('./routes/integrations');
 const variablesRouter      = require('./routes/variables');
 const flowsRouter          = require('./routes/flows');
 const wabaFlowsRouter      = require('./routes/waba-flows');
+const crmRouter            = require('./routes/crm');
 const resolveTenant = require('./middleware/resolveTenant');
 const createRateLimiter = require('./middleware/rateLimiter');
 const errorHandler = require('./middleware/errorHandler');
@@ -117,6 +118,7 @@ app.use('/flows', flowsRouter);
 app.use('/integrations', integrationsRouter);
 app.use('/variables', variablesRouter);
 app.use('/waba-flows', wabaFlowsRouter);
+app.use('/crm', crmRouter);
 
 app.use(errorHandler);
 

@@ -42,6 +42,8 @@ model Tenant {
   calendars            Calendar[]
   appointments         Appointment[]
   wabaImportLogs       WabaImportLog[]
+  deals                Deal[]
+  crmTasks             CrmTask[]
 
   @@map("tenants")
 }
@@ -108,18 +110,85 @@ model DeadLetterQueue {
 }
 
 model User {
-  id           Int           @id @default(autoincrement())
-  tenantId     String        @map("tenant_id") @db.Uuid
-  phone        String?       @db.VarChar(20)
-  createdAt    DateTime      @default(now()) @map("created_at")
-  tenant       Tenant        @relation(fields: [tenantId], references: [id])
+  id              Int           @id @default(autoincrement())
+  tenantId        String        @map("tenant_id") @db.Uuid
+  phone           String?       @db.VarChar(20)
+  // CRM profile
+  nombre          String?       @db.VarChar(120)
+  email           String?       @db.VarChar(150)
+  empresa         String?       @db.VarChar(120)
+  cargo           String?       @db.VarChar(100)
+  canalOrigen     String?       @default("whatsapp") @map("canal_origen") @db.VarChar(40)
+  etiquetas       String[]      @default([])
+  notas           String?       @db.Text
+  customFields    Json?         @default("{}") @map("custom_fields")
+  ultimoContacto  DateTime?     @map("ultimo_contacto")
+  leadScore       Int           @default(0) @map("lead_score") @db.SmallInt
+  createdAt       DateTime      @default(now()) @map("created_at")
+  updatedAt       DateTime      @default(now()) @updatedAt @map("updated_at")
+  tenant          Tenant        @relation(fields: [tenantId], references: [id])
   solicitudes         Solicitud[]
   eventosFlujo        EventoFlujo[]
   mensajes            Mensaje[]
   conversationContexts ConversationContext[]
+  deals               Deal[]
+  tasks               CrmTask[]
 
   @@unique([tenantId, phone])
+  @@index([tenantId, nombre])
+  @@index([tenantId, email])
   @@map("users")
+}
+
+model Deal {
+  id              Int       @id @default(autoincrement())
+  tenantId        String    @map("tenant_id") @db.Uuid
+  userId          Int?      @map("user_id")
+  agenteId        Int?      @map("agente_id")
+  titulo          String    @db.VarChar(200)
+  etapa           String    @default("nuevo") @db.VarChar(60)
+  valor           Decimal?  @db.Decimal(14, 2)
+  moneda          String?   @default("ARS") @db.VarChar(10)
+  probabilidad    Int?      @default(0) @db.SmallInt
+  cierreEsperado  DateTime? @map("cierre_esperado") @db.Date
+  notas           String?   @db.Text
+  cerradoEn       DateTime? @map("cerrado_en")
+  perdidoRazon    String?   @map("perdido_razon") @db.VarChar(255)
+  customFields    Json?     @default("{}") @map("custom_fields")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @default(now()) @updatedAt @map("updated_at")
+  tenant          Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user            User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
+  agente          Agente?   @relation(fields: [agenteId], references: [id], onDelete: SetNull)
+  tasks           CrmTask[]
+
+  @@index([tenantId, etapa])
+  @@index([tenantId, userId])
+  @@map("deals")
+}
+
+model CrmTask {
+  id            Int       @id @default(autoincrement())
+  tenantId      String    @map("tenant_id") @db.Uuid
+  userId        Int?      @map("user_id")
+  dealId        Int?      @map("deal_id")
+  agenteId      Int?      @map("agente_id")
+  titulo        String    @db.VarChar(200)
+  descripcion   String?   @db.Text
+  tipo          String    @default("seguimiento") @db.VarChar(40)
+  estado        String    @default("pendiente") @db.VarChar(40)
+  venceEn       DateTime? @map("vence_en")
+  completadoEn  DateTime? @map("completado_en")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @default(now()) @updatedAt @map("updated_at")
+  tenant        Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user          User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
+  deal          Deal?     @relation(fields: [dealId], references: [id], onDelete: SetNull)
+  agente        Agente?   @relation(fields: [agenteId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, estado])
+  @@index([tenantId, agenteId])
+  @@map("crm_tasks")
 }
 
 model Solicitud {
@@ -179,6 +248,8 @@ model Agente {
   tenant      Tenant      @relation(fields: [tenantId], references: [id])
   solicitudes Solicitud[]
   agendaAssignments AgendaEventAssignment[]
+  deals             Deal[]
+  crmTasks          CrmTask[]
 
   @@map("agentes")
 }

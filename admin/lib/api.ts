@@ -471,3 +471,33 @@ export const wabaFlowsApi = {
   flowsApi: (id: number) => apiClient.get(`/waba-flows/${id}`),
 };
 
+// ── CRM ───────────────────────────────────────────────────────────────────────
+export const crmApi = {
+  listContacts: (params?: Record<string, unknown>) =>
+    apiClient.get('/crm/contacts', { params }),
+  getContact: (id: number, tenantSlug?: string) =>
+    apiClient.get(`/crm/contacts/${id}`, { params: tenantSlug ? { tenantSlug } : {} }),
+  createContact: (data: Record<string, unknown>) =>
+    apiClient.post('/crm/contacts', data),
+  updateContact: (id: number, data: Record<string, unknown>) =>
+    apiClient.patch(`/crm/contacts/${id}`, data),
+  deleteContact: (id: number) =>
+    apiClient.delete(`/crm/contacts/${id}`),
+  listDeals: (params?: Record<string, unknown>) =>
+    apiClient.get('/crm/deals', { params }),
+  createDeal: (data: Record<string, unknown>) =>
+    apiClient.post('/crm/deals', data),
+  updateDeal: (id: number, data: Record<string, unknown>) =>
+    apiClient.patch(`/crm/deals/${id}`, data),
+  deleteDeal: (id: number) =>
+    apiClient.delete(`/crm/deals/${id}`),
+  listTasks: (params?: Record<string, unknown>) =>
+    apiClient.get('/crm/tasks', { params }),
+  createTask: (data: Record<string, unknown>) =>
+    apiClient.post('/crm/tasks', data),
+  updateTask: (id: number, data: Record<string, unknown>) =>
+    apiClient.patch(`/crm/tasks/${id}`, data),
+  deleteTask: (id: number) =>
+    apiClient.delete(`/crm/tasks/${id}`),
+};
+

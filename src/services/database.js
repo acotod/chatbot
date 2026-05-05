@@ -1,6 +1,7 @@
 const { PrismaClient } = require('@prisma/client');
 const crypto = require('crypto');
 const logger = require('../utils/logger');
+const crmSync = require('./crmSync');
 
 let prisma;
 
@@ -137,7 +138,7 @@ async function saveSolicitud(userId, data, tenantId) {
 
   const estado = normalizeSolicitudStatus(data.estado, SOLICITUD_STATUS.OPEN);
 
-  return client.solicitud.create({
+  const solicitud = await client.solicitud.create({
     data: {
       tenantId,
       userId: userId || null,
@@ -158,6 +159,13 @@ async function saveSolicitud(userId, data, tenantId) {
       completedAt: estado === SOLICITUD_STATUS.COMPLETED ? new Date() : null,
     },
   });
+
+  // CRM auto-sync: recalculate lead score + ultimoContacto after new solicitud
+  if (userId) {
+    crmSync.touch({ userId, prisma: client, canal: data.origin ?? 'chatbot' }).catch(() => {});
+  }
+
+  return solicitud;
 }
 
 // ---------------------------------------------------------------------------

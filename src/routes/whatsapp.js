@@ -20,6 +20,8 @@ const requireJwt = require('../middleware/requireJwt');
 const { getRedisClient } = require('../services/redis');
 const { getNextScreen } = require('../services/flowNavigation');
 const { ingestEvent } = require('../services/eventGateway');
+const crmSync = require('../services/crmSync');
+const { getPrismaClient } = require('../services/database');
 
 const router = express.Router();
 
@@ -274,6 +276,11 @@ async function _handleIncomingMessage({ msg, contacts, tenant, phoneNumberId, ac
   });
 
   const contactName = contacts?.find((c) => c.wa_id === phone)?.profile?.name ?? null;
+
+  // ── CRM auto-sync (best-effort, non-blocking) ────────────────────────────
+  if (userId !== null) {
+    crmSync.touch({ userId, prisma: getPrismaClient(), canal: 'whatsapp', nombre: contactName }).catch(() => {});
+  }
 
   logger.info('WhatsApp message received', {
     tenantId: tenant.id,
