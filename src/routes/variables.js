@@ -20,7 +20,16 @@ const prisma = new PrismaClient();
 router.use(requireJwt);
 
 function tid(req) {
-  return req.user?.tenantId ?? req.user?.tenant_id;
+  return req.admin?.tenantId ?? req.user?.tenantId ?? req.user?.tenant_id;
+}
+
+function requireTenantId(req, res) {
+  const tenantId = tid(req);
+  if (!tenantId) {
+    res.status(400).json({ error: 'tenantId is required in token context' });
+    return null;
+  }
+  return tenantId;
 }
 
 const VALID_TYPES = ['string', 'number', 'boolean', 'object', 'array'];
@@ -29,7 +38,8 @@ const VALID_SCOPES = ['global', 'flow', 'session'];
 // GET /variables
 router.get('/', async (req, res, next) => {
   try {
-    const tenantId = tid(req);
+    const tenantId = requireTenantId(req, res);
+    if (!tenantId) return;
     const { flowId, scope } = req.query;
     const where = { tenantId };
     if (flowId !== undefined) {
@@ -53,7 +63,8 @@ router.get('/', async (req, res, next) => {
 // POST /variables
 router.post('/', async (req, res, next) => {
   try {
-    const tenantId = tid(req);
+    const tenantId = requireTenantId(req, res);
+    if (!tenantId) return;
     const { flowId, nombre, tipo = 'string', valorDefault, descripcion, scope = 'flow' } = req.body;
 
     if (!nombre || nombre.trim() === '')
@@ -90,7 +101,8 @@ router.post('/', async (req, res, next) => {
 // PUT /variables/:id
 router.put('/:id', async (req, res, next) => {
   try {
-    const tenantId = tid(req);
+    const tenantId = requireTenantId(req, res);
+    if (!tenantId) return;
     const existing = await prisma.flowVariable.findFirst({
       where: { id: Number(req.params.id), tenantId },
     });
@@ -126,7 +138,8 @@ router.put('/:id', async (req, res, next) => {
 // DELETE /variables/:id
 router.delete('/:id', async (req, res, next) => {
   try {
-    const tenantId = tid(req);
+    const tenantId = requireTenantId(req, res);
+    if (!tenantId) return;
     const existing = await prisma.flowVariable.findFirst({
       where: { id: Number(req.params.id), tenantId },
     });
@@ -142,7 +155,8 @@ router.delete('/:id', async (req, res, next) => {
 // Creates all standard chatbot variables for the tenant (skips already-existing ones).
 router.post('/seed-defaults', async (req, res, next) => {
   try {
-    const tenantId = tid(req);
+    const tenantId = requireTenantId(req, res);
+    if (!tenantId) return;
 
     const DEFAULTS = [
       // ── Sesión / Cliente ────────────────────────────────────────────────────
