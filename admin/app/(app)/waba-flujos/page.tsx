@@ -248,17 +248,18 @@ function ImportModal({ onClose, onImported, tenantSlug }: { onClose: () => void;
 // ─────────────────────────────────────────────────────────────────────────────
 // Sub-component: CreateFlowModal
 // ─────────────────────────────────────────────────────────────────────────────
-function CreateFlowModal({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
+function CreateFlowModal({ onClose, onCreated, tenantSlug }: { onClose: () => void; onCreated: () => void; tenantSlug: string }) {
   const [nombre, setNombre] = useState("");
   const [error, setError]   = useState("");
   const [loading, setLoading] = useState(false);
 
   async function handleCreate() {
     if (!nombre.trim()) { setError("El nombre es obligatorio"); return; }
+    if (!tenantSlug) { setError("Selecciona un tenant antes de crear el flujo."); return; }
     setError("");
     setLoading(true);
     try {
-      await wabaFlowsApi.create({ nombre });
+      await wabaFlowsApi.create({ nombre, tenantSlug });
       onCreated();
       onClose();
     } catch (e: unknown) {
@@ -1408,6 +1409,7 @@ export default function WabaFlujos() {
       )}
       {showCreate && (
         <CreateFlowModal
+          tenantSlug={tenantSlug}
           onClose={() => setShowCreate(false)}
           onCreated={loadFlows}
         />
