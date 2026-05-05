@@ -1,6 +1,6 @@
 "use client";
 import { useState, useEffect } from "react";
-import { X, Trash2, Check } from "lucide-react";
+import { X, Trash2, Check, Zap } from "lucide-react";
 import type { Node } from "reactflow";
 import {
   NODE_META, resolveNodeType,
@@ -161,12 +161,17 @@ export default function NodeEditorPanel({
                 >
                   <option value="">— Sin endpoint —</option>
                   {endpointCatalog.map(def => (
-                    <option key={def.id} value={def.id}>[{def.method}] {def.name}</option>
+                    <option key={def.id} value={def.id}>{def.sessionInit ? "⚡ " : ""}{def.method} · {def.name}</option>
                   ))}
                 </select>
                 {selectedEp && (
                   <p className="mt-1 text-[10px] font-mono text-gray-400 truncate">
                     {selectedEp.method} {selectedEp.url}
+                  </p>
+                )}
+                {selectedEp?.sessionInit && (
+                  <p className="mt-1 flex items-center gap-1 text-[10px] font-semibold text-purple-600">
+                    <Zap className="w-3 h-3" /> Session Init — carga datos al inicio de la conversación
                   </p>
                 )}
                 {selectedEp?.description && (

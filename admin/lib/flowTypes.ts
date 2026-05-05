@@ -155,6 +155,8 @@ export interface EndpointDef {
   inputs: string[];
   outputs: string[];
   description?: string;
+  /** If true, this endpoint is called automatically at the start of every conversation to populate session variables */
+  sessionInit?: boolean;
 }
 
 export interface EndpointCatalog {

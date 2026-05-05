@@ -3,7 +3,7 @@ import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { integrationsApi } from "@/lib/api";
 import { useAuthStore } from "@/store/auth";
-import { Plus, Trash2, Save, Plug, Globe, ArrowRight } from "lucide-react";
+import { Plus, Trash2, Save, Plug, Globe, ArrowRight, Zap } from "lucide-react";
 
 interface EndpointDef {
   id: string;
@@ -13,6 +13,8 @@ interface EndpointDef {
   inputs: string[];
   outputs: string[];
   description?: string;
+  /** If true, called at the start of every conversation to populate session variables */
+  sessionInit?: boolean;
 }
 
 const METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE"] as const;
@@ -25,7 +27,7 @@ const METHOD_COLORS: Record<string, string> = {
 };
 
 function emptyEndpoint(): EndpointDef {
-  return { id: "", name: "", method: "POST", url: "", inputs: [], outputs: [], description: "" };
+  return { id: "", name: "", method: "POST", url: "", inputs: [], outputs: [], description: "", sessionInit: false };
 }
 
 function TagInput({
@@ -165,6 +167,11 @@ export default function IntegracionesPage() {
                   </span>
                   <span className="font-semibold text-gray-800 text-sm">{ep.name}</span>
                   <span className="text-[10px] font-mono text-gray-400 truncate">{ep.url}</span>
+                  {ep.sessionInit && (
+                    <span className="flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-100 text-purple-700">
+                      <Zap className="w-2.5 h-2.5" /> Sesión Init
+                    </span>
+                  )}
                 </div>
                 {ep.description && (
                   <p className="text-xs text-gray-400 mb-2">{ep.description}</p>
@@ -239,6 +246,21 @@ export default function IntegracionesPage() {
                 <p className={labelCls}>Descripción (opcional)</p>
                 <input className={inputCls} placeholder="Valida al usuario por cédula" value={editing.description ?? ""}
                   onChange={e => setEditing(p => ({ ...p!, description: e.target.value }))} />
+              </div>
+              <div className="col-span-2">
+                <label className="flex items-center gap-2 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={!!editing.sessionInit}
+                    onChange={e => setEditing(p => ({ ...p!, sessionInit: e.target.checked }))}
+                    className="w-4 h-4 accent-purple-600"
+                  />
+                  <span className="text-sm font-medium text-gray-700 flex items-center gap-1">
+                    <Zap className="w-3.5 h-3.5 text-purple-600" />
+                    Session Init — llamar al inicio de cada conversación
+                  </span>
+                </label>
+                <p className="text-[11px] text-gray-400 mt-0.5 ml-6">Sus outputs quedarán disponibles como variables en todos los nodos del flujo.</p>
               </div>
               <div className="col-span-2">
                 <p className={labelCls}>Parámetros de entrada (inputs) — Enter para agregar</p>

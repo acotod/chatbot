@@ -30,6 +30,19 @@ const CONFIG_KEY = 'flow_endpoints_catalog';
 /** Built-in catalog served when no tenant catalog is configured */
 const DEFAULT_CATALOG = {
   endpoints: [
+    // ── Session init ──────────────────────────────────────────────────────────
+    {
+      id:          'getSessionData',
+      name:        'Cargar Datos de Sesión',
+      method:      'POST',
+      url:         '/api/session/init',
+      inputs:      ['telefono'],
+      outputs:     ['clienteId', 'nombre', 'cedula', 'saldo', 'estatus', 'plan', 'ultimaFactura'],
+      description: 'Carga todos los datos del cliente al inicio de la conversación. Sus outputs quedan disponibles como variables para todos los nodos del flujo.',
+      sessionInit: true,
+    },
+
+    // ── Transaccionales ───────────────────────────────────────────────────────
     {
       id:          'validateUser',
       name:        'Validar Usuario',
@@ -40,22 +53,67 @@ const DEFAULT_CATALOG = {
       description: 'Valida la identidad del usuario por cédula o teléfono',
     },
     {
+      id:          'getBalance',
+      name:        'Consultar Saldo',
+      method:      'POST',
+      url:         '/api/billing/balance',
+      inputs:      ['clienteId'],
+      outputs:     ['saldo', 'vencimiento', 'estadoCuenta'],
+      description: 'Consulta el saldo y estado de cuenta del cliente',
+    },
+    {
+      id:          'processPayment',
+      name:        'Procesar Pago',
+      method:      'POST',
+      url:         '/api/payments',
+      inputs:      ['clienteId', 'monto', 'referencia'],
+      outputs:     ['pagoId', 'estado', 'comprobante'],
+      description: 'Registra un pago y devuelve el comprobante',
+    },
+    {
       id:          'getAppointments',
       name:        'Consultar Citas',
       method:      'GET',
       url:         '/api/appointments',
-      inputs:      ['userId', 'fecha'],
+      inputs:      ['clienteId', 'fecha'],
       outputs:     ['citas', 'total'],
       description: 'Obtiene citas disponibles para una fecha dada',
+    },
+    {
+      id:          'createAppointment',
+      name:        'Agendar Cita',
+      method:      'POST',
+      url:         '/api/appointments',
+      inputs:      ['clienteId', 'fecha', 'hora', 'motivo'],
+      outputs:     ['citaId', 'confirmacion', 'direccion'],
+      description: 'Crea una nueva cita y devuelve la confirmación',
     },
     {
       id:          'createTicket',
       name:        'Crear Ticket de Soporte',
       method:      'POST',
       url:         '/api/tickets',
-      inputs:      ['nombre', 'descripcion', 'prioridad'],
+      inputs:      ['clienteId', 'descripcion', 'prioridad'],
       outputs:     ['ticketId', 'estado', 'agente'],
-      description: 'Crea un nuevo ticket de soporte',
+      description: 'Abre un ticket de soporte y asigna un agente',
+    },
+    {
+      id:          'updateTicketStatus',
+      name:        'Actualizar Ticket',
+      method:      'PATCH',
+      url:         '/api/tickets/:ticketId',
+      inputs:      ['ticketId', 'estado', 'comentario'],
+      outputs:     ['ok', 'estadoActual'],
+      description: 'Actualiza el estado de un ticket existente',
+    },
+    {
+      id:          'sendNotification',
+      name:        'Enviar Notificación',
+      method:      'POST',
+      url:         '/api/notifications/send',
+      inputs:      ['clienteId', 'canal', 'mensaje'],
+      outputs:     ['enviado', 'notifId'],
+      description: 'Envía una notificación por el canal seleccionado (email, sms, whatsapp)',
     },
   ],
 };
