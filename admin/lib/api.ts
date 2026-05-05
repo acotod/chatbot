@@ -390,6 +390,17 @@ export const flowsApi = {
   list: (params?: Record<string, unknown>) =>
     apiClient.get("/flows", { params }),
   get: (id: number) => apiClient.get(`/flows/${id}`),
+  create: (data: { nombre: string; tenantId: string }) =>
+    apiClient.post("/flows", data),
+  update: (id: number, data: Record<string, unknown>) =>
+    apiClient.put(`/flows/${id}`, data),
+  delete: (id: number) => apiClient.delete(`/flows/${id}`),
+  exportJson: (params?: Record<string, unknown>) =>
+    apiClient.get("/flows/export", { params }),
+  execute: (id: number, data: Record<string, unknown>) =>
+    apiClient.post(`/flows/${id}/execute`, data),
+  getEndpointsCatalog: (params?: Record<string, unknown>) =>
+    apiClient.get("/flows/endpoints-catalog", { params }),
 };
 
 // ── Variables ─────────────────────────────────────────────────────────────────
