@@ -222,7 +222,7 @@ export default function VariablesPage() {
         flowsApi.list({ limit: 200 }),
       ]);
       setVariables(varRes.data);
-      setFlows(flowRes.data.data);
+      setFlows(Array.isArray(flowRes.data) ? flowRes.data : (flowRes.data?.data ?? []));
     } finally {
       setLoading(false);
     }
