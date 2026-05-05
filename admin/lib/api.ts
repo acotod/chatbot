@@ -408,7 +408,7 @@ export const flowsApi = {
 
 // ── Variables ─────────────────────────────────────────────────────────────────
 export const variablesApi = {
-  list: (params?: { flowId?: number | null; scope?: string }) =>
+  list: (params?: { flowId?: number | null; scope?: string; tenantSlug?: string }) =>
     apiClient.get("/variables", { params }),
   create: (data: {
     nombre: string;
@@ -417,13 +417,15 @@ export const variablesApi = {
     descripcion?: string;
     scope?: string;
     flowId?: number | null;
+    tenantSlug?: string;
   }) => apiClient.post("/variables", data),
   update: (
     id: number,
     data: { nombre?: string; tipo?: string; valorDefault?: unknown; descripcion?: string; scope?: string }
   ) => apiClient.put(`/variables/${id}`, data),
   remove: (id: number) => apiClient.delete(`/variables/${id}`),
-  seedDefaults: () => apiClient.post("/variables/seed-defaults"),
+  seedDefaults: (tenantSlug?: string) =>
+    apiClient.post("/variables/seed-defaults", tenantSlug ? { tenantSlug } : {}),
 };
 
 // ── WABA Flow Integration ─────────────────────────────────────────────────────

@@ -13,6 +13,7 @@ import {
   Timer,
 } from "lucide-react";
 import { variablesApi, flowsApi } from "@/lib/api";
+import { useAuthStore } from "@/store/auth";
 
 interface FlowVariable {
   id: number;
@@ -200,6 +201,7 @@ function VariableModal({
 // Main Page
 // ─────────────────────────────────────────────────────────────────────────────
 export default function VariablesPage() {
+  const { tenantSlug } = useAuthStore();
   const [variables, setVariables] = useState<FlowVariable[]>([]);
   const [flows, setFlows] = useState<FlowOption[]>([]);
   const [loading, setLoading] = useState(true);
@@ -217,6 +219,7 @@ export default function VariablesPage() {
     setLoading(true);
     try {
       const params: Record<string, unknown> = {};
+      if (tenantSlug) params.tenantSlug = tenantSlug;
       if (filterScope !== "all") params.scope = filterScope;
       if (filterFlowId) params.flowId = filterFlowId;
       const [varRes, flowRes] = await Promise.all([
@@ -230,13 +233,13 @@ export default function VariablesPage() {
     }
   }
 
-  useEffect(() => { load(); }, [filterScope, filterFlowId]);
+  useEffect(() => { load(); }, [filterScope, filterFlowId, tenantSlug]);
 
   async function handleSeedDefaults() {
     setSeeding(true);
     setSeedMsg("");
     try {
-      const res = await variablesApi.seedDefaults();
+      const res = await variablesApi.seedDefaults(tenantSlug || undefined);
       const { created, skipped } = res.data as { created: number; skipped: number };
       setSeedMsg(`✓ ${created} variables creadas, ${skipped} ya existían`);
       await load();
