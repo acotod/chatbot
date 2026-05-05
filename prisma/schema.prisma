@@ -41,6 +41,7 @@ model Tenant {
   conversations        Conversation[]
   calendars            Calendar[]
   appointments         Appointment[]
+  wabaImportLogs       WabaImportLog[]
 
   @@map("tenants")
 }
@@ -534,6 +535,11 @@ model FlowVersion {
   executions           FlowExecution[]
   conversations        Conversation[]
 
+  /// "draft" | "valid" | "invalid" | "exported"
+  wabaValidationStatus String    @default("draft") @map("waba_validation_status") @db.VarChar(20)
+  wabaValidatedAt      DateTime? @map("waba_validated_at")
+  wabaValidationErrors Json?     @map("waba_validation_errors")
+
   @@unique([flowId, versionNumber])
   @@index([tenantId, flowId, published])
   @@index([tenantId, createdAt])
@@ -779,4 +785,26 @@ model Appointment {
   @@index([tenantId, userKey, startTime])
   @@index([conversationId])
   @@map("appointments")
+}
+
+// ── WABA Flow Import ──────────────────────────────────────────────────────────
+
+/// Audit trail for every WABA JSON import operation.
+model WabaImportLog {
+  id                Int       @id @default(autoincrement())
+  tenantId          String    @map("tenant_id") @db.Uuid
+  flowId            Int?      @map("flow_id")
+  adminUserId       Int?      @map("admin_user_id")
+  /// "manual" | "api" | "llm"
+  source            String    @default("manual") @db.VarChar(30)
+  originalJson      Json      @map("original_json")
+  parsedNodes       Int       @default(0) @map("parsed_nodes")
+  validationErrors  Json?     @map("validation_errors")
+  /// "imported" | "validated" | "failed" | "published"
+  status            String    @default("imported") @db.VarChar(20)
+  createdAt         DateTime  @default(now()) @map("created_at")
+  tenant            Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, createdAt])
+  @@map("waba_import_logs")
 }
