@@ -1,12 +1,31 @@
 "use client";
 import { useState, useEffect } from "react";
-import { X, Trash2, Check, Zap } from "lucide-react";
+import { X, Trash2, Check, Zap, Plus, DatabaseZap, Webhook } from "lucide-react";
 import type { Node } from "reactflow";
 import {
   NODE_META, resolveNodeType,
   type NodeType, type CanonicalNodeType, type EndpointDef,
   type ConditionContent, type WebhookContent, type EndpointMapping,
 } from "@/lib/flowTypes";
+
+type VarSource = "user_input" | "api_response_field" | "static_value";
+interface NodeVariable {
+  id: string;
+  name: string;
+  source: VarSource;
+  value: string;
+}
+
+type ActionEvent = "on_enter" | "on_exit" | "on_option_select";
+interface NodeAction {
+  id: string;
+  event: ActionEvent;
+  endpointId: string;
+  customUrl: string;
+  method: string;
+  body: Record<string, string>;
+  responseMapping: Record<string, string>;
+}
 
 interface NodeEditorPanelProps {
   node: Node;
@@ -16,18 +35,37 @@ interface NodeEditorPanelProps {
   onDelete: (nodeId: string) => void;
 }
 
+function uid() {
+  return Math.random().toString(36).slice(2, 9);
+}
+
 export default function NodeEditorPanel({
   node, endpointCatalog, onApply, onCancel, onDelete,
 }: NodeEditorPanelProps) {
+  const [tab, setTab] = useState<"contenido" | "variables" | "acciones">("contenido");
   const [nodeType, setNodeType] = useState<CanonicalNodeType>(resolveNodeType((node.data.nodeType ?? "screen") as NodeType));
   const meta = NODE_META[nodeType] ?? NODE_META.screen;
   const [content, setContent] = useState<Record<string, unknown>>({ ...node.data.content });
+  const [variables, setVariables] = useState<NodeVariable[]>(() => {
+    const saved = node.data.state?.save as { name: string; source: VarSource; value: string }[] | undefined;
+    return (saved ?? []).map(v => ({ id: uid(), ...v }));
+  });
+  const [actions, setActions] = useState<NodeAction[]>(() => {
+    const saved = node.data.actions as Omit<NodeAction, "id">[] | undefined;
+    return (saved ?? []).map(a => ({ id: uid(), ...a }));
+  });
 
   useEffect(() => {
+    setTab("contenido");
     setNodeType(resolveNodeType((node.data.nodeType ?? "screen") as NodeType));
     setContent({ ...node.data.content });
-  }, [node.id, node.data.content, node.data.nodeType]);
+    const savedVars = node.data.state?.save as { name: string; source: VarSource; value: string }[] | undefined;
+    setVariables((savedVars ?? []).map(v => ({ id: uid(), ...v })));
+    const savedActions = node.data.actions as Omit<NodeAction, "id">[] | undefined;
+    setActions((savedActions ?? []).map(a => ({ id: uid(), ...a })));
+  }, [node.id]);
 
+  // --- content helpers ---
   function patch(key: string, value: unknown) {
     setContent(prev => ({ ...prev, [key]: value }));
   }
@@ -46,15 +84,63 @@ export default function NodeEditorPanel({
     });
   }
 
+  // --- variables helpers ---
+  function addVariable() {
+    setVariables(prev => [...prev, { id: uid(), name: "", source: "user_input", value: "" }]);
+  }
+  function patchVariable(id: string, key: keyof NodeVariable, value: string) {
+    setVariables(prev => prev.map(v => v.id === id ? { ...v, [key]: value } : v));
+  }
+  function removeVariable(id: string) {
+    setVariables(prev => prev.filter(v => v.id !== id));
+  }
+
+  // --- actions helpers ---
+  function addAction() {
+    setActions(prev => [...prev, { id: uid(), event: "on_enter", endpointId: "", customUrl: "", method: "POST", body: {}, responseMapping: {} }]);
+  }
+  function patchAction(id: string, key: keyof NodeAction, value: unknown) {
+    setActions(prev => prev.map(a => a.id === id ? { ...a, [key]: value } : a));
+  }
+  function patchActionBody(id: string, param: string, value: string) {
+    setActions(prev => prev.map(a => a.id === id ? { ...a, body: { ...a.body, [param]: value } } : a));
+  }
+  function patchActionResponseMapping(id: string, output: string, value: string) {
+    setActions(prev => prev.map(a => a.id === id ? { ...a, responseMapping: { ...a.responseMapping, [output]: value } } : a));
+  }
+  function removeAction(id: string) {
+    setActions(prev => prev.filter(a => a.id !== id));
+  }
+
   function handleApply() {
-    onApply(node.id, { nodeType, content, label: (content.label as string) ?? node.data.label });
+    const statePayload = variables.length > 0
+      ? { save: variables.map(({ name, source, value }) => ({ name, source, value })) }
+      : undefined;
+    const actionsPayload = actions.length > 0
+      ? actions.map(({ event, endpointId, customUrl, method, body, responseMapping }) => ({
+          event, endpointId: endpointId || undefined, customUrl: customUrl || undefined, method, body, responseMapping,
+        }))
+      : undefined;
+    onApply(node.id, {
+      nodeType,
+      content,
+      label: (content.label as string) ?? node.data.label,
+      state: statePayload,
+      actions: actionsPayload,
+    });
   }
 
   const inputCls = "w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400";
   const labelCls = "text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1";
 
+  const TABS = [
+    { id: "contenido" as const, label: "Contenido" },
+    { id: "variables" as const, label: "Variables" },
+    { id: "acciones" as const, label: "Acciones" },
+  ];
+
   return (
-    <div className="w-72 flex-shrink-0 bg-white rounded-xl border shadow-sm flex flex-col overflow-hidden">
+    <div className="w-80 flex-shrink-0 bg-white rounded-xl border shadow-sm flex flex-col overflow-hidden">
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b" style={{ background: meta.bg }}>
         <div>
@@ -68,8 +154,38 @@ export default function NodeEditorPanel({
         </button>
       </div>
 
-      {/* Fields */}
+      {/* Tab bar */}
+      <div className="flex border-b bg-gray-50">
+        {TABS.map(t => (
+          <button
+            key={t.id}
+            type="button"
+            onClick={() => setTab(t.id)}
+            className={`flex-1 py-2 text-xs font-semibold transition border-b-2 ${
+              tab === t.id
+                ? "border-blue-500 text-blue-600 bg-white"
+                : "border-transparent text-gray-500 hover:text-gray-700"
+            }`}
+          >
+            {t.label}
+            {t.id === "variables" && variables.length > 0 && (
+              <span className="ml-1 inline-flex items-center justify-center w-4 h-4 rounded-full bg-blue-100 text-blue-600 text-[9px] font-bold">
+                {variables.length}
+              </span>
+            )}
+            {t.id === "acciones" && actions.length > 0 && (
+              <span className="ml-1 inline-flex items-center justify-center w-4 h-4 rounded-full bg-purple-100 text-purple-600 text-[9px] font-bold">
+                {actions.length}
+              </span>
+            )}
+          </button>
+        ))}
+      </div>
+
+      {/* Tab content */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
+        {/* ── TAB 1: CONTENIDO ── */}
+        {tab === "contenido" && (<>
         {/* Node type selector */}
         <div>
           <p className={labelCls}>Tipo de nodo</p>
@@ -278,6 +394,191 @@ export default function NodeEditorPanel({
             <textarea className={inputCls} rows={3} value={(content.message as string) ?? ""} onChange={e => patch("message", e.target.value)} placeholder="Gracias por contactarnos." />
           </div>
         )}
+        </>)}
+
+        {/* ── TAB 2: VARIABLES ── */}
+        {tab === "variables" && (
+          <div className="space-y-3">
+            <div className="flex items-start justify-between gap-2">
+              <div>
+                <p className="text-sm font-semibold text-gray-800">Variables del nodo</p>
+                <p className="text-[11px] text-gray-400 mt-0.5">Campos que este nodo guarda en el estado de la conversación.</p>
+              </div>
+              <button
+                type="button"
+                onClick={addVariable}
+                className="flex items-center gap-1 text-xs font-semibold text-blue-600 border border-blue-200 rounded-lg px-2.5 py-1.5 hover:bg-blue-50 shrink-0"
+              >
+                <Plus className="w-3.5 h-3.5" /> Agregar
+              </button>
+            </div>
+            {variables.length === 0 && (
+              <div className="flex flex-col items-center gap-2 py-8 text-gray-300">
+                <DatabaseZap className="w-8 h-8" />
+                <p className="text-xs text-center text-gray-400">Sin variables. Agrega campos para guardar datos de este nodo.</p>
+              </div>
+            )}
+            {variables.map((v) => (
+              <div key={v.id} className="rounded-lg border border-gray-200 p-3 space-y-2 bg-gray-50">
+                <div className="flex items-center justify-between">
+                  <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide">Variable</p>
+                  <button type="button" onClick={() => removeVariable(v.id)} className="text-red-400 hover:text-red-600">
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+                <input
+                  className={inputCls}
+                  placeholder="nombre_variable"
+                  value={v.name}
+                  onChange={e => patchVariable(v.id, "name", e.target.value)}
+                />
+                <select
+                  className={inputCls}
+                  value={v.source}
+                  onChange={e => patchVariable(v.id, "source", e.target.value as VarSource)}
+                >
+                  <option value="user_input">Entrada del usuario</option>
+                  <option value="api_response_field">Campo de respuesta API</option>
+                  <option value="static_value">Valor estático</option>
+                </select>
+                {v.source !== "user_input" && (
+                  <input
+                    className={inputCls}
+                    placeholder={v.source === "api_response_field" ? "response.data.field" : "valor fijo"}
+                    value={v.value}
+                    onChange={e => patchVariable(v.id, "value", e.target.value)}
+                  />
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* ── TAB 3: ACCIONES ── */}
+        {tab === "acciones" && (
+          <div className="space-y-3">
+            <div className="flex items-start justify-between gap-2">
+              <div>
+                <p className="text-sm font-semibold text-gray-800">Acciones del nodo</p>
+                <p className="text-[11px] text-gray-400 mt-0.5">Webhooks o llamadas API que se ejecutan en eventos del nodo.</p>
+              </div>
+              <button
+                type="button"
+                onClick={addAction}
+                className="flex items-center gap-1 text-xs font-semibold text-purple-600 border border-purple-200 rounded-lg px-2.5 py-1.5 hover:bg-purple-50 shrink-0"
+              >
+                <Plus className="w-3.5 h-3.5" /> Agregar
+              </button>
+            </div>
+            {actions.length === 0 && (
+              <div className="flex flex-col items-center gap-2 py-8 text-gray-300">
+                <Webhook className="w-8 h-8" />
+                <p className="text-xs text-center text-gray-400">Sin acciones. Agrega webhooks o llamadas API para este nodo.</p>
+              </div>
+            )}
+            {actions.map((a, idx) => {
+              const selectedEp = a.endpointId
+                ? endpointCatalog.find(x => x.id === a.endpointId) ?? null
+                : null;
+              return (
+                <div key={a.id} className="rounded-lg border border-purple-100 bg-purple-50 p-3 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <p className="text-[10px] font-semibold text-purple-500 uppercase tracking-wide">Acción {idx + 1}</p>
+                    <button type="button" onClick={() => removeAction(a.id)} className="text-red-400 hover:text-red-600">
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                  <div>
+                    <p className={labelCls}>Evento</p>
+                    <select className={inputCls} value={a.event} onChange={e => patchAction(a.id, "event", e.target.value)}>
+                      <option value="on_enter">Al entrar al nodo</option>
+                      <option value="on_exit">Al salir del nodo</option>
+                      <option value="on_option_select">Al seleccionar opción</option>
+                    </select>
+                  </div>
+                  <div>
+                    <p className={labelCls}>Endpoint del catálogo</p>
+                    <select className={inputCls} value={a.endpointId} onChange={e => patchAction(a.id, "endpointId", e.target.value)}>
+                      <option value="">— URL personalizada —</option>
+                      {endpointCatalog.map(def => (
+                        <option key={def.id} value={def.id}>{def.method} · {def.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                  {!a.endpointId && (
+                    <div className="grid grid-cols-3 gap-2">
+                      <div className="col-span-1">
+                        <p className={labelCls}>Método</p>
+                        <select className={inputCls} value={a.method} onChange={e => patchAction(a.id, "method", e.target.value)}>
+                          {["POST","GET","PUT","PATCH","DELETE"].map(m => (
+                            <option key={m} value={m}>{m}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="col-span-2">
+                        <p className={labelCls}>URL</p>
+                        <input className={inputCls} placeholder="https://..." value={a.customUrl} onChange={e => patchAction(a.id, "customUrl", e.target.value)} />
+                      </div>
+                    </div>
+                  )}
+                  {(selectedEp?.inputs ?? Object.keys(a.body)).length > 0 && (
+                    <div className="space-y-1.5">
+                      <div className="flex items-center justify-between">
+                        <p className="text-[10px] font-semibold text-blue-700 uppercase tracking-wide">↑ Body</p>
+                        {!a.endpointId && (
+                          <button type="button" className="text-[10px] text-blue-500 hover:text-blue-700"
+                            onClick={() => { const k = window.prompt("Nombre del parámetro"); if (k) patchActionBody(a.id, k, ""); }}>
+                            + param
+                          </button>
+                        )}
+                      </div>
+                      {(selectedEp?.inputs ?? Object.keys(a.body)).map(param => (
+                        <div key={param} className="flex items-center gap-1.5">
+                          <span className="text-[10px] font-mono text-blue-700 w-20 truncate shrink-0">{param}</span>
+                          <span className="text-gray-400 text-[10px]">→</span>
+                          <input className={inputCls} placeholder={`{{${param}}}`} value={a.body[param] ?? ""} onChange={e => patchActionBody(a.id, param, e.target.value)} />
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {(selectedEp?.outputs ?? Object.keys(a.responseMapping)).length > 0 && (
+                    <div className="space-y-1.5">
+                      <div className="flex items-center justify-between">
+                        <p className="text-[10px] font-semibold text-green-700 uppercase tracking-wide">↓ Respuesta → variable</p>
+                        {!a.endpointId && (
+                          <button type="button" className="text-[10px] text-green-500 hover:text-green-700"
+                            onClick={() => { const k = window.prompt("Campo de respuesta"); if (k) patchActionResponseMapping(a.id, k, ""); }}>
+                            + mapear
+                          </button>
+                        )}
+                      </div>
+                      {(selectedEp?.outputs ?? Object.keys(a.responseMapping)).map(output => (
+                        <div key={output} className="flex items-center gap-1.5">
+                          <span className="text-[10px] font-mono text-green-700 w-20 truncate shrink-0">{output}</span>
+                          <span className="text-gray-400 text-[10px]">→</span>
+                          <input className={inputCls} placeholder={output} value={a.responseMapping[output] ?? ""} onChange={e => patchActionResponseMapping(a.id, output, e.target.value)} />
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {!a.endpointId && (
+                    <div className="flex gap-2 pt-1">
+                      <button type="button" className="text-[10px] text-blue-500 hover:text-blue-700 border border-blue-200 rounded px-2 py-1"
+                        onClick={() => { const k = window.prompt("Parámetro body"); if (k) patchActionBody(a.id, k, ""); }}>
+                        + body param
+                      </button>
+                      <button type="button" className="text-[10px] text-green-500 hover:text-green-700 border border-green-200 rounded px-2 py-1"
+                        onClick={() => { const k = window.prompt("Campo de respuesta"); if (k) patchActionResponseMapping(a.id, k, ""); }}>
+                        + response map
+                      </button>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+
       </div>
 
       {/* Footer */}
