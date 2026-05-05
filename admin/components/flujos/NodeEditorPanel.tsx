@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { X, Trash2, Check, Zap, Plus, DatabaseZap, Webhook } from "lucide-react";
 import type { Node } from "reactflow";
 import {
@@ -55,19 +55,39 @@ export default function NodeEditorPanel({
     return (saved ?? []).map(a => ({ id: uid(), ...a }));
   });
 
-  useEffect(() => {
-    setTab("contenido");
-    setNodeType(resolveNodeType((node.data.nodeType ?? "screen") as NodeType));
-    setContent({ ...node.data.content });
-    const savedVars = node.data.state?.save as { name: string; source: VarSource; value: string }[] | undefined;
-    setVariables((savedVars ?? []).map(v => ({ id: uid(), ...v })));
-    const savedActions = node.data.actions as Omit<NodeAction, "id">[] | undefined;
-    setActions((savedActions ?? []).map(a => ({ id: uid(), ...a })));
-  }, [node.id]);
-
   // --- content helpers ---
   function patch(key: string, value: unknown) {
     setContent(prev => ({ ...prev, [key]: value }));
+  }
+
+  function patchInputOption(index: number, key: "id" | "title", value: string) {
+    setContent(prev => {
+      const options = Array.isArray(prev.options)
+        ? [...(prev.options as Array<{ id?: string; title?: string }>)]
+        : [];
+      const current = options[index] ?? {};
+      options[index] = { ...current, [key]: value };
+      return { ...prev, options };
+    });
+  }
+
+  function addInputOption() {
+    setContent(prev => {
+      const options = Array.isArray(prev.options)
+        ? [...(prev.options as Array<{ id?: string; title?: string }>)]
+        : [];
+      options.push({ id: `opcion_${options.length + 1}`, title: "" });
+      return { ...prev, options };
+    });
+  }
+
+  function removeInputOption(index: number) {
+    setContent(prev => {
+      const options = Array.isArray(prev.options)
+        ? (prev.options as Array<{ id?: string; title?: string }>).filter((_, optionIndex) => optionIndex !== index)
+        : [];
+      return { ...prev, options };
+    });
   }
 
   function patchBody(param: string, value: string) {
@@ -248,6 +268,14 @@ export default function NodeEditorPanel({
         {nodeType === "input" && (
           <>
             <div>
+              <p className={labelCls}>Screen ID (MAYÚSCULAS)</p>
+              <input className={inputCls} value={(content.screenId as string) ?? ""} onChange={e => patch("screenId", e.target.value.toUpperCase().replace(/\s/g, "_"))} placeholder="MENU_PRINCIPAL" />
+            </div>
+            <div>
+              <p className={labelCls}>Título</p>
+              <input className={inputCls} value={(content.title as string) ?? ""} onChange={e => patch("title", e.target.value)} placeholder="Elige una opción" />
+            </div>
+            <div>
               <p className={labelCls}>Nombre de variable</p>
               <input className={inputCls} value={(content.name as string) ?? ""} onChange={e => patch("name", e.target.value)} placeholder="nombre_cliente" />
             </div>
@@ -263,6 +291,48 @@ export default function NodeEditorPanel({
               <p className={labelCls}>Placeholder</p>
               <input className={inputCls} value={(content.placeholder as string) ?? ""} onChange={e => patch("placeholder", e.target.value)} />
             </div>
+            {((content.inputType as string) ?? "text") === "select" && (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between gap-2">
+                  <p className={labelCls}>Opciones del menú</p>
+                  <button
+                    type="button"
+                    onClick={addInputOption}
+                    className="flex items-center gap-1 text-xs font-semibold text-blue-600 border border-blue-200 rounded-lg px-2.5 py-1.5 hover:bg-blue-50"
+                  >
+                    <Plus className="w-3.5 h-3.5" /> Agregar
+                  </button>
+                </div>
+                {(Array.isArray(content.options) ? content.options : []).length === 0 && (
+                  <p className="text-xs text-gray-400">Este menú aún no tiene opciones.</p>
+                )}
+                {(Array.isArray(content.options) ? content.options : []).map((option, index) => {
+                  const current = option as { id?: string; title?: string };
+                  return (
+                    <div key={`${current.id ?? "option"}-${index}`} className="rounded-lg border border-gray-200 p-3 space-y-2 bg-gray-50">
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide">Opción {index + 1}</p>
+                        <button type="button" onClick={() => removeInputOption(index)} className="text-red-400 hover:text-red-600">
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                      <input
+                        className={inputCls}
+                        value={current.id ?? ""}
+                        onChange={e => patchInputOption(index, "id", e.target.value)}
+                        placeholder="id_opcion"
+                      />
+                      <input
+                        className={inputCls}
+                        value={current.title ?? ""}
+                        onChange={e => patchInputOption(index, "title", e.target.value)}
+                        placeholder="Título visible"
+                      />
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </>
         )}
 

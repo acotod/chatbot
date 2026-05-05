@@ -13,7 +13,7 @@ import { useAuthStore } from "@/store/auth";
 import {
   AlertTriangle, CheckCircle2, Plus, Save, Sparkles, Trash2, Wrench,
   Upload, Download, ShieldAlert, ShieldCheck, Play, Phone, Zap, ArrowRight,
-  ChevronRight, RotateCcw, Copy, Check, History,
+  ChevronRight, RotateCcw, Copy, Check, History, FileJson,
 } from "lucide-react";
 import NodeEditorPanel from "@/components/flujos/NodeEditorPanel";
 import FlowNode from "@/components/flujos/FlowNode";
@@ -201,11 +201,10 @@ interface FlowMetrics {
 type MainTab = "generar" | "builder" | "preview" | "probar" | "exportar" | "rescate";
 
 const STEPS: { id: MainTab; label: string; icon: string }[] = [
-  { id: "generar",  label: "1. Disenar IA",  icon: "✦" },
-  { id: "builder",  label: "2. Editar",   icon: "⬡" },
-  { id: "preview",  label: "3. Preview",  icon: "📱" },
-  { id: "probar",   label: "4. Probar",   icon: "▶" },
-  { id: "exportar", label: "5. Exportar", icon: "⬇" },
+  { id: "builder",  label: "1. Editar",   icon: "⬡" },
+  { id: "preview",  label: "2. Preview",  icon: "📱" },
+  { id: "probar",   label: "3. Probar",   icon: "▶" },
+  { id: "exportar", label: "4. Exportar", icon: "⬇" },
 ];
 
 function toRFNode(n: DbNode): Node {
@@ -232,7 +231,7 @@ export default function FlujoSPage() {
   const { tenantSlug } = useAuthStore();
 
   // Tabs
-  const [activeTab, setActiveTab] = useState<MainTab>("generar");
+  const [activeTab, setActiveTab] = useState<MainTab>("builder");
 
   // Flow selection
   const [selectedFlowId, setSelectedFlowId] = useState<number | null>(null);
@@ -305,13 +304,22 @@ export default function FlujoSPage() {
   const [importOpen, setImportOpen] = useState(false);
   const [importJson, setImportJson] = useState("");
   const [importError, setImportError] = useState("");
-  const [exportOpen, setExportOpen] = useState(false);
+  const [importPreview, setImportPreview] = useState<{
+    nodes: number;
+    edges: number;
+    errors: number;
+    warnings: number;
+    diagnostics: FlowDiagnostic[];
+  } | null>(null);
   const [exportResult, setExportResult] = useState<{
     json: unknown;
     validation: { errors: FlowDiagnostic[]; warnings: FlowDiagnostic[] };
   } | null>(null);
   const [exportLoading, setExportLoading] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [builderView, setBuilderView] = useState<"canvas" | "json">("canvas");
+  const [builderJsonText, setBuilderJsonText] = useState("");
+  const [builderJsonError, setBuilderJsonError] = useState("");
 
   // ── Validation strip
   const [validationDiags, setValidationDiags] = useState<FlowDiagnostic[]>([]);
@@ -422,6 +430,9 @@ export default function FlujoSPage() {
     setRfNodes(flow.nodes.map(toRFNode));
     setRfEdges(flow.edges.map(toRFEdge));
     setSelectedNode(null);
+    setBuilderView("canvas");
+    setBuilderJsonText("");
+    setBuilderJsonError("");
     setValidationDiags([]);
     setShowValidation(false);
     setTestSteps([]);
@@ -452,6 +463,47 @@ export default function FlujoSPage() {
   }
 
   function onNodeClick(_: React.MouseEvent, node: Node) { setSelectedNode(node); }
+
+  function openBuilderJson() {
+    const result = buildMetaJsonFromGraph(rfNodes, rfEdges, endpointCatalog);
+    const diagnostics = [...result.validation.errors, ...result.validation.warnings];
+    setValidationDiags(diagnostics);
+    setShowValidation(diagnostics.length > 0);
+    if (!result.json) {
+      setBuilderJsonError(result.validation.errors.map(error => error.message).join("; ") || "No se pudo generar el JSON del flujo");
+      return;
+    }
+    setBuilderJsonText(JSON.stringify(result.json, null, 2));
+    setBuilderJsonError("");
+    setBuilderView("json");
+  }
+
+  function applyBuilderJson() {
+    setBuilderJsonError("");
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(builderJsonText);
+    } catch {
+      setBuilderJsonError("JSON inválido — revisa la sintaxis");
+      return;
+    }
+
+    const result = parseMetaJsonToGraph(parsed);
+    const errors = result.diagnostics.filter(d => d.severity === "error");
+    setValidationDiags(result.diagnostics);
+    setShowValidation(result.diagnostics.length > 0);
+
+    if (errors.length > 0) {
+      setBuilderJsonError(errors.map(error => error.message).join("; "));
+      return;
+    }
+
+    setRfNodes(result.nodes);
+    setRfEdges(result.edges);
+    setSelectedNode(null);
+    setBuilderJsonError("");
+    setBuilderView("canvas");
+  }
 
   // ── Save ──────────────────────────────────────────────────────────────────────
 
@@ -694,26 +746,75 @@ export default function FlujoSPage() {
     setAiGenerating(false);
   }
 
-  function handleLoadGenerated() {
-    if (!aiGenerated) return;
-    setActiveTab("builder");
-  }
-
   // ── Import ──────────────────────────────────────────────────────────────────
 
-  function handleImport() {
+  function resetImportDraft() {
+    setImportJson("");
     setImportError("");
+    setImportPreview(null);
+  }
+
+  function parseImportDraft() {
+    setImportError("");
+    setImportPreview(null);
+    if (!importJson.trim()) {
+      setImportError("Pega o sube un JSON antes de continuar");
+      return null;
+    }
+
     let parsed: unknown;
-    try { parsed = JSON.parse(importJson); } catch { setImportError("JSON inválido — revisa la sintaxis"); return; }
+    try {
+      parsed = JSON.parse(importJson);
+    } catch {
+      setImportError("JSON inválido — revisa la sintaxis");
+      return null;
+    }
+
     const result = parseMetaJsonToGraph(parsed);
     const errors = result.diagnostics.filter(d => d.severity === "error");
-    if (errors.length > 0) { setImportError(errors.map(e => e.message).join("; ")); return; }
+    const warnings = result.diagnostics.filter(d => d.severity === "warning");
+
+    setImportPreview({
+      nodes: result.nodes.length,
+      edges: result.edges.length,
+      errors: errors.length,
+      warnings: warnings.length,
+      diagnostics: result.diagnostics,
+    });
+
+    if (errors.length > 0) {
+      setImportError(errors.map(e => e.message).join("; "));
+      return null;
+    }
+
+    return result;
+  }
+
+  function handleImportPreview() {
+    parseImportDraft();
+  }
+
+  function handleImportFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      setImportJson(String(event.target?.result ?? ""));
+      setImportError("");
+      setImportPreview(null);
+    };
+    reader.readAsText(file);
+  }
+
+  function handleImport() {
+    const result = parseImportDraft();
+    if (!result) return;
     setRfNodes(result.nodes);
     setRfEdges(result.edges);
     setValidationDiags(result.diagnostics);
     if (result.diagnostics.some(d => d.severity === "warning")) setShowValidation(true);
     setImportOpen(false);
-    setImportJson("");
+    resetImportDraft();
   }
 
   // ── Export ──────────────────────────────────────────────────────────────────
@@ -1475,7 +1576,7 @@ export default function FlujoSPage() {
                   <AlertTriangle className="w-4 h-4 mt-0.5 flex-shrink-0" />
                   <div>
                     <strong>LLM no configurado.</strong> Ve a Configuración → LLM para activar OpenAI, Anthropic u otro proveedor.
-                    También puedes diseñar el flujo manualmente en <button onClick={() => setActiveTab("builder")} className="underline">Paso 2 (Editar)</button>.
+                    También puedes diseñar el flujo manualmente en <button onClick={() => setActiveTab("builder")} className="underline">Paso 1 (Editar)</button>.
                   </div>
                 </div>
               )}
@@ -2166,13 +2267,20 @@ export default function FlujoSPage() {
                 <Save className="w-4 h-4" /> {saving ? "Guardando…" : "Guardar"}
               </button>
               <div className="w-px h-5 bg-gray-200" />
-              <button onClick={() => { setImportJson(""); setImportError(""); setImportOpen(true); }} disabled={!selectedFlowId}
+              <button onClick={() => { resetImportDraft(); setImportOpen(true); }} disabled={!selectedFlowId}
                 className="flex items-center gap-1 text-sm bg-gray-100 hover:bg-gray-200 px-3 py-1.5 rounded-lg disabled:opacity-40 transition">
                 <Upload className="w-4 h-4" /> Importar
               </button>
               <button onClick={handleValidate} disabled={!selectedFlowId}
                 className="flex items-center gap-1 text-sm bg-gray-100 hover:bg-gray-200 px-3 py-1.5 rounded-lg disabled:opacity-40 transition">
                 <ShieldAlert className="w-4 h-4" /> Validar
+              </button>
+              <button
+                onClick={() => builderView === "canvas" ? openBuilderJson() : setBuilderView("canvas")}
+                disabled={!selectedFlowId}
+                className={`flex items-center gap-1 text-sm px-3 py-1.5 rounded-lg disabled:opacity-40 transition ${builderView === "json" ? "bg-slate-800 text-white hover:bg-slate-700" : "bg-gray-100 hover:bg-gray-200"}`}
+              >
+                <FileJson className="w-4 h-4" /> {builderView === "json" ? "Canvas" : "JSON"}
               </button>
               <button onClick={() => setActiveTab("preview")} disabled={rfNodes.length === 0}
                 className="flex items-center gap-1 text-sm bg-gray-100 hover:bg-gray-200 px-3 py-1.5 rounded-lg disabled:opacity-40 transition">
@@ -2202,22 +2310,47 @@ export default function FlujoSPage() {
               </div>
             )}
 
-            {/* ReactFlow */}
+            {/* Builder workspace */}
             <div className="flex-1 bg-white rounded-xl border overflow-hidden">
-              <ReactFlow nodes={rfNodes} edges={rfEdges} nodeTypes={NODE_TYPES}
-                onNodesChange={onNodesChange} onEdgesChange={onEdgesChange}
-                onConnect={onConnect} onNodeClick={onNodeClick} fitView deleteKeyCode="Delete">
-                <Background gap={16} color="#f0f0f0" />
-                <Controls />
-                <MiniMap nodeColor={n => ({ start: "#16a34a", end: "#dc2626", webhook: "#0891b2", condition: "#d97706", input: "#7c3aed", screen: "#2563eb" }[n.data?.nodeType as string] ?? "#2563eb")}
-                  maskColor="rgba(255,255,255,0.8)" />
-              </ReactFlow>
+              {builderView === "json" ? (
+                <div className="h-full flex flex-col p-4 gap-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <h3 className="text-sm font-semibold text-slate-800">Editor JSON del flujo</h3>
+                      <p className="text-xs text-slate-500">Edita el JSON Meta y aplícalo de vuelta al canvas cuando esté válido.</p>
+                    </div>
+                    <button onClick={applyBuilderJson} className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700">
+                      Aplicar JSON
+                    </button>
+                  </div>
+                  <textarea
+                    value={builderJsonText}
+                    onChange={e => setBuilderJsonText(e.target.value)}
+                    className="flex-1 w-full font-mono text-xs border rounded-lg p-3 focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+                    placeholder='{"version":"7.1","data_api_version":"3.0","routing_model":{},"screens":[]}'
+                  />
+                  {builderJsonError && (
+                    <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded p-2 flex items-start gap-2">
+                      <AlertTriangle className="w-4 h-4 mt-0.5 flex-shrink-0" />{builderJsonError}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <ReactFlow nodes={rfNodes} edges={rfEdges} nodeTypes={NODE_TYPES}
+                  onNodesChange={onNodesChange} onEdgesChange={onEdgesChange}
+                  onConnect={onConnect} onNodeClick={onNodeClick} fitView deleteKeyCode="Delete">
+                  <Background gap={16} color="#f0f0f0" />
+                  <Controls />
+                  <MiniMap nodeColor={n => ({ start: "#16a34a", end: "#dc2626", webhook: "#0891b2", condition: "#d97706", input: "#7c3aed", screen: "#2563eb" }[n.data?.nodeType as string] ?? "#2563eb")}
+                    maskColor="rgba(255,255,255,0.8)" />
+                </ReactFlow>
+              )}
             </div>
           </div>
 
           {/* Node editor */}
           {selectedNode && (
-            <NodeEditorPanel node={selectedNode} endpointCatalog={endpointCatalog}
+            <NodeEditorPanel key={selectedNode.id} node={selectedNode} endpointCatalog={endpointCatalog}
               onApply={applyNodeEdit} onCancel={() => setSelectedNode(null)} onDelete={deleteNode} />
           )}
         </div>
@@ -2241,7 +2374,7 @@ export default function FlujoSPage() {
             {rfNodes.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-16 text-gray-400 space-y-2">
                 <Phone className="w-12 h-12 text-gray-200" />
-                <p className="text-sm">No hay nodos en el flujo. <button onClick={() => setActiveTab("generar")} className="text-blue-500 underline">Genera uno con IA</button> o <button onClick={() => setActiveTab("builder")} className="text-blue-500 underline">diseña manualmente</button>.</p>
+                <p className="text-sm">No hay nodos en el flujo. <button onClick={() => setActiveTab("builder")} className="text-blue-500 underline">Diseña uno manualmente</button> o importa un JSON desde el builder.</p>
               </div>
             ) : (
               <WhatsAppPreview nodes={rfNodes} edges={rfEdges} />
@@ -2539,15 +2672,46 @@ export default function FlujoSPage() {
               <h2 className="text-base font-semibold text-gray-800 flex items-center gap-2"><Upload className="w-4 h-4" /> Importar JSON Meta</h2>
               <button onClick={() => setImportOpen(false)} className="text-gray-400 hover:text-gray-600">✕</button>
             </div>
+            <div className="space-y-2">
+              <label className="block text-sm font-medium text-slate-700">Subir archivo JSON</label>
+              <input
+                type="file"
+                accept=".json,application/json"
+                onChange={handleImportFileUpload}
+                className="block text-sm text-slate-500 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-medium file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+              />
+            </div>
             <textarea value={importJson} onChange={e => setImportJson(e.target.value)} rows={14}
               className="w-full font-mono text-xs border rounded-lg p-3 focus:outline-none focus:ring-2 focus:ring-blue-500/30"
               placeholder='{"version":"7.1","data_api_version":"3.0","routing_model":{},"screens":[]}' />
+            {importPreview && (
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 space-y-2">
+                <div className="flex flex-wrap gap-3 text-xs text-slate-600">
+                  <span>Pantallas: <span className="font-semibold text-slate-800">{importPreview.nodes}</span></span>
+                  <span>Conexiones: <span className="font-semibold text-slate-800">{importPreview.edges}</span></span>
+                  <span>Errores: <span className={`font-semibold ${importPreview.errors > 0 ? "text-red-600" : "text-green-600"}`}>{importPreview.errors}</span></span>
+                  <span>Warnings: <span className={`font-semibold ${importPreview.warnings > 0 ? "text-amber-600" : "text-green-600"}`}>{importPreview.warnings}</span></span>
+                </div>
+                {importPreview.diagnostics.length > 0 && (
+                  <div className="max-h-28 overflow-y-auto space-y-1 pr-1">
+                    {importPreview.diagnostics.map((diag, index) => (
+                      <div key={`${diag.code}-${index}`} className={`text-xs flex items-start gap-1.5 ${diag.severity === "error" ? "text-red-700" : diag.severity === "warning" ? "text-amber-700" : "text-blue-700"}`}>
+                        <AlertTriangle className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
+                        <span>{diag.message}{diag.fix ? ` — ${diag.fix}` : ""}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
             {importError && (
               <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded p-2 flex items-start gap-2">
                 <AlertTriangle className="w-4 h-4 mt-0.5 flex-shrink-0" />{importError}
               </div>
             )}
             <div className="flex gap-2 justify-end">
+              <button onClick={resetImportDraft} className="px-4 py-2 border rounded-lg text-sm hover:bg-gray-50">Limpiar</button>
+              <button onClick={handleImportPreview} className="px-4 py-2 border rounded-lg text-sm hover:bg-gray-50">Revisar</button>
               <button onClick={() => setImportOpen(false)} className="px-4 py-2 border rounded-lg text-sm hover:bg-gray-50">Cancelar</button>
               <button onClick={handleImport} className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700">Importar</button>
             </div>

@@ -97,13 +97,15 @@ export function parseMetaJsonToGraph(json: unknown): ParseFlowResult {
     const col = idx % 3;
     const row = Math.floor(idx / 3);
 
-    const content: ScreenContent = {
-      label:      (screen.title as string) ?? screenId,
-      title:      (screen.title as string) ?? '',
-      screenId,
-      components: children,
-      terminal:   screen.terminal as boolean ?? false,
-    };
+    const content = hasInput
+      ? inferInputContent(screenId, screen.title as string | undefined, children)
+      : {
+          label:      (screen.title as string) ?? screenId,
+          title:      (screen.title as string) ?? '',
+          screenId,
+          components: children,
+          terminal:   screen.terminal as boolean ?? false,
+        } satisfies ScreenContent;
 
     nodes.push({
       id:       nodeId,
@@ -406,6 +408,59 @@ function dfsReachable(start: string, adj: Record<string, string[]>, visited: Set
   if (visited.has(start)) return;
   visited.add(start);
   (adj[start] ?? []).forEach(n => dfsReachable(n, adj, visited));
+}
+
+function inferInputContent(
+  screenId: string,
+  title: string | undefined,
+  children: MetaComponent[],
+): InputContent {
+  const flat = flatComponents(children);
+  const inputComp = flat.find(c => ['TextInput', 'TextArea', 'Dropdown', 'RadioButtonsGroup', 'CheckboxGroup', 'DatePicker'].includes(c.type as string)) as Record<string, unknown> | undefined;
+  const label = title ?? screenId;
+
+  if (!inputComp) {
+    return {
+      label,
+      title: title ?? '',
+      screenId,
+      inputType: 'text',
+      name: 'respuesta',
+      placeholder: '',
+      required: true,
+    };
+  }
+
+  const componentType = String(inputComp.type ?? 'TextInput');
+  const optionSource = Array.isArray(inputComp['data-source']) ? inputComp['data-source'] as Record<string, unknown>[] : [];
+  const options = optionSource
+    .map((option, index) => ({
+      id: String(option.id ?? index + 1),
+      title: String(option.title ?? option.label ?? option.id ?? `Opcion ${index + 1}`),
+    }));
+
+  let inputType: InputContent['inputType'] = 'text';
+  if (componentType === 'Dropdown' || componentType === 'RadioButtonsGroup' || componentType === 'CheckboxGroup') {
+    inputType = 'select';
+  } else if (componentType === 'DatePicker') {
+    inputType = 'date';
+  } else if (componentType === 'TextInput') {
+    const rawType = String(inputComp['input-type'] ?? 'text').toLowerCase();
+    if (rawType === 'number' || rawType === 'email' || rawType === 'phone') {
+      inputType = rawType;
+    }
+  }
+
+  return {
+    label: String(inputComp.label ?? label),
+    title: title ?? '',
+    screenId,
+    inputType,
+    name: String(inputComp.name ?? 'respuesta'),
+    placeholder: String(inputComp.placeholder ?? inputComp.label ?? ''),
+    required: inputComp.required !== false,
+    ...(options.length > 0 ? { options } : {}),
+  };
 }
 
 function flatComponents(children: MetaComponent[], result: MetaComponent[] = []): MetaComponent[] {
