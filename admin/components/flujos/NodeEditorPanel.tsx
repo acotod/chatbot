@@ -4,7 +4,7 @@ import { X, Trash2, Check, Zap } from "lucide-react";
 import type { Node } from "reactflow";
 import {
   NODE_META, resolveNodeType,
-  type NodeType, type EndpointDef,
+  type NodeType, type CanonicalNodeType, type EndpointDef,
   type ConditionContent, type WebhookContent, type EndpointMapping,
 } from "@/lib/flowTypes";
 
@@ -19,13 +19,14 @@ interface NodeEditorPanelProps {
 export default function NodeEditorPanel({
   node, endpointCatalog, onApply, onCancel, onDelete,
 }: NodeEditorPanelProps) {
-  const nodeType = resolveNodeType((node.data.nodeType ?? "screen") as NodeType);
+  const [nodeType, setNodeType] = useState<CanonicalNodeType>(resolveNodeType((node.data.nodeType ?? "screen") as NodeType));
   const meta = NODE_META[nodeType] ?? NODE_META.screen;
   const [content, setContent] = useState<Record<string, unknown>>({ ...node.data.content });
 
   useEffect(() => {
+    setNodeType(resolveNodeType((node.data.nodeType ?? "screen") as NodeType));
     setContent({ ...node.data.content });
-  }, [node.id, node.data.content]);
+  }, [node.id, node.data.content, node.data.nodeType]);
 
   function patch(key: string, value: unknown) {
     setContent(prev => ({ ...prev, [key]: value }));
@@ -46,7 +47,7 @@ export default function NodeEditorPanel({
   }
 
   function handleApply() {
-    onApply(node.id, { content, label: (content.label as string) ?? node.data.label });
+    onApply(node.id, { nodeType, content, label: (content.label as string) ?? node.data.label });
   }
 
   const inputCls = "w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400";
@@ -69,6 +70,37 @@ export default function NodeEditorPanel({
 
       {/* Fields */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
+        {/* Node type selector */}
+        <div>
+          <p className={labelCls}>Tipo de nodo</p>
+          <div className="grid grid-cols-3 gap-1">
+            {([
+              { t: "start",     emoji: "▶️" },
+              { t: "screen",    emoji: "💬" },
+              { t: "input",     emoji: "✏️" },
+              { t: "condition", emoji: "🔀" },
+              { t: "webhook",   emoji: "⚡" },
+              { t: "end",       emoji: "⏹️" },
+            ] as { t: CanonicalNodeType; emoji: string }[]).map(({ t, emoji }) => {
+              const m = NODE_META[t as keyof typeof NODE_META];
+              if (!m) return null;
+              const active = nodeType === t;
+              return (
+                <button
+                  key={t}
+                  type="button"
+                  onClick={() => { setNodeType(t); setContent({}); }}
+                  className={`flex flex-col items-center gap-0.5 py-2 px-1 rounded-lg border text-xs font-medium transition ${active ? "border-2 bg-opacity-20" : "border-gray-200 hover:bg-gray-50 text-gray-600"}`}
+                  style={active ? { borderColor: m.color, background: m.bg, color: m.color } : {}}
+                >
+                  <span className="text-base leading-none">{emoji}</span>
+                  <span className="truncate w-full text-center">{m.label}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
         {/* Label — all types */}
         <div>
           <p className={labelCls}>Etiqueta</p>
