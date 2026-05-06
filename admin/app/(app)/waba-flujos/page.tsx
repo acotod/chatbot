@@ -582,6 +582,8 @@ function NodeEditModal({
   );
 
   const selectedEp = catalogEndpoints.find((ep) => ep.id === actionRef);
+  const normalizedType = String(type ?? "").trim().toLowerCase();
+  const supportsEndpointMapping = ["action", "menu", "input", "message", "text", "open_response"].includes(normalizedType);
 
   const menuValidation = (() => {
     if (type !== "menu") {
@@ -664,8 +666,11 @@ function NodeEditModal({
     };
 
     switch (type) {
-      case "message":   return { text, ...actionFragment };
-      case "input":     return { text: inputText, variable: inputVar, ...actionFragment };
+      case "message":
+      case "text":      return { text, ...actionFragment };
+      case "input":
+      case "open_response":
+        return { text: inputText, variable: inputVar, ...actionFragment };
       case "menu":      return { text: menuText, options: menuOptions, ...(menuVar.trim() ? { variable: menuVar.trim() } : {}), ...actionFragment };
       case "condition": return { variable: condVar, operator: condOp, value: condVal };
       case "delay":     return { seconds: delaySeconds };
@@ -911,19 +916,19 @@ function NodeEditModal({
                 </>
               )}
               {/* action / menu / input / message webhook call */}
-              {(type === "action" || type === "menu" || type === "input" || type === "message") && (
+              {supportsEndpointMapping && (
                 <div className="space-y-4">
-                  {type === "menu" && (
+                  {normalizedType === "menu" && (
                     <p className="text-xs font-medium text-slate-600 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
                       Llamado de endpoint/webhook al seleccionar opción (opcional)
                     </p>
                   )}
-                  {type === "input" && (
+                  {(normalizedType === "input" || normalizedType === "open_response") && (
                     <p className="text-xs font-medium text-slate-600 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
                       Llamado de endpoint/webhook después de capturar la respuesta (opcional)
                     </p>
                   )}
-                  {type === "message" && (
+                  {(normalizedType === "message" || normalizedType === "text") && (
                     <p className="text-xs font-medium text-slate-600 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
                       Llamado de endpoint/webhook después de enviar el mensaje (opcional)
                     </p>
