@@ -485,6 +485,38 @@ function NodeEditModal({
 
   const selectedEp = catalogEndpoints.find((ep) => ep.id === actionRef);
 
+  const menuValidation = (() => {
+    if (type !== "menu") {
+      return { duplicateIds: [] as string[], missingIdIndexes: [] as number[], missingNextIndexes: [] as number[] };
+    }
+
+    const idCounter = new Map<string, number>();
+    menuOptions.forEach((option) => {
+      const normalized = option.id.trim();
+      if (!normalized) return;
+      idCounter.set(normalized, (idCounter.get(normalized) ?? 0) + 1);
+    });
+
+    const duplicateIds = Array.from(idCounter.entries())
+      .filter(([, count]) => count > 1)
+      .map(([id]) => id);
+
+    const missingIdIndexes: number[] = [];
+    const missingNextIndexes: number[] = [];
+
+    menuOptions.forEach((option, index) => {
+      if (!option.id.trim()) missingIdIndexes.push(index);
+      if (!option.next.trim()) missingNextIndexes.push(index);
+    });
+
+    return { duplicateIds, missingIdIndexes, missingNextIndexes };
+  })();
+
+  const hasMenuValidationErrors =
+    menuValidation.duplicateIds.length > 0 ||
+    menuValidation.missingIdIndexes.length > 0 ||
+    menuValidation.missingNextIndexes.length > 0;
+
   useEffect(() => {
     if (type !== "menu") return;
     const parsed = parseBranchesSafely(branchesJson);
@@ -533,6 +565,10 @@ function NodeEditModal({
 
   function handleSave() {
     if (!id.trim()) { setErr("El ID del nodo es obligatorio"); return; }
+    if (type === "menu" && !showJson && hasMenuValidationErrors) {
+      setErr("Corrige las opciones del menú antes de guardar (IDs únicos y next obligatorio).");
+      return;
+    }
     let branches: Record<string, string>;
     if (type === "menu" && !showJson) {
       branches = buildBranchesFromOptions(menuOptions);
@@ -668,6 +704,19 @@ function NodeEditModal({
                     titlePlaceholder="Título visible"
                     nextPlaceholder="Siguiente nodo (opcional)"
                   />
+                  {hasMenuValidationErrors && (
+                    <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700 space-y-1">
+                      {menuValidation.duplicateIds.length > 0 && (
+                        <p>IDs duplicados: {menuValidation.duplicateIds.join(", ")}</p>
+                      )}
+                      {menuValidation.missingIdIndexes.length > 0 && (
+                        <p>Opciones sin ID: {menuValidation.missingIdIndexes.map((i) => i + 1).join(", ")}</p>
+                      )}
+                      {menuValidation.missingNextIndexes.length > 0 && (
+                        <p>Opciones sin siguiente nodo: {menuValidation.missingNextIndexes.map((i) => i + 1).join(", ")}</p>
+                      )}
+                    </div>
+                  )}
                   <div>
                     <label className="block text-xs font-medium text-slate-600 mb-1">Guardar selección en variable</label>
                     <input value={menuVar} onChange={(e) => setMenuVar(e.target.value)} placeholder="variables.opcion_menu"
@@ -881,7 +930,8 @@ function NodeEditModal({
         <div className="px-6 py-4 border-t border-slate-100 flex justify-end gap-3">
           <button onClick={onClose} className="px-4 py-2 text-sm text-slate-600 hover:text-slate-800">Cancelar</button>
           <button onClick={handleSave}
-            className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-blue-600 text-white text-sm font-medium hover:bg-blue-700">
+            disabled={type === "menu" && !showJson && hasMenuValidationErrors}
+            className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed">
             Guardar nodo
           </button>
         </div>
