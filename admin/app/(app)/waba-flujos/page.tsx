@@ -1098,6 +1098,7 @@ function FlowBuilder({
   onBack: () => void;
   onRefresh: () => void;
 }) {
+  const { tenantSlug } = useAuthStore();
   const [activeVersion, setActiveVersion] = useState<(FlowVersion & { definition?: FlowDefinition }) | null>(null);
   const [definition, setDefinition] = useState<FlowDefinition | null>(null);
   const [editingNode, setEditingNode] = useState<Partial<NodeDef> | null>(null);
@@ -1159,13 +1160,18 @@ function FlowBuilder({
         setCatalogEndpoints(eps);
       })
       .catch(() => setCatalogEndpoints([]));
-    variablesApi.list()
+    if (!tenantSlug) {
+      setFlowVariables([]);
+      return;
+    }
+
+    variablesApi.list({ tenantSlug })
       .then(({ data }) => {
         const vars = Array.isArray(data) ? data : [];
         setFlowVariables(vars.map((v: { nombre: string }) => `variables.${v.nombre}`));
       })
       .catch(() => setFlowVariables([]));
-  }, [loadLatestVersion]);
+  }, [loadLatestVersion, tenantSlug]);
 
   function handleAddNode() {
     const ids = definition?.nodes.map((n) => n.id) ?? [];
