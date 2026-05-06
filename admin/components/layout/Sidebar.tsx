@@ -1,9 +1,10 @@
 "use client";
 
-import { authApi, tenantApi } from "@/lib/api";
+import { authApi, solicitudesApi, tenantApi } from "@/lib/api";
 import type { Permission } from "@/lib/permissions";
 import { cn } from "@/lib/utils";
 import { useAuthStore } from "@/store/auth";
+import { useQuery } from "@tanstack/react-query";
 import {
   Bell,
   Building2,
@@ -102,6 +103,20 @@ export function Sidebar() {
     return permissions.includes(item.permission);
   });
 
+  const canViewSolicitudes = superAdmin || permissions.includes("VIEW_SOLICITUDES");
+
+  const { data: solicitudesPendientesData } = useQuery({
+    queryKey: ["sidebar-solicitudes-pendientes", tenantSlug],
+    queryFn: () =>
+      solicitudesApi
+        .list(tenantSlug!, { estado: "pendiente", page: 1, limit: 1 })
+        .then((r) => r.data),
+    enabled: !!tenantSlug && canViewSolicitudes,
+    staleTime: 30_000,
+  });
+
+  const solicitudesPendientes = Number(solicitudesPendientesData?.total ?? 0);
+
   return (
     <aside className="w-64 bg-white border-r border-slate-200 flex flex-col h-screen sticky top-0">
       {/* Logo */}
@@ -168,9 +183,9 @@ export function Sidebar() {
                 size={18}
               />
               {item.label}
-              {item.label === "Solicitudes" && (
+              {item.label === "Solicitudes" && solicitudesPendientes > 0 && (
                 <span className="ml-auto bg-red-100 text-red-600 text-xs font-semibold px-2 py-0.5 rounded-full">
-                  3
+                  {solicitudesPendientes > 99 ? "99+" : solicitudesPendientes}
                 </span>
               )}
             </Link>
