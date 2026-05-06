@@ -54,6 +54,10 @@ export default function NodeEditorPanel({
         title: String(option.title ?? option.label ?? option.text ?? ""),
         ...(typeof option.next === "string" ? { next: option.next } : {}),
       }));
+      // Auto-detect inputType when options array is present
+      if ((initial.options as unknown[]).length > 0 && !initial.inputType) {
+        initial.inputType = "select";
+      }
     }
     return initial;
   });
@@ -321,7 +325,7 @@ export default function NodeEditorPanel({
               <p className={labelCls}>Placeholder</p>
               <input className={inputCls} value={(content.placeholder as string) ?? ""} onChange={e => patch("placeholder", e.target.value)} />
             </div>
-            {((content.inputType as string) ?? "text") === "select" && (
+            {(((content.inputType as string) ?? "text") === "select" || (Array.isArray(content.options) && (content.options as unknown[]).length > 0)) && (
               <div className="space-y-2">
                 <div className="flex items-center justify-between gap-2">
                   <p className={labelCls}>Opciones del menú</p>
