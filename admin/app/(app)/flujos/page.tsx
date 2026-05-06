@@ -451,6 +451,67 @@ export default function FlujoSPage() {
     }]);
   }
 
+  function createBaseFlow() {
+    if (!selectedFlowId) return;
+    const startId = `base-${++nodeIdCounter}`;
+    const inputId = `base-${++nodeIdCounter}`;
+    const endId = `base-${++nodeIdCounter}`;
+
+    setRfNodes([
+      {
+        id: startId,
+        type: "flowNode",
+        position: { x: 80, y: 120 },
+        data: {
+          label: "Inicio",
+          nodeType: "start",
+          content: {
+            label: "Inicio",
+            title: "Bienvenido",
+            body: "Hola, gracias por escribirnos. Te ayudo a continuar.",
+          },
+        },
+      },
+      {
+        id: inputId,
+        type: "flowNode",
+        position: { x: 420, y: 120 },
+        data: {
+          label: "Captura",
+          nodeType: "input",
+          content: {
+            label: "Captura",
+            title: "¿Cómo te llamas?",
+            inputType: "text",
+            variable: "nombre",
+          },
+        },
+      },
+      {
+        id: endId,
+        type: "flowNode",
+        position: { x: 760, y: 120 },
+        data: {
+          label: "Cierre",
+          nodeType: "end",
+          content: {
+            label: "Cierre",
+            title: "¡Listo!",
+            body: "Recibimos tus datos. En breve te respondemos.",
+          },
+        },
+      },
+    ]);
+
+    setRfEdges([
+      { id: `edge-${startId}-${inputId}`, source: startId, target: inputId, animated: true },
+      { id: `edge-${inputId}-${endId}`, source: inputId, target: endId, animated: true },
+    ]);
+
+    setSaveMsg("Flujo base creado. Guarda para persistir cambios.");
+    setTimeout(() => setSaveMsg(""), 3500);
+  }
+
   function applyNodeEdit(nodeId: string, data: Partial<Node["data"]>) {
     setRfNodes(prev => prev.map(n => n.id === nodeId ? { ...n, data: { ...n.data, ...data } } : n));
     setSelectedNode(null);
@@ -2258,38 +2319,54 @@ export default function FlujoSPage() {
           <div className="flex-1 flex flex-col gap-2 min-w-0">
             {/* Toolbar */}
             <div className="flex items-center gap-2 bg-white rounded-xl border px-3 py-2 flex-wrap">
-              <button onClick={addNode} disabled={!selectedFlowId}
-                className="flex items-center gap-1 text-sm bg-gray-100 hover:bg-gray-200 px-3 py-1.5 rounded-lg disabled:opacity-40 transition">
-                <Plus className="w-4 h-4" /> Nodo
-              </button>
-              <button onClick={handleSave} disabled={!selectedFlowId || saving}
-                className="flex items-center gap-1 text-sm bg-blue-600 text-white hover:bg-blue-700 px-3 py-1.5 rounded-lg disabled:opacity-50 transition">
-                <Save className="w-4 h-4" /> {saving ? "Guardando…" : "Guardar"}
-              </button>
+              <div className="flex items-center gap-2">
+                <button onClick={addNode} disabled={!selectedFlowId}
+                  className="flex items-center gap-1 text-sm bg-gray-100 hover:bg-gray-200 px-3 py-1.5 rounded-lg disabled:opacity-40 transition">
+                  <Plus className="w-4 h-4" /> Nodo
+                </button>
+                <button onClick={createBaseFlow} disabled={!selectedFlowId}
+                  className="flex items-center gap-1 text-sm bg-gray-100 hover:bg-gray-200 px-3 py-1.5 rounded-lg disabled:opacity-40 transition">
+                  <Sparkles className="w-4 h-4" /> Crear flujo base
+                </button>
+                <button onClick={handleSave} disabled={!selectedFlowId || saving}
+                  className="flex items-center gap-1 text-sm bg-blue-600 text-white hover:bg-blue-700 px-3 py-1.5 rounded-lg disabled:opacity-50 transition">
+                  <Save className="w-4 h-4" /> {saving ? "Guardando…" : "Guardar"}
+                </button>
+              </div>
+
               <div className="w-px h-5 bg-gray-200" />
-              <button onClick={() => { resetImportDraft(); setImportOpen(true); }} disabled={!selectedFlowId}
-                className="flex items-center gap-1 text-sm bg-gray-100 hover:bg-gray-200 px-3 py-1.5 rounded-lg disabled:opacity-40 transition">
-                <Upload className="w-4 h-4" /> Importar
-              </button>
-              <button onClick={handleValidate} disabled={!selectedFlowId}
-                className="flex items-center gap-1 text-sm bg-gray-100 hover:bg-gray-200 px-3 py-1.5 rounded-lg disabled:opacity-40 transition">
-                <ShieldAlert className="w-4 h-4" /> Validar
-              </button>
-              <button
-                onClick={() => builderView === "canvas" ? openBuilderJson() : setBuilderView("canvas")}
-                disabled={!selectedFlowId}
-                className={`flex items-center gap-1 text-sm px-3 py-1.5 rounded-lg disabled:opacity-40 transition ${builderView === "json" ? "bg-slate-800 text-white hover:bg-slate-700" : "bg-gray-100 hover:bg-gray-200"}`}
-              >
-                <FileJson className="w-4 h-4" /> {builderView === "json" ? "Canvas" : "JSON"}
-              </button>
-              <button onClick={() => setActiveTab("preview")} disabled={rfNodes.length === 0}
-                className="flex items-center gap-1 text-sm bg-gray-100 hover:bg-gray-200 px-3 py-1.5 rounded-lg disabled:opacity-40 transition">
-                <Phone className="w-4 h-4" /> Preview
-              </button>
-              <button onClick={() => setActiveTab("probar")} disabled={!selectedFlowId}
-                className="flex items-center gap-1 text-sm bg-gray-100 hover:bg-gray-200 px-3 py-1.5 rounded-lg disabled:opacity-40 transition">
-                <Play className="w-4 h-4" /> Probar
-              </button>
+
+              <div className="flex items-center gap-2">
+                <button onClick={() => { resetImportDraft(); setImportOpen(true); }} disabled={!selectedFlowId}
+                  className="flex items-center gap-1 text-sm bg-gray-100 hover:bg-gray-200 px-3 py-1.5 rounded-lg disabled:opacity-40 transition">
+                  <Upload className="w-4 h-4" /> Importar
+                </button>
+                <button onClick={handleValidate} disabled={!selectedFlowId}
+                  className="flex items-center gap-1 text-sm bg-gray-100 hover:bg-gray-200 px-3 py-1.5 rounded-lg disabled:opacity-40 transition">
+                  <ShieldAlert className="w-4 h-4" /> Validar
+                </button>
+                <button
+                  onClick={() => builderView === "canvas" ? openBuilderJson() : setBuilderView("canvas")}
+                  disabled={!selectedFlowId}
+                  className={`flex items-center gap-1 text-sm px-3 py-1.5 rounded-lg disabled:opacity-40 transition ${builderView === "json" ? "bg-slate-800 text-white hover:bg-slate-700" : "bg-gray-100 hover:bg-gray-200"}`}
+                >
+                  <FileJson className="w-4 h-4" /> {builderView === "json" ? "Canvas" : "JSON"}
+                </button>
+              </div>
+
+              <div className="w-px h-5 bg-gray-200" />
+
+              <div className="flex items-center gap-2">
+                <button onClick={() => setActiveTab("preview")} disabled={rfNodes.length === 0}
+                  className="flex items-center gap-1 text-sm bg-gray-100 hover:bg-gray-200 px-3 py-1.5 rounded-lg disabled:opacity-40 transition">
+                  <Phone className="w-4 h-4" /> Preview
+                </button>
+                <button onClick={() => setActiveTab("probar")} disabled={!selectedFlowId}
+                  className="flex items-center gap-1 text-sm bg-gray-100 hover:bg-gray-200 px-3 py-1.5 rounded-lg disabled:opacity-40 transition">
+                  <Play className="w-4 h-4" /> Probar
+                </button>
+              </div>
+
               {saveMsg && <span className="text-sm text-green-600 font-medium">{saveMsg}</span>}
               {!selectedFlowId && <span className="text-sm text-gray-400">← Selecciona un flujo</span>}
             </div>
@@ -2335,6 +2412,32 @@ export default function FlujoSPage() {
                     </div>
                   )}
                 </div>
+              ) : !selectedFlowId ? (
+                <div className="h-full flex flex-col items-center justify-center text-center px-6 text-gray-500 gap-3">
+                  <Sparkles className="w-10 h-10 text-gray-300" />
+                  <div>
+                    <p className="text-sm font-medium text-gray-700">Selecciona un flujo para empezar</p>
+                    <p className="text-xs text-gray-500 mt-1">Puedes crear uno nuevo desde la barra izquierda y comenzar con plantilla base.</p>
+                  </div>
+                </div>
+              ) : rfNodes.length === 0 ? (
+                <div className="h-full flex flex-col items-center justify-center text-center px-6 text-gray-500 gap-4">
+                  <div className="w-14 h-14 rounded-2xl bg-blue-50 border border-blue-100 flex items-center justify-center">
+                    <Sparkles className="w-7 h-7 text-blue-500" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-gray-800">Este flujo aún está vacío</p>
+                    <p className="text-xs text-gray-500 mt-1">Crea una estructura inicial en un click o importa un JSON existente.</p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button onClick={createBaseFlow} className="px-4 py-2 text-sm rounded-lg bg-blue-600 text-white hover:bg-blue-700 flex items-center gap-1.5">
+                      <Sparkles className="w-4 h-4" /> Crear flujo base
+                    </button>
+                    <button onClick={() => { resetImportDraft(); setImportOpen(true); }} className="px-4 py-2 text-sm rounded-lg bg-gray-100 hover:bg-gray-200 flex items-center gap-1.5">
+                      <Upload className="w-4 h-4" /> Importar JSON
+                    </button>
+                  </div>
+                </div>
               ) : (
                 <ReactFlow nodes={rfNodes} edges={rfEdges} nodeTypes={NODE_TYPES}
                   onNodesChange={onNodesChange} onEdgesChange={onEdgesChange}
@@ -2374,7 +2477,13 @@ export default function FlujoSPage() {
             {rfNodes.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-16 text-gray-400 space-y-2">
                 <Phone className="w-12 h-12 text-gray-200" />
-                <p className="text-sm">No hay nodos en el flujo. <button onClick={() => setActiveTab("builder")} className="text-blue-500 underline">Diseña uno manualmente</button> o importa un JSON desde el builder.</p>
+                <p className="text-sm">Aún no hay pantallas para previsualizar.</p>
+                <div className="flex items-center gap-2">
+                  <button onClick={() => { setActiveTab("builder"); createBaseFlow(); }} className="text-sm px-3 py-1.5 rounded-lg bg-blue-600 text-white hover:bg-blue-700">
+                    Crear flujo base
+                  </button>
+                  <button onClick={() => setActiveTab("builder")} className="text-sm text-blue-600 underline">Abrir builder</button>
+                </div>
               </div>
             ) : (
               <WhatsAppPreview nodes={rfNodes} edges={rfEdges} />
@@ -2424,7 +2533,7 @@ export default function FlujoSPage() {
             <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-[#ece5dd]">
               {testSteps.length === 0 && (
                 <div className="text-center text-sm text-gray-400 pt-8">
-                  {selectedFlowId ? "Escribe un mensaje para iniciar la prueba." : "Selecciona un flujo en el panel izquierdo."}
+                  {selectedFlowId ? "Escribe un mensaje para iniciar la prueba." : "Selecciona un flujo para comenzar la simulación."}
                 </div>
               )}
               {testSteps.map((step, i) => (
@@ -2529,8 +2638,13 @@ export default function FlujoSPage() {
               <div className="flex-1 flex items-center justify-center text-gray-400">
                 <div className="text-center space-y-2">
                   <Download className="w-12 h-12 mx-auto text-gray-200" />
-                  <p className="text-sm">No hay flujo cargado. Diseña uno primero.</p>
-                  <button onClick={() => setActiveTab("builder")} className="text-sm text-blue-600 underline">Ir al builder</button>
+                  <p className="text-sm">No hay flujo listo para exportar.</p>
+                  <div className="flex items-center justify-center gap-2">
+                    <button onClick={() => { setActiveTab("builder"); createBaseFlow(); }} className="text-sm px-3 py-1.5 rounded-lg bg-blue-600 text-white hover:bg-blue-700">
+                      Crear flujo base
+                    </button>
+                    <button onClick={() => setActiveTab("builder")} className="text-sm text-blue-600 underline">Ir al builder</button>
+                  </div>
                 </div>
               </div>
             ) : !exportResult ? (
