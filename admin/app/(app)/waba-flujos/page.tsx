@@ -856,7 +856,12 @@ function NodeEditModal({
                     </div>
                     <div className="flex-1">
                       <label className="block text-xs font-medium text-slate-600 mb-1">URL del endpoint</label>
-                      <input value={actionUrl} onChange={(e) => setActionUrl(e.target.value)} placeholder="/api/billing/balance"
+                      <datalist id="waba-url-suggestions">
+                        {catalogEndpoints.map((ep) => (
+                          <option key={ep.id} value={ep.url}>{ep.name}</option>
+                        ))}
+                      </datalist>
+                      <input list="waba-url-suggestions" value={actionUrl} onChange={(e) => setActionUrl(e.target.value)} placeholder="/api/billing/balance"
                         className="w-full rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500" />
                     </div>
                   </div>
