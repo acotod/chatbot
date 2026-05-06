@@ -235,11 +235,41 @@ const STEPS: { id: MainTab; label: string; icon: string }[] = [
   { id: "exportar", label: "4. Exportar", icon: "⬇" },
 ];
 
+function normalizeInputContent(content: Record<string, unknown>): Record<string, unknown> {
+  // If already has options/inputType, no normalization needed
+  if (content.options || content.inputType) return content;
+  const components = Array.isArray(content.components) ? (content.components as Record<string, unknown>[]) : [];
+  // Flatten Form children too
+  const flat: Record<string, unknown>[] = [];
+  components.forEach(c => {
+    flat.push(c);
+    if (c.type === "Form" && Array.isArray(c.children)) {
+      (c.children as Record<string, unknown>[]).forEach(ch => flat.push(ch));
+    }
+  });
+  const SELECT_TYPES = ["Dropdown", "RadioButtonsGroup", "CheckboxGroup"];
+  const inputComp = flat.find(c => SELECT_TYPES.includes(String(c.type ?? "")));
+  if (!inputComp) return content;
+  const rawOptions = Array.isArray(inputComp["data-source"]) ? (inputComp["data-source"] as Record<string, unknown>[]) : [];
+  const options = rawOptions.map((o, i) => ({
+    id: String(o.id ?? `opcion_${i + 1}`),
+    title: String(o.title ?? o.label ?? o.id ?? `Opción ${i + 1}`),
+  }));
+  return {
+    ...content,
+    inputType: "select",
+    name: String(inputComp.name ?? "respuesta"),
+    options,
+  };
+}
+
 function toRFNode(n: DbNode): Node {
+  const rawContent = (n.content ?? {}) as Record<string, unknown>;
+  const content = n.type === "input" ? normalizeInputContent(rawContent) : rawContent;
   return {
     id: String(n.id), type: "flowNode",
     position: { x: n.posX, y: n.posY },
-    data: { label: (n.content?.label as string) ?? n.type, nodeType: n.type, content: n.content },
+    data: { label: (content.label as string) ?? n.type, nodeType: n.type, content },
   };
 }
 function toRFEdge(e: DbEdge): Edge {
