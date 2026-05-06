@@ -442,6 +442,20 @@ router.post('/refresh', async (req, res) => {
   }
 });
 
+// ── GET /auth/me ─────────────────────────────────────────────────────────────
+router.get('/me', requireJwt, async (req, res) => {
+  const admin = req.admin || {};
+  return res.json({
+    adminUserId: admin.adminUserId ?? null,
+    email: admin.email ?? null,
+    nombre: admin.nombre ?? null,
+    tenantId: admin.tenantId ?? null,
+    tenantSlug: null,
+    superAdmin: Boolean(admin.superAdmin),
+    permissions: Array.isArray(admin.permissions) ? admin.permissions : [],
+  });
+});
+
 // ── POST /auth/logout ─────────────────────────────────────────────────────────
 router.post('/logout', requireJwt, async (req, res) => {
   const { refreshToken } = req.body;

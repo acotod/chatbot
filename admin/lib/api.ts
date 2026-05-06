@@ -178,6 +178,16 @@ export const authApi = {
       email,
       password,
     }),
+  me: () =>
+    apiClient.get<{
+      adminUserId: number | null;
+      email: string | null;
+      nombre: string | null;
+      tenantId: string | null;
+      tenantSlug: string | null;
+      superAdmin: boolean;
+      permissions: string[];
+    }>("/auth/me"),
   loginWithFacebook: (accessToken: string) =>
     apiClient.post<{ accessToken: string; refreshToken?: string; expiresIn: number; superAdmin: boolean }>("/auth/facebook", {
       accessToken,

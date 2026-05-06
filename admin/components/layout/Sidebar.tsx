@@ -54,11 +54,36 @@ const NAV_ITEMS: Array<{
 export function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
-  const { logout, tenantSlug, superAdmin, permissions, setTenantSlug } = useAuthStore();
+  const { logout, tenantSlug, superAdmin, permissions, setTenantSlug, setPermissions } = useAuthStore();
 
   const [tenants, setTenants] = useState<{ slug: string; nombre: string }[]>([]);
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
+
+  const { data: meData, isLoading: authMeLoading } = useQuery({
+    queryKey: ["auth-me"],
+    queryFn: () => authApi.me().then((r) => r.data),
+    staleTime: 60_000,
+  });
+
+  useEffect(() => {
+    if (!meData) return;
+    const normalizedPermissions = Array.isArray(meData.permissions)
+      ? meData.permissions
+          .map((p) => String(p ?? "").trim().toUpperCase())
+          .filter((p): p is Permission => Boolean(p))
+      : [];
+
+    setPermissions(Boolean(meData.superAdmin), normalizedPermissions);
+
+    if (!meData.superAdmin && !tenantSlug && meData.tenantSlug) {
+      setTenantSlug(meData.tenantSlug);
+    }
+  }, [meData, setPermissions, setTenantSlug, tenantSlug]);
+
+  const permissionSet = new Set(
+    permissions.map((p) => String(p ?? "").trim().toUpperCase() as Permission)
+  );
 
   // Fetch tenant list for superAdmins
   useEffect(() => {
@@ -99,7 +124,7 @@ export function Sidebar() {
     if (superAdmin) return true;
     if (item.superAdminOnly) return false;
     if (!item.permission) return false;
-    return permissions.includes(item.permission);
+    return permissionSet.has(item.permission);
   };
 
   // Filter nav items based on permissions
@@ -109,6 +134,8 @@ export function Sidebar() {
 
   // Guard: block direct URL access to modules without permission.
   useEffect(() => {
+    if (!superAdmin && authMeLoading && permissionSet.size === 0) return;
+
     const currentItem = NAV_ITEMS.find((item) =>
       pathname === item.href || pathname.startsWith(`${item.href}/`)
     );
@@ -119,9 +146,9 @@ export function Sidebar() {
     if (pathname !== fallback) {
       router.replace(fallback);
     }
-  }, [pathname, permissions, superAdmin, router, filteredNavItems]);
+  }, [pathname, superAdmin, authMeLoading, permissionSet.size, router, filteredNavItems]);
 
-  const canViewSolicitudes = superAdmin || permissions.includes("VIEW_SOLICITUDES");
+  const canViewSolicitudes = superAdmin || permissionSet.has("VIEW_SOLICITUDES");
 
   const { data: solicitudesPendientesData } = useQuery({
     queryKey: ["sidebar-solicitudes-pendientes", tenantSlug],
