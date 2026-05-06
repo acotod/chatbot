@@ -115,8 +115,31 @@ const DEFAULT_CATALOG = {
       outputs:     ['enviado', 'notifId'],
       description: 'Envía una notificación por el canal seleccionado (email, sms, whatsapp)',
     },
+    {
+      id:          'saveConversation',
+      name:        'Guardar Conversación',
+      method:      'POST',
+      url:         '/events/save-conversation',
+      inputs:      ['userKey', 'flowId', 'conversationId', 'flowVersionId', 'nodeRef', 'eventType', 'payload', 'context', 'status'],
+      outputs:     ['saved', 'conversationId', 'status'],
+      description: 'Crea o actualiza una conversación y agrega un evento a su timeline usando x-api-key del tenant.',
+    },
   ],
 };
+
+function mergeCatalogWithDefaults(catalog) {
+  const customEndpoints = Array.isArray(catalog?.endpoints) ? catalog.endpoints : [];
+  const merged = [...customEndpoints];
+  const knownIds = new Set(customEndpoints.map((endpoint) => endpoint?.id).filter(Boolean));
+
+  DEFAULT_CATALOG.endpoints.forEach((endpoint) => {
+    if (!knownIds.has(endpoint.id)) {
+      merged.push(endpoint);
+    }
+  });
+
+  return { endpoints: merged };
+}
 
 /**
  * Get the endpoint catalog for a tenant.
@@ -132,7 +155,7 @@ async function getCatalog(tenantId) {
       where: { tenantId, clave: CONFIG_KEY },
     });
     if (config?.valor && Array.isArray(config.valor.endpoints)) {
-      return config.valor;
+      return mergeCatalogWithDefaults(config.valor);
     }
   } catch (err) {
     // Non-blocking: fall through to default
