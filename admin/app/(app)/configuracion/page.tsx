@@ -62,6 +62,7 @@ export default function ConfiguracionPage() {
   const [horarios, setHorarios] = useState({
     inicio: "08:00",
     fin: "18:00",
+    dias: [1, 2, 3, 4, 5] as number[],
   });
   const [mensajeBienvenida, setMensajeBienvenida] = useState(
     "¡Hola! Estamos aquí para apoyarte. ¿En qué podemos ayudarte hoy? 💙"
@@ -171,7 +172,7 @@ export default function ConfiguracionPage() {
         .get(`/admin/tenants/${tenantSlug}/config/horarios`)
         .then((r) => {
           const v = r.data?.valor;
-          if (v?.inicio) setHorarios(v);
+          if (v?.inicio) setHorarios({ ...v, dias: v.dias ?? [1, 2, 3, 4, 5] });
           return r.data;
         })
         .catch(() => null),
@@ -219,23 +220,62 @@ export default function ConfiguracionPage() {
         title="Horarios de atención"
         description="Definí en qué rango horario el chatbot acepta nuevas solicitudes"
       >
-        <div className="grid grid-cols-2 gap-4">
-          <Input
-            label="Hora de apertura"
-            type="time"
-            value={horarios.inicio}
-            onChange={(e) =>
-              setHorarios((h) => ({ ...h, inicio: e.target.value }))
-            }
-          />
-          <Input
-            label="Hora de cierre"
-            type="time"
-            value={horarios.fin}
-            onChange={(e) =>
-              setHorarios((h) => ({ ...h, fin: e.target.value }))
-            }
-          />
+        <div className="space-y-4">
+          <div className="grid grid-cols-2 gap-4">
+            <Input
+              label="Hora de apertura"
+              type="time"
+              value={horarios.inicio}
+              onChange={(e) =>
+                setHorarios((h) => ({ ...h, inicio: e.target.value }))
+              }
+            />
+            <Input
+              label="Hora de cierre"
+              type="time"
+              value={horarios.fin}
+              onChange={(e) =>
+                setHorarios((h) => ({ ...h, fin: e.target.value }))
+              }
+            />
+          </div>
+          <div>
+            <p className="text-sm font-medium text-slate-700 mb-2">Días de atención</p>
+            <div className="flex gap-2 flex-wrap">
+              {[
+                { label: "Dom", value: 0 },
+                { label: "Lun", value: 1 },
+                { label: "Mar", value: 2 },
+                { label: "Mié", value: 3 },
+                { label: "Jue", value: 4 },
+                { label: "Vie", value: 5 },
+                { label: "Sáb", value: 6 },
+              ].map(({ label, value }) => {
+                const active = (horarios.dias ?? []).includes(value);
+                return (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() =>
+                      setHorarios((h) => ({
+                        ...h,
+                        dias: active
+                          ? (h.dias ?? []).filter((d) => d !== value)
+                          : [...(h.dias ?? []), value].sort(),
+                      }))
+                    }
+                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all ${
+                      active
+                        ? "bg-blue-600 text-white border-blue-600"
+                        : "bg-white text-slate-500 border-slate-200 hover:border-blue-400"
+                    }`}
+                  >
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
         </div>
       </ConfigSection>
 
