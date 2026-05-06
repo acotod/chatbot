@@ -95,6 +95,7 @@ interface CatalogEndpoint {
   outputs: string[];
   description?: string;
   sessionInit?: boolean;
+  inputDefaults?: Record<string, string>;
 }
 
 type TabKey = "list" | "builder" | "versions" | "simulate" | "import-logs";
@@ -627,7 +628,10 @@ function NodeEditModal({
     setActionRef(ep.id);
     setActionUrl(ep.url);
     setActionMethod(ep.method);
-    setActionBody(ep.inputs.map((f) => ({ key: f, value: actionBody.find((b) => b.key === f)?.value ?? "" })));
+    setActionBody(ep.inputs.map((f) => ({
+      key: f,
+      value: actionBody.find((b) => b.key === f)?.value || ep.inputDefaults?.[f] || "",
+    })));
     setActionResponse(ep.outputs.map((f) => ({ key: f, value: actionResponse.find((r) => r.key === f)?.value ?? `variables.${f}` })));
   }
 
