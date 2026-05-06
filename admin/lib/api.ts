@@ -2,14 +2,41 @@ import axios from "axios";
 import { addLog } from "./errorLogger";
 import { scheduleProactiveRefresh, useAuthStore } from "@/store/auth";
 
+function isLocalHostname(hostname: string): boolean {
+  return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "0.0.0.0";
+}
+
+function parseHostname(rawUrl: string): string | null {
+  try {
+    return new URL(rawUrl).hostname;
+  } catch {
+    return null;
+  }
+}
+
 function resolveApiBase(): string {
   const envBase = process.env.NEXT_PUBLIC_API_URL?.trim();
-  if (envBase) return envBase.replace(/\/+$/, "");
+  if (envBase) {
+    if (typeof window !== "undefined") {
+      const currentHost = window.location.hostname;
+      const envHost = parseHostname(envBase);
+
+      // Ignore localhost/loopback API URLs when running on a real remote host.
+      if (!(envHost && isLocalHostname(envHost) && !isLocalHostname(currentHost))) {
+        return envBase.replace(/\/+$/, "");
+      }
+    } else {
+      return envBase.replace(/\/+$/, "");
+    }
+  }
 
   if (typeof window !== "undefined") {
     const { protocol, hostname } = window.location;
     if (hostname === "localhost" || hostname === "127.0.0.1") {
       return "http://127.0.0.1:3200";
+    }
+    if (hostname.startsWith("admin.")) {
+      return `${protocol}//api.${hostname.slice("admin.".length)}`;
     }
     // In production-like environments, prefer same-origin if explicit API URL is missing.
     return `${protocol}//${hostname}`;
