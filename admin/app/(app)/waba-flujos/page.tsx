@@ -24,6 +24,8 @@ import {
   Eye,
   X,
   ArrowRight,
+  ArrowUp,
+  ArrowDown,
   Zap,
 } from "lucide-react";
 import { wabaFlowsApi, integrationsApi, variablesApi } from "@/lib/api";
@@ -328,11 +330,19 @@ function CreateFlowModal({ onClose, onCreated, tenantSlug }: { onClose: () => vo
 function NodeCard({
   node,
   isEntry,
+  canMoveUp,
+  canMoveDown,
+  onMoveUp,
+  onMoveDown,
   onEdit,
   onDelete,
 }: {
   node: NodeDef;
   isEntry: boolean;
+  canMoveUp: boolean;
+  canMoveDown: boolean;
+  onMoveUp: (id: string) => void;
+  onMoveDown: (id: string) => void;
   onEdit: (node: NodeDef) => void;
   onDelete: (id: string) => void;
 }) {
@@ -373,6 +383,20 @@ function NodeCard({
           )}
         </div>
         <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+          <button
+            onClick={() => onMoveUp(node.id)}
+            disabled={!canMoveUp}
+            className="p-1.5 rounded-lg hover:bg-white/80 text-slate-500 hover:text-blue-600 disabled:opacity-30 disabled:cursor-not-allowed"
+          >
+            <ArrowUp className="w-3.5 h-3.5" />
+          </button>
+          <button
+            onClick={() => onMoveDown(node.id)}
+            disabled={!canMoveDown}
+            className="p-1.5 rounded-lg hover:bg-white/80 text-slate-500 hover:text-blue-600 disabled:opacity-30 disabled:cursor-not-allowed"
+          >
+            <ArrowDown className="w-3.5 h-3.5" />
+          </button>
           <button
             onClick={() => onEdit(node)}
             className="p-1.5 rounded-lg hover:bg-white/80 text-slate-500 hover:text-blue-600"
@@ -1110,6 +1134,24 @@ function FlowBuilder({
     });
   }
 
+  function handleMoveNode(id: string, direction: -1 | 1) {
+    setDefinition((prev) => {
+      if (!prev) return prev;
+      const idx = prev.nodes.findIndex((n) => n.id === id);
+      if (idx < 0) return prev;
+      const nextIdx = idx + direction;
+      if (nextIdx < 0 || nextIdx >= prev.nodes.length) return prev;
+
+      const nodes = [...prev.nodes];
+      const [moved] = nodes.splice(idx, 1);
+      nodes.splice(nextIdx, 0, moved);
+
+      const newDef = { ...prev, nodes };
+      setJsonText(JSON.stringify(newDef, null, 2));
+      return newDef;
+    });
+  }
+
   function handleEntryPointChange(id: string) {
     setDefinition((prev) => {
       if (!prev) return prev;
@@ -1267,11 +1309,15 @@ function FlowBuilder({
                   >Añadir primer nodo</button>
                 </div>
               )}
-              {definition?.nodes.map((node) => (
+              {definition?.nodes.map((node, index) => (
                 <NodeCard
                   key={node.id}
                   node={node}
                   isEntry={node.id === definition.entry_point}
+                  canMoveUp={index > 0}
+                  canMoveDown={index < definition.nodes.length - 1}
+                  onMoveUp={(id) => handleMoveNode(id, -1)}
+                  onMoveDown={(id) => handleMoveNode(id, 1)}
                   onEdit={(n) => setEditingNode(n)}
                   onDelete={handleDeleteNode}
                 />
