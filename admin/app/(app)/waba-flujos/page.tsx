@@ -430,6 +430,7 @@ const MENU_VARIABLE_PRESETS = [
 
 // ─── VarComboInput ────────────────────────────────────────────────────────────
 // Input with a click-to-open dropdown showing available flow variables.
+// Uses fixed positioning to escape overflow-hidden/auto parent containers.
 function VarComboInput({
   value,
   onChange,
@@ -444,22 +445,36 @@ function VarComboInput({
   className?: string;
 }) {
   const [open, setOpen] = useState(false);
-  const containerRef = useRef<HTMLDivElement>(null);
+  const [dropdownStyle, setDropdownStyle] = useState<{ top: number; left: number; width: number }>({ top: 0, left: 0, width: 0 });
+  const inputRef = useRef<HTMLInputElement>(null);
   const filtered = suggestions.filter((s) =>
     !value.trim() || s.toLowerCase().includes(value.toLowerCase())
   );
+
+  function handleFocus() {
+    if (inputRef.current) {
+      const rect = inputRef.current.getBoundingClientRect();
+      setDropdownStyle({ top: rect.bottom + window.scrollY + 2, left: rect.left + window.scrollX, width: rect.width });
+    }
+    setOpen(true);
+  }
+
   return (
-    <div ref={containerRef} className="relative flex-1">
+    <div className="flex-1 min-w-0">
       <input
+        ref={inputRef}
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        onFocus={() => setOpen(true)}
+        onFocus={handleFocus}
         onBlur={() => setTimeout(() => setOpen(false), 150)}
         placeholder={placeholder}
         className={className}
       />
       {open && filtered.length > 0 && (
-        <div className="absolute z-50 top-full left-0 right-0 mt-0.5 bg-white border border-slate-200 rounded-lg shadow-lg max-h-44 overflow-y-auto">
+        <div
+          style={{ position: "fixed", top: dropdownStyle.top, left: dropdownStyle.left, width: dropdownStyle.width, zIndex: 9999 }}
+          className="bg-white border border-slate-200 rounded-lg shadow-xl max-h-48 overflow-y-auto"
+        >
           {filtered.map((v) => (
             <button
               key={v}
