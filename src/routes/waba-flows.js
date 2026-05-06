@@ -547,7 +547,7 @@ router.get('/:id/versions', async (req, res, next) => {
 // ─────────────────────────────────────────────────────────────────────────────
 router.post('/:id/versions', async (req, res, next) => {
   try {
-    const tenantId = tid(req);
+    const requestTenantId = tid(req);
     const flowId = Number(req.params.id);
     const adminUserId = uid(req);
     const { definition, changelog } = req.body;
@@ -556,8 +556,16 @@ router.post('/:id/versions', async (req, res, next) => {
       return res.status(400).json({ error: 'definition.nodes array is required' });
     }
 
-    const existing = await prisma.flow.findFirst({ where: { id: flowId, tenantId } });
+    const existing = await prisma.flow.findFirst({
+      where: {
+        id: flowId,
+        ...(requestTenantId ? { tenantId: requestTenantId } : {}),
+      },
+      select: { id: true, tenantId: true },
+    });
     if (!existing) return notFound(res);
+
+    const tenantId = existing.tenantId;
 
     // Sync DB variables into definition before saving
     const enrichedDefinition = await _syncVariablesIntoDefinition(tenantId, flowId, definition);

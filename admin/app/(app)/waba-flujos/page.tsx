@@ -1105,6 +1105,7 @@ function FlowBuilder({
   const [jsonText, setJsonText] = useState("");
   const [jsonError, setJsonError] = useState("");
   const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState("");
   const [validating, setValidating] = useState(false);
   const [validation, setValidation] = useState<{ internal: { valid: boolean; errors: string[]; warnings: string[] }; waba: { valid: boolean; errors: string[] } } | null>(null);
   const [changelog, setChangelog] = useState("");
@@ -1255,6 +1256,7 @@ function FlowBuilder({
 
   async function handleSaveVersion() {
     if (!definition) return;
+    setSaveError("");
     setSaving(true);
     try {
       await wabaFlowsApi.saveVersion(flow.id, {
@@ -1264,7 +1266,10 @@ function FlowBuilder({
       setChangelog("");
       await loadLatestVersion();
       onRefresh();
-    } catch { /* ignore */ } finally { setSaving(false); }
+    } catch (error: unknown) {
+      const msg = (error as { response?: { data?: { error?: string } } })?.response?.data?.error;
+      setSaveError(msg ?? "No se pudo guardar la versión");
+    } finally { setSaving(false); }
   }
 
   async function handleExport() {
@@ -1431,6 +1436,7 @@ function FlowBuilder({
               {saving ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Layers className="w-4 h-4" />}
               Guardar versión
             </button>
+            {saveError && <p className="text-xs text-red-600">{saveError}</p>}
           </div>
 
           {/* Quick stats */}
