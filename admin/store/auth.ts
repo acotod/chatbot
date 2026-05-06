@@ -5,6 +5,18 @@ import type { Permission } from "@/lib/permissions";
 // Module-level refresh timer handle
 let _proactiveRefreshTimer: ReturnType<typeof setTimeout> | null = null;
 
+function parseJwtExpToUnixMs(token: string): number | null {
+  try {
+    const payload = JSON.parse(atob(token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/"))) as {
+      exp?: number;
+    };
+    if (typeof payload.exp !== "number") return null;
+    return payload.exp * 1000;
+  } catch {
+    return null;
+  }
+}
+
 /** Schedule a proactive token refresh ~2 minutes before expiry. */
 export function scheduleProactiveRefresh(
   expiresIn: number,
@@ -49,9 +61,12 @@ export const useAuthStore = create<AuthState>()(
         localStorage.setItem("admin_token", token);
         // Sync to cookie so Next.js middleware can read it (server-side)
         if (typeof document !== "undefined") {
-          document.cookie = `admin_token=${token}; path=/; SameSite=Strict; max-age=${60 * 60 * 8}`;
+          const secureAttr = window.location.protocol === "https:" ? "; Secure" : "";
+          document.cookie = `admin_token=${token}; path=/; SameSite=Strict${secureAttr}; max-age=${60 * 60 * 8}`;
         }
-        const tokenExpiresAt = expiresIn ? Date.now() + expiresIn * 1000 : null;
+        const tokenExpiresAt = expiresIn
+          ? Date.now() + expiresIn * 1000
+          : parseJwtExpToUnixMs(token);
         set({ token, tokenExpiresAt });
       },
       setRefreshToken: (token) => {
@@ -70,7 +85,8 @@ export const useAuthStore = create<AuthState>()(
         localStorage.removeItem("auth-storage");
         // Clear cookie so middleware redirects to /login immediately
         if (typeof document !== "undefined") {
-          document.cookie = "admin_token=; path=/; SameSite=Strict; max-age=0";
+          const secureAttr = window.location.protocol === "https:" ? "; Secure" : "";
+          document.cookie = `admin_token=; path=/; SameSite=Strict${secureAttr}; max-age=0`;
         }
         if (_proactiveRefreshTimer) {
           clearTimeout(_proactiveRefreshTimer);
