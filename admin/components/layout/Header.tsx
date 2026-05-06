@@ -97,9 +97,16 @@ export function Header() {
         </div>
 
         {/* Notifications */}
-        <button className="relative p-2 rounded-xl hover:bg-slate-100 transition">
+        <button
+          type="button"
+          disabled
+          aria-disabled="true"
+          title="Notificaciones: próximamente"
+          className="relative p-2 rounded-xl bg-slate-50 cursor-not-allowed"
+        >
           <Bell className="w-5 h-5 text-slate-500" />
           <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full" />
+          <span className="sr-only">Notificaciones (próximamente)</span>
         </button>
 
         {/* Tenant identity */}

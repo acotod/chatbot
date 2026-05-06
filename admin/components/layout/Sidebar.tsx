@@ -180,11 +180,18 @@ export function Sidebar() {
 
       {/* Bottom */}
       <div className="px-3 py-4 border-t border-slate-100 space-y-1">
-        <button className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-slate-500 hover:bg-slate-100 hover:text-slate-900 transition">
+        <button
+          type="button"
+          disabled
+          aria-disabled="true"
+          title="Notificaciones: próximamente"
+          className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-slate-400 bg-slate-50 cursor-not-allowed"
+        >
           <Bell size={18} className="text-slate-400" />
-          Notificaciones
+          Notificaciones (próximamente)
         </button>
         <button
+          type="button"
           onClick={handleLogout}
           className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-slate-500 hover:bg-red-50 hover:text-red-600 transition"
         >
