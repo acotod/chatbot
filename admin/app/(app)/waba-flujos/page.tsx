@@ -665,7 +665,7 @@ function NodeEditModal({
 
     switch (type) {
       case "message":   return { text };
-      case "input":     return { text: inputText, variable: inputVar };
+      case "input":     return { text: inputText, variable: inputVar, ...actionFragment };
       case "menu":      return { text: menuText, options: menuOptions, ...(menuVar.trim() ? { variable: menuVar.trim() } : {}), ...actionFragment };
       case "condition": return { variable: condVar, operator: condOp, value: condVal };
       case "delay":     return { seconds: delaySeconds };
@@ -910,12 +910,17 @@ function NodeEditModal({
                   </div>
                 </>
               )}
-              {/* action / menu webhook call */}
-              {(type === "action" || type === "menu") && (
+              {/* action / menu / input webhook call */}
+              {(type === "action" || type === "menu" || type === "input") && (
                 <div className="space-y-4">
                   {type === "menu" && (
                     <p className="text-xs font-medium text-slate-600 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
                       Llamado de endpoint/webhook al seleccionar opción (opcional)
+                    </p>
+                  )}
+                  {type === "input" && (
+                    <p className="text-xs font-medium text-slate-600 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
+                      Llamado de endpoint/webhook después de capturar la respuesta (opcional)
                     </p>
                   )}
                   {/* Catalog endpoint picker */}
