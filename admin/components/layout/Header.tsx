@@ -1,6 +1,7 @@
 "use client";
 
 import { tenantApi } from "@/lib/api";
+import { getMe } from "@/lib/useMe";
 import { useAuthStore } from "@/store/auth";
 import { useQuery } from "@tanstack/react-query";
 import { Bell, Search } from "lucide-react";
@@ -29,6 +30,7 @@ export function Header() {
   const pathname = usePathname();
   const { tenantSlug, setTenantSlug } = useAuthStore();
   const apiBase = process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:3200";
+  const me = getMe();
 
   const { data: tenants = [] } = useQuery<TenantOption[]>({
     queryKey: ["tenants", "header"],
@@ -113,9 +115,10 @@ export function Header() {
               {tenantDisplayName.charAt(0).toUpperCase()}
             </div>
           )}
-          <span className="text-sm text-slate-600 hidden md:block">
-            {tenantDisplayName}
-          </span>
+          <div className="hidden md:flex flex-col leading-tight">
+            <span className="text-sm text-slate-700">{tenantDisplayName}</span>
+            <span className="text-xs text-slate-500">{me?.email ?? "Sin sesión"}</span>
+          </div>
         </div>
       </div>
     </header>
