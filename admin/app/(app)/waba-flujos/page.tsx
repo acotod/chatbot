@@ -397,6 +397,12 @@ function NodeCard({
 const NODE_TYPES = ["message", "input", "menu", "condition", "action", "delay", "end", "handoff", "llm"];
 const HTTP_METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE"];
 const CONDITION_OPS = ["equals", "not_equals", "contains", "starts_with", "ends_with", "greater_than", "less_than", "is_empty", "is_not_empty"];
+const MENU_VARIABLE_PRESETS = [
+  "variables.opcion_menu",
+  "variables.menu_seleccion",
+  "variables.menu_opcion_id",
+  "variables.menu_opcion_titulo",
+];
 
 function NodeEditModal({
   node,
@@ -450,7 +456,7 @@ function NodeEditModal({
   const [inputText, setInputText]     = useState(String(cfg.text ?? ""));
   const [inputVar, setInputVar]       = useState(String(cfg.variable ?? ""));
   const [menuText, setMenuText]       = useState(String(cfg.text ?? ""));
-  const [menuVar, setMenuVar]         = useState(String(cfg.variable ?? ""));
+  const [menuVar, setMenuVar]         = useState(String(cfg.variable ?? "variables.opcion_menu"));
   const [menuOptions, setMenuOptions] = useState<{ id: string; title: string; next: string }[]>(
     Array.isArray(cfg.options)
       ? (cfg.options as Array<{ id?: string; title?: string; next?: string }>).map((option, index) => {
@@ -719,8 +725,17 @@ function NodeEditModal({
                   )}
                   <div>
                     <label className="block text-xs font-medium text-slate-600 mb-1">Guardar selección en variable</label>
-                    <input value={menuVar} onChange={(e) => setMenuVar(e.target.value)} placeholder="variables.opcion_menu"
+                    <input
+                      list="menu-variable-presets"
+                      value={menuVar}
+                      onChange={(e) => setMenuVar(e.target.value)}
+                      placeholder="variables.opcion_menu"
                       className="w-full rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                    <datalist id="menu-variable-presets">
+                      {MENU_VARIABLE_PRESETS.map((variableName) => (
+                        <option key={variableName} value={variableName} />
+                      ))}
+                    </datalist>
                   </div>
                 </>
               )}
