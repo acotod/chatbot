@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import {
   Upload,
   Download,
@@ -428,6 +428,54 @@ const MENU_VARIABLE_PRESETS = [
   "variables.menu_opcion_titulo",
 ];
 
+// ─── VarComboInput ────────────────────────────────────────────────────────────
+// Input with a click-to-open dropdown showing available flow variables.
+function VarComboInput({
+  value,
+  onChange,
+  placeholder,
+  suggestions,
+  className,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+  suggestions: string[];
+  className?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const filtered = suggestions.filter((s) =>
+    !value.trim() || s.toLowerCase().includes(value.toLowerCase())
+  );
+  return (
+    <div ref={containerRef} className="relative flex-1">
+      <input
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        onFocus={() => setOpen(true)}
+        onBlur={() => setTimeout(() => setOpen(false), 150)}
+        placeholder={placeholder}
+        className={className}
+      />
+      {open && filtered.length > 0 && (
+        <div className="absolute z-50 top-full left-0 right-0 mt-0.5 bg-white border border-slate-200 rounded-lg shadow-lg max-h-44 overflow-y-auto">
+          {filtered.map((v) => (
+            <button
+              key={v}
+              type="button"
+              onMouseDown={() => { onChange(v); setOpen(false); }}
+              className="w-full text-left px-3 py-1.5 text-xs font-mono hover:bg-blue-50 hover:text-blue-700 text-slate-700"
+            >
+              {v}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function NodeEditModal({
   node,
   allNodeIds,
@@ -660,12 +708,6 @@ function NodeEditModal({
         </div>
 
         <div className="overflow-y-auto flex-1 px-6 py-4 space-y-4">
-          {/* Shared datalist for variable suggestions */}
-          <datalist id="waba-var-suggestions">
-            {(flowVariables.length > 0 ? flowVariables : MENU_VARIABLE_PRESETS).map((v) => (
-              <option key={v} value={v} />
-            ))}
-          </datalist>
           {/* ID + Type */}
           <div className="grid grid-cols-2 gap-3">
             <div>
@@ -711,7 +753,8 @@ function NodeEditModal({
                   </div>
                   <div>
                     <label className="block text-xs font-medium text-slate-600 mb-1">Guardar respuesta en variable</label>
-                    <input list="waba-var-suggestions" value={inputVar} onChange={(e) => setInputVar(e.target.value)} placeholder="variables.cedula"
+                    <VarComboInput value={inputVar} onChange={setInputVar} placeholder="variables.cedula"
+                      suggestions={flowVariables.length > 0 ? flowVariables : MENU_VARIABLE_PRESETS}
                       className="w-full rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500" />
                   </div>
                 </>
@@ -769,7 +812,8 @@ function NodeEditModal({
                   )}
                   <div>
                     <label className="block text-xs font-medium text-slate-600 mb-1">Guardar selección en variable</label>
-                    <input list="waba-var-suggestions" value={menuVar} onChange={(e) => setMenuVar(e.target.value)} placeholder="variables.opcion_menu"
+                    <VarComboInput value={menuVar} onChange={setMenuVar} placeholder="variables.opcion_menu"
+                      suggestions={flowVariables.length > 0 ? flowVariables : MENU_VARIABLE_PRESETS}
                       className="w-full rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500" />
                   </div>
                 </>
@@ -779,7 +823,8 @@ function NodeEditModal({
                 <div className="grid grid-cols-3 gap-2">
                   <div>
                     <label className="block text-xs font-medium text-slate-600 mb-1">Variable</label>
-                    <input list="waba-var-suggestions" value={condVar} onChange={(e) => setCondVar(e.target.value)} placeholder="variables.estatus"
+                    <VarComboInput value={condVar} onChange={setCondVar} placeholder="variables.estatus"
+                      suggestions={flowVariables.length > 0 ? flowVariables : MENU_VARIABLE_PRESETS}
                       className="w-full rounded-lg border border-slate-200 px-2 py-1.5 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-blue-500" />
                   </div>
                   <div>
@@ -840,7 +885,8 @@ function NodeEditModal({
                   </div>
                   <div>
                     <label className="block text-xs font-medium text-slate-600 mb-1">Guardar respuesta en</label>
-                    <input list="waba-var-suggestions" value={llmVar} onChange={(e) => setLlmVar(e.target.value)} placeholder="variables.respuesta_llm"
+                    <VarComboInput value={llmVar} onChange={setLlmVar} placeholder="variables.respuesta_llm"
+                      suggestions={flowVariables.length > 0 ? flowVariables : MENU_VARIABLE_PRESETS}
                       className="w-full rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500" />
                   </div>
                 </>
@@ -943,8 +989,9 @@ function NodeEditModal({
                             placeholder="campo_api"
                             className="w-36 rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-blue-500" />
                           <span className="text-slate-400 text-xs shrink-0">→</span>
-                          <input list="waba-var-suggestions" value={row.value} onChange={(e) => setActionBody((b) => b.map((r, j) => j === i ? { ...r, value: e.target.value } : r))}
+                          <VarComboInput value={row.value} onChange={(v) => setActionBody((b) => b.map((r, j) => j === i ? { ...r, value: v } : r))}
                             placeholder="variables.cedula o valor fijo"
+                            suggestions={flowVariables.length > 0 ? flowVariables : MENU_VARIABLE_PRESETS}
                             className="flex-1 rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-blue-500" />
                           <button onClick={() => setActionBody((b) => b.filter((_, j) => j !== i))}
                             className="text-red-400 hover:text-red-600 shrink-0"><Trash2 className="w-3.5 h-3.5" /></button>
@@ -971,8 +1018,9 @@ function NodeEditModal({
                             placeholder="campo_respuesta"
                             className="w-36 rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-blue-500" />
                           <span className="text-slate-400 text-xs shrink-0">→</span>
-                          <input list="waba-var-suggestions" value={row.value} onChange={(e) => setActionResponse((r) => r.map((x, j) => j === i ? { ...x, value: e.target.value } : x))}
+                          <VarComboInput value={row.value} onChange={(v) => setActionResponse((r) => r.map((x, j) => j === i ? { ...x, value: v } : x))}
                             placeholder="variables.saldo"
+                            suggestions={flowVariables.length > 0 ? flowVariables : MENU_VARIABLE_PRESETS}
                             className="flex-1 rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-blue-500" />
                           <button onClick={() => setActionResponse((r) => r.filter((_, j) => j !== i))}
                             className="text-red-400 hover:text-red-600 shrink-0"><Trash2 className="w-3.5 h-3.5" /></button>
