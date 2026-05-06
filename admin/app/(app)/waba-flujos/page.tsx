@@ -26,7 +26,7 @@ import {
   ArrowRight,
   Zap,
 } from "lucide-react";
-import { wabaFlowsApi, integrationsApi } from "@/lib/api";
+import { wabaFlowsApi, integrationsApi, variablesApi } from "@/lib/api";
 import { useAuthStore } from "@/store/auth";
 import MenuOptionsEditor from "@/components/flujos/MenuOptionsEditor";
 
@@ -408,12 +408,14 @@ function NodeEditModal({
   node,
   allNodeIds,
   catalogEndpoints,
+  flowVariables,
   onSave,
   onClose,
 }: {
   node: Partial<NodeDef>;
   allNodeIds: string[];
   catalogEndpoints: CatalogEndpoint[];
+  flowVariables: string[];
   onSave: (n: NodeDef) => void;
   onClose: () => void;
 }) {
@@ -732,7 +734,7 @@ function NodeEditModal({
                       placeholder="variables.opcion_menu"
                       className="w-full rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500" />
                     <datalist id="menu-variable-presets">
-                      {MENU_VARIABLE_PRESETS.map((variableName) => (
+                      {(flowVariables.length > 0 ? flowVariables : MENU_VARIABLE_PRESETS).map((variableName) => (
                         <option key={variableName} value={variableName} />
                       ))}
                     </datalist>
@@ -984,6 +986,7 @@ function FlowBuilder({
   const [changelog, setChangelog] = useState("");
   const [integrations, setIntegrations] = useState<{ id: number; nombre: string; tipo: string }[]>([]);
   const [catalogEndpoints, setCatalogEndpoints] = useState<CatalogEndpoint[]>([]);
+  const [flowVariables, setFlowVariables] = useState<string[]>([]);
   const validationErrors = validation?.internal?.errors ?? [];
   const validationWarnings = validation?.internal?.warnings ?? [];
   const wabaValidationErrors = validation?.waba?.errors ?? [];
@@ -1024,6 +1027,12 @@ function FlowBuilder({
         setCatalogEndpoints(eps);
       })
       .catch(() => setCatalogEndpoints([]));
+    variablesApi.list()
+      .then(({ data }) => {
+        const vars = Array.isArray(data) ? data : [];
+        setFlowVariables(vars.map((v: { nombre: string }) => `variables.${v.nombre}`));
+      })
+      .catch(() => setFlowVariables([]));
   }, [loadLatestVersion]);
 
   function handleAddNode() {
@@ -1292,6 +1301,7 @@ function FlowBuilder({
           node={editingNode}
           allNodeIds={definition?.nodes.map((n) => n.id) ?? []}
           catalogEndpoints={catalogEndpoints}
+          flowVariables={flowVariables}
           onSave={handleSaveNode}
           onClose={() => setEditingNode(null)}
         />
