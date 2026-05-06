@@ -140,7 +140,27 @@ const DEFAULT_CATALOG = {
 
 function mergeCatalogWithDefaults(catalog) {
   const customEndpoints = Array.isArray(catalog?.endpoints) ? catalog.endpoints : [];
-  const merged = [...customEndpoints];
+  const defaultById = new Map(DEFAULT_CATALOG.endpoints.map((endpoint) => [endpoint.id, endpoint]));
+
+  const merged = customEndpoints.map((endpoint) => {
+    if (!endpoint?.id) return endpoint;
+    const base = defaultById.get(endpoint.id);
+    if (!base) return endpoint;
+
+    const inputDefaults = {
+      ...(base.inputDefaults && typeof base.inputDefaults === 'object' ? base.inputDefaults : {}),
+      ...(endpoint.inputDefaults && typeof endpoint.inputDefaults === 'object' ? endpoint.inputDefaults : {}),
+    };
+
+    return {
+      ...base,
+      ...endpoint,
+      inputs: Array.isArray(endpoint.inputs) ? endpoint.inputs : base.inputs,
+      outputs: Array.isArray(endpoint.outputs) ? endpoint.outputs : base.outputs,
+      ...(Object.keys(inputDefaults).length ? { inputDefaults } : {}),
+    };
+  });
+
   const knownIds = new Set(customEndpoints.map((endpoint) => endpoint?.id).filter(Boolean));
 
   DEFAULT_CATALOG.endpoints.forEach((endpoint) => {
