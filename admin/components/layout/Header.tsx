@@ -28,7 +28,7 @@ const TITLES: Record<string, string> = {
 export function Header() {
   const pathname = usePathname();
   const { tenantSlug, setTenantSlug } = useAuthStore();
-  const apiBase = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3200";
+  const apiBase = process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:3200";
 
   const { data: tenants = [] } = useQuery<TenantOption[]>({
     queryKey: ["tenants", "header"],

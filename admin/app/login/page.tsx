@@ -79,7 +79,7 @@ export default function LoginPage() {
       const apiBase = process.env.NEXT_PUBLIC_API_URL?.trim() ||
         (typeof window !== "undefined" && window.location.hostname !== "localhost"
           ? `${window.location.protocol}//${window.location.hostname}`
-          : "http://localhost:3200");
+          : "http://127.0.0.1:3200");
       const r = await axios.post(`${apiBase}/auth/refresh`, { refreshToken: rt });
       setToken(r.data.accessToken, r.data.expiresIn);
       scheduleProactiveRefresh(r.data.expiresIn ?? 900, async () => {});

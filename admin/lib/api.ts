@@ -9,13 +9,13 @@ function resolveApiBase(): string {
   if (typeof window !== "undefined") {
     const { protocol, hostname } = window.location;
     if (hostname === "localhost" || hostname === "127.0.0.1") {
-      return "http://localhost:3200";
+      return "http://127.0.0.1:3200";
     }
     // In production-like environments, prefer same-origin if explicit API URL is missing.
     return `${protocol}//${hostname}`;
   }
 
-  return "http://localhost:3200";
+  return "http://127.0.0.1:3200";
 }
 
 const API_BASE = resolveApiBase();

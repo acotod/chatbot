@@ -1,7 +1,7 @@
 'use client';
 import { io, Socket } from 'socket.io-client';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3200';
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://127.0.0.1:3200';
 
 let socket: Socket | null = null;
 
