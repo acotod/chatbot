@@ -1,6 +1,7 @@
 "use client";
 
 import { authApi, solicitudesApi, tenantApi } from "@/lib/api";
+import { addLog } from "@/lib/errorLogger";
 import { buildPermissionSet, normalizePermissions, type Permission } from "@/lib/permissions";
 import { cn } from "@/lib/utils";
 import { useAuthStore } from "@/store/auth";
@@ -146,14 +147,17 @@ export function Sidebar() {
     if (canAccessNavItem(currentItem)) return;
 
     const fallback = authorizedFallbackHref;
-    if (process.env.NODE_ENV !== "production") {
-      console.warn("[Sidebar] Unauthorized route blocked", {
+    addLog({
+      level: "warn",
+      source: "custom",
+      message: "Sidebar unauthorized route blocked",
+      details: {
         pathname,
         fallback,
         superAdmin,
         permissions: Array.from(permissionSet),
-      });
-    }
+      },
+    });
     if (pathname !== fallback) {
       router.replace(fallback);
     }
