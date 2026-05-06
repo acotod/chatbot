@@ -55,14 +55,20 @@ export function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
   const { logout, tenantSlug, superAdmin, permissions, setTenantSlug, setPermissions } = useAuthStore();
+  const [mounted, setMounted] = useState(false);
 
   const [tenants, setTenants] = useState<{ slug: string; nombre: string }[]>([]);
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
   const { data: meData, isLoading: authMeLoading } = useQuery({
     queryKey: ["auth-me"],
     queryFn: () => authApi.me().then((r) => r.data),
+    enabled: mounted,
     staleTime: 60_000,
   });
 
@@ -156,11 +162,17 @@ export function Sidebar() {
       solicitudesApi
         .list(tenantSlug!, { estado: "pendiente", page: 1, limit: 1 })
         .then((r) => r.data),
-    enabled: !!tenantSlug && canViewSolicitudes,
+    enabled: mounted && !!tenantSlug && canViewSolicitudes,
     staleTime: 30_000,
   });
 
   const solicitudesPendientes = Number(solicitudesPendientesData?.total ?? 0);
+
+  if (!mounted) {
+    return (
+      <aside className="w-64 bg-white border-r border-slate-200 flex flex-col h-screen sticky top-0" />
+    );
+  }
 
   return (
     <aside className="w-64 bg-white border-r border-slate-200 flex flex-col h-screen sticky top-0">
