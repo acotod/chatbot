@@ -95,13 +95,31 @@ export function Sidebar() {
     }
   }
 
-  // Filter nav items based on permissions
-  const filteredNavItems = NAV_ITEMS.filter((item) => {
+  const canAccessNavItem = (item: (typeof NAV_ITEMS)[number]) => {
     if (superAdmin) return true;
     if (item.superAdminOnly) return false;
     if (!item.permission) return false;
     return permissions.includes(item.permission);
+  };
+
+  // Filter nav items based on permissions
+  const filteredNavItems = NAV_ITEMS.filter((item) => {
+    return canAccessNavItem(item);
   });
+
+  // Guard: block direct URL access to modules without permission.
+  useEffect(() => {
+    const currentItem = NAV_ITEMS.find((item) =>
+      pathname === item.href || pathname.startsWith(`${item.href}/`)
+    );
+    if (!currentItem) return;
+    if (canAccessNavItem(currentItem)) return;
+
+    const fallback = filteredNavItems[0]?.href || "/dashboard";
+    if (pathname !== fallback) {
+      router.replace(fallback);
+    }
+  }, [pathname, permissions, superAdmin, router, filteredNavItems]);
 
   const canViewSolicitudes = superAdmin || permissions.includes("VIEW_SOLICITUDES");
 
