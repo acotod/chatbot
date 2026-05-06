@@ -210,7 +210,12 @@ async function executeAction({ node, variables, integrationRunner, tenantId }) {
 
   let updatedVars = {};
   try {
-    const { responseVars } = await integrationRunner.run(tenantId, integrationRef, variables);
+    const { responseVars } = await integrationRunner.run(tenantId, integrationRef, variables, {
+      conversationId: variables.conversation_id ?? null,
+      nodeRef: node.id ?? null,
+      nodeType: node.type ?? 'action',
+      trigger: 'flow_node',
+    });
     updatedVars = responseVars ?? {};
   } catch (err) {
     logger.error({ tenantId, nodeId: node.id, integrationRef, message: err.message }, 'nodeExecutors.action: integration failed');

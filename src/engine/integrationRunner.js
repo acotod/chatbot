@@ -33,6 +33,7 @@
 const { PrismaClient } = require('@prisma/client');
 const logger = require('../utils/logger');
 const { resolveTemplate, resolveConfig } = require('./nodeExecutors');
+const convLogger = require('./conversationLogger');
 
 const prisma = new PrismaClient();
 
@@ -51,9 +52,14 @@ const CACHE_TTL_MS = 60_000;
  * @param {string} tenantId
  * @param {string} integrationRef   - nombre in integrations table
  * @param {object} variables        - current session variables for template resolution
+ * @param {object} [opts]
+ * @param {string|null} [opts.conversationId]
+ * @param {string|null} [opts.nodeRef]
+ * @param {string|null} [opts.nodeType]
+ * @param {string|null} [opts.trigger]
  * @returns {Promise<{ responseVars: object, rawResponse: any }>}
  */
-async function run(tenantId, integrationRef, variables) {
+async function run(tenantId, integrationRef, variables, opts = {}) {
   const integration = await _loadIntegration(tenantId, integrationRef);
 
   if (!integration) {
@@ -76,16 +82,64 @@ async function run(tenantId, integrationRef, variables) {
   const bodyMap  = resolveConfig(cfg.body_mapping ?? {}, variables);
   const bodyJson = JSON.stringify(bodyMap);
 
+  await convLogger.log(
+    opts.conversationId ?? null,
+    tenantId,
+    opts.nodeRef ?? null,
+    convLogger.EVENT.API_CALL,
+    {
+      integration_ref: integrationRef,
+      integration_id : integration.id ?? null,
+      integration_type: integration.tipo ?? null,
+      node_type      : opts.nodeType ?? null,
+      trigger        : opts.trigger ?? 'flow_node',
+      endpoint,
+      method,
+      request_body   : bodyMap,
+    },
+  );
+
   // Execute with retry
   let lastError;
   for (let attempt = 1; attempt <= Math.max(1, retries); attempt++) {
     try {
       const raw = await _fetch(endpoint, method, headers, bodyJson, timeoutMs);
       const responseVars = _mapResponse(raw, cfg.response_mapping ?? {});
+      await convLogger.log(
+        opts.conversationId ?? null,
+        tenantId,
+        opts.nodeRef ?? null,
+        convLogger.EVENT.API_RESPONSE,
+        {
+          integration_ref: integrationRef,
+          node_type      : opts.nodeType ?? null,
+          trigger        : opts.trigger ?? 'flow_node',
+          endpoint,
+          method,
+          attempt,
+          raw_response   : raw,
+          response_vars  : responseVars,
+        },
+      );
       logger.info({ tenantId, integrationRef, attempt }, 'integrationRunner: success');
       return { responseVars, rawResponse: raw };
     } catch (err) {
       lastError = err;
+      await convLogger.log(
+        opts.conversationId ?? null,
+        tenantId,
+        opts.nodeRef ?? null,
+        convLogger.EVENT.FLOW_ERROR,
+        {
+          integration_ref: integrationRef,
+          node_type      : opts.nodeType ?? null,
+          trigger        : opts.trigger ?? 'flow_node',
+          endpoint,
+          method,
+          attempt,
+          error_message  : err.message,
+        },
+      );
       logger.warn({ tenantId, integrationRef, attempt, message: err.message }, 'integrationRunner: attempt failed');
     }
   }

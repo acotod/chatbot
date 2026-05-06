@@ -101,23 +101,6 @@ async function executeStep({ tenantId, currentNodeId, input, userId, sessionKey,
     state = await contextStore.getState(tenantId, userId, flowDef.source, flowDef.flowId);
   }
 
-  const isInitialExecution =
-    flowDef.source === 'version' &&
-    userId != null &&
-    !state.executionId &&
-    !state.currentNodeRef;
-
-  let variables = state.variables ?? {};
-  if (isInitialExecution) {
-    variables = await _bootstrapExecutionVariables({
-      tenantId,
-      flowId: flowDef.flowId,
-      definitionVariables: flowDef.variables,
-      sessionKey,
-      variables,
-    });
-  }
-
   // ── Conversation event-sourcing: ensure an active Conversation row exists ─
   // conversationId is propagated through recursive calls so we don't re-create.
   const userKey = sessionKey ?? (userId != null ? String(userId) : null);
@@ -126,6 +109,27 @@ async function executeStep({ tenantId, currentNodeId, input, userId, sessionKey,
     conversationId = await convLogger.getOrCreate(
       tenantId, userKey, flowDef.flowId, flowDef.versionId ?? null,
     );
+  }
+
+  const isInitialExecution =
+    flowDef.source === 'version' &&
+    userId != null &&
+    !state.executionId &&
+    !state.currentNodeRef;
+
+  let variables = state.variables ?? {};
+  if (conversationId && variables.conversation_id == null) {
+    variables = { ...variables, conversation_id: conversationId };
+  }
+  if (isInitialExecution) {
+    variables = await _bootstrapExecutionVariables({
+      tenantId,
+      flowId: flowDef.flowId,
+      definitionVariables: flowDef.variables,
+      sessionKey,
+      conversationId,
+      variables,
+    });
   }
 
   // ── Execute the node ─────────────────────────────────────────────────────
@@ -320,13 +324,7 @@ async function _logNodeEvent(conversationId, tenantId, nodeRef, node, input, exe
       break;
 
     case 'action':
-      eventType = EVENT.API_CALL;
-      payload   = {
-        integration_ref: node.config?.integration ?? null,
-        duration_ms    : durationMs,
-        response_vars  : execResult.updatedVars ?? {},
-      };
-      break;
+      return;
 
     case 'task': {
       const action = execResult?.control?.action ?? node.config?.action ?? 'task';
@@ -418,7 +416,7 @@ async function _bootstrapExecutionVariables({ tenantId, flowId, definitionVariab
     if (merged.telefono == null) merged.telefono = sessionKey;
   }
 
-  merged = await _runSessionInitEndpoints(tenantId, merged);
+  merged = await _runSessionInitEndpoints(tenantId, merged, variables?.conversation_id ?? null);
   return merged;
 }
 
@@ -477,7 +475,7 @@ function _extractDefinitionDefaults(definitionVariables) {
   }, {});
 }
 
-async function _runSessionInitEndpoints(tenantId, variables) {
+async function _runSessionInitEndpoints(tenantId, variables, conversationId = null) {
   let catalog;
 
   try {
@@ -501,7 +499,12 @@ async function _runSessionInitEndpoints(tenantId, variables) {
 
     for (const integrationRef of candidateRefs) {
       try {
-        const { responseVars } = await integrationRunner.run(tenantId, integrationRef, merged);
+        const { responseVars } = await integrationRunner.run(tenantId, integrationRef, merged, {
+          conversationId,
+          nodeRef: null,
+          nodeType: 'session_init',
+          trigger: 'session_init',
+        });
         merged = { ...merged, ...(responseVars ?? {}) };
         resolved = true;
         break;
