@@ -3,6 +3,7 @@ import { useState, useCallback, useEffect, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import ReactFlow, {
   Background, Controls, MiniMap, addEdge,
+  ConnectionLineType, MarkerType,
   applyNodeChanges, applyEdgeChanges,
   type Node, type Edge, type Connection,
   type NodeChange, type EdgeChange,
@@ -238,7 +239,11 @@ function toRFNode(n: DbNode): Node {
 function toRFEdge(e: DbEdge): Edge {
   return {
     id: String(e.id), source: String(e.sourceNodeId), target: String(e.targetNodeId),
-    label: e.condition ?? undefined, animated: true,
+    label: e.condition ?? undefined,
+    animated: true,
+    type: "default",
+    markerEnd: { type: MarkerType.ArrowClosed, color: "#2563eb" },
+    style: { stroke: "#2563eb", strokeWidth: 1.7 },
   };
 }
 
@@ -466,7 +471,13 @@ export default function FlujoSPage() {
 
   const onNodesChange = useCallback((c: NodeChange[]) => setRfNodes(nds => applyNodeChanges(c, nds)), []);
   const onEdgesChange = useCallback((c: EdgeChange[]) => setRfEdges(eds => applyEdgeChanges(c, eds)), []);
-  const onConnect     = useCallback((p: Connection)  => setRfEdges(eds => addEdge({ ...p, animated: true }, eds)), []);
+  const onConnect     = useCallback((p: Connection)  => setRfEdges(eds => addEdge({
+    ...p,
+    animated: true,
+    type: "default",
+    markerEnd: { type: MarkerType.ArrowClosed, color: "#2563eb" },
+    style: { stroke: "#2563eb", strokeWidth: 1.7 },
+  }, eds)), []);
 
   function addNode() {
     const id = `new-${++nodeIdCounter}`;
@@ -2673,7 +2684,24 @@ export default function FlujoSPage() {
               ) : (
                 <ReactFlow nodes={rfNodes} edges={rfEdges} nodeTypes={NODE_TYPES}
                   onNodesChange={onNodesChange} onEdgesChange={onEdgesChange}
-                  onConnect={onConnect} onNodeClick={onNodeClick} fitView deleteKeyCode="Delete">
+                  onConnect={onConnect}
+                  onNodeClick={onNodeClick}
+                  fitView
+                  deleteKeyCode="Delete"
+                  snapToGrid
+                  snapGrid={[16, 16]}
+                  panOnScroll
+                  panOnDrag={[1, 2]}
+                  zoomOnScroll
+                  selectionOnDrag={false}
+                  connectionLineType={ConnectionLineType.Bezier}
+                  defaultEdgeOptions={{
+                    type: "default",
+                    animated: true,
+                    markerEnd: { type: MarkerType.ArrowClosed, color: "#2563eb" },
+                    style: { stroke: "#2563eb", strokeWidth: 1.7 },
+                  }}
+                >
                   <Background gap={16} color="#f0f0f0" />
                   <Controls />
                   <MiniMap nodeColor={n => ({ start: "#16a34a", end: "#dc2626", webhook: "#0891b2", condition: "#d97706", input: "#7c3aed", screen: "#2563eb" }[n.data?.nodeType as string] ?? "#2563eb")}
