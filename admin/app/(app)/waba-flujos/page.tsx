@@ -583,7 +583,18 @@ function NodeEditModal({
 
   const selectedEp = catalogEndpoints.find((ep) => ep.id === actionRef);
   const normalizedType = String(type ?? "").trim().toLowerCase();
-  const supportsEndpointMapping = ["action", "menu", "input", "message", "text", "open_response"].includes(normalizedType);
+  const supportsEndpointMapping = [
+    "action",
+    "menu",
+    "input",
+    "message",
+    "text",
+    "open_response",
+    "condition",
+    "end",
+    "llm",
+    "handoff",
+  ].includes(normalizedType);
 
   const menuValidation = (() => {
     if (type !== "menu") {
@@ -672,11 +683,11 @@ function NodeEditModal({
       case "open_response":
         return { text: inputText, variable: inputVar, ...actionFragment };
       case "menu":      return { text: menuText, options: menuOptions, ...(menuVar.trim() ? { variable: menuVar.trim() } : {}), ...actionFragment };
-      case "condition": return { variable: condVar, operator: condOp, value: condVal };
+      case "condition": return { variable: condVar, operator: condOp, value: condVal, ...actionFragment };
       case "delay":     return { seconds: delaySeconds };
-      case "end":       return { message: endMsg };
-      case "handoff":   return { department: handoffDept, message: handoffMsg };
-      case "llm":       return { prompt: llmPrompt, variable: llmVar };
+      case "end":       return { message: endMsg, ...actionFragment };
+      case "handoff":   return { department: handoffDept, message: handoffMsg, ...actionFragment };
+      case "llm":       return { prompt: llmPrompt, variable: llmVar, ...actionFragment };
       case "action":    return actionFragment;
       default: { try { return JSON.parse(rawJson); } catch { return {}; } }
     }
@@ -931,6 +942,11 @@ function NodeEditModal({
                   {(normalizedType === "message" || normalizedType === "text") && (
                     <p className="text-xs font-medium text-slate-600 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
                       Llamado de endpoint/webhook después de enviar el mensaje (opcional)
+                    </p>
+                  )}
+                  {(["condition", "end", "llm", "handoff"].includes(normalizedType)) && (
+                    <p className="text-xs font-medium text-slate-600 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
+                      Llamado de endpoint/webhook en este nodo (opcional)
                     </p>
                   )}
                   {/* Catalog endpoint picker */}
