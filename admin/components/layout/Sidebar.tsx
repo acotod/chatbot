@@ -1,7 +1,7 @@
 "use client";
 
 import { authApi, solicitudesApi, tenantApi } from "@/lib/api";
-import type { Permission } from "@/lib/permissions";
+import { buildPermissionSet, normalizePermissions, type Permission } from "@/lib/permissions";
 import { cn } from "@/lib/utils";
 import { useAuthStore } from "@/store/auth";
 import { useQuery } from "@tanstack/react-query";
@@ -26,7 +26,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 const NAV_ITEMS: Array<{
   icon: React.ComponentType<{ size?: number; className?: string }>;
@@ -74,11 +74,7 @@ export function Sidebar() {
 
   useEffect(() => {
     if (!meData) return;
-    const normalizedPermissions = Array.isArray(meData.permissions)
-      ? meData.permissions
-          .map((p) => String(p ?? "").trim().toUpperCase())
-          .filter((p): p is Permission => Boolean(p))
-      : [];
+    const normalizedPermissions = normalizePermissions(meData.permissions);
 
     setPermissions(Boolean(meData.superAdmin), normalizedPermissions);
 
@@ -87,9 +83,7 @@ export function Sidebar() {
     }
   }, [meData, setPermissions, setTenantSlug, tenantSlug]);
 
-  const permissionSet = new Set(
-    permissions.map((p) => String(p ?? "").trim().toUpperCase() as Permission)
-  );
+  const permissionSet = useMemo(() => buildPermissionSet(permissions), [permissions]);
 
   // Fetch tenant list for superAdmins
   useEffect(() => {
@@ -134,9 +128,12 @@ export function Sidebar() {
   };
 
   // Filter nav items based on permissions
-  const filteredNavItems = NAV_ITEMS.filter((item) => {
-    return canAccessNavItem(item);
-  });
+  const filteredNavItems = useMemo(
+    () => NAV_ITEMS.filter((item) => canAccessNavItem(item)),
+    [superAdmin, permissionSet]
+  );
+
+  const authorizedFallbackHref = filteredNavItems[0]?.href ?? "/login";
 
   // Guard: block direct URL access to modules without permission.
   useEffect(() => {
@@ -148,11 +145,19 @@ export function Sidebar() {
     if (!currentItem) return;
     if (canAccessNavItem(currentItem)) return;
 
-    const fallback = filteredNavItems[0]?.href || "/dashboard";
+    const fallback = authorizedFallbackHref;
+    if (process.env.NODE_ENV !== "production") {
+      console.warn("[Sidebar] Unauthorized route blocked", {
+        pathname,
+        fallback,
+        superAdmin,
+        permissions: Array.from(permissionSet),
+      });
+    }
     if (pathname !== fallback) {
       router.replace(fallback);
     }
-  }, [pathname, superAdmin, authMeLoading, permissionSet.size, router, filteredNavItems]);
+  }, [pathname, superAdmin, authMeLoading, permissionSet, router, authorizedFallbackHref]);
 
   const canViewSolicitudes = superAdmin || permissionSet.has("VIEW_SOLICITUDES");
 

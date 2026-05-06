@@ -21,6 +21,17 @@ export interface AdminUser {
   permissions: Permission[];
 }
 
+export function normalizePermissions(input: unknown): Permission[] {
+  if (!Array.isArray(input)) return [];
+  return input
+    .map((p) => String(p ?? "").trim().toUpperCase())
+    .filter((p): p is Permission => Boolean(p));
+}
+
+export function buildPermissionSet(input: unknown): Set<Permission> {
+  return new Set(normalizePermissions(input));
+}
+
 export function canAccess(user: AdminUser | null, permission: Permission): boolean {
   if (!user) return false;
   if (user.superAdmin) return true;

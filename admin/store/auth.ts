@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import type { Permission } from "@/lib/permissions";
+import { normalizePermissions, type Permission } from "@/lib/permissions";
 
 // Module-level refresh timer handle
 let _proactiveRefreshTimer: ReturnType<typeof setTimeout> | null = null;
@@ -78,7 +78,8 @@ export const useAuthStore = create<AuthState>()(
         set({ refreshToken: token });
       },
       setTenantSlug: (tenantSlug) => set({ tenantSlug }),
-      setPermissions: (superAdmin, permissions) => set({ superAdmin, permissions }),
+      setPermissions: (superAdmin, permissions) =>
+        set({ superAdmin, permissions: normalizePermissions(permissions) }),
       logout: () => {
         localStorage.removeItem("admin_token");
         localStorage.removeItem("admin_refresh_token");
