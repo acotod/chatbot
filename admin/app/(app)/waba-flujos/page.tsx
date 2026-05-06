@@ -1046,7 +1046,11 @@ function FlowBuilder({
       .catch(() => setIntegrations([]));
     integrationsApi.getCatalog()
       .then(({ data }) => {
-        const eps = Array.isArray(data) ? data : Array.isArray((data as { endpoints?: CatalogEndpoint[] })?.endpoints) ? (data as { endpoints: CatalogEndpoint[] }).endpoints : [];
+        const d = data as { data?: CatalogEndpoint[]; endpoints?: CatalogEndpoint[] } | CatalogEndpoint[];
+        const eps = Array.isArray(d) ? d
+          : Array.isArray((d as { data?: CatalogEndpoint[] }).data) ? (d as { data: CatalogEndpoint[] }).data
+          : Array.isArray((d as { endpoints?: CatalogEndpoint[] }).endpoints) ? (d as { endpoints: CatalogEndpoint[] }).endpoints
+          : [];
         setCatalogEndpoints(eps);
       })
       .catch(() => setCatalogEndpoints([]));
