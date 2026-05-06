@@ -599,6 +599,50 @@ export default function FlujoSPage() {
 
   function applyNodeEdit(nodeId: string, data: Partial<Node["data"]>) {
     setRfNodes(prev => prev.map(n => n.id === nodeId ? { ...n, data: { ...n.data, ...data } } : n));
+
+    const content = (data.content ?? null) as Record<string, unknown> | null;
+    if (content) {
+      const hasDefaultNext = typeof content.nextNodeId === "string";
+      const options = Array.isArray(content.options) ? (content.options as Array<Record<string, unknown>>) : [];
+      const hasOptionRoutingField = options.some((option) => typeof option?.next === "string");
+
+      if (hasDefaultNext || hasOptionRoutingField) {
+        const nodeIds = new Set(rfNodes.map((node) => node.id));
+        const targets = new Set<string>();
+
+        if (typeof content.nextNodeId === "string" && content.nextNodeId.trim()) {
+          targets.add(content.nextNodeId.trim());
+        }
+        options.forEach((option) => {
+          if (typeof option.next === "string" && option.next.trim()) {
+            targets.add(option.next.trim());
+          }
+        });
+
+        if (targets.size > 0) {
+          setRfEdges((prevEdges) => {
+            const kept = prevEdges.filter((edge) => edge.source !== nodeId);
+            const additions: Edge[] = [];
+
+            targets.forEach((targetId) => {
+              if (!nodeIds.has(targetId) || targetId === nodeId) return;
+              additions.push({
+                id: `edge-${nodeId}-${targetId}`,
+                source: nodeId,
+                target: targetId,
+                animated: true,
+                type: "default",
+                markerEnd: { type: MarkerType.ArrowClosed, color: "#2563eb" },
+                style: { stroke: "#2563eb", strokeWidth: 1.7 },
+              });
+            });
+
+            return [...kept, ...additions];
+          });
+        }
+      }
+    }
+
     setSelectedNode(null);
   }
 
@@ -2960,7 +3004,7 @@ export default function FlujoSPage() {
 
           {/* Node editor */}
           {selectedNode && (
-            <NodeEditorPanel key={selectedNode.id} node={selectedNode} endpointCatalog={endpointCatalog}
+            <NodeEditorPanel key={selectedNode.id} node={selectedNode} allNodes={rfNodes} endpointCatalog={endpointCatalog}
               onApply={applyNodeEdit} onCancel={() => setSelectedNode(null)} onDelete={deleteNode} />
           )}
         </div>

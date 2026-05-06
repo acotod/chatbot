@@ -29,6 +29,7 @@ interface NodeAction {
 
 interface NodeEditorPanelProps {
   node: Node;
+  allNodes: Node[];
   endpointCatalog: EndpointDef[];
   onApply: (nodeId: string, data: Partial<Node["data"]>) => void;
   onCancel: () => void;
@@ -40,12 +41,22 @@ function uid() {
 }
 
 export default function NodeEditorPanel({
-  node, endpointCatalog, onApply, onCancel, onDelete,
+  node, allNodes, endpointCatalog, onApply, onCancel, onDelete,
 }: NodeEditorPanelProps) {
   const [tab, setTab] = useState<"contenido" | "variables" | "acciones">("contenido");
   const [nodeType, setNodeType] = useState<CanonicalNodeType>(resolveNodeType((node.data.nodeType ?? "screen") as NodeType));
   const meta = NODE_META[nodeType] ?? NODE_META.screen;
-  const [content, setContent] = useState<Record<string, unknown>>({ ...node.data.content });
+  const [content, setContent] = useState<Record<string, unknown>>(() => {
+    const initial = { ...node.data.content } as Record<string, unknown>;
+    if (Array.isArray(initial.options)) {
+      initial.options = (initial.options as Array<Record<string, unknown>>).map((option, index) => ({
+        id: String(option.id ?? `opcion_${index + 1}`),
+        title: String(option.title ?? option.label ?? option.text ?? ""),
+        ...(typeof option.next === "string" ? { next: option.next } : {}),
+      }));
+    }
+    return initial;
+  });
   const [variables, setVariables] = useState<NodeVariable[]>(() => {
     const saved = node.data.state?.save as { name: string; source: VarSource; value: string }[] | undefined;
     return (saved ?? []).map(v => ({ id: uid(), ...v }));
@@ -60,10 +71,10 @@ export default function NodeEditorPanel({
     setContent(prev => ({ ...prev, [key]: value }));
   }
 
-  function patchInputOption(index: number, key: "id" | "title", value: string) {
+  function patchInputOption(index: number, key: "id" | "title" | "next", value: string) {
     setContent(prev => {
       const options = Array.isArray(prev.options)
-        ? [...(prev.options as Array<{ id?: string; title?: string }>)]
+        ? [...(prev.options as Array<{ id?: string; title?: string; next?: string }>)]
         : [];
       const current = options[index] ?? {};
       options[index] = { ...current, [key]: value };
@@ -152,6 +163,7 @@ export default function NodeEditorPanel({
 
   const inputCls = "w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400";
   const labelCls = "text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1";
+  const nextNodeCandidates = allNodes.filter((candidate) => candidate.id !== node.id);
 
   const TABS = [
     { id: "contenido" as const, label: "Contenido" },
@@ -243,6 +255,24 @@ export default function NodeEditorPanel({
           <input className={inputCls} value={(content.label as string) ?? ""} onChange={e => patch("label", e.target.value)} />
         </div>
 
+        {(["start", "screen", "input", "webhook"] as CanonicalNodeType[]).includes(nodeType) && (
+          <div>
+            <p className={labelCls}>Siguiente nodo (por defecto)</p>
+            <select
+              className={inputCls}
+              value={(content.nextNodeId as string) ?? ""}
+              onChange={e => patch("nextNodeId", e.target.value)}
+            >
+              <option value="">— Ninguno —</option>
+              {nextNodeCandidates.map((candidate) => (
+                <option key={candidate.id} value={candidate.id}>
+                  {candidate.id} · {String(candidate.data?.label ?? candidate.data?.content?.label ?? candidate.id)}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+
         {/* Screen / message */}
         {(nodeType === "screen") && (
           <>
@@ -307,7 +337,7 @@ export default function NodeEditorPanel({
                   <p className="text-xs text-gray-400">Este menú aún no tiene opciones.</p>
                 )}
                 {(Array.isArray(content.options) ? content.options : []).map((option, index) => {
-                  const current = option as { id?: string; title?: string };
+                  const current = option as { id?: string; title?: string; next?: string };
                   return (
                     <div key={`${current.id ?? "option"}-${index}`} className="rounded-lg border border-gray-200 p-3 space-y-2 bg-gray-50">
                       <div className="flex items-center justify-between gap-2">
@@ -328,6 +358,18 @@ export default function NodeEditorPanel({
                         onChange={e => patchInputOption(index, "title", e.target.value)}
                         placeholder="Título visible"
                       />
+                      <select
+                        className={inputCls}
+                        value={current.next ?? ""}
+                        onChange={e => patchInputOption(index, "next", e.target.value)}
+                      >
+                        <option value="">Siguiente nodo (opcional)</option>
+                        {nextNodeCandidates.map((candidate) => (
+                          <option key={candidate.id} value={candidate.id}>
+                            {candidate.id} · {String(candidate.data?.label ?? candidate.data?.content?.label ?? candidate.id)}
+                          </option>
+                        ))}
+                      </select>
                     </div>
                   );
                 })}

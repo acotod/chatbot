@@ -44,7 +44,7 @@ export interface InputContent {
   placeholder?: string;
   required?: boolean;
   /** For select type: available options */
-  options?: Array<{ id: string; title: string }>;
+  options?: Array<{ id: string; title: string; next?: string }>;
   /** Variable name where the answer is stored: {{user.NAME}} */
   variableName?: string;
 }
