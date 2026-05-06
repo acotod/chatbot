@@ -1,5 +1,5 @@
 "use client";
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import ReactFlow, {
   Background, Controls, MiniMap, addEdge,
@@ -198,6 +198,27 @@ interface FlowMetrics {
   learningExamples: number;
 }
 
+interface TestChatStep {
+  role: "user" | "bot";
+  text: string;
+  nodeId?: string;
+  timestamp: string;
+}
+
+type SandboxScenario = "live" | "400" | "500" | "timeout" | "mismatch";
+type SandboxIndustry = "general" | "fintech" | "crm" | "soporte";
+
+interface SandboxRepairReport {
+  title: string;
+  scenarioLabel: string;
+  requestPayload: Record<string, unknown>;
+  responsePayload: Record<string, unknown>;
+  detectedIssue: string;
+  solution: string;
+  correctedPrompt: string;
+  additionalImprovement: string;
+}
+
 type MainTab = "generar" | "builder" | "preview" | "probar" | "exportar" | "rescate";
 
 const STEPS: { id: MainTab; label: string; icon: string }[] = [
@@ -332,9 +353,14 @@ export default function FlujoSPage() {
     const line = String(Math.floor(Math.random() * 90_000_000) + 10_000_000);
     return `+549${area}${line}`;
   });
-  const [testSteps, setTestSteps] = useState<Array<{ role: "user" | "bot"; text: string; nodeId?: string }>>([]);
+  const [testSteps, setTestSteps] = useState<TestChatStep[]>([]);
   const [testRunning, setTestRunning] = useState(false);
   const [testError, setTestError] = useState("");
+  const [testScenario, setTestScenario] = useState<SandboxScenario>("live");
+  const [testIndustry, setTestIndustry] = useState<SandboxIndustry>("general");
+  const [testAutoRepair, setTestAutoRepair] = useState(true);
+  const [sandboxReport, setSandboxReport] = useState<SandboxRepairReport | null>(null);
+  const testChatEndRef = useRef<HTMLDivElement | null>(null);
 
   // ── WABA Rescue tab
   const [flowJsonInput, setFlowJsonInput] = useState("");
@@ -943,7 +969,27 @@ export default function FlujoSPage() {
     setTestError("");
     const userMsg = testInput.trim();
     setTestInput("");
-    setTestSteps(prev => [...prev, { role: "user", text: userMsg }]);
+    const timestamp = new Date().toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" });
+    setTestSteps(prev => [...prev, { role: "user", text: userMsg, timestamp }]);
+
+    if (testScenario !== "live") {
+      window.setTimeout(() => {
+        const report = buildSandboxReport(testScenario, userMsg);
+        const msg = `${report.scenarioLabel}: ${report.detectedIssue}`;
+        setTestError(msg);
+        setSandboxReport(report);
+        setTestSteps(prev => [...prev, {
+          role: "bot",
+          text: testAutoRepair
+            ? "Detecté una falla simulada y preparé una corrección sugerida en el panel de copiloto."
+            : "Detecté una falla simulada. Revisa el panel de copiloto para ver el diagnóstico.",
+          timestamp: new Date().toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" }),
+        }]);
+        setTestRunning(false);
+      }, 900);
+      return;
+    }
+
     try {
       const res = await flowsApi.execute(selectedFlowId, {
         sessionId: testSessionId,
@@ -952,12 +998,25 @@ export default function FlujoSPage() {
       });
       const data = (res as { data: { reply?: string; response?: string; nextScreen?: string } }).data;
       const reply = data.reply ?? data.response ?? "✓ (sin respuesta de texto)";
-      setTestSteps(prev => [...prev, { role: "bot", text: reply, nodeId: data.nextScreen }]);
+      setTestSteps(prev => [...prev, {
+        role: "bot",
+        text: reply,
+        nodeId: data.nextScreen,
+        timestamp: new Date().toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" }),
+      }]);
+      setSandboxReport(null);
     } catch (err: unknown) {
       const e = err as { response?: { data?: { error?: string } } };
       const msg = e.response?.data?.error ?? "Error al ejecutar el paso";
       setTestError(msg);
-      setTestSteps(prev => [...prev, { role: "bot", text: `Error: ${msg}` }]);
+      if (testAutoRepair) {
+        setSandboxReport(buildSandboxReport("400", userMsg));
+      }
+      setTestSteps(prev => [...prev, {
+        role: "bot",
+        text: `Error: ${msg}`,
+        timestamp: new Date().toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" }),
+      }]);
     } finally { setTestRunning(false); }
   }
 
@@ -965,7 +1024,12 @@ export default function FlujoSPage() {
     setTestSteps([]);
     setTestError("");
     setTestInput("");
+    setSandboxReport(null);
   }
+
+  useEffect(() => {
+    testChatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [testSteps, testRunning]);
 
   // ── Export tab actions ───────────────────────────────────────────────────────
 
@@ -1333,6 +1397,141 @@ export default function FlujoSPage() {
 
   // ── Build exportable JSON once for "Exportar" tab ───────────────────────────
   const exportJsonStr = exportResult?.json ? JSON.stringify(exportResult.json, null, 2) : null;
+  const quickTestPrompts = [
+    "Hola",
+    "Quiero información",
+    "Necesito ayuda urgente",
+    "Quiero hablar con alguien",
+  ];
+  const sandboxScenarios: Array<{ id: SandboxScenario; label: string; hint: string }> = [
+    { id: "live", label: "Live", hint: "Ejecuta el flujo real contra el backend" },
+    { id: "400", label: "400 bad request", hint: "Simula payload inválido o campos faltantes" },
+    { id: "500", label: "500 server error", hint: "Simula fallo interno del webhook" },
+    { id: "timeout", label: "Timeout", hint: "Simula espera agotada o dependencia lenta" },
+    { id: "mismatch", label: "Data mismatch", hint: "Simula respuesta con shape distinto al esperado" },
+  ];
+  const sandboxIndustries: Array<{ id: SandboxIndustry; label: string; validationHint: string }> = [
+    { id: "general", label: "General", validationHint: "Valida campos mínimos, fallback humano y consistencia de variables." },
+    { id: "fintech", label: "Fintech", validationHint: "Valida monto, moneda, antifraude, idempotencia y trazabilidad." },
+    { id: "crm", label: "CRM", validationHint: "Valida identificación de cliente, campos obligatorios y normalización de contacto." },
+    { id: "soporte", label: "Soporte", validationHint: "Valida clasificación, severidad, sentimiento y fallback a agente." },
+  ];
+
+  function buildWebhookRequestPayload(userMsg: string) {
+    return {
+      flowId: selectedFlowId,
+      sessionId: testSessionId,
+      tenantId: selectedTenantId || null,
+      industry: testIndustry,
+      message: userMsg,
+      variables: {
+        lastUserMessage: userMsg,
+        currentNodeCount: rfNodes.length,
+        edgeCount: rfEdges.length,
+      },
+    };
+  }
+
+  function buildSimulatedScenarioPayload(scenario: SandboxScenario, userMsg: string) {
+    const requestPayload = buildWebhookRequestPayload(userMsg);
+    const industryHint = sandboxIndustries.find((item) => item.id === testIndustry)?.validationHint ?? "";
+
+    const basePrompt = [
+      `Rol: asistente conversacional para ${testIndustry}.`,
+      "Objetivo: validar entrada antes de llamar webhook.",
+      `Entrada del usuario: ${userMsg}`,
+      `Validaciones obligatorias: ${industryHint}`,
+      "Si falta un dato, pídelo antes de invocar la integración.",
+      "Si el webhook falla, explica qué dato falta o qué mapping debe corregirse.",
+      "Devuelve un mensaje usable y un fallback seguro a humano si el error persiste.",
+    ].join("\n");
+
+    if (scenario === "400") {
+      return {
+        requestPayload,
+        responsePayload: {
+          status: 400,
+          error: "validation_error",
+          missingFields: testIndustry === "fintech" ? ["amount", "currency"] : ["customerId"],
+          expectedFormat: testIndustry === "crm" ? { customerId: "string", email: "string" } : { data: { value: "string" } },
+        },
+        issue: "El webhook recibió un payload incompleto o con keys distintas a las esperadas por el endpoint.",
+        solution: "Mapea explícitamente las variables del paso anterior antes del webhook y agrega una transformación JSON intermedia para renombrar o normalizar campos requeridos.",
+        prompt: `${basePrompt}\nAntes de llamar al webhook confirma que los campos requeridos existen y están normalizados. Si falta alguno, no ejecutes la llamada.`,
+        improvement: "Agrega un nodo previo de validación con mensajes específicos por campo faltante y conserva el último payload válido para reintento.",
+      };
+    }
+
+    if (scenario === "500") {
+      return {
+        requestPayload,
+        responsePayload: {
+          status: 500,
+          error: "server_error",
+          retryable: true,
+          upstream: "crm-core",
+        },
+        issue: "La lógica del flujo depende de un webhook inestable y no define política de reintentos ni ruta de contingencia.",
+        solution: "Configura retry con backoff corto, limita reintentos idempotentes y envía fallback conversacional si la dependencia sigue caída tras el último intento.",
+        prompt: `${basePrompt}\nSi el webhook devuelve 500, reintenta una vez de forma segura; si vuelve a fallar, ofrece continuar por fallback o derivar a un agente.`,
+        improvement: "Guarda correlationId, respuesta upstream y motivo de fallback para debugging posterior y observabilidad.",
+      };
+    }
+
+    if (scenario === "timeout") {
+      return {
+        requestPayload,
+        responsePayload: {
+          status: 504,
+          error: "timeout",
+          timeoutMs: 10000,
+          endpoint: "/webhooks/mock",
+        },
+        issue: "El flujo no distingue entre error funcional y timeout, por lo que el usuario queda sin contexto y sin siguiente paso.",
+        solution: "Define timeout explícito, mensaje de espera controlada, retry único y fallback inmediato si la dependencia supera el SLA.",
+        prompt: `${basePrompt}\nSi la integración excede el tiempo máximo, informa que seguimos procesando, evita duplicados y ofrece alternativa manual.`,
+        improvement: "Marca la operación como pending y evita reenviar la misma transacción sin clave idempotente.",
+      };
+    }
+
+    if (scenario === "mismatch") {
+      return {
+        requestPayload,
+        responsePayload: {
+          status: 200,
+          body: { ok: true, payload: { user_name: "Ana", total_items: 3 } },
+          expectedByFlow: ["customer.name", "summary.totalItems"],
+        },
+        issue: "La respuesta del webhook llega con una estructura distinta a la que el flujo intenta leer, por eso fallan los mappings posteriores.",
+        solution: "Inserta una transformación de respuesta para convertir la shape real del webhook al contrato interno del flujo antes de usar variables derivadas.",
+        prompt: `${basePrompt}\nTransforma respuestas externas al contrato interno del flujo antes de leer variables. Si una key no existe, informa el desajuste y detén la transición.`,
+        improvement: "Versiona el contrato de respuesta del endpoint y valida el schema antes de avanzar al siguiente nodo.",
+      };
+    }
+
+    return {
+      requestPayload,
+      responsePayload: { status: 200, body: { ok: true } },
+      issue: "Sin error detectado en el escenario actual.",
+      solution: "El flujo respondió sin fallas en este escenario.",
+      prompt: basePrompt,
+      improvement: "Puedes activar un escenario de error para validar mapeos, retries y fallback.",
+    };
+  }
+
+  function buildSandboxReport(scenario: SandboxScenario, userMsg: string) {
+    const simulated = buildSimulatedScenarioPayload(scenario, userMsg);
+    return {
+      title: testAutoRepair ? "Auto-repair sugerido" : "Diagnóstico detectado",
+      scenarioLabel: sandboxScenarios.find((item) => item.id === scenario)?.label ?? scenario,
+      requestPayload: simulated.requestPayload,
+      responsePayload: simulated.responsePayload,
+      detectedIssue: simulated.issue,
+      solution: simulated.solution,
+      correctedPrompt: simulated.prompt,
+      additionalImprovement: simulated.improvement,
+    } satisfies SandboxRepairReport;
+  }
 
   // ── Render ───────────────────────────────────────────────────────────────────
 
@@ -2568,16 +2767,76 @@ export default function FlujoSPage() {
                 <div className="text-xs text-gray-500">Aristas: {rfEdges.length}</div>
               </div>
             )}
+
+            <div className="pt-3 border-t space-y-3">
+              <div>
+                <div className="text-[11px] font-semibold text-gray-600 uppercase tracking-wide">Sandbox</div>
+                <p className="text-[11px] text-gray-500 mt-1">Prueba mappings, retries y fallbacks con escenarios controlados y ayuda automática.</p>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-[11px] font-medium text-gray-600">Escenario</label>
+                <select
+                  value={testScenario}
+                  onChange={(e) => {
+                    setTestScenario(e.target.value as SandboxScenario);
+                    setTestError("");
+                    setSandboxReport(null);
+                  }}
+                  className="w-full rounded-lg border border-gray-200 px-3 py-2 text-xs bg-white"
+                >
+                  {sandboxScenarios.map((scenario) => (
+                    <option key={scenario.id} value={scenario.id}>{scenario.label}</option>
+                  ))}
+                </select>
+                <p className="text-[11px] text-gray-500">{sandboxScenarios.find((scenario) => scenario.id === testScenario)?.hint}</p>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-[11px] font-medium text-gray-600">Industria</label>
+                <select
+                  value={testIndustry}
+                  onChange={(e) => {
+                    setTestIndustry(e.target.value as SandboxIndustry);
+                    setSandboxReport(null);
+                  }}
+                  className="w-full rounded-lg border border-gray-200 px-3 py-2 text-xs bg-white"
+                >
+                  {sandboxIndustries.map((industry) => (
+                    <option key={industry.id} value={industry.id}>{industry.label}</option>
+                  ))}
+                </select>
+                <p className="text-[11px] text-gray-500">{sandboxIndustries.find((industry) => industry.id === testIndustry)?.validationHint}</p>
+              </div>
+
+              <label className="flex items-start gap-2 rounded-lg border border-gray-200 p-2 bg-slate-50 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={testAutoRepair}
+                  onChange={(e) => setTestAutoRepair(e.target.checked)}
+                  className="mt-0.5"
+                />
+                <span>
+                  <span className="block text-xs font-medium text-gray-700">Modo Auto-repair</span>
+                  <span className="block text-[11px] text-gray-500">Si el webhook falla, sugiere fix, retry config, fallback y prompt corregido.</span>
+                </span>
+              </label>
+            </div>
           </div>
 
           {/* Chat test panel */}
           <div className="flex-1 flex flex-col bg-white rounded-xl border overflow-hidden">
-            <div className="flex items-center justify-between px-4 py-3 border-b">
-              <div>
-                <h2 className="text-sm font-semibold text-gray-800 flex items-center gap-2">
-                  <Play className="w-4 h-4 text-green-600" /> Prueba end-to-end
-                </h2>
-                <p className="text-xs text-gray-500">Simula una conversación real con el flujo. Sesión: <span className="font-mono">{testSessionId}</span></p>
+            <div className="flex items-center justify-between px-4 py-3 border-b bg-[#0b141a] text-white">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="w-10 h-10 rounded-full bg-emerald-500/20 border border-emerald-400/30 flex items-center justify-center flex-shrink-0">
+                  <Phone className="w-4 h-4 text-emerald-300" />
+                </div>
+                <div className="min-w-0">
+                  <h2 className="text-sm font-semibold truncate">Simulación WhatsApp</h2>
+                  <p className="text-[11px] text-slate-300 truncate">
+                    {selectedFlowId ? `Sesión ${testSessionId} · ${rfNodes.length} pantallas cargadas` : "Selecciona un flujo para iniciar la conversación"}
+                  </p>
+                </div>
               </div>
               <div className="flex items-center gap-2">
                 <button onClick={() => setActiveTab("preview")} className="flex items-center gap-1 text-xs border px-3 py-1.5 rounded-lg hover:bg-gray-50">
@@ -2589,6 +2848,32 @@ export default function FlujoSPage() {
                 <button onClick={resetTest} className="flex items-center gap-1 text-xs border px-3 py-1.5 rounded-lg hover:bg-gray-50">
                   <RotateCcw className="w-3 h-3" /> Reiniciar
                 </button>
+              </div>
+            </div>
+
+            {selectedFlowId && (
+              <div className="px-4 py-3 border-b bg-slate-50 flex flex-wrap gap-2">
+                {quickTestPrompts.map((prompt) => (
+                  <button
+                    key={prompt}
+                    onClick={() => setTestInput(prompt)}
+                    className="px-3 py-1.5 rounded-full bg-white border text-xs text-slate-600 hover:bg-slate-100 transition"
+                  >
+                    {prompt}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            <div className="px-4 py-3 border-b bg-amber-50/80 flex items-start gap-3 text-xs text-amber-900">
+              <ShieldCheck className="w-4 h-4 mt-0.5 flex-shrink-0" />
+              <div>
+                <div className="font-medium">Modo actual: {sandboxScenarios.find((scenario) => scenario.id === testScenario)?.label} · {sandboxIndustries.find((industry) => industry.id === testIndustry)?.label}</div>
+                <div className="text-[11px] text-amber-800 mt-1">
+                  {testScenario === "live"
+                    ? "Estás probando el flujo real. Si falla y Auto-repair está activo, el sandbox propondrá correcciones sobre el último error."
+                    : "Este escenario no llama al backend: genera una falla controlada para validar mapping, contrato del webhook, retry y fallback."}
+                </div>
               </div>
             </div>
 
@@ -2607,13 +2892,23 @@ export default function FlujoSPage() {
                       : "bg-white text-gray-800 rounded-bl-none"
                   }`}>
                     {step.text}
-                    {step.nodeId && <div className="text-[10px] text-gray-400 mt-0.5">→ {step.nodeId}</div>}
+                    <div className="mt-1 flex items-center justify-end gap-1 text-[10px] text-gray-400">
+                      {step.nodeId && <span className="truncate max-w-[140px]">→ {step.nodeId}</span>}
+                      <span>{step.timestamp}</span>
+                    </div>
                   </div>
                 </div>
               ))}
               {testRunning && (
                 <div className="flex justify-start">
-                  <div className="bg-white px-3 py-2 rounded-xl rounded-bl-none text-sm shadow-sm text-gray-500 animate-pulse">Procesando…</div>
+                  <div className="bg-white px-3 py-2 rounded-xl rounded-bl-none text-sm shadow-sm text-gray-500 animate-pulse flex items-center gap-2">
+                    <span className="inline-flex gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-gray-400" />
+                      <span className="w-1.5 h-1.5 rounded-full bg-gray-400" />
+                      <span className="w-1.5 h-1.5 rounded-full bg-gray-400" />
+                    </span>
+                    escribiendo…
+                  </div>
                 </div>
               )}
               {testError && (
@@ -2621,31 +2916,90 @@ export default function FlujoSPage() {
                   <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />{testError}
                 </div>
               )}
+              <div ref={testChatEndRef} />
             </div>
 
             {/* Input */}
-            <div className="flex items-center gap-2 p-3 border-t bg-gray-50">
+            <div className="flex items-center gap-2 p-3 border-t bg-[#f0f2f5]">
               <input value={testInput} onChange={e => setTestInput(e.target.value)}
                 onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleTestStep(); } }}
-                placeholder={selectedFlowId ? "Escribe un mensaje de prueba…" : "Selecciona un flujo primero"}
+                placeholder={selectedFlowId ? "Escribe como si fueras el usuario final…" : "Selecciona un flujo primero"}
                 disabled={!selectedFlowId || testRunning}
-                className="flex-1 border rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30 disabled:opacity-50 bg-white" />
+                className="flex-1 border rounded-full px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30 disabled:opacity-50 bg-white" />
               <button onClick={handleTestStep} disabled={!selectedFlowId || testRunning || !testInput.trim()}
-                className="bg-green-600 text-white rounded-xl px-4 py-2 text-sm hover:bg-green-700 disabled:opacity-40 transition flex items-center gap-1">
+                className="bg-green-600 text-white rounded-full px-4 py-2 text-sm hover:bg-green-700 disabled:opacity-40 transition flex items-center gap-1">
                 <Play className="w-4 h-4" />
               </button>
             </div>
           </div>
 
           {/* Right: preview phone */}
-          <div className="hidden xl:flex w-64 flex-shrink-0 bg-white rounded-xl border flex-col">
+          <div className="hidden xl:flex w-80 flex-shrink-0 bg-white rounded-xl border flex-col overflow-hidden">
             <div className="p-3 border-b">
               <h3 className="text-xs font-semibold text-gray-600 uppercase tracking-wide flex items-center gap-1">
-                <Phone className="w-3 h-3" /> Vista previa
+                <Wrench className="w-3 h-3" /> Copiloto de integraciones
               </h3>
             </div>
-            <div className="flex-1 overflow-y-auto p-2">
-              <WhatsAppPreview nodes={rfNodes} edges={rfEdges} compact />
+            <div className="flex-1 overflow-y-auto p-3 space-y-3 bg-slate-50">
+              {sandboxReport ? (
+                <>
+                  <div className="rounded-xl border border-red-200 bg-white p-3 space-y-2">
+                    <div className="flex items-center gap-2 text-red-700 text-sm font-semibold">
+                      <AlertTriangle className="w-4 h-4" /> {sandboxReport.title}
+                    </div>
+                    <div className="text-[11px] text-gray-500">Escenario: {sandboxReport.scenarioLabel}</div>
+                  </div>
+
+                  <div className="rounded-xl border bg-white p-3 space-y-2">
+                    <div className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">Error detectado</div>
+                    <p className="text-sm text-gray-700">{sandboxReport.detectedIssue}</p>
+                  </div>
+
+                  <div className="rounded-xl border bg-white p-3 space-y-2">
+                    <div className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">Solución propuesta</div>
+                    <p className="text-sm text-gray-700">{sandboxReport.solution}</p>
+                  </div>
+
+                  <div className="rounded-xl border bg-white p-3 space-y-2">
+                    <div className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">Prompt corregido</div>
+                    <pre className="text-[11px] whitespace-pre-wrap break-words rounded-lg bg-slate-950 text-slate-100 p-3 overflow-x-auto">{sandboxReport.correctedPrompt}</pre>
+                  </div>
+
+                  <div className="rounded-xl border bg-white p-3 space-y-2">
+                    <div className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">Mejora adicional</div>
+                    <p className="text-sm text-gray-700">{sandboxReport.additionalImprovement}</p>
+                  </div>
+
+                  <div className="rounded-xl border bg-white p-3 space-y-2">
+                    <div className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">Request mock</div>
+                    <pre className="text-[11px] whitespace-pre-wrap break-words rounded-lg bg-slate-100 p-3 overflow-x-auto">{JSON.stringify(sandboxReport.requestPayload, null, 2)}</pre>
+                  </div>
+
+                  <div className="rounded-xl border bg-white p-3 space-y-2">
+                    <div className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">Response mock</div>
+                    <pre className="text-[11px] whitespace-pre-wrap break-words rounded-lg bg-slate-100 p-3 overflow-x-auto">{JSON.stringify(sandboxReport.responsePayload, null, 2)}</pre>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="rounded-xl border bg-white p-3 space-y-2">
+                    <div className="flex items-center gap-2 text-sm font-semibold text-gray-800">
+                      <Zap className="w-4 h-4 text-amber-500" /> Entorno de testing inteligente
+                    </div>
+                    <p className="text-xs text-gray-600">Elige un escenario para emular errores típicos de integraciones y recibir diagnóstico técnico sobre mapping, validación y fallback.</p>
+                  </div>
+
+                  <div className="rounded-xl border bg-white p-3 space-y-2">
+                    <div className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">Checklist de industria</div>
+                    <p className="text-sm text-gray-700">{sandboxIndustries.find((industry) => industry.id === testIndustry)?.validationHint}</p>
+                  </div>
+
+                  <div className="rounded-xl border bg-white p-3">
+                    <div className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-2">Vista previa</div>
+                    <WhatsAppPreview nodes={rfNodes} edges={rfEdges} compact />
+                  </div>
+                </>
+              )}
             </div>
           </div>
         </div>
