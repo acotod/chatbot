@@ -412,10 +412,35 @@ function NodeEditModal({
   onClose: () => void;
 }) {
   const cfg = (node.config ?? {}) as Record<string, unknown>;
+  const initialBranches = (node.branches ?? {}) as Record<string, string>;
+
+  function buildBranchesFromOptions(options: { id: string; title: string; next: string }[]): Record<string, string> {
+    return options.reduce<Record<string, string>>((acc, option) => {
+      const key = option.id.trim();
+      const target = option.next.trim();
+      if (key && target) acc[key] = target;
+      return acc;
+    }, {});
+  }
+
+  function parseBranchesSafely(raw: string): Record<string, string> | null {
+    try {
+      const parsed = JSON.parse(raw);
+      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null;
+      const out: Record<string, string> = {};
+      Object.entries(parsed as Record<string, unknown>).forEach(([k, v]) => {
+        if (typeof v === "string") out[k] = v;
+      });
+      return out;
+    } catch {
+      return null;
+    }
+  }
+
   const [id, setId]     = useState(node.id ?? "");
   const [type, setType] = useState(node.type ?? "message");
   const [next, setNext] = useState(node.next ?? "");
-  const [branchesJson, setBranchesJson] = useState(JSON.stringify(node.branches ?? {}, null, 2));
+  const [branchesJson, setBranchesJson] = useState(JSON.stringify(initialBranches, null, 2));
   const [err, setErr]   = useState("");
   const [showJson, setShowJson] = useState(false);
   const [rawJson, setRawJson]   = useState(JSON.stringify(cfg, null, 2));
@@ -426,7 +451,16 @@ function NodeEditModal({
   const [inputVar, setInputVar]       = useState(String(cfg.variable ?? ""));
   const [menuText, setMenuText]       = useState(String(cfg.text ?? ""));
   const [menuOptions, setMenuOptions] = useState<{ id: string; title: string; next: string }[]>(
-    Array.isArray(cfg.options) ? (cfg.options as { id: string; title: string; next: string }[]) : []
+    Array.isArray(cfg.options)
+      ? (cfg.options as Array<{ id?: string; title?: string; next?: string }>).map((option, index) => {
+          const optionId = String(option.id ?? `opt_${index + 1}`);
+          return {
+            id: optionId,
+            title: String(option.title ?? ""),
+            next: String(option.next ?? initialBranches[optionId] ?? ""),
+          };
+        })
+      : []
   );
   const [condVar, setCondVar]         = useState(String(cfg.variable ?? ""));
   const [condOp, setCondOp]           = useState(String(cfg.operator ?? "equals"));
@@ -449,6 +483,16 @@ function NodeEditModal({
   );
 
   const selectedEp = catalogEndpoints.find((ep) => ep.id === actionRef);
+
+  useEffect(() => {
+    if (type !== "menu") return;
+    const parsed = parseBranchesSafely(branchesJson);
+    if (!parsed) return;
+    setMenuOptions((prev) => prev.map((option) => ({
+      ...option,
+      next: parsed[option.id] ?? "",
+    })));
+  }, [branchesJson, type]);
 
   function applyEndpoint(ep: CatalogEndpoint) {
     setActionRef(ep.id);
@@ -482,7 +526,21 @@ function NodeEditModal({
   function handleSave() {
     if (!id.trim()) { setErr("El ID del nodo es obligatorio"); return; }
     let branches: Record<string, string>;
-    try { branches = JSON.parse(branchesJson); } catch { setErr("branches JSON inválido"); return; }
+    if (type === "menu" && !showJson) {
+      branches = buildBranchesFromOptions(menuOptions);
+    } else {
+      try {
+        const parsed = JSON.parse(branchesJson);
+        if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+          setErr("branches JSON inválido");
+          return;
+        }
+        branches = parsed as Record<string, string>;
+      } catch {
+        setErr("branches JSON inválido");
+        return;
+      }
+    }
     let config: Record<string, unknown>;
     if (showJson) {
       try { config = JSON.parse(rawJson); } catch { setErr("config JSON inválido"); return; }
@@ -574,10 +632,26 @@ function NodeEditModal({
                     compact
                     options={menuOptions}
                     nextNodeOptions={allNodeIds.map((nid) => ({ value: nid, label: nid }))}
-                    onAddOption={() => setMenuOptions((o) => [...o, { id: `opt_${o.length + 1}`, title: "", next: "" }])}
-                    onRemoveOption={(index) => setMenuOptions((o) => o.filter((_, i) => i !== index))}
+                    onAddOption={() => {
+                      setMenuOptions((prev) => {
+                        const nextOptions = [...prev, { id: `opt_${prev.length + 1}`, title: "", next: "" }];
+                        setBranchesJson(JSON.stringify(buildBranchesFromOptions(nextOptions), null, 2));
+                        return nextOptions;
+                      });
+                    }}
+                    onRemoveOption={(index) => {
+                      setMenuOptions((prev) => {
+                        const nextOptions = prev.filter((_, i) => i !== index);
+                        setBranchesJson(JSON.stringify(buildBranchesFromOptions(nextOptions), null, 2));
+                        return nextOptions;
+                      });
+                    }}
                     onChangeOption={(index, key, value) => {
-                      setMenuOptions((prev) => prev.map((option, i) => i === index ? { ...option, [key]: value } : option));
+                      setMenuOptions((prev) => {
+                        const nextOptions = prev.map((option, i) => i === index ? { ...option, [key]: value } : option);
+                        setBranchesJson(JSON.stringify(buildBranchesFromOptions(nextOptions), null, 2));
+                        return nextOptions;
+                      });
                     }}
                     showNextSelector
                     title="Opciones"
