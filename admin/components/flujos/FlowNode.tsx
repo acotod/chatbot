@@ -9,6 +9,10 @@ interface FlowNodeData {
   label?: string;
   nodeType?: NodeType;
   content?: Record<string, unknown>;
+  connectionModeActive?: boolean;
+  connectionSourceActive?: boolean;
+  connectTargetValid?: boolean;
+  validationState?: "ok" | "warning" | "error";
 }
 
 function FlowNode({ data, selected }: NodeProps<FlowNodeData>) {
@@ -18,6 +22,10 @@ function FlowNode({ data, selected }: NodeProps<FlowNodeData>) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [menuPos, setMenuPos] = useState<{ top: number; left: number } | null>(null);
   const menuBtnRef = useRef<HTMLButtonElement | null>(null);
+  const connectionModeActive = !!data.connectionModeActive;
+  const connectionSourceActive = !!data.connectionSourceActive;
+  const connectTargetValid = !!data.connectTargetValid;
+  const validationState = data.validationState;
   const subtitle = (() => {
     if (nodeType === "screen") return (data.content?.screenId as string) || "";
     if (nodeType === "input")  return (data.content?.name as string) || "";
@@ -61,9 +69,26 @@ function FlowNode({ data, selected }: NodeProps<FlowNodeData>) {
     <div
       className="rounded-xl shadow-md min-w-[180px] max-w-[250px]"
       style={{
-        border: `2px solid ${selected ? meta.color : "#e5e7eb"}`,
-        background: selected ? meta.bg : "#fff",
-        transition: "border-color 0.15s, background 0.15s",
+        border: `2px solid ${
+          validationState === "error"
+            ? "#ef4444"
+            : connectionSourceActive
+              ? "#2563eb"
+              : selected
+                ? meta.color
+                : connectionModeActive && connectTargetValid
+                  ? "#22c55e"
+                  : "#e5e7eb"
+        }`,
+        background: connectionSourceActive
+          ? "#eff6ff"
+          : connectionModeActive && connectTargetValid
+            ? "#f0fdf4"
+            : selected
+              ? meta.bg
+              : "#fff",
+        opacity: connectionModeActive && !connectTargetValid && !connectionSourceActive ? 0.55 : 1,
+        transition: "border-color 0.15s, background 0.15s, opacity 0.15s",
       }}
     >
       {/* Top handle */}
@@ -105,7 +130,20 @@ function FlowNode({ data, selected }: NodeProps<FlowNodeData>) {
       {/* Footer */}
       <div className="px-3 pb-2 pt-1 flex items-center justify-between text-[10px] text-gray-500">
         <span>Input</span>
-        <span>Output</span>
+        <div className="flex items-center gap-1.5">
+          {validationState && (
+            <span
+              className="rounded-full px-1.5 py-0.5 font-semibold uppercase tracking-wide"
+              style={{
+                background: validationState === "error" ? "#fee2e2" : validationState === "warning" ? "#fef3c7" : "#dcfce7",
+                color: validationState === "error" ? "#b91c1c" : validationState === "warning" ? "#92400e" : "#166534",
+              }}
+            >
+              {validationState}
+            </span>
+          )}
+          <span>Output</span>
+        </div>
       </div>
 
       {/* Bottom handle — condition has two outputs */}

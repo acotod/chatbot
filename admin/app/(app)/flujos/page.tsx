@@ -264,6 +264,7 @@ export default function FlujoSPage() {
   const [rfNodes, setRfNodes] = useState<Node[]>([]);
   const [rfEdges, setRfEdges] = useState<Edge[]>([]);
   const [selectedNode, setSelectedNode] = useState<Node | null>(null);
+  const [connectSourceNodeId, setConnectSourceNodeId] = useState<string | null>(null);
 
   // Saving
   const [saving, setSaving] = useState(false);
@@ -471,13 +472,18 @@ export default function FlujoSPage() {
 
   const onNodesChange = useCallback((c: NodeChange[]) => setRfNodes(nds => applyNodeChanges(c, nds)), []);
   const onEdgesChange = useCallback((c: EdgeChange[]) => setRfEdges(eds => applyEdgeChanges(c, eds)), []);
-  const onConnect     = useCallback((p: Connection)  => setRfEdges(eds => addEdge({
-    ...p,
-    animated: true,
-    type: "default",
-    markerEnd: { type: MarkerType.ArrowClosed, color: "#2563eb" },
-    style: { stroke: "#2563eb", strokeWidth: 1.7 },
-  }, eds)), []);
+  function onConnect(p: Connection) {
+    if (!p.source || !p.target || !canConnectNodes(p.source, p.target)) {
+      return;
+    }
+    setRfEdges(eds => addEdge({
+      ...p,
+      animated: true,
+      type: "default",
+      markerEnd: { type: MarkerType.ArrowClosed, color: "#2563eb" },
+      style: { stroke: "#2563eb", strokeWidth: 1.7 },
+    }, eds));
+  }
 
   function addNode() {
     const id = `new-${++nodeIdCounter}`;
@@ -594,6 +600,67 @@ export default function FlujoSPage() {
   }
 
   function onNodeClick(_: React.MouseEvent, node: Node) { setSelectedNode(node); }
+
+  function getCanonicalNodeType(node: Node | undefined) {
+    const rawType = String(node?.data?.nodeType ?? "screen");
+    if (rawType === "message") return "screen";
+    if (rawType === "question") return "input";
+    if (rawType === "action") return "webhook";
+    return rawType;
+  }
+
+  function canConnectNodes(sourceId: string, targetId: string) {
+    if (!sourceId || !targetId || sourceId === targetId) return false;
+
+    const sourceNode = rfNodes.find((node) => node.id === sourceId);
+    const targetNode = rfNodes.find((node) => node.id === targetId);
+    if (!sourceNode || !targetNode) return false;
+
+    const sourceType = getCanonicalNodeType(sourceNode);
+    const targetType = getCanonicalNodeType(targetNode);
+
+    if (sourceType === "end") return false;
+    if (targetType === "start") return false;
+
+    const existsSameDirection = rfEdges.some((edge) => edge.source === sourceId && edge.target === targetId);
+    if (existsSameDirection) return false;
+
+    return true;
+  }
+
+  function isValidConnection(connection: Connection) {
+    if (!connection.source || !connection.target) return false;
+    return canConnectNodes(connection.source, connection.target);
+  }
+
+  const onConnectStart = useCallback((_: unknown, params: { nodeId?: string; handleType?: "source" | "target" }) => {
+    if (params.handleType === "source" && params.nodeId) {
+      setConnectSourceNodeId(params.nodeId);
+    }
+  }, []);
+
+  const onConnectEnd = useCallback(() => {
+    setConnectSourceNodeId(null);
+  }, []);
+
+  const nodeValidationState = useCallback((nodeId: string): "ok" | "warning" | "error" | undefined => {
+    if (!showValidation) return undefined;
+    const nodeDiags = validationDiags.filter((diag) => diag.nodeId === nodeId);
+    if (nodeDiags.some((diag) => diag.severity === "error")) return "error";
+    if (nodeDiags.some((diag) => diag.severity === "warning")) return "warning";
+    return "ok";
+  }, [showValidation, validationDiags]);
+
+  const visualNodes = rfNodes.map((node) => ({
+    ...node,
+    data: {
+      ...node.data,
+      connectionModeActive: !!connectSourceNodeId,
+      connectionSourceActive: connectSourceNodeId === node.id,
+      connectTargetValid: connectSourceNodeId ? canConnectNodes(connectSourceNodeId, node.id) : false,
+      validationState: nodeValidationState(node.id),
+    },
+  }));
 
   function openBuilderJson() {
     const result = buildMetaJsonFromGraph(rfNodes, rfEdges, endpointCatalog);
@@ -2682,10 +2749,13 @@ export default function FlujoSPage() {
                   </div>
                 </div>
               ) : (
-                <ReactFlow nodes={rfNodes} edges={rfEdges} nodeTypes={NODE_TYPES}
+                <ReactFlow nodes={visualNodes} edges={rfEdges} nodeTypes={NODE_TYPES}
                   onNodesChange={onNodesChange} onEdgesChange={onEdgesChange}
                   onConnect={onConnect}
+                  onConnectStart={onConnectStart}
+                  onConnectEnd={onConnectEnd}
                   onNodeClick={onNodeClick}
+                  isValidConnection={isValidConnection}
                   fitView
                   deleteKeyCode="Delete"
                   snapToGrid
