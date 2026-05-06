@@ -74,6 +74,17 @@ function verifyLegacyRefresh(token, secret) {
   }
 }
 
+function normalizeEmail(value) {
+  if (typeof value !== 'string') return '';
+  return value.trim().toLowerCase();
+}
+
+async function findAdminUserByEmailCaseInsensitive(email) {
+  return prisma.adminUser.findFirst({
+    where: { email: { equals: email, mode: 'insensitive' } },
+  });
+}
+
 function normalizeGraphBaseUrl() {
   return (process.env.FACEBOOK_GRAPH_URL || 'https://graph.facebook.com').replace(/\/$/, '');
 }
@@ -150,7 +161,9 @@ const loginRateLimiter = rateLimit({
 
 // ── POST /auth/login ──────────────────────────────────────────────────────────
 router.post('/login', loginRateLimiter, async (req, res) => {
-  const { email, password } = req.body;
+  const rawEmail = req.body?.email;
+  const password = req.body?.password;
+  const email = normalizeEmail(rawEmail);
   const jwtSecret = process.env.JWT_SECRET;
   const ip        = req.ip;
   const userAgent = req.headers['user-agent'] || '';
@@ -159,21 +172,22 @@ router.post('/login', loginRateLimiter, async (req, res) => {
   if (!email || !password) return res.status(400).json({ error: 'email and password are required' });
 
   // 1. Env-var super admin (legacy) — bcrypt compare against cached hash
-  const adminEmail = process.env.ADMIN_EMAIL;
+  const adminEmail = normalizeEmail(process.env.ADMIN_EMAIL);
   const adminPasswordHash = await getAdminPasswordHash();
   if (adminEmail && adminPasswordHash && email === adminEmail) {
     const valid = await bcrypt.compare(password, adminPasswordHash);
     if (valid) {
-      const { token } = signAccess({ sub: 'admin', email }, jwtSecret);
-      const refreshToken = signLegacyRefresh(jwtSecret, email);
-      audit({ accion: 'LOGIN', entidad: 'admin', ip, userAgent, metadata: { email, via: 'env' } });
+      const envAdminEmail = process.env.ADMIN_EMAIL;
+      const { token } = signAccess({ sub: 'admin', email: envAdminEmail }, jwtSecret);
+      const refreshToken = signLegacyRefresh(jwtSecret, envAdminEmail);
+      audit({ accion: 'LOGIN', entidad: 'admin', ip, userAgent, metadata: { email: envAdminEmail, via: 'env' } });
       return res.json({ accessToken: token, refreshToken, expiresIn: ACCESS_TTL, superAdmin: true });
     }
   }
 
   // 2. DB-backed admin user
   try {
-    const user = await prisma.adminUser.findUnique({ where: { email } });
+    const user = await findAdminUserByEmailCaseInsensitive(email);
 
     // Generic invalid-credentials response (timing-safe: always run bcrypt)
     const dummyHash = '$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy';
@@ -240,7 +254,7 @@ router.post('/facebook', loginRateLimiter, async (req, res) => {
       return res.status(400).json({ error: 'Facebook account has no email available' });
     }
 
-    const user = await prisma.adminUser.findUnique({ where: { email: profile.email } });
+    const user = await findAdminUserByEmailCaseInsensitive(profile.email);
     if (!user) {
       audit({ accion: 'LOGIN_FAILED', entidad: 'admin_user', ip, userAgent, metadata: { via: 'facebook', email: profile.email } });
       return res.status(403).json({ error: 'No admin account is linked to this Facebook email' });
@@ -339,7 +353,7 @@ router.post('/google', loginRateLimiter, async (req, res) => {
   try {
     const profile = await validateGoogleToken(credential);
 
-    const user = await prisma.adminUser.findUnique({ where: { email: profile.email } });
+    const user = await findAdminUserByEmailCaseInsensitive(profile.email);
     if (!user) {
       audit({ accion: 'LOGIN_FAILED', entidad: 'admin_user', ip, userAgent, metadata: { via: 'google', email: profile.email } });
       return res.status(403).json({ error: 'No admin account is linked to this Google email' });
@@ -410,8 +424,8 @@ router.post('/refresh', async (req, res) => {
     // Legacy env-admin refresh token path (for super-admin defined in .env).
     const legacyPayload = verifyLegacyRefresh(refreshToken, jwtSecret);
     if (legacyPayload) {
-      const adminEmail = process.env.ADMIN_EMAIL;
-      if (!adminEmail || legacyPayload.email !== adminEmail) {
+      const adminEmail = normalizeEmail(process.env.ADMIN_EMAIL);
+      if (!adminEmail || normalizeEmail(legacyPayload.email) !== adminEmail) {
         return res.status(401).json({ error: 'Invalid or expired refresh token' });
       }
 
