@@ -1,6 +1,7 @@
 "use client";
 
 import { authApi, tenantApi } from "@/lib/api";
+import type { Permission } from "@/lib/permissions";
 import { cn } from "@/lib/utils";
 import { useAuthStore } from "@/store/auth";
 import {
@@ -26,21 +27,27 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
-const NAV_ITEMS = [
-  { icon: LayoutDashboard, label: "Dashboard", href: "/dashboard" },
-  { icon: MessageCircle, label: "Conversaciones", href: "/conversaciones" },
-  { icon: ClipboardList, label: "Solicitudes", href: "/solicitudes" },
-  { icon: CalendarDays, label: "Agenda", href: "/agenda" },
-  { icon: Users, label: "Agentes", href: "/agentes" },
-  { icon: Settings, label: "Configuración", href: "/configuracion" },
-  { icon: CreditCard, label: "Facturación", href: "/facturacion" },
-  { icon: ScrollText, label: "Auditoría", href: "/auditoria" },
-  { icon: ShieldCheck, label: "Roles", href: "/roles" },
-  { icon: Building2, label: "Tenants", href: "/tenants" },
-  { icon: Plug, label: "Integraciones", href: "/integraciones" },
-  { icon: Variable, label: "Variables", href: "/variables" },
-  { icon: GitBranch, label: "Flujos", href: "/flujos" },
-  { icon: Webhook, label: "WABA Flujos", href: "/waba-flujos" },
+const NAV_ITEMS: Array<{
+  icon: React.ComponentType<{ size?: number; className?: string }>;
+  label: string;
+  href: string;
+  permission?: Permission;
+  superAdminOnly?: boolean;
+}> = [
+  { icon: LayoutDashboard, label: "Dashboard", href: "/dashboard", permission: "VIEW_DASHBOARD" },
+  { icon: MessageCircle, label: "Conversaciones", href: "/conversaciones", permission: "VIEW_CONVERSACIONES" },
+  { icon: ClipboardList, label: "Solicitudes", href: "/solicitudes", permission: "VIEW_SOLICITUDES" },
+  { icon: CalendarDays, label: "Agenda", href: "/agenda", permission: "VIEW_AGENDA" },
+  { icon: Users, label: "Agentes", href: "/agentes", permission: "VIEW_AGENTES" },
+  { icon: Settings, label: "Configuración", href: "/configuracion", permission: "MANAGE_TENANTS" },
+  { icon: CreditCard, label: "Facturación", href: "/facturacion", superAdminOnly: true },
+  { icon: ScrollText, label: "Auditoría", href: "/auditoria", permission: "VIEW_AUDITORIA" },
+  { icon: ShieldCheck, label: "Roles", href: "/roles", permission: "MANAGE_ROLES" },
+  { icon: Building2, label: "Tenants", href: "/tenants", permission: "MANAGE_TENANTS" },
+  { icon: Plug, label: "Integraciones", href: "/integraciones", permission: "MANAGE_TENANTS" },
+  { icon: Variable, label: "Variables", href: "/variables", permission: "EDIT_FLUJOS" },
+  { icon: GitBranch, label: "Flujos", href: "/flujos", permission: "VIEW_FLUJOS" },
+  { icon: Webhook, label: "WABA Flujos", href: "/waba-flujos", permission: "VIEW_FLUJOS" },
 ];
 
 export function Sidebar() {
@@ -89,7 +96,10 @@ export function Sidebar() {
 
   // Filter nav items based on permissions
   const filteredNavItems = NAV_ITEMS.filter((item) => {
-    return true;
+    if (superAdmin) return true;
+    if (item.superAdminOnly) return false;
+    if (!item.permission) return false;
+    return permissions.includes(item.permission);
   });
 
   return (
