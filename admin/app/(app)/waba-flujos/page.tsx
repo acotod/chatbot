@@ -450,6 +450,7 @@ function NodeEditModal({
   const [inputText, setInputText]     = useState(String(cfg.text ?? ""));
   const [inputVar, setInputVar]       = useState(String(cfg.variable ?? ""));
   const [menuText, setMenuText]       = useState(String(cfg.text ?? ""));
+  const [menuVar, setMenuVar]         = useState(String(cfg.variable ?? ""));
   const [menuOptions, setMenuOptions] = useState<{ id: string; title: string; next: string }[]>(
     Array.isArray(cfg.options)
       ? (cfg.options as Array<{ id?: string; title?: string; next?: string }>).map((option, index) => {
@@ -503,22 +504,29 @@ function NodeEditModal({
   }
 
   function buildConfig(): Record<string, unknown> {
+    const body: Record<string, string> = {};
+    actionBody.forEach((r) => { if (r.key.trim()) body[r.key.trim()] = r.value; });
+    const response_mapping: Record<string, string> = {};
+    actionResponse.forEach((r) => { if (r.key.trim()) response_mapping[r.key.trim()] = r.value; });
+
+    const actionFragment: Record<string, unknown> = {
+      ...(actionRef ? { integration_ref: actionRef } : {}),
+      ...(actionUrl.trim() ? { endpoint: actionUrl.trim() } : {}),
+      ...(actionMethod ? { method: actionMethod } : {}),
+      ...(Object.keys(body).length ? { body } : {}),
+      ...(Object.keys(response_mapping).length ? { response_mapping } : {}),
+    };
+
     switch (type) {
       case "message":   return { text };
       case "input":     return { text: inputText, variable: inputVar };
-      case "menu":      return { text: menuText, options: menuOptions };
+      case "menu":      return { text: menuText, options: menuOptions, ...(menuVar.trim() ? { variable: menuVar.trim() } : {}), ...actionFragment };
       case "condition": return { variable: condVar, operator: condOp, value: condVal };
       case "delay":     return { seconds: delaySeconds };
       case "end":       return { message: endMsg };
       case "handoff":   return { department: handoffDept, message: handoffMsg };
       case "llm":       return { prompt: llmPrompt, variable: llmVar };
-      case "action": {
-        const body: Record<string, string> = {};
-        actionBody.forEach((r) => { if (r.key.trim()) body[r.key.trim()] = r.value; });
-        const response_mapping: Record<string, string> = {};
-        actionResponse.forEach((r) => { if (r.key.trim()) response_mapping[r.key.trim()] = r.value; });
-        return { ...(actionRef ? { integration_ref: actionRef } : {}), endpoint: actionUrl, method: actionMethod, body, response_mapping };
-      }
+      case "action":    return actionFragment;
       default: { try { return JSON.parse(rawJson); } catch { return {}; } }
     }
   }
@@ -660,6 +668,11 @@ function NodeEditModal({
                     titlePlaceholder="Título visible"
                     nextPlaceholder="Siguiente nodo (opcional)"
                   />
+                  <div>
+                    <label className="block text-xs font-medium text-slate-600 mb-1">Guardar selección en variable</label>
+                    <input value={menuVar} onChange={(e) => setMenuVar(e.target.value)} placeholder="variables.opcion_menu"
+                      className="w-full rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                  </div>
                 </>
               )}
               {/* condition */}
@@ -733,9 +746,14 @@ function NodeEditModal({
                   </div>
                 </>
               )}
-              {/* action */}
-              {type === "action" && (
+              {/* action / menu webhook call */}
+              {(type === "action" || type === "menu") && (
                 <div className="space-y-4">
+                  {type === "menu" && (
+                    <p className="text-xs font-medium text-slate-600 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
+                      Llamado de endpoint/webhook al seleccionar opción (opcional)
+                    </p>
+                  )}
                   {/* Catalog endpoint picker */}
                   {catalogEndpoints.length > 0 && (
                     <div>

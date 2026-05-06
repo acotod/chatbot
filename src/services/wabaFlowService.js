@@ -371,7 +371,7 @@ function exportToWaba(definition) {
       screen.layout.children.push({
         type: 'Dropdown',
         label: node.config.label ?? 'Selecciona una opción',
-        name: `${node.id}_selection`,
+        name: node.config.variable ?? `${node.id}_selection`,
         required: true,
         data_source: node.config.options.map((o) => ({
           id: o.id,
@@ -431,7 +431,7 @@ function exportToWaba(definition) {
  */
 function enrichDefinition(definition, integrationMap) {
   const enrichedNodes = definition.nodes.map((node) => {
-    if (node.type !== 'action') return node;
+    if (node.type !== 'action' && node.type !== 'menu') return node;
     const ref = node.config?.integration_ref;
     if (!ref) return node;
     const intConfig = integrationMap.get(ref);
@@ -514,6 +514,22 @@ function simulateFlow(definition, inputs = []) {
             (o) => o.id === userInput || o.title === userInput
           );
           const branchKey = selected?.id ?? userInput;
+
+          const varName = node.config?.variable;
+          if (typeof varName === 'string' && varName.trim()) {
+            variables[varName.trim()] = branchKey;
+            step.variable_captured = { [varName.trim()]: branchKey };
+          }
+
+          if (node.config?.integration_ref || node.config?.endpoint) {
+            step.menu_action = {
+              type: 'api_call_simulated',
+              endpoint: node.config?._integration_config?.endpoint ?? node.config?.endpoint ?? '[integration]',
+              method: node.config?._integration_config?.method ?? node.config?.method ?? 'POST',
+              note: 'Simulated menu on_option_select call — no real HTTP call made',
+            };
+          }
+
           currentId = node.branches?.[branchKey] ?? node.next;
           step.selected = branchKey;
           inputIdx++;
