@@ -409,6 +409,7 @@ function NodeEditModal({
   allNodeIds,
   catalogEndpoints,
   flowVariables,
+  integrations,
   onSave,
   onClose,
 }: {
@@ -416,6 +417,7 @@ function NodeEditModal({
   allNodeIds: string[];
   catalogEndpoints: CatalogEndpoint[];
   flowVariables: string[];
+  integrations: { id: number; nombre: string; tipo: string }[];
   onSave: (n: NodeDef) => void;
   onClose: () => void;
 }) {
@@ -621,6 +623,12 @@ function NodeEditModal({
         </div>
 
         <div className="overflow-y-auto flex-1 px-6 py-4 space-y-4">
+          {/* Shared datalist for variable suggestions */}
+          <datalist id="waba-var-suggestions">
+            {(flowVariables.length > 0 ? flowVariables : MENU_VARIABLE_PRESETS).map((v) => (
+              <option key={v} value={v} />
+            ))}
+          </datalist>
           {/* ID + Type */}
           <div className="grid grid-cols-2 gap-3">
             <div>
@@ -666,7 +674,7 @@ function NodeEditModal({
                   </div>
                   <div>
                     <label className="block text-xs font-medium text-slate-600 mb-1">Guardar respuesta en variable</label>
-                    <input value={inputVar} onChange={(e) => setInputVar(e.target.value)} placeholder="variables.cedula"
+                    <input list="waba-var-suggestions" value={inputVar} onChange={(e) => setInputVar(e.target.value)} placeholder="variables.cedula"
                       className="w-full rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500" />
                   </div>
                 </>
@@ -727,17 +735,8 @@ function NodeEditModal({
                   )}
                   <div>
                     <label className="block text-xs font-medium text-slate-600 mb-1">Guardar selección en variable</label>
-                    <input
-                      list="menu-variable-presets"
-                      value={menuVar}
-                      onChange={(e) => setMenuVar(e.target.value)}
-                      placeholder="variables.opcion_menu"
+                    <input list="waba-var-suggestions" value={menuVar} onChange={(e) => setMenuVar(e.target.value)} placeholder="variables.opcion_menu"
                       className="w-full rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                    <datalist id="menu-variable-presets">
-                      {(flowVariables.length > 0 ? flowVariables : MENU_VARIABLE_PRESETS).map((variableName) => (
-                        <option key={variableName} value={variableName} />
-                      ))}
-                    </datalist>
                   </div>
                 </>
               )}
@@ -746,7 +745,7 @@ function NodeEditModal({
                 <div className="grid grid-cols-3 gap-2">
                   <div>
                     <label className="block text-xs font-medium text-slate-600 mb-1">Variable</label>
-                    <input value={condVar} onChange={(e) => setCondVar(e.target.value)} placeholder="variables.estatus"
+                    <input list="waba-var-suggestions" value={condVar} onChange={(e) => setCondVar(e.target.value)} placeholder="variables.estatus"
                       className="w-full rounded-lg border border-slate-200 px-2 py-1.5 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-blue-500" />
                   </div>
                   <div>
@@ -807,7 +806,7 @@ function NodeEditModal({
                   </div>
                   <div>
                     <label className="block text-xs font-medium text-slate-600 mb-1">Guardar respuesta en</label>
-                    <input value={llmVar} onChange={(e) => setLlmVar(e.target.value)} placeholder="variables.respuesta_llm"
+                    <input list="waba-var-suggestions" value={llmVar} onChange={(e) => setLlmVar(e.target.value)} placeholder="variables.respuesta_llm"
                       className="w-full rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500" />
                   </div>
                 </>
@@ -845,6 +844,30 @@ function NodeEditModal({
                       {selectedEp?.description && (
                         <p className="text-xs text-slate-400 mt-1 italic">{selectedEp.description}</p>
                       )}
+                    </div>
+                  )}
+                  {/* Integrations picker (fallback / always shown) */}
+                  {integrations.length > 0 && (
+                    <div>
+                      <label className="block text-xs font-medium text-slate-600 mb-2">Integración</label>
+                      <div className="flex flex-wrap gap-1.5">
+                        {integrations.map((intg) => (
+                          <button key={intg.id} onClick={() => setActionRef(String(intg.id))}
+                            className={`text-xs px-2.5 py-1 rounded-lg border transition ${
+                              actionRef === String(intg.id)
+                                ? "bg-violet-600 text-white border-violet-600"
+                                : "bg-white text-slate-600 border-slate-200 hover:border-violet-400 hover:text-violet-600"
+                            }`}>
+                            {intg.tipo === "webhook" ? "🔗 " : intg.tipo === "rest" ? "⚙️ " : ""}{intg.nombre}
+                          </button>
+                        ))}
+                        {actionRef && (
+                          <button onClick={() => setActionRef("")}
+                            className="text-xs px-2 py-1 rounded-lg border border-slate-200 text-slate-400 hover:text-red-500">
+                            × Limpiar
+                          </button>
+                        )}
+                      </div>
                     </div>
                   )}
                   {/* Method + URL */}
@@ -886,7 +909,7 @@ function NodeEditModal({
                             placeholder="campo_api"
                             className="w-36 rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-blue-500" />
                           <span className="text-slate-400 text-xs shrink-0">→</span>
-                          <input value={row.value} onChange={(e) => setActionBody((b) => b.map((r, j) => j === i ? { ...r, value: e.target.value } : r))}
+                          <input list="waba-var-suggestions" value={row.value} onChange={(e) => setActionBody((b) => b.map((r, j) => j === i ? { ...r, value: e.target.value } : r))}
                             placeholder="variables.cedula o valor fijo"
                             className="flex-1 rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-blue-500" />
                           <button onClick={() => setActionBody((b) => b.filter((_, j) => j !== i))}
@@ -914,7 +937,7 @@ function NodeEditModal({
                             placeholder="campo_respuesta"
                             className="w-36 rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-blue-500" />
                           <span className="text-slate-400 text-xs shrink-0">→</span>
-                          <input value={row.value} onChange={(e) => setActionResponse((r) => r.map((x, j) => j === i ? { ...x, value: e.target.value } : x))}
+                          <input list="waba-var-suggestions" value={row.value} onChange={(e) => setActionResponse((r) => r.map((x, j) => j === i ? { ...x, value: e.target.value } : x))}
                             placeholder="variables.saldo"
                             className="flex-1 rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-blue-500" />
                           <button onClick={() => setActionResponse((r) => r.filter((_, j) => j !== i))}
@@ -1302,6 +1325,7 @@ function FlowBuilder({
           allNodeIds={definition?.nodes.map((n) => n.id) ?? []}
           catalogEndpoints={catalogEndpoints}
           flowVariables={flowVariables}
+          integrations={integrations}
           onSave={handleSaveNode}
           onClose={() => setEditingNode(null)}
         />
