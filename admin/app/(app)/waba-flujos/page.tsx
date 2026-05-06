@@ -629,9 +629,8 @@ function NodeEditModal({
                       className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
                   </div>
                   <MenuOptionsEditor
-                    compact
                     options={menuOptions}
-                    nextNodeOptions={allNodeIds.map((nid) => ({ value: nid, label: nid }))}
+                    nextNodeOptions={allNodeIds.map((nid) => ({ value: nid, label: `${nid} · nodo` }))}
                     onAddOption={() => {
                       setMenuOptions((prev) => {
                         const nextOptions = [...prev, { id: `opt_${prev.length + 1}`, title: "", next: "" }];
@@ -654,12 +653,12 @@ function NodeEditModal({
                       });
                     }}
                     showNextSelector
-                    title="Opciones"
-                    addLabel="Agregar opción"
-                    emptyText="Sin opciones"
-                    idPlaceholder="id"
-                    titlePlaceholder="Título"
-                    nextPlaceholder="— ninguno —"
+                    title="Opciones del menú"
+                    addLabel="Agregar"
+                    emptyText="Este menú aún no tiene opciones."
+                    idPlaceholder="id_opcion"
+                    titlePlaceholder="Título visible"
+                    nextPlaceholder="Siguiente nodo (opcional)"
                   />
                 </>
               )}
