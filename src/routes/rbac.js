@@ -34,6 +34,44 @@ function handlePrismaWriteError(err, res) {
   return false;
 }
 
+async function validateRoleAssignmentScope(roleIds, targetTenantId, callerIsTenantAdmin) {
+  if (!Array.isArray(roleIds) || roleIds.length === 0) return null;
+
+  const roles = await prisma.role.findMany({
+    where: { id: { in: roleIds } },
+    select: { id: true, tenantId: true },
+  });
+
+  if (roles.length !== roleIds.length) {
+    return 'One or more roles do not exist';
+  }
+
+  if (callerIsTenantAdmin) {
+    const invalidTenantRole = roles.find((role) => role.tenantId !== targetTenantId);
+    if (invalidTenantRole) {
+      return 'Tenant admins can only assign roles from their own tenant';
+    }
+    return null;
+  }
+
+  if (!targetTenantId) {
+    const invalidGlobalRole = roles.find((role) => role.tenantId !== null);
+    if (invalidGlobalRole) {
+      return 'Global users can only have global roles';
+    }
+    return null;
+  }
+
+  const invalidTenantRole = roles.find(
+    (role) => role.tenantId !== null && role.tenantId !== targetTenantId,
+  );
+  if (invalidTenantRole) {
+    return 'Cannot assign roles from a different tenant';
+  }
+
+  return null;
+}
+
 // ── Permisos ──────────────────────────────────────────────────────────────────
 
 // GET /rbac/permisos
@@ -171,11 +209,17 @@ router.post('/users', requirePermiso('MANAGE_ROLES'), async (req, res, next) => 
       }
     }
 
+    const effectiveTenantId = tenant ?? tenantId ?? null;
+    const roleScopeError = await validateRoleAssignmentScope(roleIds, effectiveTenantId, Boolean(tenant));
+    if (roleScopeError) {
+      return res.status(400).json({ error: roleScopeError });
+    }
+
     const passwordHash = await bcrypt.hash(password, 12);
     const user = await prisma.adminUser.create({
       data: {
         email, passwordHash, nombre,
-        tenantId: tenant ?? tenantId ?? null,
+        tenantId: effectiveTenantId,
         superAdmin: tenant ? false : (superAdmin ?? false),
         roles: roleIds?.length ? { create: roleIds.map((id) => ({ roleId: id })) } : undefined,
       },
@@ -209,6 +253,15 @@ router.patch('/users/:id', requirePermiso('MANAGE_ROLES'), async (req, res, next
       if (tenantId !== undefined && tenantId !== tenant) {
         return res.status(403).json({ error: 'Cannot reassign users to a different tenant' });
       }
+    }
+
+    const effectiveTenantId = tenant
+      ? tenant
+      : (tenantId !== undefined ? (tenantId ?? null) : existing.tenantId);
+
+    const roleScopeError = await validateRoleAssignmentScope(roleIds, effectiveTenantId, Boolean(tenant));
+    if (roleScopeError) {
+      return res.status(400).json({ error: roleScopeError });
     }
 
     const data = {};

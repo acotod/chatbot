@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { rbacApi, tenantApi } from "@/lib/api";
 import { getMe } from "@/lib/useMe";
@@ -11,6 +11,16 @@ interface Permiso { id: number; clave: string; }
 interface Role { id: number; nombre: string; tenantId: string | null; permisos: { permiso: Permiso }[]; }
 interface Tenant { id: string; slug: string; nombre: string; }
 interface AdminUser { id: number; email: string; nombre: string; superAdmin: boolean; tenantId: string | null; roles: { role: { id: number; nombre: string } }[]; }
+
+function getAssignableRoles(roles: Role[], isTenantAdmin: boolean, tenantId: string): Role[] {
+  if (isTenantAdmin) {
+    return roles.filter((r) => r.tenantId === tenantId);
+  }
+  if (!tenantId) {
+    return roles.filter((r) => r.tenantId === null);
+  }
+  return roles.filter((r) => r.tenantId === null || r.tenantId === tenantId);
+}
 
 export default function RolesPage() {
   const qc = useQueryClient();
@@ -349,6 +359,23 @@ function CreateUserModal({
   const [selectedRoles, setSelectedRoles] = useState<Set<number>>(new Set());
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const tenantNameById = useMemo(() => {
+    const map = new Map<string, string>();
+    tenants.forEach((t) => map.set(t.id, `${t.nombre} (${t.slug})`));
+    return map;
+  }, [tenants]);
+  const allowedRoles = useMemo(
+    () => getAssignableRoles(roles, isTenantAdmin, tenantId),
+    [roles, isTenantAdmin, tenantId]
+  );
+
+  useEffect(() => {
+    const allowedIds = new Set(allowedRoles.map((r) => r.id));
+    setSelectedRoles((prev) => {
+      const next = new Set([...prev].filter((id) => allowedIds.has(id)));
+      return next.size === prev.size ? prev : next;
+    });
+  }, [allowedRoles]);
 
   function toggleRole(id: number) {
     setSelectedRoles((prev) => {
@@ -365,10 +392,15 @@ function CreateUserModal({
     }
     setLoading(true); setError("");
     try {
+      if (selectedRoles.size === 0) {
+        setError("Selecciona al menos un rol");
+        setLoading(false);
+        return;
+      }
       await rbacApi.createUser({ ...form, tenantId: tenantId || null, roleIds: [...selectedRoles] });
       onCreated();
       setForm({ nombre: "", email: "", password: "" });
-      setTenantId("");
+      setTenantId(callerTenantId ?? "");
       setSelectedRoles(new Set());
     } catch (err) {
       if (axios.isAxiosError(err)) {
@@ -399,7 +431,10 @@ function CreateUserModal({
           <label className="block text-sm font-medium text-gray-700 mb-1">Tenant</label>
           {isTenantAdmin ? (
             <p className="text-sm text-gray-700 bg-gray-50 border rounded-lg px-3 py-2">
-              {callerTenantId} <span className="text-gray-400 text-xs">(fijo a tu tenant)</span>
+              {tenantId && tenantNameById.get(tenantId)
+                ? tenantNameById.get(tenantId)
+                : callerTenantId}
+              <span className="text-gray-400 text-xs"> (fijo a tu tenant)</span>
             </p>
           ) : (
             <select
@@ -417,7 +452,7 @@ function CreateUserModal({
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-2">Roles</label>
           <div className="space-y-1 max-h-32 overflow-y-auto">
-            {roles.filter((r) => !isTenantAdmin || r.tenantId !== null).map((r) => (
+            {allowedRoles.map((r) => (
               <label key={r.id} className="flex items-center gap-2 text-sm cursor-pointer">
                 <input
                   type="checkbox"
@@ -428,6 +463,9 @@ function CreateUserModal({
                 {r.nombre}
               </label>
             ))}
+            {allowedRoles.length === 0 && (
+              <p className="text-xs text-gray-400">No hay roles disponibles para el tenant seleccionado.</p>
+            )}
           </div>
         </div>
         {error && <p className="text-sm text-red-500">{error}</p>}
@@ -541,6 +579,23 @@ function EditUserModal({
   );
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const tenantNameById = useMemo(() => {
+    const map = new Map<string, string>();
+    tenants.forEach((t) => map.set(t.id, `${t.nombre} (${t.slug})`));
+    return map;
+  }, [tenants]);
+  const allowedRoles = useMemo(
+    () => getAssignableRoles(roles, isTenantAdmin, tenantId),
+    [roles, isTenantAdmin, tenantId]
+  );
+
+  useEffect(() => {
+    const allowedIds = new Set(allowedRoles.map((r) => r.id));
+    setSelectedRoles((prev) => {
+      const next = new Set([...prev].filter((id) => allowedIds.has(id)));
+      return next.size === prev.size ? prev : next;
+    });
+  }, [allowedRoles]);
 
   function toggleRole(id: number) {
     setSelectedRoles((prev) => {
@@ -557,6 +612,11 @@ function EditUserModal({
     }
     setLoading(true); setError("");
     try {
+      if (selectedRoles.size === 0) {
+        setError("Selecciona al menos un rol");
+        setLoading(false);
+        return;
+      }
       const payload: Record<string, unknown> = {
         nombre: form.nombre,
         email: form.email,
@@ -607,7 +667,10 @@ function EditUserModal({
           <label className="block text-sm font-medium text-gray-700 mb-1">Tenant</label>
           {isTenantAdmin ? (
             <p className="text-sm text-gray-700 bg-gray-50 border rounded-lg px-3 py-2">
-              {callerTenantId} <span className="text-gray-400 text-xs">(fijo a tu tenant)</span>
+              {tenantId && tenantNameById.get(tenantId)
+                ? tenantNameById.get(tenantId)
+                : callerTenantId}
+              <span className="text-gray-400 text-xs"> (fijo a tu tenant)</span>
             </p>
           ) : (
             <>
@@ -630,7 +693,7 @@ function EditUserModal({
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-2">Roles</label>
           <div className="space-y-1 max-h-32 overflow-y-auto">
-            {roles.filter((r) => !isTenantAdmin || r.tenantId !== null).map((r) => (
+            {allowedRoles.map((r) => (
               <label key={r.id} className="flex items-center gap-2 text-sm cursor-pointer">
                 <input
                   type="checkbox"
@@ -641,6 +704,9 @@ function EditUserModal({
                 {r.nombre}
               </label>
             ))}
+            {allowedRoles.length === 0 && (
+              <p className="text-xs text-gray-400">No hay roles disponibles para el tenant seleccionado.</p>
+            )}
           </div>
         </div>
         {error && <p className="text-sm text-red-500">{error}</p>}
