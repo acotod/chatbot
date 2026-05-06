@@ -2,6 +2,7 @@
 import { useState } from "react";
 import { X, Trash2, Check, Zap, Plus, DatabaseZap, Webhook } from "lucide-react";
 import type { Node } from "reactflow";
+import MenuOptionsEditor from "@/components/flujos/MenuOptionsEditor";
 import {
   NODE_META, resolveNodeType,
   type NodeType, type CanonicalNodeType, type EndpointDef,
@@ -326,58 +327,30 @@ export default function NodeEditorPanel({
               <input className={inputCls} value={(content.placeholder as string) ?? ""} onChange={e => patch("placeholder", e.target.value)} />
             </div>
             {(((content.inputType as string) ?? "text") === "select" || (Array.isArray(content.options) && (content.options as unknown[]).length > 0)) && (
-              <div className="space-y-2">
-                <div className="flex items-center justify-between gap-2">
-                  <p className={labelCls}>Opciones del menú</p>
-                  <button
-                    type="button"
-                    onClick={addInputOption}
-                    className="flex items-center gap-1 text-xs font-semibold text-blue-600 border border-blue-200 rounded-lg px-2.5 py-1.5 hover:bg-blue-50"
-                  >
-                    <Plus className="w-3.5 h-3.5" /> Agregar
-                  </button>
-                </div>
-                {(Array.isArray(content.options) ? content.options : []).length === 0 && (
-                  <p className="text-xs text-gray-400">Este menú aún no tiene opciones.</p>
-                )}
-                {(Array.isArray(content.options) ? content.options : []).map((option, index) => {
+              <MenuOptionsEditor
+                title="Opciones del menú"
+                addLabel="Agregar"
+                emptyText="Este menú aún no tiene opciones."
+                idPlaceholder="id_opcion"
+                titlePlaceholder="Título visible"
+                nextPlaceholder="Siguiente nodo (opcional)"
+                options={(Array.isArray(content.options) ? content.options : []).map((option, index) => {
                   const current = option as { id?: string; title?: string; next?: string };
-                  return (
-                    <div key={`${current.id ?? "option"}-${index}`} className="rounded-lg border border-gray-200 p-3 space-y-2 bg-gray-50">
-                      <div className="flex items-center justify-between gap-2">
-                        <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide">Opción {index + 1}</p>
-                        <button type="button" onClick={() => removeInputOption(index)} className="text-red-400 hover:text-red-600">
-                          <X className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                      <input
-                        className={inputCls}
-                        value={current.id ?? ""}
-                        onChange={e => patchInputOption(index, "id", e.target.value)}
-                        placeholder="id_opcion"
-                      />
-                      <input
-                        className={inputCls}
-                        value={current.title ?? ""}
-                        onChange={e => patchInputOption(index, "title", e.target.value)}
-                        placeholder="Título visible"
-                      />
-                      <select
-                        className={inputCls}
-                        value={current.next ?? ""}
-                        onChange={e => patchInputOption(index, "next", e.target.value)}
-                      >
-                        <option value="">Siguiente nodo (opcional)</option>
-                        {nextNodeCandidates.map((candidate) => (
-                          <option key={candidate.id} value={candidate.id}>
-                            {candidate.id} · {String(candidate.data?.label ?? candidate.data?.content?.label ?? candidate.id)}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  );
+                  return {
+                    id: current.id ?? `opcion_${index + 1}`,
+                    title: current.title ?? "",
+                    next: current.next ?? "",
+                  };
                 })}
-              </div>
+                nextNodeOptions={nextNodeCandidates.map((candidate) => ({
+                  value: candidate.id,
+                  label: `${candidate.id} · ${String(candidate.data?.label ?? candidate.data?.content?.label ?? candidate.id)}`,
+                }))}
+                onAddOption={addInputOption}
+                onRemoveOption={removeInputOption}
+                onChangeOption={patchInputOption}
+                showNextSelector
+              />
             )}
           </>
         )}

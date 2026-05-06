@@ -28,6 +28,7 @@ import {
 } from "lucide-react";
 import { wabaFlowsApi, integrationsApi } from "@/lib/api";
 import { useAuthStore } from "@/store/auth";
+import MenuOptionsEditor from "@/components/flujos/MenuOptionsEditor";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
@@ -569,32 +570,23 @@ function NodeEditModal({
                       placeholder="¿En qué te puedo ayudar?"
                       className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
                   </div>
-                  <div>
-                    <div className="flex items-center justify-between mb-1">
-                      <label className="text-xs font-medium text-slate-600">Opciones</label>
-                      <button onClick={() => setMenuOptions((o) => [...o, { id: `opt_${o.length + 1}`, title: "", next: "" }])}
-                        className="flex items-center gap-0.5 text-xs text-blue-600 hover:text-blue-800">
-                        <Plus className="w-3 h-3" /> Agregar opción
-                      </button>
-                    </div>
-                    <div className="space-y-2">
-                      {menuOptions.map((opt, i) => (
-                        <div key={i} className="flex gap-2 items-center">
-                          <input value={opt.id} onChange={(e) => setMenuOptions((o) => o.map((x, j) => j === i ? { ...x, id: e.target.value } : x))}
-                            placeholder="id" className="w-16 rounded-lg border border-slate-200 px-2 py-1 text-xs font-mono focus:outline-none" />
-                          <input value={opt.title} onChange={(e) => setMenuOptions((o) => o.map((x, j) => j === i ? { ...x, title: e.target.value } : x))}
-                            placeholder="Título" className="flex-1 rounded-lg border border-slate-200 px-2 py-1 text-xs focus:outline-none" />
-                          <select value={opt.next} onChange={(e) => setMenuOptions((o) => o.map((x, j) => j === i ? { ...x, next: e.target.value } : x))}
-                            className="w-32 rounded-lg border border-slate-200 px-2 py-1 text-xs focus:outline-none">
-                            <option value="">— ninguno —</option>
-                            {allNodeIds.map((nid) => <option key={nid} value={nid}>{nid}</option>)}
-                          </select>
-                          <button onClick={() => setMenuOptions((o) => o.filter((_, j) => j !== i))}
-                            className="text-red-400 hover:text-red-600"><Trash2 className="w-3.5 h-3.5" /></button>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
+                  <MenuOptionsEditor
+                    compact
+                    options={menuOptions}
+                    nextNodeOptions={allNodeIds.map((nid) => ({ value: nid, label: nid }))}
+                    onAddOption={() => setMenuOptions((o) => [...o, { id: `opt_${o.length + 1}`, title: "", next: "" }])}
+                    onRemoveOption={(index) => setMenuOptions((o) => o.filter((_, i) => i !== index))}
+                    onChangeOption={(index, key, value) => {
+                      setMenuOptions((prev) => prev.map((option, i) => i === index ? { ...option, [key]: value } : option));
+                    }}
+                    showNextSelector
+                    title="Opciones"
+                    addLabel="Agregar opción"
+                    emptyText="Sin opciones"
+                    idPlaceholder="id"
+                    titlePlaceholder="Título"
+                    nextPlaceholder="— ninguno —"
+                  />
                 </>
               )}
               {/* condition */}
