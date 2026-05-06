@@ -14,7 +14,7 @@ import { useAuthStore } from "@/store/auth";
 import {
   AlertTriangle, CheckCircle2, Plus, Save, Sparkles, Trash2, Wrench,
   Upload, Download, ShieldAlert, ShieldCheck, Play, Phone, Zap, ArrowRight,
-  ChevronRight, RotateCcw, Copy, Check, History, FileJson,
+  ChevronRight, RotateCcw, Copy, Check, CheckCheck, History, FileJson, Eye, EyeOff,
 } from "lucide-react";
 import NodeEditorPanel from "@/components/flujos/NodeEditorPanel";
 import FlowNode from "@/components/flujos/FlowNode";
@@ -200,8 +200,14 @@ interface FlowMetrics {
 }
 
 interface TestChatStep {
-  role: "user" | "bot";
+  id: string;
+  kind: "text" | "buttons" | "list" | "system" | "debug";
+  role: "user" | "bot" | "system";
   text: string;
+  status?: "sending" | "sent" | "read";
+  options?: string[];
+  items?: string[];
+  meta?: Record<string, unknown>;
   nodeId?: string;
   timestamp: string;
 }
@@ -365,8 +371,11 @@ export default function FlujoSPage() {
   const [testScenario, setTestScenario] = useState<SandboxScenario>("live");
   const [testIndustry, setTestIndustry] = useState<SandboxIndustry>("general");
   const [testAutoRepair, setTestAutoRepair] = useState(true);
+  const [testShowDebug, setTestShowDebug] = useState(false);
+  const [testReplaying, setTestReplaying] = useState(false);
   const [sandboxReport, setSandboxReport] = useState<SandboxRepairReport | null>(null);
   const testChatEndRef = useRef<HTMLDivElement | null>(null);
+  const testMessageSeq = useRef(0);
 
   // ── WABA Rescue tab
   const [flowJsonInput, setFlowJsonInput] = useState("");
@@ -1041,14 +1050,134 @@ export default function FlujoSPage() {
 
   // ── Test / Probar ───────────────────────────────────────────────────────────
 
-  async function handleTestStep() {
-    if (!testInput.trim() || !selectedFlowId) return;
+  function chatTime() {
+    return new Date().toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" });
+  }
+
+  function nextTestMessageId(prefix: string) {
+    testMessageSeq.current += 1;
+    return `${prefix}-${testMessageSeq.current}`;
+  }
+
+  function markLatestUserAsRead() {
+    setTestSteps(prev => {
+      const copy = [...prev];
+      for (let index = copy.length - 1; index >= 0; index -= 1) {
+        if (copy[index].role === "user") {
+          copy[index] = { ...copy[index], status: "read" };
+          break;
+        }
+      }
+      return copy;
+    });
+  }
+
+  function addSystemEvent(text: string, meta?: Record<string, unknown>) {
+    setTestSteps(prev => [...prev, {
+      id: nextTestMessageId("sys"),
+      kind: "system",
+      role: "system",
+      text,
+      meta,
+      timestamp: chatTime(),
+    }]);
+  }
+
+  function buildNoReplyMessage() {
+    return [
+      "El flujo no genero respuesta",
+      "Posibles causas:",
+      "- Nodo sin output",
+      "- Error en webhook",
+      "- Condición no cumplida",
+    ].join("\n");
+  }
+
+  function parseReplyToMessages(reply: string, nextScreen?: string): TestChatStep[] {
+    const messageId = nextTestMessageId("bot");
+    const ts = chatTime();
+    try {
+      const parsed = JSON.parse(reply) as { type?: string; text?: string; buttons?: string[]; items?: string[] };
+      if (parsed?.type === "buttons" && Array.isArray(parsed.buttons)) {
+        return [{
+          id: messageId,
+          kind: "buttons",
+          role: "bot",
+          text: parsed.text || "Selecciona una opción:",
+          options: parsed.buttons,
+          nodeId: nextScreen,
+          timestamp: ts,
+        }];
+      }
+      if (parsed?.type === "list" && Array.isArray(parsed.items)) {
+        return [{
+          id: messageId,
+          kind: "list",
+          role: "bot",
+          text: parsed.text || "Resultados:",
+          items: parsed.items,
+          nodeId: nextScreen,
+          timestamp: ts,
+        }];
+      }
+      if (typeof parsed?.text === "string" && parsed.text.trim()) {
+        return [{
+          id: messageId,
+          kind: "text",
+          role: "bot",
+          text: parsed.text,
+          nodeId: nextScreen,
+          timestamp: ts,
+        }];
+      }
+    } catch {
+      // Non-JSON reply: continue with text parsing.
+    }
+
+    if (reply.includes("\n- ")) {
+      const lines = reply.split("\n").map(line => line.trim()).filter(Boolean);
+      return [{
+        id: messageId,
+        kind: "list",
+        role: "bot",
+        text: lines[0] || "Opciones",
+        items: lines.slice(1).map(line => line.replace(/^-\s*/, "")),
+        nodeId: nextScreen,
+        timestamp: ts,
+      }];
+    }
+
+    return [{
+      id: messageId,
+      kind: "text",
+      role: "bot",
+      text: reply,
+      nodeId: nextScreen,
+      timestamp: ts,
+    }];
+  }
+
+  async function handleTestStep(messageOverride?: string) {
+    const userMsg = (messageOverride ?? testInput).trim();
+    if (!userMsg || !selectedFlowId || testRunning) return;
+
     setTestRunning(true);
     setTestError("");
-    const userMsg = testInput.trim();
-    setTestInput("");
-    const timestamp = new Date().toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" });
-    setTestSteps(prev => [...prev, { role: "user", text: userMsg, timestamp }]);
+    if (!messageOverride) setTestInput("");
+
+    const userMessageId = nextTestMessageId("usr");
+    if (testSteps.length === 0) {
+      addSystemEvent("Usuario entro al flujo", { sessionId: testSessionId });
+    }
+
+    setTestSteps(prev => [...prev, {
+      id: userMessageId,
+      kind: "text",
+      role: "user",
+      text: userMsg,
+      status: "sent",
+      timestamp: chatTime(),
+    }]);
 
     if (testScenario !== "live") {
       window.setTimeout(() => {
@@ -1056,46 +1185,82 @@ export default function FlujoSPage() {
         const msg = `${report.scenarioLabel}: ${report.detectedIssue}`;
         setTestError(msg);
         setSandboxReport(report);
-        setTestSteps(prev => [...prev, {
-          role: "bot",
-          text: testAutoRepair
-            ? "Detecté una falla simulada y preparé una corrección sugerida en el panel de copiloto."
-            : "Detecté una falla simulada. Revisa el panel de copiloto para ver el diagnóstico.",
-          timestamp: new Date().toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" }),
-        }]);
+        addSystemEvent("Se ejecuto webhook (simulado)", { scenario: testScenario, industry: testIndustry });
+        setTestSteps(prev => [...prev,
+          {
+            id: nextTestMessageId("bot"),
+            kind: "buttons",
+            role: "bot",
+            text: testAutoRepair
+              ? "Detecté una falla simulada. ¿Qué deseas hacer?"
+              : "Falla simulada detectada. Puedes continuar con estas acciones:",
+            options: ["Ver diagnóstico", "Reintentar", "Derivar a asesor"],
+            timestamp: chatTime(),
+          },
+        ]);
+        markLatestUserAsRead();
+        if (testShowDebug) {
+          setTestSteps(prev => [...prev, {
+            id: nextTestMessageId("dbg"),
+            kind: "debug",
+            role: "system",
+            text: `Nodo: webhook_${testIndustry}\nStatus: error\nResponse: ${report.scenarioLabel}`,
+            timestamp: chatTime(),
+          }]);
+        }
         setTestRunning(false);
-      }, 900);
+      }, 1200);
       return;
     }
 
     try {
+      await new Promise(resolve => setTimeout(resolve, 1200));
       const res = await flowsApi.execute(selectedFlowId, {
         sessionId: testSessionId,
         mensaje: userMsg,
         tenantId: selectedTenantId,
       });
       const data = (res as { data: { reply?: string; response?: string; nextScreen?: string } }).data;
-      const reply = data.reply ?? data.response ?? "✓ (sin respuesta de texto)";
-      setTestSteps(prev => [...prev, {
-        role: "bot",
-        text: reply,
-        nodeId: data.nextScreen,
-        timestamp: new Date().toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" }),
-      }]);
+      const rawReply = (data.reply ?? data.response ?? "").trim();
+      const reply = rawReply || buildNoReplyMessage();
+      const botMessages = parseReplyToMessages(reply, data.nextScreen);
+
+      setTestSteps(prev => [...prev, ...botMessages]);
+      markLatestUserAsRead();
+      addSystemEvent("Se ejecuto webhook", {
+        node: data.nextScreen || "desconocido",
+        status: rawReply ? "ok" : "warning",
+      });
+
+      if (testShowDebug) {
+        setTestSteps(prev => [...prev, {
+          id: nextTestMessageId("dbg"),
+          kind: "debug",
+          role: "system",
+          text: `Nodo: ${data.nextScreen || "N/A"}\nStatus: ${rawReply ? "ok" : "warning"}\nResponse: ${rawReply ? "TEXT" : "EMPTY_OUTPUT"}`,
+          timestamp: chatTime(),
+        }]);
+      }
       setSandboxReport(null);
     } catch (err: unknown) {
       const e = err as { response?: { data?: { error?: string } } };
       const msg = e.response?.data?.error ?? "Error al ejecutar el paso";
       setTestError(msg);
+      addSystemEvent("Error en nodo de flujo", { status: "error", detail: msg });
       if (testAutoRepair) {
         setSandboxReport(buildSandboxReport("400", userMsg));
       }
       setTestSteps(prev => [...prev, {
+        id: nextTestMessageId("bot"),
+        kind: "text",
         role: "bot",
         text: `Error: ${msg}`,
-        timestamp: new Date().toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" }),
+        timestamp: chatTime(),
       }]);
-    } finally { setTestRunning(false); }
+      markLatestUserAsRead();
+    } finally {
+      setTestRunning(false);
+    }
   }
 
   function resetTest() {
@@ -1103,6 +1268,18 @@ export default function FlujoSPage() {
     setTestError("");
     setTestInput("");
     setSandboxReport(null);
+  }
+
+  async function replayConversation() {
+    if (testRunning || testReplaying || testSteps.length === 0) return;
+    const snapshot = [...testSteps];
+    setTestReplaying(true);
+    setTestSteps([]);
+    for (const step of snapshot) {
+      setTestSteps(prev => [...prev, step]);
+      await new Promise(resolve => setTimeout(resolve, step.role === "user" ? 450 : 700));
+    }
+    setTestReplaying(false);
   }
 
   useEffect(() => {
@@ -2943,6 +3120,19 @@ export default function FlujoSPage() {
                 <button onClick={() => setActiveTab("exportar")} disabled={rfNodes.length === 0} className="flex items-center gap-1 text-xs border px-3 py-1.5 rounded-lg hover:bg-gray-50 disabled:opacity-40">
                   <Download className="w-3 h-3" /> Exportar
                 </button>
+                <button
+                  onClick={() => { void replayConversation(); }}
+                  disabled={testRunning || testReplaying || testSteps.length === 0}
+                  className="flex items-center gap-1 text-xs border px-3 py-1.5 rounded-lg hover:bg-gray-50 disabled:opacity-40"
+                >
+                  <History className="w-3 h-3" /> {testReplaying ? "Reproduciendo" : "Reproducir"}
+                </button>
+                <button
+                  onClick={() => setTestShowDebug((prev) => !prev)}
+                  className="flex items-center gap-1 text-xs border px-3 py-1.5 rounded-lg hover:bg-gray-50"
+                >
+                  {testShowDebug ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />} Debug
+                </button>
                 <button onClick={resetTest} className="flex items-center gap-1 text-xs border px-3 py-1.5 rounded-lg hover:bg-gray-50">
                   <RotateCcw className="w-3 h-3" /> Reiniciar
                 </button>
@@ -2954,7 +3144,7 @@ export default function FlujoSPage() {
                 {quickTestPrompts.map((prompt) => (
                   <button
                     key={prompt}
-                    onClick={() => setTestInput(prompt)}
+                    onClick={() => { void handleTestStep(prompt); }}
                     className="px-3 py-1.5 rounded-full bg-white border text-xs text-slate-600 hover:bg-slate-100 transition"
                   >
                     {prompt}
@@ -2982,21 +3172,63 @@ export default function FlujoSPage() {
                   {selectedFlowId ? "Escribe un mensaje para iniciar la prueba. Cuando todo se vea bien, pasa a Exportar." : "Selecciona un flujo para comenzar la simulación."}
                 </div>
               )}
-              {testSteps.map((step, i) => (
-                <div key={i} className={`flex ${step.role === "user" ? "justify-end" : "justify-start"}`}>
-                  <div className={`max-w-[70%] px-3 py-2 rounded-xl text-sm shadow-sm ${
-                    step.role === "user"
-                      ? "bg-[#dcf8c6] text-gray-800 rounded-br-none"
-                      : "bg-white text-gray-800 rounded-bl-none"
-                  }`}>
-                    {step.text}
-                    <div className="mt-1 flex items-center justify-end gap-1 text-[10px] text-gray-400">
-                      {step.nodeId && <span className="truncate max-w-[140px]">→ {step.nodeId}</span>}
-                      <span>{step.timestamp}</span>
+              {testSteps.map((step) => {
+                if (step.kind === "debug" && !testShowDebug) {
+                  return null;
+                }
+
+                if (step.kind === "system" || step.role === "system") {
+                  return (
+                    <div key={step.id} className="flex justify-center">
+                      <div className="max-w-[85%] rounded-lg bg-[#dfe7ea] text-[#425a66] px-3 py-1.5 text-[11px]">
+                        {step.text}
+                      </div>
+                    </div>
+                  );
+                }
+
+                return (
+                  <div key={step.id} className={`flex ${step.role === "user" ? "justify-end" : "justify-start"}`}>
+                    <div className={`max-w-[72%] px-3 py-2 rounded-xl text-sm shadow-sm ${
+                      step.role === "user"
+                        ? "bg-[#dcf8c6] text-gray-800 rounded-br-none"
+                        : "bg-white text-gray-800 rounded-bl-none"
+                    }`}>
+                      <div className="whitespace-pre-wrap">{step.text}</div>
+
+                      {step.kind === "buttons" && step.options && step.options.length > 0 && (
+                        <div className="mt-2 grid gap-1.5">
+                          {step.options.map((option) => (
+                            <button
+                              key={`${step.id}-${option}`}
+                              onClick={() => { void handleTestStep(option); }}
+                              disabled={testRunning}
+                              className="text-left text-xs rounded-md border border-emerald-200 bg-emerald-50 px-2.5 py-1.5 hover:bg-emerald-100 disabled:opacity-50"
+                            >
+                              {option}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+
+                      {step.kind === "list" && step.items && step.items.length > 0 && (
+                        <div className="mt-2 rounded-lg bg-slate-50 border px-2.5 py-2">
+                          {step.items.map((item) => (
+                            <div key={`${step.id}-${item}`} className="text-xs text-slate-700 py-1 border-b last:border-b-0">{item}</div>
+                          ))}
+                        </div>
+                      )}
+
+                      <div className="mt-1 flex items-center justify-end gap-1 text-[10px] text-gray-400">
+                        {step.nodeId && <span className="truncate max-w-[140px]">→ {step.nodeId}</span>}
+                        <span>{step.timestamp}</span>
+                        {step.role === "user" && step.status === "sent" && <Check className="w-3 h-3" />}
+                        {step.role === "user" && step.status === "read" && <CheckCheck className="w-3 h-3 text-blue-500" />}
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
               {testRunning && (
                 <div className="flex justify-start">
                   <div className="bg-white px-3 py-2 rounded-xl rounded-bl-none text-sm shadow-sm text-gray-500 animate-pulse flex items-center gap-2">
@@ -3020,11 +3252,11 @@ export default function FlujoSPage() {
             {/* Input */}
             <div className="flex items-center gap-2 p-3 border-t bg-[#f0f2f5]">
               <input value={testInput} onChange={e => setTestInput(e.target.value)}
-                onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleTestStep(); } }}
+                onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void handleTestStep(); } }}
                 placeholder={selectedFlowId ? "Escribe como si fueras el usuario final…" : "Selecciona un flujo primero"}
                 disabled={!selectedFlowId || testRunning}
                 className="flex-1 border rounded-full px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30 disabled:opacity-50 bg-white" />
-              <button onClick={handleTestStep} disabled={!selectedFlowId || testRunning || !testInput.trim()}
+              <button onClick={() => { void handleTestStep(); }} disabled={!selectedFlowId || testRunning || !testInput.trim()}
                 className="bg-green-600 text-white rounded-full px-4 py-2 text-sm hover:bg-green-700 disabled:opacity-40 transition flex items-center gap-1">
                 <Play className="w-4 h-4" />
               </button>
