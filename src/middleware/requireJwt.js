@@ -5,6 +5,16 @@ const { getRedisClient } = require('../services/redis');
 
 const prisma = new PrismaClient();
 
+function normalizeEmail(value) {
+  if (typeof value !== 'string') return '';
+  return value.trim().toLowerCase();
+}
+
+function isConfiguredEnvAdminEmail(email) {
+  const configured = normalizeEmail(process.env.ADMIN_EMAIL);
+  return Boolean(configured && normalizeEmail(email) === configured);
+}
+
 async function requireJwt(req, res, next) {
   const header = req.headers.authorization || '';
   const token = header.replace(/^Bearer\s+/i, '');
@@ -70,7 +80,7 @@ async function requireJwt(req, res, next) {
         email: user.email,
         nombre: user.nombre,
         tenantId: user.tenantId,
-        superAdmin: user.superAdmin,
+        superAdmin: Boolean(user.superAdmin || isConfiguredEnvAdminEmail(user.email)),
         permissions,
         _jti: payload.jti,
         _exp: payload.exp,

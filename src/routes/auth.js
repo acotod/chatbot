@@ -79,6 +79,11 @@ function normalizeEmail(value) {
   return value.trim().toLowerCase();
 }
 
+function isConfiguredEnvAdminEmail(email) {
+  const configured = normalizeEmail(process.env.ADMIN_EMAIL);
+  return Boolean(configured && normalizeEmail(email) === configured);
+}
+
 async function findAdminUserByEmailCaseInsensitive(email) {
   return prisma.adminUser.findFirst({
     where: { email: { equals: email, mode: 'insensitive' } },
@@ -222,14 +227,16 @@ router.post('/login', loginRateLimiter, async (req, res) => {
       data: { failedAttempts: 0, lockedUntil: null },
     });
 
+    const effectiveSuperAdmin = Boolean(user.superAdmin || isConfiguredEnvAdminEmail(user.email));
+
     const { token: accessToken } = signAccess(
-      { adminUserId: user.id, email: user.email, superAdmin: user.superAdmin, tenantId: user.tenantId ?? null },
+      { adminUserId: user.id, email: user.email, superAdmin: effectiveSuperAdmin, tenantId: user.tenantId ?? null },
       jwtSecret,
     );
     const refreshToken = await issueRefreshToken(user.id);
 
     audit({ adminUserId: user.id, tenantId: user.tenantId, accion: 'LOGIN', entidad: 'admin_user', entidadId: user.id, ip, userAgent });
-    return res.json({ accessToken, refreshToken, expiresIn: ACCESS_TTL, superAdmin: user.superAdmin });
+    return res.json({ accessToken, refreshToken, expiresIn: ACCESS_TTL, superAdmin: effectiveSuperAdmin });
   } catch (err) {
     return res.status(500).json({ error: 'Auth error' });
   }
@@ -270,8 +277,10 @@ router.post('/facebook', loginRateLimiter, async (req, res) => {
       data: { failedAttempts: 0, lockedUntil: null },
     });
 
+    const effectiveSuperAdmin = Boolean(user.superAdmin || isConfiguredEnvAdminEmail(user.email));
+
     const { token: accessTokenJwt } = signAccess(
-      { adminUserId: user.id, email: user.email, superAdmin: user.superAdmin, tenantId: user.tenantId ?? null },
+      { adminUserId: user.id, email: user.email, superAdmin: effectiveSuperAdmin, tenantId: user.tenantId ?? null },
       jwtSecret,
     );
     const refreshToken = await issueRefreshToken(user.id);
@@ -287,7 +296,7 @@ router.post('/facebook', loginRateLimiter, async (req, res) => {
       metadata: { via: 'facebook', facebookId: profile.facebookId },
     });
 
-    return res.json({ accessToken: accessTokenJwt, refreshToken, expiresIn: ACCESS_TTL, superAdmin: user.superAdmin });
+    return res.json({ accessToken: accessTokenJwt, refreshToken, expiresIn: ACCESS_TTL, superAdmin: effectiveSuperAdmin });
   } catch (err) {
     const status = err.status || 500;
     if (status >= 500) {
@@ -369,8 +378,10 @@ router.post('/google', loginRateLimiter, async (req, res) => {
       data: { failedAttempts: 0, lockedUntil: null },
     });
 
+    const effectiveSuperAdmin = Boolean(user.superAdmin || isConfiguredEnvAdminEmail(user.email));
+
     const { token: accessToken } = signAccess(
-      { adminUserId: user.id, email: user.email, superAdmin: user.superAdmin, tenantId: user.tenantId ?? null },
+      { adminUserId: user.id, email: user.email, superAdmin: effectiveSuperAdmin, tenantId: user.tenantId ?? null },
       jwtSecret,
     );
     const refreshToken = await issueRefreshToken(user.id);
@@ -386,7 +397,7 @@ router.post('/google', loginRateLimiter, async (req, res) => {
       metadata: { via: 'google', googleId: profile.googleId },
     });
 
-    return res.json({ accessToken, refreshToken, expiresIn: ACCESS_TTL, superAdmin: user.superAdmin });
+    return res.json({ accessToken, refreshToken, expiresIn: ACCESS_TTL, superAdmin: effectiveSuperAdmin });
   } catch (err) {
     const status = err.status || 500;
     if (status >= 500) {
@@ -413,8 +424,10 @@ router.post('/refresh', async (req, res) => {
 
     if (stored && !stored.revoked && stored.expiresAt >= new Date()) {
       const user = stored.adminUser;
+      const effectiveSuperAdmin = Boolean(user.superAdmin || isConfiguredEnvAdminEmail(user.email));
+
       const { token: accessToken } = signAccess(
-        { adminUserId: user.id, email: user.email, superAdmin: user.superAdmin, tenantId: user.tenantId ?? null },
+        { adminUserId: user.id, email: user.email, superAdmin: effectiveSuperAdmin, tenantId: user.tenantId ?? null },
         jwtSecret,
       );
 
