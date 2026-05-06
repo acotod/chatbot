@@ -329,19 +329,49 @@ function importFromWaba(wabaJson, flowName) {
  * Convert an internal FlowVersion definition back to Meta WABA Flows JSON.
  */
 function exportToWaba(definition) {
+  function indexToLetters(index) {
+    let n = index;
+    let out = '';
+    while (n > 0) {
+      n -= 1;
+      out = String.fromCharCode(65 + (n % 26)) + out;
+      n = Math.floor(n / 26);
+    }
+    return out || 'A';
+  }
+
+  function normalizeScreenId(raw, index) {
+    const normalized = String(raw ?? '')
+      .toUpperCase()
+      .replace(/[^A-Z_]/g, '_')
+      .replace(/_+/g, '_')
+      .replace(/^_+|_+$/g, '');
+
+    if (normalized && /[A-Z]/.test(normalized)) return normalized;
+    return `SCREEN_${indexToLetters(index + 1)}`;
+  }
+
   const nodes = definition.nodes ?? [];
   const screens = [];
+  const usedIds = new Set();
+  const nodeIdToScreenId = new Map();
+
+  nodes.forEach((node, index) => {
+    const base = normalizeScreenId(node._waba_screen_id ?? node.id, index);
+    let candidate = base;
+    let suffix = 0;
+    while (usedIds.has(candidate)) {
+      suffix += 1;
+      candidate = `${base}_${indexToLetters(suffix)}`;
+    }
+    usedIds.add(candidate);
+    nodeIdToScreenId.set(node.id, candidate);
+  });
 
   nodes.forEach((node) => {
-    // If we have the original WABA screen preserved, use it for round-trip fidelity
-    if (node.config?._waba_screen) {
-      screens.push({ ...node.config._waba_screen });
-      return;
-    }
-
-    // Otherwise, synthesize a screen from the node definition
+    const screenId = nodeIdToScreenId.get(node.id);
     const screen = {
-      id:       node._waba_screen_id ?? node.id,
+      id:       screenId,
       title:    node.config?.title ?? node.config?.text ?? `Screen ${node.id}`,
       terminal: node.type === 'end',
       layout: {
@@ -373,7 +403,7 @@ function exportToWaba(definition) {
         label: node.config.label ?? 'Selecciona una opción',
         name: node.config.variable ?? `${node.id}_selection`,
         required: true,
-        data_source: node.config.options.map((o) => ({
+        'data-source': node.config.options.map((o) => ({
           id: o.id,
           title: o.title,
         })),
@@ -385,21 +415,17 @@ function exportToWaba(definition) {
       screen.layout.children.push({
         type: 'Footer',
         label: node.config?.button_label ?? 'Continuar',
-        on_click_action: {
+        'on-click-action': {
           name: 'navigate',
-          navigate: {
-            screen: node.next,
-          },
-          payload: {},
+          next: { type: 'screen', name: nodeIdToScreenId.get(node.next) ?? node.next },
         },
       });
     } else if (node.type === 'end') {
       screen.layout.children.push({
         type: 'Footer',
         label: node.config?.button_label ?? 'Finalizar',
-        on_click_action: {
+        'on-click-action': {
           name: 'complete',
-          payload: {},
         },
       });
     }
@@ -407,12 +433,36 @@ function exportToWaba(definition) {
     screens.push(screen);
   });
 
+  const routing_model = {};
+  nodes.forEach((node) => {
+    const sourceId = nodeIdToScreenId.get(node.id);
+    if (!sourceId) return;
+
+    const targets = [];
+    if (node.next && nodeIdToScreenId.has(node.next)) {
+      targets.push(nodeIdToScreenId.get(node.next));
+    }
+    Object.values(node.branches ?? {}).forEach((targetNodeId) => {
+      if (nodeIdToScreenId.has(targetNodeId)) {
+        targets.push(nodeIdToScreenId.get(targetNodeId));
+      }
+    });
+
+    routing_model[sourceId] = [...new Set(targets)];
+  });
+
+  const entryNodeId = definition.entry_point && nodeIdToScreenId.has(definition.entry_point)
+    ? definition.entry_point
+    : nodes[0]?.id;
+  const entryScreenId = entryNodeId && nodeIdToScreenId.has(entryNodeId)
+    ? nodeIdToScreenId.get(entryNodeId)
+    : 'SCREEN_A';
+  routing_model.entry_screen = [entryScreenId];
+
   return {
     version: definition.version ?? '7.1',
     data_api_version: definition.data_api_version ?? '3.0',
-    routing_model: {
-      entry_screen: nodes[0]?._waba_screen_id ?? nodes[0]?.id ?? 'SCREEN_1',
-    },
+    routing_model,
     screens,
   };
 }
