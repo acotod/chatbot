@@ -329,6 +329,11 @@ function importFromWaba(wabaJson, flowName) {
  * Convert an internal FlowVersion definition back to Meta WABA Flows JSON.
  */
 function exportToWaba(definition) {
+  function normalizeDropdownLabel(rawLabel) {
+    const base = String(rawLabel ?? '').trim() || 'Elige una opcion';
+    return base.length <= 20 ? base : `${base.slice(0, 19).trimEnd()}…`;
+  }
+
   function indexToLetters(index) {
     let n = index;
     let out = '';
@@ -400,7 +405,7 @@ function exportToWaba(definition) {
     if (node.type === 'menu' && Array.isArray(node.config?.options)) {
       screen.layout.children.push({
         type: 'Dropdown',
-        label: node.config.label ?? 'Selecciona una opción',
+        label: normalizeDropdownLabel(node.config.label),
         name: node.config.variable ?? `${node.id}_selection`,
         required: true,
         'data-source': node.config.options.map((o) => ({
