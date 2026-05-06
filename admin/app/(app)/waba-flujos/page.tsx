@@ -545,6 +545,20 @@ function NodeEditModal({
     setActionResponse(ep.outputs.map((f) => ({ key: f, value: actionResponse.find((r) => r.key === f)?.value ?? `variables.${f}` })));
   }
 
+    function handleActionUrlChange(value: string) {
+      setActionUrl(value);
+
+      const matchedEndpoint = catalogEndpoints.find((ep) => ep.url.trim() === value.trim());
+      if (matchedEndpoint) {
+        applyEndpoint(matchedEndpoint);
+        return;
+      }
+
+      if (actionRef && selectedEp?.url !== value) {
+        setActionRef("");
+      }
+    }
+
   function buildConfig(): Record<string, unknown> {
     const body: Record<string, string> = {};
     actionBody.forEach((r) => { if (r.key.trim()) body[r.key.trim()] = r.value; });
@@ -886,7 +900,7 @@ function NodeEditModal({
                           <option key={ep.id} value={ep.url}>{ep.name}</option>
                         ))}
                       </datalist>
-                      <input list="waba-url-suggestions" value={actionUrl} onChange={(e) => setActionUrl(e.target.value)} placeholder="/api/billing/balance"
+                      <input list="waba-url-suggestions" value={actionUrl} onChange={(e) => handleActionUrlChange(e.target.value)} placeholder="/api/billing/balance"
                         className="w-full rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500" />
                     </div>
                   </div>
