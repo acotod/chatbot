@@ -451,14 +451,6 @@ function exportToWaba(definition) {
     routing_model[sourceId] = [...new Set(targets)];
   });
 
-  const entryNodeId = definition.entry_point && nodeIdToScreenId.has(definition.entry_point)
-    ? definition.entry_point
-    : nodes[0]?.id;
-  const entryScreenId = entryNodeId && nodeIdToScreenId.has(entryNodeId)
-    ? nodeIdToScreenId.get(entryNodeId)
-    : 'SCREEN_A';
-  routing_model.entry_screen = [entryScreenId];
-
   return {
     version: definition.version ?? '7.1',
     data_api_version: definition.data_api_version ?? '3.0',
