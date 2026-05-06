@@ -548,8 +548,7 @@ function NodeEditModal({
 
   const hasMenuValidationErrors =
     menuValidation.duplicateIds.length > 0 ||
-    menuValidation.missingIdIndexes.length > 0 ||
-    menuValidation.missingNextIndexes.length > 0;
+    menuValidation.missingIdIndexes.length > 0;
 
   useEffect(() => {
     if (type !== "menu") return;
@@ -614,7 +613,7 @@ function NodeEditModal({
   function handleSave() {
     if (!id.trim()) { setErr("El ID del nodo es obligatorio"); return; }
     if (type === "menu" && !showJson && hasMenuValidationErrors) {
-      setErr("Corrige las opciones del menú antes de guardar (IDs únicos y next obligatorio).");
+      setErr("Corrige las opciones del menú antes de guardar (IDs únicos y sin duplicados).");
       return;
     }
     let branches: Record<string, string>;
@@ -765,9 +764,6 @@ function NodeEditModal({
                       )}
                       {menuValidation.missingIdIndexes.length > 0 && (
                         <p>Opciones sin ID: {menuValidation.missingIdIndexes.map((i) => i + 1).join(", ")}</p>
-                      )}
-                      {menuValidation.missingNextIndexes.length > 0 && (
-                        <p>Opciones sin siguiente nodo: {menuValidation.missingNextIndexes.map((i) => i + 1).join(", ")}</p>
                       )}
                     </div>
                   )}
