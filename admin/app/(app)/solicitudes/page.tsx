@@ -211,6 +211,10 @@ export default function SolicitudesPage() {
     },
   });
 
+  const createPortalToken = useMutation({
+    mutationFn: (id: number) => solicitudesApi.createPortalToken(tenantSlug, id),
+  });
+
   const solicitudes: Solicitud[] = data?.data ?? [];
   const total: number = data?.total ?? 0;
   const agentes: Agente[] = agentesData?.data ?? agentesData ?? [];
@@ -415,6 +419,27 @@ export default function SolicitudesPage() {
                             className="text-xs text-rose-600 hover:text-rose-700 font-medium border border-rose-200 rounded-lg px-2 py-1 bg-rose-50 hover:bg-rose-100 transition"
                           >
                             Escalar
+                          </button>
+                        )}
+                        {tenantConfig.customerPortalEnabled && (
+                          <button
+                            onClick={async () => {
+                              try {
+                                const response = await createPortalToken.mutateAsync(s.id);
+                                const url = response?.data?.url;
+                                const path = response?.data?.path;
+                                const target = url || (typeof window !== "undefined" ? `${window.location.origin}${path}` : path);
+                                if (target && typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
+                                  await navigator.clipboard.writeText(String(target));
+                                  alert("Link de portal copiado");
+                                }
+                              } catch {
+                                alert("No se pudo generar el link del portal");
+                              }
+                            }}
+                            className="text-xs text-indigo-600 hover:text-indigo-700 font-medium border border-indigo-200 rounded-lg px-2 py-1 bg-indigo-50 hover:bg-indigo-100 transition"
+                          >
+                            Link portal
                           </button>
                         )}
                         <button

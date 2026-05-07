@@ -11,6 +11,7 @@ const { audit } = require('../services/audit');
 const socketService = require('../services/socketService');
 const wa = require('../services/whatsapp');
 const convLogger = require('../engine/conversationLogger');
+const { generatePortalToken } = require('../services/portalAccess');
 
 // Multer: store logos under /app/uploads/logos (persisted volume in prod)
 const UPLOADS_DIR = path.join(process.cwd(), 'uploads', 'logos');
@@ -944,6 +945,41 @@ router.post('/tenants/:slug/solicitudes/:id/escalate', requirePermiso('EDIT_SOLI
         });
 
         return res.json(escalated);
+    } catch (err) {
+        next(err);
+    }
+});
+
+// POST /admin/tenants/:slug/solicitudes/:id/portal-token
+router.post('/tenants/:slug/solicitudes/:id/portal-token', requirePermiso('VIEW_SOLICITUDES'), async (req, res, next) => {
+    try {
+        const tenant = await db.findTenantBySlug(req.params.slug);
+        if (!tenant) return res.status(404).json({ error: 'Tenant not found' });
+        if (denyIfWrongTenant(req, res, tenant.id)) return;
+
+        const tenantConfig = await db.getSolicitudesEnterpriseConfig(tenant.id);
+        if (!tenantConfig.customerPortalEnabled) {
+            return res.status(403).json({ error: 'Customer portal is disabled for this tenant' });
+        }
+
+        const solicitud = await db.getSolicitudById(Number(req.params.id), tenant.id);
+        if (!solicitud) return res.status(404).json({ error: 'Solicitud not found' });
+
+        const token = generatePortalToken({
+            tenantId: tenant.id,
+            solicitudId: solicitud.id,
+            userId: solicitud.userId ?? null,
+        });
+
+        const origin = process.env.CUSTOMER_PORTAL_BASE_URL || process.env.ADMIN_BASE_URL || '';
+        const normalizedOrigin = String(origin).replace(/\/+$/, '');
+        const path = `/portal/${encodeURIComponent(token)}/solicitudes`;
+
+        return res.json({
+            token,
+            path,
+            url: normalizedOrigin ? `${normalizedOrigin}${path}` : null,
+        });
     } catch (err) {
         next(err);
     }

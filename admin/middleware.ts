@@ -20,6 +20,7 @@ export function middleware(request: NextRequest) {
   const token = request.cookies.get('admin_token')?.value;
   const { pathname } = request.nextUrl;
   const isLoginPath = pathname.startsWith('/login');
+  const isPortalPath = pathname.startsWith('/portal');
 
   if (token) {
     const expMs = getTokenExpMs(token);
@@ -36,7 +37,7 @@ export function middleware(request: NextRequest) {
   }
 
   // No token and trying to access a protected route — send to login
-  if (!token && !isLoginPath) {
+  if (!token && !isLoginPath && !isPortalPath) {
     return NextResponse.redirect(new URL('/login', request.url));
   }
 

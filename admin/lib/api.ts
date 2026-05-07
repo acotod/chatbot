@@ -276,6 +276,8 @@ export const solicitudesApi = {
     apiClient.post(`/admin/tenants/${slug}/solicitudes/${id}/escalate`, {
       reason,
     }),
+  createPortalToken: (slug: string, id: number) =>
+    apiClient.post(`/admin/tenants/${slug}/solicitudes/${id}/portal-token`),
   listComments: (slug: string, id: number) =>
     apiClient.get(`/admin/tenants/${slug}/solicitudes/${id}/comments`),
   addComment: (slug: string, id: number, data: { content: string; visibility?: string; attachments?: unknown[] }) =>
@@ -286,6 +288,13 @@ export const solicitudesApi = {
     apiClient.patch(`/admin/tenants/${slug}/solicitudes/${id}`, data),
   bulkUpdate: (slug: string, ids: number[], updates: Record<string, unknown>) =>
     apiClient.post(`/admin/tenants/${slug}/solicitudes/bulk-update`, { ids, updates }),
+};
+
+export const portalApi = {
+  list: (token: string) => apiClient.get(`/portal/${encodeURIComponent(token)}/solicitudes`),
+  detail: (token: string, id: number) => apiClient.get(`/portal/${encodeURIComponent(token)}/solicitudes/${id}`),
+  addComment: (token: string, id: number, content: string) =>
+    apiClient.post(`/portal/${encodeURIComponent(token)}/solicitudes/${id}/comments`, { content }),
 };
 
 export const slaPoliciesApi = {

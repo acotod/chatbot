@@ -19,6 +19,7 @@ const variablesRouter      = require('./routes/variables');
 const flowsRouter          = require('./routes/flows');
 const wabaFlowsRouter      = require('./routes/waba-flows');
 const crmRouter            = require('./routes/crm');
+const portalRouter         = require('./routes/portal');
 const resolveTenant = require('./middleware/resolveTenant');
 const createRateLimiter = require('./middleware/rateLimiter');
 const errorHandler = require('./middleware/errorHandler');
@@ -121,6 +122,9 @@ app.use('/sandbox', sandboxRouter);
 app.use('/variables', variablesRouter);
 app.use('/waba-flows', wabaFlowsRouter);
 app.use('/crm', crmRouter);
+
+// Customer portal (token-based access, no admin JWT required)
+app.use('/portal', portalRouter);
 
 app.use(errorHandler);
 
