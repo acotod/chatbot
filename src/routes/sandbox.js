@@ -242,6 +242,15 @@ function getAutoRepliesFromEvents(events, fallbackInput) {
         prompt: String(payload?.text ?? payload?.body ?? payload?.message ?? '').trim(),
       }];
     }
+
+    // Plain message node — any input will advance the flow to the next node
+    if (nodeType === 'message') {
+      return [{
+        type: 'user_input',
+        text: fallbackInput,
+        prompt: '',
+      }];
+    }
   }
 
   return null;
@@ -1216,6 +1225,237 @@ router.post('/runs/:id/compliance', async (req, res, next) => {
     });
 
     return res.json({ ok: true, compliance: { runId: run.id, ...report } });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// POST /simulate/flows/auto
+// Discovers all active flows for a tenant and runs a full E2E simulation on
+// each one automatically. Returns per-flow results + compliance summaries.
+// ---------------------------------------------------------------------------
+router.post('/simulate/flows/auto', async (req, res, next) => {
+  try {
+    const { tenantId, tenant } = await resolveTenant(req, req.body);
+    if (!tenantId) {
+      return res.status(400).json({ error: 'tenantId or tenantSlug is required' });
+    }
+
+    const prisma = getPrismaClient();
+
+    // Fetch active flows for the tenant
+    const activeFlows = await prisma.flow.findMany({
+      where: { tenantId, activo: true },
+      select: { id: true, nombre: true },
+      orderBy: { id: 'asc' },
+    });
+
+    if (activeFlows.length === 0) {
+      return res.status(404).json({ error: 'No active flows found for tenant' });
+    }
+
+    const settings = await getSandboxSettings(tenantId);
+    const creds = await db.getConfig(tenantId, 'wa_credentials');
+    const phoneNumberId = String(req.body?.phoneNumberId ?? creds?.valor?.phoneNumberId ?? '').trim();
+    const accessToken = typeof req.body?.accessToken === 'string'
+      ? req.body.accessToken.trim()
+      : String(creds?.valor?.accessToken ?? '').trim();
+
+    if (!settings.outboundMetaMock && (!phoneNumberId || !accessToken)) {
+      return res.status(400).json({
+        error: 'WhatsApp credentials are required',
+        detail: 'Configure wa_credentials for the tenant or send phoneNumberId and accessToken explicitly.',
+      });
+    }
+
+    const sandboxApi = whatsappRouter._sandbox;
+    if (!sandboxApi?.handleIncomingMessage) {
+      return res.status(500).json({ error: 'Sandbox runtime is unavailable' });
+    }
+
+    const e2eMaxSteps = parseLimit(req.body?.e2eMaxSteps, 8, 30);
+    const e2eMaxRuns = parseLimit(req.body?.e2eMaxRuns, 12, 60);
+    const e2eTraverseAllPaths = req.body?.e2eTraverseAllPaths !== false;
+    const e2eUseLlm = req.body?.e2eUseLlm !== false;
+    const e2eFallbackInput = String(req.body?.e2eFallbackInput ?? 'ok').trim() || 'ok';
+
+    const flowResults = [];
+
+    for (const flow of activeFlows) {
+      // Generate an LLM-crafted trigger message or fall back to a generic greeting
+      let triggerText;
+      try {
+        triggerText = await generateLlmInput(
+          tenantId,
+          `You are a WhatsApp user. Generate a single short opening message (max 10 words) to naturally start the chatbot flow called "${flow.nombre}". Reply ONLY with the message text, no quotes, no explanation.`,
+          'hola',
+        );
+      } catch (_) {
+        triggerText = 'hola';
+      }
+
+      // Use a unique synthetic phone per flow so runs don't collide
+      const phone = `sandbox-auto-flow-${flow.id}`;
+      const simulatedMsgId = `sandbox-auto-${flow.id}-${Date.now()}`;
+
+      const msg = {
+        id: simulatedMsgId,
+        from: phone,
+        type: 'text',
+        timestamp: String(Math.floor(Date.now() / 1000)),
+        text: { body: triggerText },
+      };
+
+      let conversationId = null;
+      let conversationStatus = null;
+      let autoSteps = 0;
+      let branchRuns = [];
+      let complianceReport = null;
+      let errorMessage = null;
+
+      try {
+        const sandboxResult = await sandboxApi.handleIncomingMessage({
+          msg,
+          contacts: [{ wa_id: phone, profile: { name: 'Auto Trigger' } }],
+          tenant: tenant ?? { id: tenantId },
+          phoneNumberId,
+          accessToken,
+          correlationId: req.correlationId,
+          conversationMeta: {
+            sandbox: true,
+            source: 'sandbox_auto_trigger',
+            initiatedBy: 'admin',
+            flowId: flow.id,
+            outboundMetaMock: settings.outboundMetaMock,
+          },
+        });
+
+        let latestConversation = sandboxResult?.conversationId
+          ? await prisma.conversation.findFirst({
+              where: {
+                ...sandboxConversationWhere(tenantId, phone),
+                id: sandboxResult.conversationId,
+              },
+              select: { id: true, status: true, startedAt: true },
+            })
+          : await waitForSandboxConversation({ tenantId, userKey: phone });
+
+        if (latestConversation?.id) {
+          const tracedRun = await waitForSandboxTrace({
+            prisma,
+            tenantId,
+            conversationId: latestConversation.id,
+            minEvents: 2,
+            maxAttempts: 14,
+            delayMs: 120,
+          });
+          if (tracedRun) {
+            latestConversation = {
+              id: tracedRun.id,
+              status: tracedRun.status,
+              startedAt: tracedRun.startedAt,
+            };
+          }
+        }
+
+        if (latestConversation?.id) {
+          const e2eResult = await driveSandboxE2E({
+            prisma,
+            sandboxApi,
+            tenantId,
+            tenant,
+            phone,
+            req,
+            settings,
+            phoneNumberId,
+            accessToken,
+            initialConversation: latestConversation,
+            initialText: triggerText,
+            maxSteps: e2eMaxSteps,
+            maxRuns: e2eMaxRuns,
+            traverseAllPaths: e2eTraverseAllPaths,
+            useLlm: e2eUseLlm,
+            fallbackInput: e2eFallbackInput,
+          });
+          latestConversation = e2eResult.latestConversation ?? latestConversation;
+          autoSteps = e2eResult.autoSteps;
+          branchRuns = Array.isArray(e2eResult.branchRuns) ? e2eResult.branchRuns : [];
+        }
+
+        conversationId = latestConversation?.id ?? null;
+        conversationStatus = latestConversation?.status ?? null;
+
+        // Build compliance report for the last run
+        if (conversationId) {
+          const runForCompliance = await prisma.conversation.findFirst({
+            where: {
+              ...sandboxConversationWhere(tenantId, phone),
+              id: conversationId,
+            },
+            select: {
+              id: true,
+              status: true,
+              userKey: true,
+              startedAt: true,
+              endedAt: true,
+              events: {
+                orderBy: { createdAt: 'asc' },
+                select: { id: true, eventType: true, payload: true, createdAt: true },
+              },
+            },
+          });
+          if (runForCompliance) {
+            complianceReport = buildComplianceReport(runForCompliance);
+          }
+        }
+      } catch (flowErr) {
+        errorMessage = flowErr?.message ?? 'Unknown error';
+      }
+
+      flowResults.push({
+        flowId: flow.id,
+        flowName: flow.nombre,
+        triggerText,
+        conversationId,
+        conversationStatus,
+        e2e: {
+          autoSteps,
+          branchRuns: branchRuns.length,
+          branchConversationIds: branchRuns.map((b) => b?.conversationId).filter(Boolean),
+        },
+        compliance: complianceReport,
+        error: errorMessage,
+      });
+    }
+
+    const totalFlows = flowResults.length;
+    const successful = flowResults.filter((f) => !f.error).length;
+    const compliant = flowResults.filter((f) => f.compliance?.verdict === 'pass').length;
+
+    audit({
+      adminUserId: req.admin?.adminUserId,
+      tenantId,
+      accion: 'SANDBOX_AUTO_TRIGGER_FLOWS',
+      entidad: 'sandbox',
+      metadata: {
+        totalFlows,
+        successful,
+        compliant,
+        flowIds: activeFlows.map((f) => f.id),
+      },
+    });
+
+    return res.json({
+      ok: true,
+      summary: {
+        tenantId,
+        totalFlows,
+        successful,
+        compliant,
+      },
+      flows: flowResults,
+    });
   } catch (err) {
     next(err);
   }
