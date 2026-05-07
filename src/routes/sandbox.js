@@ -46,6 +46,19 @@ function parseLimit(value, fallback = 10, max = 50) {
   return Math.min(parsed, max);
 }
 
+function sandboxConversationWhere(tenantId, userKey) {
+  const where = {
+    tenantId,
+    context: { path: ['meta', 'sandbox'], equals: true },
+  };
+
+  if (userKey) {
+    where.userKey = userKey;
+  }
+
+  return where;
+}
+
 router.get('/runs', async (req, res, next) => {
   try {
     const { tenantId } = await resolveTenant(req, req.query);
@@ -61,7 +74,7 @@ router.get('/runs', async (req, res, next) => {
     const prisma = getPrismaClient();
     const limit = parseLimit(req.query.limit, 10, 25);
     const runs = await prisma.conversation.findMany({
-      where: { tenantId, userKey },
+      where: sandboxConversationWhere(tenantId, userKey),
       orderBy: { startedAt: 'desc' },
       take: limit,
       include: {
@@ -97,7 +110,10 @@ router.get('/runs/:id', async (req, res, next) => {
 
     const prisma = getPrismaClient();
     const run = await prisma.conversation.findFirst({
-      where: { id: req.params.id, tenantId },
+      where: {
+        ...sandboxConversationWhere(tenantId),
+        id: req.params.id,
+      },
       include: {
         flow: { select: { id: true, nombre: true } },
         flowVersion: { select: { id: true, versionNumber: true, publishedAt: true } },
@@ -190,11 +206,16 @@ router.post('/simulate/inbound', async (req, res, next) => {
       phoneNumberId,
       accessToken,
       correlationId: req.correlationId,
+      conversationMeta: {
+        sandbox: true,
+        source: 'sandbox_emulator',
+        initiatedBy: 'admin',
+      },
     });
 
     const prisma = getPrismaClient();
     const latestConversation = await prisma.conversation.findFirst({
-      where: { tenantId, userKey: phone },
+      where: sandboxConversationWhere(tenantId, phone),
       orderBy: { startedAt: 'desc' },
       select: { id: true, status: true, startedAt: true },
     });

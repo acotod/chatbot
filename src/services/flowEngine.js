@@ -55,9 +55,10 @@ const prisma = new PrismaClient();
  * @param {number}      [opts.userId]       - DB user id (needed for ContextStore)
  * @param {string}      [opts.sessionKey]   - phone or other session identifier
  * @param {string}      [opts._conversationId] - internal: propagated through recursion
+ * @param {object}      [opts.conversationMeta] - persisted marker for conversation origin/scope
  * @returns {Promise<{ nodeId: string, content: object } | null>}
  */
-async function executeStep({ tenantId, currentNodeId, input, userId, sessionKey, _conversationId }) {
+async function executeStep({ tenantId, currentNodeId, input, userId, sessionKey, _conversationId, conversationMeta }) {
   // Lazy-load LLM service to avoid circular imports
   const llmService = require('./llmService');
 
@@ -107,7 +108,7 @@ async function executeStep({ tenantId, currentNodeId, input, userId, sessionKey,
   let conversationId = _conversationId ?? null;
   if (!conversationId && userKey) {
     conversationId = await convLogger.getOrCreate(
-      tenantId, userKey, flowDef.flowId, flowDef.versionId ?? null,
+      tenantId, userKey, flowDef.flowId, flowDef.versionId ?? null, { contextMeta: conversationMeta },
     );
   }
 
@@ -226,6 +227,7 @@ async function executeStep({ tenantId, currentNodeId, input, userId, sessionKey,
       userId,
       sessionKey,
       _conversationId: conversationId,
+      conversationMeta,
     });
   }
 
@@ -239,6 +241,7 @@ async function executeStep({ tenantId, currentNodeId, input, userId, sessionKey,
         userId,
         sessionKey,
         _conversationId: conversationId,
+        conversationMeta,
       });
     }
     return null;

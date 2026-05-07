@@ -184,7 +184,7 @@ router.post('/', verifyMetaSignature, async (req, res) => {
 
 // ── Private ──────────────────────────────────────────────────────────────────
 
-async function _handleIncomingMessage({ msg, contacts, tenant, phoneNumberId, accessToken, correlationId }) {
+async function _handleIncomingMessage({ msg, contacts, tenant, phoneNumberId, accessToken, correlationId, conversationMeta }) {
   const phone   = msg.from;
   const waMsgId = msg.id;
   const tipo    = msg.type;
@@ -313,19 +313,20 @@ async function _handleIncomingMessage({ msg, contacts, tenant, phoneNumberId, ac
 
   // ── Chatbot engine ───────────────────────────────────────────────────────
   if (userId !== null && userInput !== null && accessToken) {
-    _runChatbot({ tenant, userId, phone, userInput, phoneNumberId, accessToken, correlationId, inboundMensajeId: mensajeId })
+    _runChatbot({ tenant, userId, phone, userInput, phoneNumberId, accessToken, correlationId, inboundMensajeId: mensajeId, conversationMeta })
       .catch((err) => logger.error('_runChatbot error', { tenantId: tenant.id, message: err.message }));
   }
 }
 
 // ── Chatbot dispatcher ────────────────────────────────────────────────────────
 
-async function _runChatbot({ tenant, userId, phone, userInput, phoneNumberId, accessToken, correlationId, inboundMensajeId }) {
+async function _runChatbot({ tenant, userId, phone, userInput, phoneNumberId, accessToken, correlationId, inboundMensajeId, conversationMeta }) {
   const { response, fallbackToHuman, conversationId } = await chatbotRouter.routeMessage({
     tenantId: tenant.id,
     userId,
     input: userInput,
     phone,
+    conversationMeta,
   });
 
   // Back-fill conversationId on the inbound message that triggered this run

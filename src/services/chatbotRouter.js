@@ -20,10 +20,10 @@ const logger = require('../utils/logger');
 /**
  * Route a WhatsApp user input through the active chatbot engine.
  *
- * @param {{ tenantId: string, userId: number, input: string|null, phone?: string }} opts
+ * @param {{ tenantId: string, userId: number, input: string|null, phone?: string, conversationMeta?: object }} opts
  * @returns {Promise<{ response: object|null, fallbackToHuman: boolean }>}
  */
-async function routeMessage({ tenantId, userId, input, phone }) {
+async function routeMessage({ tenantId, userId, input, phone, conversationMeta }) {
   // Check if chatbot is enabled for this tenant
   const motorCfg = await db.getConfig(tenantId, 'motor_config');
   const engine = motorCfg?.valor?.engine ?? 'flow_engine';
@@ -44,6 +44,7 @@ async function routeMessage({ tenantId, userId, input, phone }) {
       input     : input ?? '',
       userId,
       sessionKey: phone ?? String(userId),
+      conversationMeta,
     });
   } catch (err) {
     logger.error('chatbotRouter: flow engine error', {

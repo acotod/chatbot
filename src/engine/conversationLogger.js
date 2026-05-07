@@ -24,6 +24,48 @@ const logger           = require('../utils/logger');
 
 const prisma = new PrismaClient();
 
+function normalizeMeta(meta) {
+  if (!meta || typeof meta !== 'object' || Array.isArray(meta)) return null;
+  return meta;
+}
+
+function buildContextWithMeta(context, meta) {
+  const safeContext = context && typeof context === 'object' && !Array.isArray(context)
+    ? { ...context }
+    : {};
+
+  const safeMeta = normalizeMeta(meta);
+  if (!safeMeta) return safeContext;
+
+  return {
+    ...safeContext,
+    meta: {
+      ...(safeContext.meta && typeof safeContext.meta === 'object' && !Array.isArray(safeContext.meta)
+        ? safeContext.meta
+        : {}),
+      ...safeMeta,
+    },
+  };
+}
+
+function buildActiveConversationWhere({ tenantId, userKey, flowId, contextMeta }) {
+  const where = {
+    tenantId,
+    userKey,
+    flowId,
+    status: 'active',
+    endedAt: null,
+  };
+
+  if (contextMeta?.sandbox === true) {
+    where.context = { path: ['meta', 'sandbox'], equals: true };
+  } else {
+    where.NOT = [{ context: { path: ['meta', 'sandbox'], equals: true } }];
+  }
+
+  return where;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Event type constants (source of truth — import this anywhere you log events)
 // ─────────────────────────────────────────────────────────────────────────────
@@ -66,17 +108,12 @@ const EVENT = Object.freeze({
  * @param {number|null} flowVersionId
  * @returns {Promise<string|null>}  UUID of the conversation, or null on error
  */
-async function getOrCreate(tenantId, userKey, flowId, flowVersionId = null) {
+async function getOrCreate(tenantId, userKey, flowId, flowVersionId = null, options = {}) {
   try {
+    const contextMeta = normalizeMeta(options.contextMeta);
     // Look for the most recent active conversation for this user+flow
     const existing = await prisma.conversation.findFirst({
-      where: {
-        tenantId,
-        userKey,
-        flowId,
-        status  : 'active',
-        endedAt : null,
-      },
+      where: buildActiveConversationWhere({ tenantId, userKey, flowId, contextMeta }),
       orderBy: { startedAt: 'desc' },
       select : { id: true },
     });
@@ -91,7 +128,7 @@ async function getOrCreate(tenantId, userKey, flowId, flowVersionId = null) {
         flowId,
         flowVersionId : flowVersionId ?? null,
         status        : 'active',
-        context       : {},
+        context       : buildContextWithMeta({}, contextMeta),
       },
       select: { id: true },
     });
@@ -150,9 +187,14 @@ async function log(conversationId, tenantId, nodeRef, eventType, payload = {}) {
 async function updateContext(conversationId, context) {
   if (!conversationId) return;
   try {
+    const current = await prisma.conversation.findUnique({
+      where: { id: conversationId },
+      select: { context: true },
+    });
+
     await prisma.conversation.update({
       where: { id: conversationId },
-      data : { context },
+      data : { context: buildContextWithMeta(context, current?.context?.meta) },
     });
   } catch (err) {
     logger.error({ conversationId, message: err.message },
@@ -173,12 +215,17 @@ async function updateContext(conversationId, context) {
 async function end(conversationId, status = 'completed', finalContext = {}) {
   if (!conversationId) return;
   try {
+    const current = await prisma.conversation.findUnique({
+      where: { id: conversationId },
+      select: { context: true },
+    });
+
     await prisma.conversation.update({
       where: { id: conversationId },
       data : {
         status,
         endedAt: new Date(),
-        context: finalContext,
+        context: buildContextWithMeta(finalContext, current?.context?.meta),
       },
     });
   } catch (err) {
