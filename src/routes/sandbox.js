@@ -257,7 +257,7 @@ router.post('/simulate/inbound', async (req, res, next) => {
       },
     });
 
-    const latestConversation = sandboxResult?.conversationId
+    let latestConversation = sandboxResult?.conversationId
       ? await getPrismaClient().conversation.findFirst({
           where: {
             ...sandboxConversationWhere(tenantId, phone),
@@ -266,6 +266,51 @@ router.post('/simulate/inbound', async (req, res, next) => {
           select: { id: true, status: true, startedAt: true },
         })
       : await waitForSandboxConversation({ tenantId, userKey: phone });
+
+    // Enterprise fallback: always persist a sandbox run so timeline/recent runs are traceable
+    // even when the chatbot runtime exits before creating a conversation (e.g. no active flow).
+    if (!latestConversation) {
+      const prisma = getPrismaClient();
+      const fallbackConversation = await prisma.conversation.create({
+        data: {
+          tenantId,
+          userKey: phone,
+          status: 'error',
+          context: {
+            meta: {
+              sandbox: true,
+              source: 'sandbox_emulator',
+              initiatedBy: 'admin',
+              fallbackRun: true,
+            },
+            simulation: {
+              phone,
+              text,
+              msgId: simulatedMsgId,
+              correlationId: req.correlationId,
+            },
+          },
+        },
+        select: { id: true, status: true, startedAt: true },
+      });
+
+      await prisma.conversationEvent.create({
+        data: {
+          conversationId: fallbackConversation.id,
+          tenantId,
+          nodeRef: null,
+          eventType: 'flow_error',
+          payload: {
+            reason: 'sandbox_runtime_completed_without_conversation',
+            message: 'No se creó conversación desde el runtime. Revisa que exista un flow activo para el tenant.',
+            simulatedMsgId,
+            phone,
+          },
+        },
+      });
+
+      latestConversation = fallbackConversation;
+    }
 
     audit({
       adminUserId: req.admin?.adminUserId,
