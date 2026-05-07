@@ -131,6 +131,130 @@ function getReplayInputsFromEvents(events) {
   }, []);
 }
 
+function firstMenuOptionId(options) {
+  if (Array.isArray(options)) {
+    for (const option of options) {
+      const id = String(option?.id ?? option?.value ?? '').trim();
+      if (id) return id;
+      const rows = Array.isArray(option?.rows) ? option.rows : [];
+      for (const row of rows) {
+        const rowId = String(row?.id ?? row?.value ?? '').trim();
+        if (rowId) return rowId;
+      }
+    }
+  }
+  return '';
+}
+
+function getAutoReplyFromEvents(events, fallbackInput) {
+  if (!Array.isArray(events) || events.length === 0) return null;
+
+  for (let index = events.length - 1; index >= 0; index -= 1) {
+    const event = events[index];
+    if (normalizeEventType(event) !== 'message_sent') continue;
+
+    const payload = event?.payload ?? {};
+    const nodeType = String(payload?.node_type ?? '').trim().toLowerCase();
+    if (nodeType === 'menu') {
+      const selectedId = firstMenuOptionId(payload?.options);
+      if (selectedId) {
+        return { type: 'menu_selection', text: selectedId };
+      }
+    }
+
+    if (nodeType === 'input') {
+      return { type: 'user_input', text: fallbackInput };
+    }
+  }
+
+  return null;
+}
+
+async function loadSandboxRunWithEvents(prisma, tenantId, conversationId) {
+  if (!conversationId) return null;
+  return prisma.conversation.findFirst({
+    where: {
+      ...sandboxConversationWhere(tenantId),
+      id: conversationId,
+    },
+    select: {
+      id: true,
+      status: true,
+      events: {
+        orderBy: { createdAt: 'asc' },
+        select: { id: true, eventType: true, payload: true, createdAt: true },
+      },
+    },
+  });
+}
+
+async function driveSandboxE2E({
+  prisma,
+  sandboxApi,
+  tenantId,
+  tenant,
+  phone,
+  req,
+  settings,
+  phoneNumberId,
+  accessToken,
+  initialConversation,
+  maxSteps,
+  fallbackInput,
+}) {
+  let latestConversation = initialConversation ?? null;
+  let autoSteps = 0;
+
+  for (let i = 0; i < maxSteps; i += 1) {
+    if (!latestConversation?.id) break;
+
+    const run = await loadSandboxRunWithEvents(prisma, tenantId, latestConversation.id);
+    if (!run || run.status !== 'active') break;
+
+    const nextReply = getAutoReplyFromEvents(run.events, fallbackInput);
+    if (!nextReply?.text) break;
+
+    const msg = {
+      id: `sandbox-e2e-${latestConversation.id}-${i + 1}-${Date.now()}`,
+      from: phone,
+      type: 'text',
+      timestamp: String(Math.floor(Date.now() / 1000)),
+      text: { body: nextReply.text },
+    };
+
+    const replayResult = await sandboxApi.handleIncomingMessage({
+      msg,
+      contacts: [{ wa_id: phone, profile: { name: req.body?.contactName ?? 'Sandbox E2E' } }],
+      tenant: tenant ?? { id: tenantId },
+      phoneNumberId,
+      accessToken,
+      correlationId: req.correlationId,
+      conversationMeta: {
+        sandbox: true,
+        source: 'sandbox_emulator_e2e',
+        initiatedBy: 'admin',
+        autoE2E: true,
+        outboundMetaMock: settings.outboundMetaMock,
+      },
+    });
+
+    autoSteps += 1;
+    latestConversation = replayResult?.conversationId
+      ? await prisma.conversation.findFirst({
+          where: {
+            ...sandboxConversationWhere(tenantId, phone),
+            id: replayResult.conversationId,
+          },
+          select: { id: true, status: true, startedAt: true },
+        })
+      : await waitForSandboxConversation({ tenantId, userKey: phone, maxAttempts: 4, delayMs: 120 });
+
+    await sleep(80);
+  }
+
+  return { latestConversation, autoSteps };
+}
+
 function buildComplianceReport(run) {
   const events = Array.isArray(run?.events) ? run.events : [];
   const checks = [
@@ -382,6 +506,10 @@ router.post('/simulate/inbound', async (req, res, next) => {
       return res.status(500).json({ error: 'Sandbox runtime is unavailable' });
     }
 
+    const e2eEnabled = req.body?.e2e !== false;
+    const e2eMaxSteps = parseLimit(req.body?.e2eMaxSteps, 8, 30);
+    const e2eFallbackInput = String(req.body?.e2eFallbackInput ?? 'ok').trim() || 'ok';
+
     const simulatedMsgId = `sandbox-${Date.now()}`;
     const msg = {
       id: simulatedMsgId,
@@ -406,8 +534,9 @@ router.post('/simulate/inbound', async (req, res, next) => {
       },
     });
 
+    const prisma = getPrismaClient();
     let latestConversation = sandboxResult?.conversationId
-      ? await getPrismaClient().conversation.findFirst({
+      ? await prisma.conversation.findFirst({
           where: {
             ...sandboxConversationWhere(tenantId, phone),
             id: sandboxResult.conversationId,
@@ -416,10 +545,29 @@ router.post('/simulate/inbound', async (req, res, next) => {
         })
       : await waitForSandboxConversation({ tenantId, userKey: phone });
 
+    let autoE2ESteps = 0;
+    if (e2eEnabled && latestConversation?.id) {
+      const e2eResult = await driveSandboxE2E({
+        prisma,
+        sandboxApi,
+        tenantId,
+        tenant,
+        phone,
+        req,
+        settings,
+        phoneNumberId,
+        accessToken,
+        initialConversation: latestConversation,
+        maxSteps: e2eMaxSteps,
+        fallbackInput: e2eFallbackInput,
+      });
+      latestConversation = e2eResult.latestConversation ?? latestConversation;
+      autoE2ESteps = e2eResult.autoSteps;
+    }
+
     // Enterprise fallback: always persist a sandbox run so timeline/recent runs are traceable
     // even when the chatbot runtime exits before creating a conversation (e.g. no active flow).
     if (!latestConversation) {
-      const prisma = getPrismaClient();
       const fallbackConversation = await prisma.conversation.create({
         data: {
           tenantId,
@@ -470,6 +618,9 @@ router.post('/simulate/inbound', async (req, res, next) => {
         phone,
         phoneNumberId,
         simulatedMsgId,
+        e2eEnabled,
+        e2eMaxSteps,
+        autoE2ESteps,
       },
     });
 
@@ -484,6 +635,11 @@ router.post('/simulate/inbound', async (req, res, next) => {
         conversationId: latestConversation?.id ?? null,
         conversationStatus: latestConversation?.status ?? null,
         outboundMetaMock: settings.outboundMetaMock,
+        e2e: {
+          enabled: e2eEnabled,
+          maxSteps: e2eMaxSteps,
+          autoSteps: autoE2ESteps,
+        },
       },
     });
   } catch (err) {
