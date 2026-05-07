@@ -84,6 +84,14 @@ interface Agente {
   estado?: string | null;
 }
 
+const SOLICITUD_STATUS_LABEL: Record<string, string> = {
+  open: "pendiente",
+  in_progress: "urgente",
+  pending_info: "pendiente info",
+  completed: "atendida",
+  rejected: "cancelada",
+};
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function extractText(msg: Pick<Mensaje, "tipo" | "contenido">): string {
@@ -354,7 +362,7 @@ export default function ConversacionesPage() {
         userId: activeThread.userId,
         nombre: activeThread._contactName ?? undefined,
         telefonoContacto: activeThread.user?.phone ?? undefined,
-        estado: "pendiente",
+        estado: "open",
       });
       const newId: number = r.data?.id;
       if (newId && escalarAgenteId) {
@@ -370,14 +378,14 @@ export default function ConversacionesPage() {
     }
   }
 
-  // Marcar urgente: create solicitud with estado urgente
+  // Marcar urgente: create solicitud with canonical in_progress status
   async function handleMarcarUrgente() {
     if (!tenantSlug || !activeThread?.userId) return;
     await solicitudesApi.create(tenantSlug, {
       userId: activeThread.userId,
       nombre: activeThread._contactName ?? undefined,
       telefonoContacto: activeThread.user?.phone ?? undefined,
-      estado: "urgente",
+      estado: "in_progress",
     });
     refetchSolicitudes();
   }
@@ -685,12 +693,12 @@ export default function ConversacionesPage() {
                       </p>
                       <span className={cn(
                         "text-[10px] font-semibold px-1.5 py-0.5 rounded-full shrink-0",
-                        s.estado === "urgente" ? "bg-red-100 text-red-600" :
-                        s.estado === "atendida" ? "bg-green-100 text-green-600" :
-                        s.estado === "cancelada" ? "bg-slate-100 text-slate-500" :
+                        s.estado === "in_progress" ? "bg-red-100 text-red-600" :
+                        s.estado === "completed" ? "bg-green-100 text-green-600" :
+                        s.estado === "rejected" ? "bg-slate-100 text-slate-500" :
                         "bg-yellow-100 text-yellow-700"
                       )}>
-                        {s.estado ?? "pendiente"}
+                        {s.estado ? (SOLICITUD_STATUS_LABEL[s.estado] ?? s.estado) : "pendiente"}
                       </span>
                     </div>
                     {s.agente && (
@@ -699,17 +707,17 @@ export default function ConversacionesPage() {
                       </p>
                     )}
                     <div className="flex gap-1">
-                      {s.estado !== "atendida" && (
+                      {s.estado !== "completed" && (
                         <button
-                          onClick={() => updateEstadoMutation.mutate({ id: s.id, estado: "atendida" })}
+                          onClick={() => updateEstadoMutation.mutate({ id: s.id, estado: "completed" })}
                           className="text-[10px] text-green-600 hover:underline"
                         >
                           Marcar atendida
                         </button>
                       )}
-                      {s.estado !== "cancelada" && (
+                      {s.estado !== "rejected" && (
                         <button
-                          onClick={() => updateEstadoMutation.mutate({ id: s.id, estado: "cancelada" })}
+                          onClick={() => updateEstadoMutation.mutate({ id: s.id, estado: "rejected" })}
                           className="text-[10px] text-slate-400 hover:underline ml-auto"
                         >
                           Cancelar

@@ -59,6 +59,28 @@ function sandboxConversationWhere(tenantId, userKey) {
   return where;
 }
 
+async function findLatestSandboxConversation({ tenantId, userKey }) {
+  const prisma = getPrismaClient();
+  return prisma.conversation.findFirst({
+    where: sandboxConversationWhere(tenantId, userKey),
+    orderBy: { startedAt: 'desc' },
+    select: { id: true, status: true, startedAt: true },
+  });
+}
+
+async function waitForSandboxConversation({ tenantId, userKey, maxAttempts = 8, delayMs = 200 }) {
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    const conversation = await findLatestSandboxConversation({ tenantId, userKey });
+    if (conversation) {
+      return conversation;
+    }
+    if (attempt < maxAttempts - 1) {
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+    }
+  }
+  return null;
+}
+
 router.get('/runs', async (req, res, next) => {
   try {
     const { tenantId } = await resolveTenant(req, req.query);
@@ -213,12 +235,7 @@ router.post('/simulate/inbound', async (req, res, next) => {
       },
     });
 
-    const prisma = getPrismaClient();
-    const latestConversation = await prisma.conversation.findFirst({
-      where: sandboxConversationWhere(tenantId, phone),
-      orderBy: { startedAt: 'desc' },
-      select: { id: true, status: true, startedAt: true },
-    });
+    const latestConversation = await waitForSandboxConversation({ tenantId, userKey: phone });
 
     audit({
       adminUserId: req.admin?.adminUserId,

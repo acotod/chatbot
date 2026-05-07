@@ -12,7 +12,15 @@ import { formatDate } from "@/lib/utils";
 import { Filter, UserCheck } from "lucide-react";
 import { useSocket } from "@/hooks/useSocket";
 
-const ESTADOS = ["", "pendiente", "atendida", "urgente", "cancelada"];
+const ESTADOS = ["", "open", "in_progress", "pending_info", "completed", "rejected"];
+
+const ESTADO_LABELS: Record<string, string> = {
+  open: "Abierta",
+  in_progress: "En progreso",
+  pending_info: "Pendiente info",
+  completed: "Completada",
+  rejected: "Rechazada",
+};
 
 interface Solicitud {
   id: number;
@@ -118,7 +126,7 @@ export default function SolicitudesPage() {
           >
             {ESTADOS.map((e) => (
               <option key={e} value={e}>
-                {e === "" ? "Todos los estados" : e.charAt(0).toUpperCase() + e.slice(1)}
+                {e === "" ? "Todos los estados" : ESTADO_LABELS[e] ?? e}
               </option>
             ))}
           </select>
@@ -178,14 +186,14 @@ export default function SolicitudesPage() {
                     <td className="px-5 py-3.5">
                       <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition">
                         {/* Quick estado changes */}
-                        {s.estado === "pendiente" && (
+                        {s.estado === "open" && (
                           <button
                             onClick={() =>
-                              updateEstado.mutate({ id: s.id, estado: "atendida" })
+                              updateEstado.mutate({ id: s.id, estado: "completed" })
                             }
                             className="text-xs text-green-600 hover:text-green-700 font-medium border border-green-200 rounded-lg px-2 py-1 bg-green-50 hover:bg-green-100 transition"
                           >
-                            Marcar atendida
+                            Marcar completada
                           </button>
                         )}
                         <button

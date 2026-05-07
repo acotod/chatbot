@@ -158,17 +158,19 @@ export function Sidebar() {
     if (!blockedRoute.blocked) return;
 
     const fallback = blockedRoute.fallback ?? authorizedFallbackHref;
-    addLog({
-      level: "warn",
-      source: "custom",
-      message: "Sidebar unauthorized route blocked",
-      details: {
-        pathname,
-        fallback,
-        superAdmin,
-        permissions: Array.from(permissionSet),
-      },
-    });
+    if (superAdmin || permissionSet.size > 0) {
+      addLog({
+        level: "warn",
+        source: "custom",
+        message: "Sidebar unauthorized route blocked",
+        details: {
+          pathname,
+          fallback,
+          superAdmin,
+          permissions: Array.from(permissionSet),
+        },
+      });
+    }
     if (pathname !== fallback) {
       router.replace(fallback);
     }
@@ -188,7 +190,7 @@ export function Sidebar() {
     queryKey: ["sidebar-solicitudes-pendientes", tenantSlug],
     queryFn: () =>
       solicitudesApi
-        .list(tenantSlug!, { estado: "pendiente", page: 1, limit: 1 })
+        .list(tenantSlug!, { estado: "open", page: 1, limit: 1 })
         .then((r) => r.data),
     enabled: mounted && !!tenantSlug && canViewSolicitudes,
     staleTime: 30_000,
