@@ -72,6 +72,15 @@ export function Sidebar() {
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
+  function normalizeTenantName(nombre: unknown, slug: string): string {
+    if (typeof nombre === "string" && nombre.trim()) return nombre;
+    if (nombre && typeof nombre === "object" && "text" in (nombre as Record<string, unknown>)) {
+      const text = (nombre as Record<string, unknown>).text;
+      if (typeof text === "string" && text.trim()) return text;
+    }
+    return slug;
+  }
+
   useEffect(() => {
     setMounted(true);
   }, []);
@@ -243,7 +252,7 @@ export function Sidebar() {
                     tenantSlug === t.slug ? "text-blue-700 font-semibold bg-blue-50" : "text-slate-700"
                   )}
                 >
-                  {t.nombre ?? t.slug}
+                  {normalizeTenantName((t as { nombre?: unknown }).nombre, t.slug)}
                 </button>
               ))}
             </div>

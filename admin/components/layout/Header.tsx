@@ -11,8 +11,17 @@ import { useEffect, useState } from "react";
 interface TenantOption {
   id: string;
   slug: string;
-  nombre?: string;
+  nombre?: unknown;
   logoUrl?: string;
+}
+
+function normalizeTenantName(nombre: unknown, slug: string): string {
+  if (typeof nombre === "string" && nombre.trim()) return nombre;
+  if (nombre && typeof nombre === "object" && "text" in (nombre as Record<string, unknown>)) {
+    const text = (nombre as Record<string, unknown>).text;
+    if (typeof text === "string" && text.trim()) return text;
+  }
+  return slug;
 }
 
 const TITLES: Record<string, string> = {
@@ -65,8 +74,11 @@ export function Header() {
     "Zentra Bot";
 
   const selectedTenant = tenants.find((tenant) => tenant.slug === tenantSlug);
+  const selectedTenantName = selectedTenant
+    ? normalizeTenantName(selectedTenant.nombre, selectedTenant.slug)
+    : null;
   const tenantDisplayName =
-    selectedTenant?.nombre || selectedTenant?.slug || tenantSlug || "Admin";
+    selectedTenantName || selectedTenant?.slug || tenantSlug || "Admin";
   const tenantLogoSrc = selectedTenant?.logoUrl
     ? selectedTenant.logoUrl.startsWith("http")
       ? selectedTenant.logoUrl
@@ -88,7 +100,7 @@ export function Header() {
             {tenants.length === 0 && <option value="">Sin tenants</option>}
             {tenants.map((tenant) => (
               <option key={tenant.id} value={tenant.slug}>
-                {tenant.nombre ? `${tenant.nombre} (${tenant.slug})` : tenant.slug}
+                {`${normalizeTenantName(tenant.nombre, tenant.slug)} (${tenant.slug})`}
               </option>
             ))}
           </select>
