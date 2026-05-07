@@ -17,6 +17,15 @@ type CapabilitiesResponse = {
   };
 };
 
+const APPLIED_CHANGES = [
+  "Activacion real por tenant de outboundMetaMock.",
+  "Endpoint PATCH /sandbox/settings para cambiar outboundMetaMock.",
+  "Capabilities devuelve el valor real por tenant.",
+  "El runtime sandbox usa el flag para evitar llamadas salientes a Meta cuando esta activo.",
+  "La UI del Sandbox permite activar y desactivar outboundMetaMock.",
+  "El cliente API admin ya soporta capabilities por tenant y actualizacion de settings.",
+];
+
 type SimulationResponse = {
   ok: boolean;
   simulated: {
@@ -187,6 +196,23 @@ export default function SandboxPage() {
           Estado inicial: runtime real + simulación inbound.
         </div>
       </div>
+
+      <section className="rounded-3xl border border-blue-200 bg-blue-50 p-6 shadow-sm">
+        <div className="flex items-center gap-2 text-slate-900">
+          <ShieldCheck className="h-5 w-5 text-blue-600" />
+          <h2 className="text-lg font-semibold">Cambios aplicados</h2>
+        </div>
+        <p className="mt-2 text-sm text-slate-600">
+          Este sandbox ya incluye la activacion operativa de outboundMetaMock tanto en backend como en la interfaz.
+        </p>
+        <div className="mt-4 grid gap-3 md:grid-cols-2">
+          {APPLIED_CHANGES.map((item) => (
+            <div key={item} className="rounded-2xl border border-blue-200 bg-white px-4 py-3 text-sm text-slate-700">
+              {item}
+            </div>
+          ))}
+        </div>
+      </section>
 
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1.35fr)_minmax(320px,0.95fr)]">
         <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
