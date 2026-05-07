@@ -38,9 +38,11 @@ const {
   buildSimulationVerdict,
 } = require('../services/wabaFlowService');
 const logger = require('../utils/logger');
+const conversationLogger = require('../engine/conversationLogger');
 
 const router = express.Router();
 const prisma = new PrismaClient();
+const CONV_EVENT = conversationLogger.EVENT;
 
 router.use(requireJwt);
 
@@ -121,6 +123,175 @@ async function _getIntegrationMap(tenantId) {
     where: { tenantId, activo: true },
   });
   return new Map(integrations.map((i) => [i.nombre, i]));
+}
+
+function buildSimulationUserKey(flowId, runKey, pathIndex) {
+  return `waba-sim:${flowId}:${runKey}:${pathIndex}`.slice(0, 120);
+}
+
+function simulationStatusFromPath(path) {
+  if (Array.isArray(path?.trace) && path.trace.some((step) => step?.error)) return 'error';
+  if (path?.endedBy === 'max_steps') return 'error';
+  return 'completed';
+}
+
+async function persistSimulationConversations({
+  tenantId,
+  flowId,
+  flowVersionId,
+  enrichedDefinition,
+  mode,
+  result,
+  verdict,
+  adminUserId,
+}) {
+  const persistedConversationIds = [];
+  const runKey = Date.now().toString(36);
+
+  const normalizedPaths = Array.isArray(result?.paths)
+    ? result.paths
+    : [{
+        pathId: 'single',
+        trace: Array.isArray(result?.trace) ? result.trace : [],
+        finalVariables: result?.finalVariables ?? {},
+        stepCount: result?.stepCount ?? 0,
+        endedBy: 'completed',
+      }];
+
+  for (const [index, path] of normalizedPaths.entries()) {
+    const userKey = buildSimulationUserKey(flowId, runKey, index + 1);
+    const conversationId = await conversationLogger.getOrCreate(
+      tenantId,
+      userKey,
+      flowId,
+      flowVersionId ?? null,
+      {
+        contextMeta: {
+          sandbox: true,
+          source: 'waba_flow_simulator',
+          simulationMode: mode,
+          simulationPathId: path.pathId,
+          adminUserId: adminUserId ?? null,
+        },
+      },
+    );
+
+    if (!conversationId) continue;
+    persistedConversationIds.push(conversationId);
+
+    await conversationLogger.log(conversationId, tenantId, enrichedDefinition.entry_point ?? null, CONV_EVENT.FLOW_START, {
+      flow_id: flowId,
+      flow_version_id: flowVersionId ?? null,
+      entry_point: enrichedDefinition.entry_point ?? null,
+      simulation: {
+        mode,
+        path_id: path.pathId,
+        step_count: path.stepCount ?? path.trace?.length ?? 0,
+      },
+    });
+
+    for (const step of (path.trace ?? [])) {
+      const nodeRef = step?.nodeId ?? null;
+
+      if (step?.error) {
+        await conversationLogger.log(conversationId, tenantId, nodeRef, CONV_EVENT.FLOW_ERROR, {
+          message: step.error,
+          simulation: true,
+          path_id: path.pathId,
+        });
+        continue;
+      }
+
+      if (step?.llm_intent) {
+        await conversationLogger.log(conversationId, tenantId, nodeRef, CONV_EVENT.LLM_CALL, {
+          kind: 'intent_classification',
+          intent: step.llm_intent,
+          simulation: true,
+        });
+      }
+
+      if (step?.input !== null && step?.input !== undefined) {
+        const inputEvent = step?.nodeType === 'menu' ? CONV_EVENT.MENU_SELECTION : CONV_EVENT.USER_INPUT;
+        await conversationLogger.log(conversationId, tenantId, nodeRef, inputEvent, {
+          value: step.input,
+          selected: step.selected ?? null,
+          simulation: true,
+        });
+      }
+
+      if (step?.variable_captured && typeof step.variable_captured === 'object') {
+        for (const [variable, value] of Object.entries(step.variable_captured)) {
+          await conversationLogger.log(conversationId, tenantId, nodeRef, CONV_EVENT.VARIABLE_SET, {
+            variable,
+            value,
+            simulation: true,
+          });
+        }
+      }
+
+      const output = step?.output;
+      if (!output || typeof output !== 'object') continue;
+
+      if (output.type === 'text' || output.type === 'buttons' || output.type === 'list') {
+        await conversationLogger.log(conversationId, tenantId, nodeRef, CONV_EVENT.MESSAGE_SENT, {
+          text: output.text ?? null,
+          options: output.options ?? null,
+          llm_generated: Boolean(output.llmGenerated),
+          simulation: true,
+        });
+        if (output.llmGenerated) {
+          await conversationLogger.log(conversationId, tenantId, nodeRef, CONV_EVENT.LLM_CALL, {
+            kind: 'llm_response',
+            text: output.text ?? null,
+            simulation: true,
+          });
+        }
+      } else if (output.type === 'condition') {
+        await conversationLogger.log(conversationId, tenantId, nodeRef, CONV_EVENT.CONDITION_EVAL, {
+          expression: output.expression ?? null,
+          result: output.result ?? output.assumedResult ?? null,
+          branch: output.assumedBranch ?? null,
+          next: output.next ?? null,
+          simulation: true,
+        });
+      } else if (output.type === 'api_call_simulated') {
+        await conversationLogger.log(conversationId, tenantId, nodeRef, CONV_EVENT.API_CALL, {
+          endpoint: output.endpoint ?? null,
+          method: output.method ?? null,
+          note: output.note ?? null,
+          simulation: true,
+        });
+      }
+    }
+
+    await conversationLogger.updateContext(conversationId, {
+      current_node: path.trace?.[path.trace.length - 1]?.nodeId ?? null,
+      variables: path.finalVariables ?? {},
+      simulation: {
+        mode,
+        path_id: path.pathId,
+        verdict_status: verdict?.status ?? null,
+      },
+      verdict,
+    });
+
+    await conversationLogger.log(conversationId, tenantId, path.trace?.[path.trace.length - 1]?.nodeId ?? null, CONV_EVENT.FLOW_END, {
+      final_variables: path.finalVariables ?? {},
+      verdict,
+      simulation: true,
+    });
+
+    await conversationLogger.end(conversationId, simulationStatusFromPath(path), {
+      variables: path.finalVariables ?? {},
+      simulation: {
+        mode,
+        path_id: path.pathId,
+      },
+      verdict,
+    });
+  }
+
+  return persistedConversationIds;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -518,6 +689,7 @@ router.post('/:id/simulate', async (req, res, next) => {
     const { versionId, inputs = [], definition: bodyDef, mode = 'single', useLlm = false } = req.body;
 
     let definition = bodyDef;
+    let resolvedFlowVersionId = versionId ? Number(versionId) : null;
 
     if (!definition) {
       const version = versionId
@@ -528,6 +700,7 @@ router.post('/:id/simulate', async (req, res, next) => {
           });
       if (!version) return notFound(res, 'Version');
       definition = version.definition;
+      resolvedFlowVersionId = version.id;
     }
 
     // Enrich with integrations (for action node metadata)
@@ -537,12 +710,32 @@ router.post('/:id/simulate', async (req, res, next) => {
     if (mode === 'exhaustive') {
       const result = await simulateAllPaths(enriched, { tenantId, useLlm: Boolean(useLlm) });
       const verdict = await buildSimulationVerdict(result, enriched, { tenantId, useLlm: Boolean(useLlm) });
-      return res.json({ ...result, verdict });
+      const conversationIds = await persistSimulationConversations({
+        tenantId,
+        flowId: id,
+        flowVersionId: resolvedFlowVersionId,
+        enrichedDefinition: enriched,
+        mode,
+        result,
+        verdict,
+        adminUserId: uid(req),
+      });
+      return res.json({ ...result, verdict, conversationIds });
     }
 
     const result = simulateFlow(enriched, inputs);
     const verdict = await buildSimulationVerdict(result, enriched, { tenantId, useLlm: false });
-    res.json({ ...result, verdict, mode: 'single' });
+    const conversationIds = await persistSimulationConversations({
+      tenantId,
+      flowId: id,
+      flowVersionId: resolvedFlowVersionId,
+      enrichedDefinition: enriched,
+      mode: 'single',
+      result,
+      verdict,
+      adminUserId: uid(req),
+    });
+    res.json({ ...result, verdict, mode: 'single', conversationIds });
   } catch (err) { next(err); }
 });
 

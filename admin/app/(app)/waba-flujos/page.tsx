@@ -124,6 +124,7 @@ interface SimulationResult {
   strategy?: string;
   trace?: SimulationStep[];
   paths?: SimulationPath[];
+  conversationIds?: string[];
   verdict?: SimulationVerdict;
   stepCount?: number;
   pathCount?: number;
@@ -1820,6 +1821,27 @@ function SimulatePanel({ flow }: { flow: WabaFlow }) {
               )}
             </div>
           )}
+        </div>
+      )}
+
+      {Array.isArray(result?.conversationIds) && result.conversationIds.length > 0 && (
+        <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Guardado en Conversaciones</p>
+          <p className="mt-1 text-sm text-slate-700">
+            Se guardaron {result.conversationIds.length} conversaci{result.conversationIds.length === 1 ? "ón" : "ones"} para esta simulación.
+          </p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            {result.conversationIds.slice(0, 6).map((conversationId) => (
+              <span key={conversationId} className="rounded-lg bg-white border border-slate-200 px-2 py-1 text-xs font-mono text-slate-600">
+                {conversationId}
+              </span>
+            ))}
+            {result.conversationIds.length > 6 && (
+              <span className="rounded-lg bg-white border border-slate-200 px-2 py-1 text-xs text-slate-500">
+                +{result.conversationIds.length - 6} más
+              </span>
+            )}
+          </div>
         </div>
       )}
 
