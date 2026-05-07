@@ -91,11 +91,24 @@ function sleep(delayMs) {
   return new Promise((resolve) => setTimeout(resolve, delayMs));
 }
 
+function normalizeEventType(event) {
+  return String(event?.eventType ?? '').trim().toLowerCase();
+}
+
+function hasReplayablePayload(event) {
+  const payload = event?.payload ?? {};
+  const input = String(payload.raw_input ?? payload.value ?? payload.text ?? '').trim();
+  const selected = String(payload.selected_id ?? payload.selected ?? '').trim();
+  return Boolean(input || selected);
+}
+
 function getReplayInputsFromEvents(events) {
   if (!Array.isArray(events)) return [];
 
   return events.reduce((steps, event) => {
-    if (event?.eventType === 'user_input') {
+    const eventType = normalizeEventType(event);
+
+    if (eventType === 'user_input') {
       const rawInput = String(
         event?.payload?.raw_input ?? event?.payload?.value ?? event?.payload?.text ?? ''
       ).trim();
@@ -105,7 +118,7 @@ function getReplayInputsFromEvents(events) {
       return steps;
     }
 
-    if (event?.eventType === 'menu_selection') {
+    if (eventType === 'menu_selection') {
       const selectedId = String(
         event?.payload?.selected_id ?? event?.payload?.value ?? event?.payload?.selected ?? ''
       ).trim();
@@ -124,22 +137,26 @@ function buildComplianceReport(run) {
     {
       key: 'hasFlowStart',
       label: 'La corrida registra inicio de flujo',
-      passed: events.some((event) => event.eventType === 'flow_start'),
+      passed: events.some((event) => normalizeEventType(event) === 'flow_start'),
     },
     {
       key: 'hasUserInteraction',
       label: 'La corrida registra interaccion del usuario',
-      passed: events.some((event) => event.eventType === 'user_input' || event.eventType === 'menu_selection'),
+      passed: events.some((event) => {
+        const eventType = normalizeEventType(event);
+        if (eventType === 'user_input' || eventType === 'menu_selection') return true;
+        return hasReplayablePayload(event);
+      }),
     },
     {
       key: 'hasOutboundResponse',
       label: 'La corrida emite al menos una respuesta del bot',
-      passed: events.some((event) => event.eventType === 'message_sent'),
+      passed: events.some((event) => normalizeEventType(event) === 'message_sent'),
     },
     {
       key: 'hasNoFlowErrors',
       label: 'La corrida no contiene flow_error',
-      passed: !events.some((event) => event.eventType === 'flow_error'),
+      passed: !events.some((event) => normalizeEventType(event) === 'flow_error'),
     },
     {
       key: 'isFinishedOrTraceable',

@@ -228,7 +228,10 @@ export default function SandboxPage() {
 
   const canReplay = Boolean(
     selectedRun?.events?.some(
-      (e) => e.eventType === 'user_input' || e.eventType === 'menu_selection'
+      (e) => {
+        const type = String(e.eventType ?? '').toLowerCase();
+        return type === 'user_input' || type === 'menu_selection';
+      }
     )
   );
 
