@@ -3,6 +3,12 @@
 import { authApi, solicitudesApi, tenantApi } from "@/lib/api";
 import { addLog } from "@/lib/errorLogger";
 import { buildPermissionSet, normalizePermissions, type Permission } from "@/lib/permissions";
+import {
+  canAccessNavItem,
+  filterAuthorizedNavItems,
+  resolveAuthorizedFallback,
+  resolveBlockedPathRedirect,
+} from "@/lib/sidebarAccess";
 import { cn } from "@/lib/utils";
 import { useAuthStore } from "@/store/auth";
 import { useQuery } from "@tanstack/react-query";
@@ -121,32 +127,35 @@ export function Sidebar() {
     }
   }
 
-  const canAccessNavItem = (item: (typeof NAV_ITEMS)[number]) => {
-    if (superAdmin) return true;
-    if (item.superAdminOnly) return false;
-    if (!item.permission) return false;
-    return permissionSet.has(item.permission);
-  };
-
-  // Filter nav items based on permissions
-  const filteredNavItems = useMemo(
-    () => NAV_ITEMS.filter((item) => canAccessNavItem(item)),
+  const accessContext = useMemo(
+    () => ({ superAdmin, permissionSet }),
     [superAdmin, permissionSet]
   );
 
-  const authorizedFallbackHref = filteredNavItems[0]?.href ?? "/login";
+  // Filter nav items based on permissions
+  const filteredNavItems = useMemo<(typeof NAV_ITEMS)[number][]>(
+    () => filterAuthorizedNavItems(NAV_ITEMS, accessContext),
+    [accessContext]
+  );
+
+  const authorizedFallbackHref = useMemo(
+    () => resolveAuthorizedFallback(NAV_ITEMS, accessContext, "/login"),
+    [accessContext]
+  );
 
   // Guard: block direct URL access to modules without permission.
   useEffect(() => {
     if (!superAdmin && authMeLoading && permissionSet.size === 0) return;
 
-    const currentItem = NAV_ITEMS.find((item) =>
-      pathname === item.href || pathname.startsWith(`${item.href}/`)
+    const blockedRoute = resolveBlockedPathRedirect(
+      NAV_ITEMS,
+      pathname,
+      accessContext,
+      "/login"
     );
-    if (!currentItem) return;
-    if (canAccessNavItem(currentItem)) return;
+    if (!blockedRoute.blocked) return;
 
-    const fallback = authorizedFallbackHref;
+    const fallback = blockedRoute.fallback ?? authorizedFallbackHref;
     addLog({
       level: "warn",
       source: "custom",
@@ -161,7 +170,15 @@ export function Sidebar() {
     if (pathname !== fallback) {
       router.replace(fallback);
     }
-  }, [pathname, superAdmin, authMeLoading, permissionSet, router, authorizedFallbackHref]);
+  }, [
+    pathname,
+    superAdmin,
+    authMeLoading,
+    permissionSet,
+    router,
+    authorizedFallbackHref,
+    accessContext,
+  ]);
 
   const canViewSolicitudes = superAdmin || permissionSet.has("VIEW_SOLICITUDES");
 
