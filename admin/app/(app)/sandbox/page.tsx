@@ -1,11 +1,12 @@
 "use client";
 
 import { sandboxApi } from "@/lib/api";
+import { buildPermissionSet } from "@/lib/permissions";
 import { useAuthStore } from "@/store/auth";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import axios from "axios";
 import { Clock3, Play, ShieldCheck, TestTube2, Webhook } from "lucide-react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 
 type CapabilitiesResponse = {
   ok: boolean;
@@ -75,15 +76,19 @@ function getErrorMessage(error: unknown): string {
 }
 
 export default function SandboxPage() {
-  const { tenantSlug, superAdmin } = useAuthStore();
+  const { tenantSlug, superAdmin, permissions } = useAuthStore();
   const [phone, setPhone] = useState("+5215550000000");
   const [text, setText] = useState("Hola, quiero probar el sandbox.");
   const [contactName, setContactName] = useState("Sandbox User");
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
 
+  const permissionSet = useMemo(() => buildPermissionSet(permissions), [permissions]);
+  const canAccessSandbox = superAdmin || permissionSet.has("VIEW_SANDBOX");
+
   const { data, isLoading, isError } = useQuery({
     queryKey: ["sandbox-capabilities"],
     queryFn: () => sandboxApi.capabilities().then((res) => res.data as CapabilitiesResponse),
+    enabled: canAccessSandbox,
     staleTime: 30_000,
   });
 
@@ -110,7 +115,7 @@ export default function SandboxPage() {
         userKey: phone,
         limit: 8,
       }).then((res) => res.data as { ok: boolean; data: SandboxRunListItem[] }),
-    enabled: (!superAdmin || Boolean(tenantSlug)) && Boolean(phone.trim()),
+    enabled: canAccessSandbox && (!superAdmin || Boolean(tenantSlug)) && Boolean(phone.trim()),
     staleTime: 5_000,
   });
 
@@ -122,13 +127,21 @@ export default function SandboxPage() {
       sandboxApi.getRun(selectedRunId!, {
         tenantSlug: superAdmin ? tenantSlug || undefined : undefined,
       }).then((res) => res.data as { ok: boolean; data: SandboxRunDetail }),
-    enabled: !!selectedRunId && (!superAdmin || Boolean(tenantSlug)),
+    enabled: canAccessSandbox && !!selectedRunId && (!superAdmin || Boolean(tenantSlug)),
     staleTime: 5_000,
   });
 
   const selectedRun = runDetailData?.data ?? null;
 
   const runtimeEntries = Object.entries(data?.sandbox.runtime ?? {});
+
+  if (!canAccessSandbox) {
+    return (
+      <div className="rounded-3xl border border-red-200 bg-red-50 px-6 py-5 text-sm text-red-700">
+        No tienes permisos para acceder al Sandbox Emulator.
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -196,7 +209,7 @@ export default function SandboxPage() {
             <button
               type="button"
               onClick={() => simulateMutation.mutate()}
-              disabled={simulateMutation.isPending || (superAdmin && !tenantSlug)}
+              disabled={simulateMutation.isPending || !canAccessSandbox || (superAdmin && !tenantSlug)}
               className="inline-flex items-center justify-center gap-2 rounded-2xl bg-blue-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-300"
             >
               <Play className="h-4 w-4" />
