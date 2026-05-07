@@ -6,6 +6,7 @@ const requirePermiso = require('../middleware/requirePermiso');
 const db = require('../services/database');
 const { audit } = require('../services/audit');
 const whatsappRouter = require('./whatsapp');
+const { getPrismaClient } = require('../services/database');
 
 const router = express.Router();
 
@@ -21,13 +22,13 @@ function resolveTenantId(req, body) {
   return req.admin?.tenantId ?? null;
 }
 
-async function resolveTenant(req, body) {
-  const directTenantId = resolveTenantId(req, body);
+async function resolveTenant(req, source) {
+  const directTenantId = resolveTenantId(req, source);
   if (directTenantId) {
     return { tenantId: directTenantId, tenant: { id: directTenantId } };
   }
 
-  const tenantSlug = typeof body?.tenantSlug === 'string' ? body.tenantSlug.trim() : '';
+  const tenantSlug = typeof source?.tenantSlug === 'string' ? source.tenantSlug.trim() : '';
   if (!tenantSlug) {
     return { tenantId: null, tenant: null };
   }
@@ -38,6 +39,84 @@ async function resolveTenant(req, body) {
     tenant,
   };
 }
+
+function parseLimit(value, fallback = 10, max = 50) {
+  const parsed = Number.parseInt(String(value ?? ''), 10);
+  if (!Number.isFinite(parsed) || parsed < 1) return fallback;
+  return Math.min(parsed, max);
+}
+
+router.get('/runs', async (req, res, next) => {
+  try {
+    const { tenantId } = await resolveTenant(req, req.query);
+    if (!tenantId) {
+      return res.status(400).json({ error: 'tenantId or tenantSlug is required' });
+    }
+
+    const userKey = typeof req.query.userKey === 'string' ? req.query.userKey.trim() : '';
+    if (!userKey) {
+      return res.status(400).json({ error: 'userKey is required' });
+    }
+
+    const prisma = getPrismaClient();
+    const limit = parseLimit(req.query.limit, 10, 25);
+    const runs = await prisma.conversation.findMany({
+      where: { tenantId, userKey },
+      orderBy: { startedAt: 'desc' },
+      take: limit,
+      include: {
+        flow: { select: { id: true, nombre: true } },
+        _count: { select: { events: true } },
+      },
+    });
+
+    return res.json({
+      ok: true,
+      data: runs.map((run) => ({
+        id: run.id,
+        userKey: run.userKey,
+        status: run.status,
+        startedAt: run.startedAt,
+        endedAt: run.endedAt,
+        flow: run.flow,
+        flowVersionId: run.flowVersionId,
+        eventCount: run._count.events,
+      })),
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get('/runs/:id', async (req, res, next) => {
+  try {
+    const { tenantId } = await resolveTenant(req, req.query);
+    if (!tenantId) {
+      return res.status(400).json({ error: 'tenantId or tenantSlug is required' });
+    }
+
+    const prisma = getPrismaClient();
+    const run = await prisma.conversation.findFirst({
+      where: { id: req.params.id, tenantId },
+      include: {
+        flow: { select: { id: true, nombre: true } },
+        flowVersion: { select: { id: true, versionNumber: true, publishedAt: true } },
+        events: {
+          orderBy: { createdAt: 'asc' },
+          select: { id: true, nodeRef: true, eventType: true, payload: true, createdAt: true },
+        },
+      },
+    });
+
+    if (!run) {
+      return res.status(404).json({ error: 'Sandbox run not found' });
+    }
+
+    return res.json({ ok: true, data: run });
+  } catch (err) {
+    next(err);
+  }
+});
 
 router.get('/capabilities', async (req, res, next) => {
   try {
@@ -113,6 +192,13 @@ router.post('/simulate/inbound', async (req, res, next) => {
       correlationId: req.correlationId,
     });
 
+    const prisma = getPrismaClient();
+    const latestConversation = await prisma.conversation.findFirst({
+      where: { tenantId, userKey: phone },
+      orderBy: { startedAt: 'desc' },
+      select: { id: true, status: true, startedAt: true },
+    });
+
     audit({
       adminUserId: req.admin?.adminUserId,
       tenantId,
@@ -133,6 +219,8 @@ router.post('/simulate/inbound', async (req, res, next) => {
         text,
         msgId: simulatedMsgId,
         correlationId: req.correlationId,
+        conversationId: latestConversation?.id ?? null,
+        conversationStatus: latestConversation?.status ?? null,
       },
     });
   } catch (err) {

@@ -565,4 +565,8 @@ export const sandboxApi = {
     phoneNumberId?: string;
     accessToken?: string;
   }) => apiClient.post('/sandbox/simulate/inbound', data),
+  listRuns: (params: { tenantSlug?: string; tenantId?: string; userKey: string; limit?: number }) =>
+    apiClient.get('/sandbox/runs', { params }),
+  getRun: (id: string, params?: { tenantSlug?: string; tenantId?: string }) =>
+    apiClient.get(`/sandbox/runs/${id}`, { params }),
 };
