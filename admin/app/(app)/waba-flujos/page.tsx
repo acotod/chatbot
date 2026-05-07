@@ -1739,6 +1739,7 @@ export default function WabaFlujos() {
   const { tenantSlug } = useAuthStore();
   const [flows, setFlows]           = useState<WabaFlow[]>([]);
   const [loading, setLoading]       = useState(true);
+  const [loadError, setLoadError]   = useState<string | null>(null);
   const [tab, setTab]               = useState<TabKey>("list");
   const [selectedFlow, setSelectedFlow] = useState<WabaFlow | null>(null);
   const [showImport, setShowImport] = useState(false);
@@ -1753,6 +1754,7 @@ export default function WabaFlujos() {
       return;
     }
     setLoading(true);
+    setLoadError(null);
     try {
       const { data } = await wabaFlowsApi.list({ activo: true, tenantSlug });
       const normalized = Array.isArray(data?.flows)
@@ -1761,6 +1763,11 @@ export default function WabaFlujos() {
           ? data
           : [];
       setFlows(normalized);
+    } catch (e: unknown) {
+      const msg = (e as { response?: { data?: { error?: string } }; message?: string })?.response?.data?.error
+        ?? (e as { message?: string })?.message
+        ?? "Error al cargar los flujos WABA.";
+      setLoadError(msg);
     } finally { setLoading(false); }
   }, [tenantSlug]);
 
@@ -1779,7 +1786,8 @@ export default function WabaFlujos() {
           ? (data as { logs: unknown[] }).logs
           : [];
       setImportLogs(normalized);
-    } finally { setLogsLoading(false); }
+    } catch { /* errors are already logged by the API interceptor */ }
+    finally { setLogsLoading(false); }
   }, [tenantSlug]);
 
   const safeFlows = Array.isArray(flows) ? flows : [];
@@ -1881,6 +1889,13 @@ export default function WabaFlujos() {
       {!tenantSlug && (
         <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
           Selecciona un tenant en el encabezado para listar o importar flujos WABA.
+        </div>
+      )}
+
+      {loadError && (
+        <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 flex items-center justify-between gap-3">
+          <span>{loadError}</span>
+          <button onClick={loadFlows} className="text-xs underline hover:no-underline shrink-0">Reintentar</button>
         </div>
       )}
 
