@@ -46,14 +46,36 @@ function parseLimit(value, fallback = 10, max = 50) {
   return Math.min(parsed, max);
 }
 
+function buildUserKeyVariants(value) {
+  const raw = String(value ?? '').trim();
+  if (!raw) return [];
+
+  const digits = raw.replace(/\D+/g, '');
+  const variants = [raw];
+
+  if (digits && !variants.includes(digits)) {
+    variants.push(digits);
+  }
+
+  const withPlus = digits ? `+${digits}` : null;
+  if (withPlus && !variants.includes(withPlus)) {
+    variants.push(withPlus);
+  }
+
+  return variants;
+}
+
 function sandboxConversationWhere(tenantId, userKey) {
   const where = {
     tenantId,
     context: { path: ['meta', 'sandbox'], equals: true },
   };
 
-  if (userKey) {
-    where.userKey = userKey;
+  const userKeys = buildUserKeyVariants(userKey);
+  if (userKeys.length === 1) {
+    where.userKey = userKeys[0];
+  } else if (userKeys.length > 1) {
+    where.userKey = { in: userKeys };
   }
 
   return where;

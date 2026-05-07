@@ -81,6 +81,7 @@ export default function SandboxPage() {
   const [text, setText] = useState("Hola, quiero probar el sandbox.");
   const [contactName, setContactName] = useState("Sandbox User");
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
+  const trimmedPhone = phone.trim();
 
   const permissionSet = useMemo(() => buildPermissionSet(permissions), [permissions]);
   const canAccessSandbox = superAdmin || permissionSet.has("VIEW_SANDBOX");
@@ -108,14 +109,14 @@ export default function SandboxPage() {
   });
 
   const { data: runsData, isLoading: runsLoading } = useQuery({
-    queryKey: ["sandbox-runs", tenantSlug, phone],
+    queryKey: ["sandbox-runs", tenantSlug, trimmedPhone],
     queryFn: () =>
       sandboxApi.listRuns({
         tenantSlug: superAdmin ? tenantSlug || undefined : undefined,
-        userKey: phone,
+        userKey: trimmedPhone,
         limit: 8,
       }).then((res) => res.data as { ok: boolean; data: SandboxRunListItem[] }),
-    enabled: canAccessSandbox && (!superAdmin || Boolean(tenantSlug)) && Boolean(phone.trim()),
+    enabled: canAccessSandbox && (!superAdmin || Boolean(tenantSlug)) && Boolean(trimmedPhone),
     staleTime: 5_000,
   });
 
@@ -266,7 +267,7 @@ export default function SandboxPage() {
               </div>
             ) : runs.length === 0 ? (
               <div className="rounded-2xl border border-dashed border-slate-300 bg-white px-4 py-6 text-sm text-slate-500">
-                A\u00fan no hay runs para este tel\u00e9fono en el tenant activo.
+                A\u00fan no hay ejecuciones para este tel\u00e9fono en el tenant activo.
               </div>
             ) : (
               <div className="space-y-3">
