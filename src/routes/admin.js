@@ -439,13 +439,31 @@ router.get('/tenants/:slug/solicitudes', requirePermiso('VIEW_SOLICITUDES'), asy
         if (!tenant) return res.status(404).json({ error: 'Tenant not found' });
         if (denyIfWrongTenant(req, res, tenant.id)) return;
         const { estado, page, limit, userId } = req.query;
+        const normalizedEstado = estado ? db.normalizeSolicitudStatus(estado, '') : '';
+        const currentPage = page ? Number(page) : 1;
+        const currentLimit = limit ? Number(limit) : 20;
+        const normalizedUserId = userId !== undefined ? Number(userId) : undefined;
+
         const solicitudes = await db.listSolicitudes(tenant.id, {
-            estado: estado || undefined,
-            userId: userId !== undefined ? Number(userId) : undefined,
-            page: page ? Number(page) : 1,
-            limit: limit ? Number(limit) : 20,
+            estado: normalizedEstado || undefined,
+            userId: normalizedUserId,
+            page: currentPage,
+            limit: currentLimit,
         });
-        res.json(solicitudes);
+
+        const where = {
+            tenantId: tenant.id,
+            ...(normalizedEstado ? { estado: normalizedEstado } : {}),
+            ...(normalizedUserId !== undefined ? { userId: normalizedUserId } : {}),
+        };
+        const total = await prisma.solicitud.count({ where });
+
+        res.json({
+            data: solicitudes,
+            total,
+            page: currentPage,
+            limit: currentLimit,
+        });
     } catch (err) {
         next(err);
     }
