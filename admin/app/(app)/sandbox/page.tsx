@@ -340,12 +340,12 @@ export default function SandboxPage() {
           <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
             <div className="mb-4 flex items-center gap-2 text-slate-900">
               <TestTube2 className="h-5 w-5 text-violet-600" />
-              <h2 className="text-lg font-semibold">Timeline</h2>
+              <h2 className="text-lg font-semibold">Línea de tiempo</h2>
             </div>
 
             {!selectedRunId ? (
               <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-6 text-sm text-slate-500">
-                Selecciona un run para inspeccionar su timeline.
+                Selecciona una ejecución para inspeccionar su línea de tiempo.
               </div>
             ) : runDetailLoading ? (
               <div className="space-y-3">
