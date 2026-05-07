@@ -255,6 +255,7 @@ model Agente {
   agendaAssignments AgendaEventAssignment[]
   deals             Deal[]
   crmTasks          CrmTask[]
+  calendars         Calendar[]
 
   @@index([tenantId, puestoId])
   @@map("agentes")
@@ -819,6 +820,7 @@ model ConversationEvent {
 model Calendar {
   id          String    @id @default(uuid()) @db.Uuid
   tenantId    String    @map("tenant_id") @db.Uuid
+  agenteId    Int?      @map("agente_id")
   name        String    @db.VarChar(200)
   timezone    String    @default("America/Mexico_City") @db.VarChar(60)
   activo      Boolean   @default(true)
@@ -827,10 +829,12 @@ model Calendar {
   createdAt   DateTime  @default(now()) @map("created_at")
   updatedAt   DateTime  @updatedAt @map("updated_at")
   tenant      Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  agente      Agente?   @relation(fields: [agenteId], references: [id], onDelete: SetNull)
   slots       CalendarSlot[]
   appointments Appointment[]
 
   @@index([tenantId, activo])
+  @@index([tenantId, agenteId])
   @@map("calendars")
 }
 

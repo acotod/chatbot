@@ -8,9 +8,21 @@ const calendarSvc   = require('../services/calendarService');
 
 const prisma  = new PrismaClient();
 const router  = express.Router();
+const UUID_ROUTE = ':id([0-9a-fA-F-]{36})';
 
 router.use(requireJwt);
 router.use(resolveTenant);
+
+async function validateAgenteForTenant(tenantId, agenteId) {
+  if (agenteId === null || agenteId === undefined) return null;
+  if (!Number.isInteger(agenteId) || agenteId <= 0) return null;
+
+  const agente = await prisma.agente.findFirst({
+    where : { id: agenteId, tenantId },
+    select: { id: true },
+  });
+  return agente ? agente.id : null;
+}
 
 // ─── Calendars ────────────────────────────────────────────────────────────────
 
@@ -21,8 +33,17 @@ router.use(resolveTenant);
 router.get('/', async (req, res, next) => {
   try {
     const { tenantId } = req;
+    const agenteId = req.query.agenteId ? Number(req.query.agenteId) : null;
+    if (req.query.agenteId && (!Number.isInteger(agenteId) || agenteId <= 0)) {
+      return res.status(400).json({ error: 'agenteId must be a positive integer' });
+    }
+
     const calendars = await prisma.calendar.findMany({
-      where  : { tenantId, isActive: true },
+      where  : {
+        tenantId,
+        activo: true,
+        ...(agenteId ? { agenteId } : {}),
+      },
       orderBy: { createdAt: 'desc' },
     });
     res.json({ calendars });
@@ -39,11 +60,21 @@ router.get('/', async (req, res, next) => {
 router.post('/', async (req, res, next) => {
   try {
     const { tenantId } = req;
-    const { name, agentId, config } = req.body;
+    const { name, agentId, agenteId: rawAgenteId, config } = req.body;
     if (!name) return res.status(400).json({ error: 'name is required' });
 
+    const parsedAgenteId = rawAgenteId ?? agentId ?? null;
+    const normalizedAgenteId = parsedAgenteId === null || parsedAgenteId === undefined || parsedAgenteId === ''
+      ? null
+      : Number(parsedAgenteId);
+
+    const validatedAgenteId = await validateAgenteForTenant(tenantId, normalizedAgenteId);
+    if (normalizedAgenteId !== null && validatedAgenteId === null) {
+      return res.status(400).json({ error: 'Invalid agenteId for this tenant' });
+    }
+
     const calendar = await prisma.calendar.create({
-      data: { tenantId, name, agentId: agentId ?? null, config: config ?? {} },
+      data: { tenantId, name, agenteId: validatedAgenteId, config: config ?? {} },
     });
     res.status(201).json({ calendar });
   } catch (err) {
@@ -55,7 +86,7 @@ router.post('/', async (req, res, next) => {
  * GET /calendar/:id
  * Get a single calendar.
  */
-router.get('/:id', async (req, res, next) => {
+router.get(`/${UUID_ROUTE}`, async (req, res, next) => {
   try {
     const { tenantId } = req;
     const calendar = await prisma.calendar.findFirst({
@@ -72,19 +103,34 @@ router.get('/:id', async (req, res, next) => {
  * PUT /calendar/:id
  * Update a calendar (name, config, isActive).
  */
-router.put('/:id', async (req, res, next) => {
+router.put(`/${UUID_ROUTE}`, async (req, res, next) => {
   try {
     const { tenantId } = req;
-    const { name, config, isActive } = req.body;
+    const { name, config, isActive, activo, agentId, agenteId: rawAgenteId } = req.body;
     const existing = await prisma.calendar.findFirst({ where: { id: req.params.id, tenantId } });
     if (!existing) return res.status(404).json({ error: 'Calendar not found' });
+
+    const parsedAgenteId = rawAgenteId ?? agentId;
+    const requestedAgenteId = parsedAgenteId === undefined
+      ? undefined
+      : (parsedAgenteId === null || parsedAgenteId === '' ? null : Number(parsedAgenteId));
+
+    if (requestedAgenteId !== undefined) {
+      const validatedAgenteId = await validateAgenteForTenant(tenantId, requestedAgenteId);
+      if (requestedAgenteId !== null && validatedAgenteId === null) {
+        return res.status(400).json({ error: 'Invalid agenteId for this tenant' });
+      }
+    }
 
     const updated = await prisma.calendar.update({
       where: { id: req.params.id },
       data : {
         ...(name     !== undefined ? { name }     : {}),
         ...(config   !== undefined ? { config }   : {}),
-        ...(isActive !== undefined ? { isActive } : {}),
+        ...((activo !== undefined || isActive !== undefined)
+          ? { activo: Boolean(activo !== undefined ? activo : isActive) }
+          : {}),
+        ...(requestedAgenteId !== undefined ? { agenteId: requestedAgenteId } : {}),
       },
     });
     res.json({ calendar: updated });
@@ -99,7 +145,7 @@ router.put('/:id', async (req, res, next) => {
  * GET /calendar/:id/slots
  * Get available slots (optionally: ?days=7)
  */
-router.get('/:id/slots', async (req, res, next) => {
+router.get(`/${UUID_ROUTE}/slots`, async (req, res, next) => {
   try {
     const { tenantId } = req;
     const calendar = await prisma.calendar.findFirst({ where: { id: req.params.id, tenantId } });
@@ -118,7 +164,7 @@ router.get('/:id/slots', async (req, res, next) => {
  * Manually trigger slot generation.
  * Body: { days? }
  */
-router.post('/:id/generate-slots', async (req, res, next) => {
+router.post(`/${UUID_ROUTE}/generate-slots`, async (req, res, next) => {
   try {
     const { tenantId } = req;
     const calendar = await prisma.calendar.findFirst({ where: { id: req.params.id, tenantId } });

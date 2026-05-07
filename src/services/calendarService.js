@@ -214,6 +214,25 @@ async function getAvailableSlots(calendarId, rangeDays = null) {
 }
 
 /**
+ * Resolve an active calendar id assigned to an agente within a tenant.
+ *
+ * @param {string} tenantId
+ * @param {number} agenteId
+ * @returns {Promise<string|null>}
+ */
+async function getCalendarIdForAgente(tenantId, agenteId) {
+  if (!tenantId || !Number.isInteger(agenteId) || agenteId <= 0) return null;
+
+  const calendar = await prisma.calendar.findFirst({
+    where  : { tenantId, agenteId, activo: true },
+    orderBy: { createdAt: 'desc' },
+    select : { id: true },
+  });
+
+  return calendar?.id ?? null;
+}
+
+/**
  * Book a slot atomically.
  * Uses SELECT FOR UPDATE NOWAIT inside a transaction to prevent double-booking.
  *
@@ -384,6 +403,7 @@ async function getAppointment(appointmentId, tenantId) {
 module.exports = {
   generateSlots,
   getAvailableSlots,
+  getCalendarIdForAgente,
   bookSlot,
   cancelAppointment,
   rescheduleAppointment,
