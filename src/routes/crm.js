@@ -23,12 +23,14 @@ const express = require('express');
 const { body, query, param, validationResult } = require('express-validator');
 const { PrismaClient } = require('@prisma/client');
 const requireJwt = require('../middleware/requireJwt');
+const requirePermiso = require('../middleware/requirePermiso');
 const { audit } = require('../services/audit');
 
 const prisma = new PrismaClient();
 const router = express.Router();
 
 router.use(requireJwt);
+router.use(requirePermiso('VIEW_CRM'));
 
 function validate(req, res) {
   const errors = validationResult(req);

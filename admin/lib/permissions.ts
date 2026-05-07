@@ -1,5 +1,6 @@
 export type Permission =
   | 'VIEW_DASHBOARD'
+  | 'VIEW_CRM'
   | 'VIEW_AGENDA'
   | 'CREATE_AGENDA'
   | 'EDIT_AGENDA'
