@@ -31,6 +31,8 @@ export default function AgentesPage() {
   const { tenantSlug } = useAuthStore();
   const qc = useQueryClient();
   const [modal, setModal] = useState(false);
+  const [editModal, setEditModal] = useState(false);
+  const [editingId, setEditingId] = useState<number | null>(null);
   const [form, setForm] = useState({
     nombre: "",
     email: "",
@@ -39,6 +41,14 @@ export default function AgentesPage() {
     calendarLink: "",
   });
   const [formError, setFormError] = useState("");
+  const [editForm, setEditForm] = useState({
+    nombre: "",
+    email: "",
+    whatsapp: "",
+    puestoId: "",
+    calendarLink: "",
+  });
+  const [editFormError, setEditFormError] = useState("");
   const [nuevoPuesto, setNuevoPuesto] = useState("");
 
   const { data, isLoading } = useQuery({
@@ -89,6 +99,26 @@ export default function AgentesPage() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["agentes"] }),
   });
 
+  const update = useMutation({
+    mutationFn: () => {
+      if (!editingId) throw new Error("Missing agent id");
+      return agentesApi.update(tenantSlug, editingId, {
+        nombre: editForm.nombre,
+        email: editForm.email,
+        whatsapp: editForm.whatsapp,
+        puestoId: Number(editForm.puestoId),
+        calendarLink: editForm.calendarLink,
+      });
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["agentes"] });
+      setEditModal(false);
+      setEditingId(null);
+      setEditForm({ nombre: "", email: "", whatsapp: "", puestoId: "", calendarLink: "" });
+    },
+    onError: () => setEditFormError("No se pudo actualizar el agente."),
+  });
+
   const agentes: Agente[] = data?.data ?? data ?? [];
   const puestos: AgentePuesto[] = puestosData?.data ?? puestosData ?? [];
   const activos = agentes.filter((a) => a.estado === "activo").length;
@@ -122,6 +152,41 @@ export default function AgentesPage() {
     }
     setFormError("");
     createPuesto.mutate();
+  }
+
+  function openEdit(agent: Agente) {
+    setEditFormError("");
+    setEditingId(agent.id);
+    setEditForm({
+      nombre: agent.nombre ?? "",
+      email: agent.email ?? "",
+      whatsapp: agent.whatsapp ?? "",
+      puestoId: agent.puestoId ? String(agent.puestoId) : "",
+      calendarLink: agent.calendarLink ?? "",
+    });
+    setEditModal(true);
+  }
+
+  function handleUpdate(e: React.FormEvent) {
+    e.preventDefault();
+    setEditFormError("");
+    if (!editForm.nombre.trim() || !editForm.email.trim() || !editForm.whatsapp.trim() || !editForm.puestoId || !editForm.calendarLink.trim()) {
+      setEditFormError("Completá todos los campos.");
+      return;
+    }
+
+    try {
+      const parsed = new URL(editForm.calendarLink);
+      if (!["http:", "https:"].includes(parsed.protocol)) {
+        setEditFormError("La liga del calendario debe iniciar con http:// o https://");
+        return;
+      }
+    } catch {
+      setEditFormError("La liga del calendario no es valida.");
+      return;
+    }
+
+    update.mutate();
   }
 
   return (
@@ -197,6 +262,13 @@ export default function AgentesPage() {
                   ) : (
                     <ToggleLeft size={24} />
                   )}
+                </button>
+                <button
+                  onClick={() => openEdit(a)}
+                  className="mt-0.5 text-slate-400 hover:text-blue-600 transition text-xs"
+                  title="Editar agente"
+                >
+                  Editar
                 </button>
               </div>
             </Card>
@@ -276,6 +348,71 @@ export default function AgentesPage() {
             </Button>
             <Button type="submit" disabled={create.isPending}>
               {create.isPending ? "Creando..." : "Crear agente 💙"}
+            </Button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* Edit modal */}
+      <Modal
+        open={editModal}
+        onClose={() => {
+          setEditModal(false);
+          setEditingId(null);
+          setEditFormError("");
+        }}
+        title="Editar agente"
+      >
+        <form onSubmit={handleUpdate} className="space-y-4">
+          <Input
+            label="Nombre completo"
+            value={editForm.nombre}
+            onChange={(e) => setEditForm((f) => ({ ...f, nombre: e.target.value }))}
+            placeholder="Ej: María González"
+          />
+          <Input
+            label="Email"
+            type="email"
+            value={editForm.email}
+            onChange={(e) => setEditForm((f) => ({ ...f, email: e.target.value }))}
+            placeholder="maria@clinica.com"
+          />
+          <Input
+            label="WhatsApp"
+            value={editForm.whatsapp}
+            onChange={(e) => setEditForm((f) => ({ ...f, whatsapp: e.target.value }))}
+            placeholder="+5215512345678"
+          />
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">Puesto</label>
+            <select
+              value={editForm.puestoId}
+              onChange={(e) => setEditForm((f) => ({ ...f, puestoId: e.target.value }))}
+              className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-blue-500"
+            >
+              <option value="">Selecciona un puesto...</option>
+              {puestos.map((p) => (
+                <option key={p.id} value={p.id}>{p.nombre}</option>
+              ))}
+            </select>
+          </div>
+          <Input
+            label="Liga de calendario"
+            value={editForm.calendarLink}
+            onChange={(e) => setEditForm((f) => ({ ...f, calendarLink: e.target.value }))}
+            placeholder="https://calendar.google.com/..."
+            error={editFormError}
+          />
+          <div className="flex justify-end gap-3 pt-2">
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => setEditModal(false)}
+            >
+              Cancelar
+            </Button>
+            <Button type="submit" disabled={update.isPending}>
+              {update.isPending ? "Guardando..." : "Guardar cambios"}
             </Button>
           </div>
         </form>

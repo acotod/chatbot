@@ -225,6 +225,21 @@ async function createAgente({ tenantId, nombre, email, whatsapp = null, puestoId
   });
 }
 
+async function updateAgente({ id, tenantId, nombre, email, whatsapp = null, puestoId = null, calendarLink = null }) {
+  const client = getPrismaClient();
+  if (!client) return null;
+  return client.agente.updateMany({
+    where: { id, tenantId },
+    data: {
+      nombre,
+      email,
+      whatsapp,
+      puestoId,
+      calendarLink,
+    },
+  });
+}
+
 async function listAgentePuestos(tenantId) {
   const client = getPrismaClient();
   if (!client) return [];
@@ -751,6 +766,7 @@ module.exports = {
   // agentes
   listAgentes,
   createAgente,
+  updateAgente,
   listAgentePuestos,
   createAgentePuesto,
   setAgenteEstado,

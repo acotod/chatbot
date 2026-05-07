@@ -432,6 +432,62 @@ router.patch('/tenants/:slug/agentes/:id/estado', requirePermiso('EDIT_AGENTES')
     }
 });
 
+// PATCH /admin/tenants/:slug/agentes/:id
+router.patch('/tenants/:slug/agentes/:id', requirePermiso('EDIT_AGENTES'), async (req, res, next) => {
+    try {
+        const tenant = await db.findTenantBySlug(req.params.slug);
+        if (!tenant) return res.status(404).json({ error: 'Tenant not found' });
+
+        const id = Number(req.params.id);
+        const nombre = String(req.body?.nombre ?? '').trim();
+        const email = String(req.body?.email ?? '').trim();
+        const whatsapp = String(req.body?.whatsapp ?? '').trim();
+        const calendarLink = String(req.body?.calendarLink ?? '').trim();
+        const puestoId = Number(req.body?.puestoId);
+
+        if (!Number.isInteger(id) || id <= 0) {
+            return res.status(400).json({ error: 'invalid agente id' });
+        }
+        if (!nombre || !email || !whatsapp || !calendarLink || !Number.isInteger(puestoId) || puestoId <= 0) {
+            return res.status(400).json({ error: 'nombre, email, whatsapp, puestoId and calendarLink are required' });
+        }
+
+        let calendarUrl;
+        try {
+            calendarUrl = new URL(calendarLink);
+            if (!['http:', 'https:'].includes(calendarUrl.protocol)) {
+                return res.status(400).json({ error: 'calendarLink must be a valid http(s) URL' });
+            }
+        } catch (_err) {
+            return res.status(400).json({ error: 'calendarLink must be a valid URL' });
+        }
+
+        const puesto = await prisma.agentePuesto.findFirst({ where: { id: puestoId, tenantId: tenant.id, activo: true } });
+        if (!puesto) {
+            return res.status(400).json({ error: 'puestoId is invalid for this tenant' });
+        }
+
+        const result = await db.updateAgente({
+            id,
+            tenantId: tenant.id,
+            nombre,
+            email,
+            whatsapp,
+            puestoId,
+            calendarLink: calendarUrl.toString(),
+        });
+        if (!result || result.count === 0) {
+            return res.status(404).json({ error: 'Agente not found' });
+        }
+
+        const agentes = await db.listAgentes(tenant.id);
+        const agente = agentes.find((a) => a.id === id) ?? null;
+        return res.json(agente);
+    } catch (err) {
+        next(err);
+    }
+});
+
 // PATCH /admin/tenants/:slug/agentes/:id/presencia
 // Body: { online: true|false }
 // Called by the admin UI when an agent connects/disconnects from the panel.

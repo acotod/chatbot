@@ -270,6 +270,8 @@ export const agentesApi = {
   list: (slug: string) => apiClient.get(`/admin/tenants/${slug}/agentes`),
   create: (slug: string, data: Record<string, unknown>) =>
     apiClient.post(`/admin/tenants/${slug}/agentes`, data),
+  update: (slug: string, id: number, data: Record<string, unknown>) =>
+    apiClient.patch(`/admin/tenants/${slug}/agentes/${id}`, data),
   updateEstado: (slug: string, id: number, estado: string) =>
     apiClient.patch(`/admin/tenants/${slug}/agentes/${id}/estado`, { estado }),
 };
