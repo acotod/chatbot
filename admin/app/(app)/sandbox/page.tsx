@@ -226,6 +226,12 @@ export default function SandboxPage() {
 
   const selectedRun = runDetailData?.data ?? null;
 
+  const canReplay = Boolean(
+    selectedRun?.events?.some(
+      (e) => e.eventType === 'user_input' || e.eventType === 'menu_selection'
+    )
+  );
+
   const runtimeEntries = Object.entries(data?.sandbox.runtime ?? {});
   const outboundMetaMockEnabled = Boolean(data?.sandbox.runtime?.outboundMetaMock);
 
@@ -511,11 +517,14 @@ export default function SandboxPage() {
                   <div>
                     <p className="font-medium text-slate-900">Replay</p>
                     <p className="mt-1 text-xs text-slate-500">Reproduce la corrida seleccionada usando los eventos de entrada guardados.</p>
+                    {selectedRun && !canReplay && (
+                      <p className="mt-1 text-xs text-amber-600">Esta corrida no tiene entradas de usuario replicables.</p>
+                    )}
                   </div>
                   <button
                     type="button"
                     onClick={() => replayMutation.mutate()}
-                    disabled={!selectedRunId || replayMutation.isPending || (superAdmin && !tenantSlug)}
+                    disabled={!selectedRunId || replayMutation.isPending || (superAdmin && !tenantSlug) || !canReplay}
                     className="rounded-xl bg-sky-600 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-sky-700 disabled:cursor-not-allowed disabled:bg-slate-300"
                   >
                     {replayMutation.isPending ? "Reproduciendo..." : "Simular replay"}

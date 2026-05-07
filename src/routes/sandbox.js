@@ -96,7 +96,9 @@ function getReplayInputsFromEvents(events) {
 
   return events.reduce((steps, event) => {
     if (event?.eventType === 'user_input') {
-      const rawInput = String(event?.payload?.raw_input ?? '').trim();
+      const rawInput = String(
+        event?.payload?.raw_input ?? event?.payload?.value ?? event?.payload?.text ?? ''
+      ).trim();
       if (rawInput) {
         steps.push({ type: 'user_input', text: rawInput, createdAt: event.createdAt });
       }
@@ -104,7 +106,9 @@ function getReplayInputsFromEvents(events) {
     }
 
     if (event?.eventType === 'menu_selection') {
-      const selectedId = String(event?.payload?.selected_id ?? '').trim();
+      const selectedId = String(
+        event?.payload?.selected_id ?? event?.payload?.value ?? event?.payload?.selected ?? ''
+      ).trim();
       if (selectedId) {
         steps.push({ type: 'menu_selection', text: selectedId, createdAt: event.createdAt });
       }
