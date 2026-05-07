@@ -69,6 +69,51 @@ const AGENDA_TYPES = new Set(['reunion', 'tarea', 'automatizacion', 'webhook']);
 const AGENDA_STATES = new Set(['pendiente', 'en_progreso', 'completado']);
 const SOLICITUD_STATES = new Set(db.SOLICITUD_STATUS_VALUES);
 
+function normalizeOptionalHttpUrl(value) {
+    const raw = String(value ?? '').trim();
+    if (!raw) return { value: null };
+    try {
+        const parsed = new URL(raw);
+        if (!['http:', 'https:'].includes(parsed.protocol)) {
+            return { error: 'calendarLink must be a valid http(s) URL' };
+        }
+        return { value: parsed.toString() };
+    } catch (_err) {
+        return { error: 'calendarLink must be a valid URL' };
+    }
+}
+
+function parseCalendarSelection(value) {
+    if (value === undefined) return { provided: false, clear: false, calendarId: null };
+    if (value === null) return { provided: true, clear: true, calendarId: null };
+    const raw = String(value).trim();
+    if (!raw) return { provided: true, clear: true, calendarId: null };
+    const isUuid = /^[0-9a-fA-F-]{36}$/.test(raw);
+    if (!isUuid) return { error: 'calendarId must be a UUID' };
+    return { provided: true, clear: false, calendarId: raw };
+}
+
+async function assignCalendarToAgente({ tenantId, agenteId, calendarId }) {
+    await prisma.calendar.updateMany({
+        where: { tenantId, agenteId },
+        data: { agenteId: null },
+    });
+
+    if (!calendarId) return null;
+
+    const calendar = await prisma.calendar.findFirst({
+        where: { id: calendarId, tenantId },
+        select: { id: true },
+    });
+    if (!calendar) return null;
+
+    await prisma.calendar.update({
+        where: { id: calendar.id },
+        data: { agenteId },
+    });
+    return calendar.id;
+}
+
 function serializeAgendaEvent(event) {
     return {
         ...event,
@@ -416,6 +461,24 @@ router.get('/tenants/:slug/agentes', requirePermiso('VIEW_AGENTES'), async (req,
     }
 });
 
+// GET /admin/tenants/:slug/calendars
+router.get('/tenants/:slug/calendars', requirePermiso('VIEW_AGENTES'), async (req, res, next) => {
+    try {
+        const tenant = await db.findTenantBySlug(req.params.slug);
+        if (!tenant) return res.status(404).json({ error: 'Tenant not found' });
+        if (denyIfWrongTenant(req, res, tenant.id)) return;
+
+        const calendars = await prisma.calendar.findMany({
+            where: { tenantId: tenant.id, activo: true },
+            select: { id: true, name: true, agenteId: true },
+            orderBy: { createdAt: 'desc' },
+        });
+        return res.json({ data: calendars });
+    } catch (err) {
+        next(err);
+    }
+});
+
 // POST /admin/tenants/:slug/agentes
 router.post('/tenants/:slug/agentes', requirePermiso('EDIT_AGENTES'), async (req, res, next) => {
     try {
@@ -424,21 +487,30 @@ router.post('/tenants/:slug/agentes', requirePermiso('EDIT_AGENTES'), async (req
         const nombre = String(req.body?.nombre ?? '').trim();
         const email = String(req.body?.email ?? '').trim();
         const whatsapp = String(req.body?.whatsapp ?? '').trim();
-        const calendarLink = String(req.body?.calendarLink ?? '').trim();
-        const puestoId = Number(req.body?.puestoId);
-
-        if (!nombre || !email || !whatsapp || !calendarLink || !Number.isInteger(puestoId) || puestoId <= 0) {
-            return res.status(400).json({ error: 'nombre, email, whatsapp, puestoId and calendarLink are required' });
+        const calendarLinkValidation = normalizeOptionalHttpUrl(req.body?.calendarLink);
+        if (calendarLinkValidation.error) {
+            return res.status(400).json({ error: calendarLinkValidation.error });
         }
 
-        let calendarUrl;
-        try {
-            calendarUrl = new URL(calendarLink);
-            if (!['http:', 'https:'].includes(calendarUrl.protocol)) {
-                return res.status(400).json({ error: 'calendarLink must be a valid http(s) URL' });
+        const calendarSelection = parseCalendarSelection(req.body?.calendarId);
+        if (calendarSelection.error) {
+            return res.status(400).json({ error: calendarSelection.error });
+        }
+
+        if (calendarSelection.calendarId) {
+            const existingCalendar = await prisma.calendar.findFirst({
+                where: { id: calendarSelection.calendarId, tenantId: tenant.id },
+                select: { id: true },
+            });
+            if (!existingCalendar) {
+                return res.status(400).json({ error: 'calendarId is invalid for this tenant' });
             }
-        } catch (_err) {
-            return res.status(400).json({ error: 'calendarLink must be a valid URL' });
+        }
+
+        const puestoId = Number(req.body?.puestoId);
+
+        if (!nombre || !email || !whatsapp || !Number.isInteger(puestoId) || puestoId <= 0) {
+            return res.status(400).json({ error: 'nombre, email, whatsapp and puestoId are required' });
         }
 
         const puesto = await prisma.agentePuesto.findFirst({ where: { id: puestoId, tenantId: tenant.id, activo: true } });
@@ -452,9 +524,16 @@ router.post('/tenants/:slug/agentes', requirePermiso('EDIT_AGENTES'), async (req
             email,
             whatsapp,
             puestoId,
-            calendarLink: calendarUrl.toString(),
+            calendarLink: calendarLinkValidation.value,
         });
-        res.status(201).json(agente);
+
+        const assignedCalendarId = await assignCalendarToAgente({
+            tenantId: tenant.id,
+            agenteId: agente.id,
+            calendarId: calendarSelection.calendarId,
+        });
+
+        res.status(201).json({ ...agente, assignedCalendarId });
     } catch (err) {
         next(err);
     }
@@ -484,24 +563,33 @@ router.patch('/tenants/:slug/agentes/:id', requirePermiso('EDIT_AGENTES'), async
         const nombre = String(req.body?.nombre ?? '').trim();
         const email = String(req.body?.email ?? '').trim();
         const whatsapp = String(req.body?.whatsapp ?? '').trim();
-        const calendarLink = String(req.body?.calendarLink ?? '').trim();
+        const calendarLinkValidation = normalizeOptionalHttpUrl(req.body?.calendarLink);
+        if (calendarLinkValidation.error) {
+            return res.status(400).json({ error: calendarLinkValidation.error });
+        }
+
+        const calendarSelection = parseCalendarSelection(req.body?.calendarId);
+        if (calendarSelection.error) {
+            return res.status(400).json({ error: calendarSelection.error });
+        }
+
+        if (calendarSelection.calendarId) {
+            const existingCalendar = await prisma.calendar.findFirst({
+                where: { id: calendarSelection.calendarId, tenantId: tenant.id },
+                select: { id: true },
+            });
+            if (!existingCalendar) {
+                return res.status(400).json({ error: 'calendarId is invalid for this tenant' });
+            }
+        }
+
         const puestoId = Number(req.body?.puestoId);
 
         if (!Number.isInteger(id) || id <= 0) {
             return res.status(400).json({ error: 'invalid agente id' });
         }
-        if (!nombre || !email || !whatsapp || !calendarLink || !Number.isInteger(puestoId) || puestoId <= 0) {
-            return res.status(400).json({ error: 'nombre, email, whatsapp, puestoId and calendarLink are required' });
-        }
-
-        let calendarUrl;
-        try {
-            calendarUrl = new URL(calendarLink);
-            if (!['http:', 'https:'].includes(calendarUrl.protocol)) {
-                return res.status(400).json({ error: 'calendarLink must be a valid http(s) URL' });
-            }
-        } catch (_err) {
-            return res.status(400).json({ error: 'calendarLink must be a valid URL' });
+        if (!nombre || !email || !whatsapp || !Number.isInteger(puestoId) || puestoId <= 0) {
+            return res.status(400).json({ error: 'nombre, email, whatsapp and puestoId are required' });
         }
 
         const puesto = await prisma.agentePuesto.findFirst({ where: { id: puestoId, tenantId: tenant.id, activo: true } });
@@ -516,10 +604,21 @@ router.patch('/tenants/:slug/agentes/:id', requirePermiso('EDIT_AGENTES'), async
             email,
             whatsapp,
             puestoId,
-            calendarLink: calendarUrl.toString(),
+            calendarLink: calendarLinkValidation.value,
         });
         if (!result || result.count === 0) {
             return res.status(404).json({ error: 'Agente not found' });
+        }
+
+        if (calendarSelection.provided) {
+            const assignedCalendarId = await assignCalendarToAgente({
+                tenantId: tenant.id,
+                agenteId: id,
+                calendarId: calendarSelection.calendarId,
+            });
+            if (calendarSelection.calendarId && !assignedCalendarId) {
+                return res.status(400).json({ error: 'calendarId is invalid for this tenant' });
+            }
         }
 
         const agentes = await db.listAgentes(tenant.id);

@@ -1,6 +1,6 @@
 "use client";
 
-import { agentePuestosApi, agentesApi } from "@/lib/api";
+import { agentePuestosApi, agentesApi, calendarsApi } from "@/lib/api";
 import { useAuthStore } from "@/store/auth";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
@@ -22,6 +22,12 @@ interface Agente {
   estado: string;
 }
 
+interface Calendar {
+  id: string;
+  name: string;
+  agenteId: number | null;
+}
+
 interface AgentePuesto {
   id: number;
   nombre: string;
@@ -39,6 +45,7 @@ export default function AgentesPage() {
     whatsapp: "",
     puestoId: "",
     calendarLink: "",
+    calendarId: "",
   });
   const [formError, setFormError] = useState("");
   const [editForm, setEditForm] = useState({
@@ -47,6 +54,7 @@ export default function AgentesPage() {
     whatsapp: "",
     puestoId: "",
     calendarLink: "",
+    calendarId: "",
   });
   const [editFormError, setEditFormError] = useState("");
 
@@ -62,6 +70,12 @@ export default function AgentesPage() {
     enabled: !!tenantSlug,
   });
 
+  const { data: calendarsData } = useQuery({
+    queryKey: ["calendars", tenantSlug],
+    queryFn: () => calendarsApi.list(tenantSlug).then((r) => r.data),
+    enabled: !!tenantSlug,
+  });
+
   const create = useMutation({
     mutationFn: () =>
       agentesApi.create(tenantSlug, {
@@ -70,11 +84,12 @@ export default function AgentesPage() {
         whatsapp: form.whatsapp,
         puestoId: Number(form.puestoId),
         calendarLink: form.calendarLink,
+        calendarId: form.calendarId || null,
       }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["agentes"] });
       setModal(false);
-      setForm({ nombre: "", email: "", whatsapp: "", puestoId: "", calendarLink: "" });
+      setForm({ nombre: "", email: "", whatsapp: "", puestoId: "", calendarLink: "", calendarId: "" });
     },
     onError: () => setFormError("No se pudo crear el agente. Intentá de nuevo."),
   });
@@ -94,38 +109,47 @@ export default function AgentesPage() {
         whatsapp: editForm.whatsapp,
         puestoId: Number(editForm.puestoId),
         calendarLink: editForm.calendarLink,
+        calendarId: editForm.calendarId || null,
       });
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["agentes"] });
       setEditModal(false);
       setEditingId(null);
-      setEditForm({ nombre: "", email: "", whatsapp: "", puestoId: "", calendarLink: "" });
+      setEditForm({ nombre: "", email: "", whatsapp: "", puestoId: "", calendarLink: "", calendarId: "" });
     },
     onError: () => setEditFormError("No se pudo actualizar el agente."),
   });
 
   const agentes: Agente[] = data?.data ?? data ?? [];
   const puestos: AgentePuesto[] = puestosData?.data ?? puestosData ?? [];
+  const calendars: Calendar[] = calendarsData?.data ?? calendarsData ?? [];
+  const usedCalendarIds = new Set(
+    calendars
+      .filter((c) => c.agenteId !== null)
+      .map((c) => c.id),
+  );
   const activos = agentes.filter((a) => a.estado === "activo").length;
 
   function handleCreate(e: React.FormEvent) {
     e.preventDefault();
     setFormError("");
-    if (!form.nombre.trim() || !form.email.trim() || !form.whatsapp.trim() || !form.puestoId || !form.calendarLink.trim()) {
-      setFormError("Completá todos los campos.");
+    if (!form.nombre.trim() || !form.email.trim() || !form.whatsapp.trim() || !form.puestoId) {
+      setFormError("Completá nombre, email, WhatsApp y puesto.");
       return;
     }
 
-    try {
-      const parsed = new URL(form.calendarLink);
-      if (!["http:", "https:"].includes(parsed.protocol)) {
-        setFormError("La liga del calendario debe iniciar con http:// o https://");
+    if (form.calendarLink.trim()) {
+      try {
+        const parsed = new URL(form.calendarLink);
+        if (!["http:", "https:"].includes(parsed.protocol)) {
+          setFormError("La liga del calendario debe iniciar con http:// o https://");
+          return;
+        }
+      } catch {
+        setFormError("La liga del calendario no es valida.");
         return;
       }
-    } catch {
-      setFormError("La liga del calendario no es valida.");
-      return;
     }
 
     create.mutate();
@@ -140,6 +164,7 @@ export default function AgentesPage() {
       whatsapp: agent.whatsapp ?? "",
       puestoId: agent.puestoId ? String(agent.puestoId) : "",
       calendarLink: agent.calendarLink ?? "",
+      calendarId: calendars.find((c) => c.agenteId === agent.id)?.id ?? "",
     });
     setEditModal(true);
   }
@@ -147,20 +172,22 @@ export default function AgentesPage() {
   function handleUpdate(e: React.FormEvent) {
     e.preventDefault();
     setEditFormError("");
-    if (!editForm.nombre.trim() || !editForm.email.trim() || !editForm.whatsapp.trim() || !editForm.puestoId || !editForm.calendarLink.trim()) {
-      setEditFormError("Completá todos los campos.");
+    if (!editForm.nombre.trim() || !editForm.email.trim() || !editForm.whatsapp.trim() || !editForm.puestoId) {
+      setEditFormError("Completá nombre, email, WhatsApp y puesto.");
       return;
     }
 
-    try {
-      const parsed = new URL(editForm.calendarLink);
-      if (!["http:", "https:"].includes(parsed.protocol)) {
-        setEditFormError("La liga del calendario debe iniciar con http:// o https://");
+    if (editForm.calendarLink.trim()) {
+      try {
+        const parsed = new URL(editForm.calendarLink);
+        if (!["http:", "https:"].includes(parsed.protocol)) {
+          setEditFormError("La liga del calendario debe iniciar con http:// o https://");
+          return;
+        }
+      } catch {
+        setEditFormError("La liga del calendario no es valida.");
         return;
       }
-    } catch {
-      setEditFormError("La liga del calendario no es valida.");
-      return;
     }
 
     update.mutate();
@@ -303,8 +330,23 @@ export default function AgentesPage() {
             value={form.calendarLink}
             onChange={(e) => setForm((f) => ({ ...f, calendarLink: e.target.value }))}
             placeholder="https://calendar.google.com/..."
-            error={formError}
           />
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">Calendario interno (opcional)</label>
+            <select
+              value={form.calendarId}
+              onChange={(e) => setForm((f) => ({ ...f, calendarId: e.target.value }))}
+              className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-blue-500"
+            >
+              <option value="">Sin calendario interno</option>
+              {calendars.map((c) => (
+                <option key={c.id} value={c.id} disabled={usedCalendarIds.has(c.id)}>
+                  {c.name}{usedCalendarIds.has(c.id) ? " (asignado)" : ""}
+                </option>
+              ))}
+            </select>
+          </div>
+          {formError && <p className="text-sm text-red-600">{formError}</p>}
           <div className="flex justify-end gap-3 pt-2">
             <Button
               type="button"
@@ -368,8 +410,27 @@ export default function AgentesPage() {
             value={editForm.calendarLink}
             onChange={(e) => setEditForm((f) => ({ ...f, calendarLink: e.target.value }))}
             placeholder="https://calendar.google.com/..."
-            error={editFormError}
           />
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">Calendario interno (opcional)</label>
+            <select
+              value={editForm.calendarId}
+              onChange={(e) => setEditForm((f) => ({ ...f, calendarId: e.target.value }))}
+              className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-blue-500"
+            >
+              <option value="">Sin calendario interno</option>
+              {calendars.map((c) => {
+                const currentlyAssigned = c.agenteId === editingId;
+                const disabled = !!c.agenteId && !currentlyAssigned;
+                return (
+                  <option key={c.id} value={c.id} disabled={disabled}>
+                    {c.name}{disabled ? " (asignado)" : ""}
+                  </option>
+                );
+              })}
+            </select>
+          </div>
+          {editFormError && <p className="text-sm text-red-600">{editFormError}</p>}
           <div className="flex justify-end gap-3 pt-2">
             <Button
               type="button"
