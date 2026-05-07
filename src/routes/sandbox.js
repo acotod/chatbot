@@ -7,6 +7,7 @@ const db = require('../services/database');
 const { audit } = require('../services/audit');
 const whatsappRouter = require('./whatsapp');
 const { getPrismaClient } = require('../services/database');
+const { callLlmForJson } = require('../services/llmService');
 
 const router = express.Router();
 
@@ -155,6 +156,65 @@ function collectMenuOptionIds(options) {
   return ids;
 }
 
+function collectMenuOptionChoices(options) {
+  const choices = [];
+
+  if (!Array.isArray(options)) return choices;
+
+  for (const option of options) {
+    const optionId = String(option?.id ?? option?.value ?? '').trim();
+    const optionLabel = String(option?.label ?? option?.title ?? option?.text ?? '').trim();
+    if (optionId) {
+      choices.push({ id: optionId, label: optionLabel || optionId });
+    }
+
+    const rows = Array.isArray(option?.rows) ? option.rows : [];
+    for (const row of rows) {
+      const rowId = String(row?.id ?? row?.value ?? '').trim();
+      const rowLabel = String(row?.title ?? row?.label ?? row?.text ?? '').trim();
+      if (rowId) {
+        choices.push({ id: rowId, label: rowLabel || rowId });
+      }
+    }
+  }
+
+  return choices;
+}
+
+function normalizeReplyText(value, fallback) {
+  const text = String(value ?? '').replace(/\s+/g, ' ').trim();
+  return text || fallback;
+}
+
+function buildEventsDigest(events, maxEvents = 8) {
+  if (!Array.isArray(events) || events.length === 0) return [];
+
+  const digest = [];
+  const startIndex = Math.max(0, events.length - maxEvents);
+  for (let index = startIndex; index < events.length; index += 1) {
+    const event = events[index];
+    const type = normalizeEventType(event);
+    const payload = event?.payload ?? {};
+
+    const botText = String(
+      payload?.text ?? payload?.body ?? payload?.message ?? payload?.caption ?? ''
+    ).replace(/\s+/g, ' ').trim();
+    const userText = String(
+      payload?.raw_input ?? payload?.value ?? payload?.text ?? payload?.selected_id ?? ''
+    ).replace(/\s+/g, ' ').trim();
+
+    if (type === 'message_sent' && botText) {
+      digest.push({ role: 'bot', type, text: botText });
+      continue;
+    }
+    if ((type === 'user_input' || type === 'menu_selection') && userText) {
+      digest.push({ role: 'user', type, text: userText });
+    }
+  }
+
+  return digest;
+}
+
 function getAutoRepliesFromEvents(events, fallbackInput) {
   if (!Array.isArray(events) || events.length === 0) return null;
 
@@ -165,14 +225,22 @@ function getAutoRepliesFromEvents(events, fallbackInput) {
     const payload = event?.payload ?? {};
     const nodeType = String(payload?.node_type ?? '').trim().toLowerCase();
     if (nodeType === 'menu') {
-      const selectedIds = collectMenuOptionIds(payload?.options);
-      if (selectedIds.length > 0) {
-        return selectedIds.map((selectedId) => ({ type: 'menu_selection', text: selectedId }));
+      const choices = collectMenuOptionChoices(payload?.options);
+      if (choices.length > 0) {
+        return choices.map((choice) => ({
+          type: 'menu_selection',
+          text: choice.id,
+          label: choice.label,
+        }));
       }
     }
 
     if (nodeType === 'input') {
-      return [{ type: 'user_input', text: fallbackInput }];
+      return [{
+        type: 'user_input',
+        text: fallbackInput,
+        prompt: String(payload?.text ?? payload?.body ?? payload?.message ?? '').trim(),
+      }];
     }
   }
 
@@ -196,6 +264,63 @@ function replyKey(reply) {
 function pathKey(path) {
   if (!Array.isArray(path) || path.length === 0) return '';
   return path.map((step) => replyKey(step)).join('|');
+}
+
+async function chooseReplyWithLlm({
+  tenantId,
+  useLlm,
+  initialText,
+  events,
+  replyOptions,
+  fallbackInput,
+}) {
+  if (!useLlm || !tenantId || !Array.isArray(replyOptions) || replyOptions.length === 0) {
+    return null;
+  }
+
+  const primary = replyOptions[0];
+  const eventsDigest = buildEventsDigest(events);
+
+  if (primary.type === 'menu_selection') {
+    if (replyOptions.length <= 1) return null;
+
+    const systemPrompt = 'Eres un simulador de QA de flujos conversacionales. Elige la opcion de menu mas natural para el contexto. Responde SOLO JSON: {"selectedId":"..."}';
+    const userPrompt = [
+      `Mensaje inicial del usuario: ${JSON.stringify(initialText)}`,
+      `Ultimos eventos: ${JSON.stringify(eventsDigest)}`,
+      `Opciones disponibles: ${JSON.stringify(replyOptions.map((option) => ({ id: option.text, label: option.label ?? option.text })))} `,
+      'Devuelve selectedId con uno de los ids disponibles.',
+    ].join('\n');
+
+    const result = await callLlmForJson(tenantId, systemPrompt, userPrompt);
+    const selectedId = String(result?.json?.selectedId ?? '').trim();
+    if (!selectedId) return null;
+
+    const match = replyOptions.find((option) => option.text === selectedId);
+    return match ?? null;
+  }
+
+  if (primary.type === 'user_input') {
+    const systemPrompt = 'Eres un simulador de QA de flujos conversacionales. Genera una respuesta corta y natural del usuario. Responde SOLO JSON: {"userInput":"..."}';
+    const userPrompt = [
+      `Mensaje inicial del usuario: ${JSON.stringify(initialText)}`,
+      `Prompt esperado por el flujo: ${JSON.stringify(primary.prompt ?? '')}`,
+      `Ultimos eventos: ${JSON.stringify(eventsDigest)}`,
+      `Fallback disponible: ${JSON.stringify(fallbackInput)}`,
+      'Devuelve userInput con una respuesta breve y realista.',
+    ].join('\n');
+
+    const result = await callLlmForJson(tenantId, systemPrompt, userPrompt);
+    const generatedInput = normalizeReplyText(result?.json?.userInput, '');
+    if (!generatedInput) return null;
+
+    return {
+      ...primary,
+      text: generatedInput,
+    };
+  }
+
+  return null;
 }
 
 async function loadSandboxRunWithEvents(prisma, tenantId, conversationId) {
@@ -258,6 +383,7 @@ async function driveSandboxE2E({
   maxSteps,
   maxRuns,
   traverseAllPaths,
+  useLlm,
   fallbackInput,
 }) {
   const startInboundConversation = async ({ phoneForRun }) => {
@@ -343,6 +469,18 @@ async function driveSandboxE2E({
         const forcedKey = replyKey(forcedReply);
         const matched = replyOptions.find((option) => replyKey(option) === forcedKey);
         chosenReply = matched ?? chosenReply;
+      } else {
+        const llmReply = await chooseReplyWithLlm({
+          tenantId,
+          useLlm,
+          initialText,
+          events: run.events,
+          replyOptions,
+          fallbackInput,
+        });
+        if (llmReply?.text) {
+          chosenReply = llmReply;
+        }
       }
 
       if (!forcedReply && traverseAllPaths && replyOptions.length > 1) {
@@ -737,6 +875,7 @@ router.post('/simulate/inbound', async (req, res, next) => {
 
     const e2eEnabled = req.body?.e2e !== false;
     const e2eTraverseAllPaths = req.body?.e2eTraverseAllPaths !== false;
+    const e2eUseLlm = req.body?.e2eUseLlm !== false;
     const e2eMaxSteps = parseLimit(req.body?.e2eMaxSteps, 8, 30);
     const e2eMaxRuns = parseLimit(req.body?.e2eMaxRuns, 12, 60);
     const e2eFallbackInput = String(req.body?.e2eFallbackInput ?? 'ok').trim() || 'ok';
@@ -812,6 +951,7 @@ router.post('/simulate/inbound', async (req, res, next) => {
         maxSteps: e2eMaxSteps,
         maxRuns: e2eMaxRuns,
         traverseAllPaths: e2eTraverseAllPaths,
+        useLlm: e2eUseLlm,
         fallbackInput: e2eFallbackInput,
       });
       latestConversation = e2eResult.latestConversation ?? latestConversation;
@@ -874,6 +1014,7 @@ router.post('/simulate/inbound', async (req, res, next) => {
         simulatedMsgId,
         e2eEnabled,
         e2eTraverseAllPaths,
+        e2eUseLlm,
         e2eMaxSteps,
         e2eMaxRuns,
         autoE2ESteps,
@@ -895,6 +1036,7 @@ router.post('/simulate/inbound', async (req, res, next) => {
         e2e: {
           enabled: e2eEnabled,
           traverseAllPaths: e2eTraverseAllPaths,
+          useLlm: e2eUseLlm,
           maxSteps: e2eMaxSteps,
           maxRuns: e2eMaxRuns,
           autoSteps: autoE2ESteps,
