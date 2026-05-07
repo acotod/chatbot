@@ -34,6 +34,8 @@ const {
   exportToWaba,
   enrichDefinition,
   simulateFlow,
+  simulateAllPaths,
+  buildSimulationVerdict,
 } = require('../services/wabaFlowService');
 const logger = require('../utils/logger');
 
@@ -510,9 +512,10 @@ router.post('/:id/validate', async (req, res, next) => {
 // ─────────────────────────────────────────────────────────────────────────────
 router.post('/:id/simulate', async (req, res, next) => {
   try {
-    const tenantId = tid(req);
     const id = Number(req.params.id);
-    const { versionId, inputs = [], definition: bodyDef } = req.body;
+    const tenantId = await resolveTenantForFlow(req, id, req.body?.tenantSlug ?? req.query?.tenantSlug);
+    if (!tenantId) return res.status(400).json({ error: 'tenantSlug is required for WABA flows' });
+    const { versionId, inputs = [], definition: bodyDef, mode = 'single', useLlm = false } = req.body;
 
     let definition = bodyDef;
 
@@ -531,8 +534,15 @@ router.post('/:id/simulate', async (req, res, next) => {
     const intMap = await _getIntegrationMap(tenantId);
     const enriched = enrichDefinition(definition, intMap);
 
+    if (mode === 'exhaustive') {
+      const result = await simulateAllPaths(enriched, { tenantId, useLlm: Boolean(useLlm) });
+      const verdict = await buildSimulationVerdict(result, enriched, { tenantId, useLlm: Boolean(useLlm) });
+      return res.json({ ...result, verdict });
+    }
+
     const result = simulateFlow(enriched, inputs);
-    res.json(result);
+    const verdict = await buildSimulationVerdict(result, enriched, { tenantId, useLlm: false });
+    res.json({ ...result, verdict, mode: 'single' });
   } catch (err) { next(err); }
 });
 

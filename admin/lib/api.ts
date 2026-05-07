@@ -503,7 +503,7 @@ export const wabaFlowsApi = {
     apiClient.get(`/waba-flows/${id}/export`, { params }),
   validate: (id: number, data?: { versionId?: number; definition?: unknown }) =>
     apiClient.post(`/waba-flows/${id}/validate`, data ?? {}),
-  simulate: (id: number, data: { inputs?: string[]; versionId?: number; definition?: unknown }) =>
+  simulate: (id: number, data: { inputs?: string[]; versionId?: number; definition?: unknown; mode?: 'single' | 'exhaustive'; useLlm?: boolean; tenantSlug?: string }) =>
     apiClient.post(`/waba-flows/${id}/simulate`, data),
   listVersions: (id: number, tenantSlug?: string) =>
     apiClient.get(`/waba-flows/${id}/versions`, {

@@ -84,6 +84,51 @@ interface SimulationStep {
   output?: Record<string, unknown>;
   error?: string;
   waiting_for_input?: boolean;
+  selected?: string;
+  llm_intent?: string;
+  variable_captured?: Record<string, unknown>;
+}
+
+interface SimulationPath {
+  pathId: string;
+  trace: SimulationStep[];
+  finalVariables?: Record<string, unknown>;
+  stepCount?: number;
+  endedBy?: string;
+}
+
+interface SimulationVerdict {
+  status: "pass" | "warn" | "fail";
+  summary: string;
+  highlights: string[];
+  metrics?: {
+    pathCount: number;
+    completedPathCount: number;
+    endNodeCount: number;
+    errorPathCount: number;
+    maxStepPathCount: number;
+    waitingPathCount: number;
+    truncated: boolean;
+  };
+  llm?: {
+    summary?: string | null;
+    risks?: string[];
+    recommendedStatus?: string | null;
+    provider?: string;
+    model?: string;
+  } | null;
+}
+
+interface SimulationResult {
+  mode?: "single" | "exhaustive";
+  strategy?: string;
+  trace?: SimulationStep[];
+  paths?: SimulationPath[];
+  verdict?: SimulationVerdict;
+  stepCount?: number;
+  pathCount?: number;
+  truncated?: boolean;
+  finalVariables?: Record<string, unknown>;
 }
 
 interface CatalogEndpoint {
@@ -1630,17 +1675,31 @@ function VersionsPanel({ flow, onRefresh, tenantSlug }: { flow: WabaFlow; onRefr
 // Sub-component: SimulatePanel
 // ─────────────────────────────────────────────────────────────────────────────
 function SimulatePanel({ flow }: { flow: WabaFlow }) {
+  const { tenantSlug } = useAuthStore();
   const [inputs, setInputs]     = useState<string[]>([]);
   const [inputVal, setInputVal] = useState("");
-  const [trace, setTrace]       = useState<SimulationStep[]>([]);
+  const [result, setResult]     = useState<SimulationResult | null>(null);
   const [running, setRunning]   = useState(false);
+  const [error, setError]       = useState<string | null>(null);
 
-  async function runSimulation() {
+  async function runSimulation(mode: "single" | "exhaustive" = "single") {
     setRunning(true);
+    setError(null);
     try {
-      const { data } = await wabaFlowsApi.simulate(flow.id, { inputs });
-      setTrace(Array.isArray(data?.trace) ? data.trace : []);
-    } catch { /* ignore */ } finally { setRunning(false); }
+      const { data } = await wabaFlowsApi.simulate(flow.id, {
+        inputs,
+        mode,
+        useLlm: mode === "exhaustive",
+        tenantSlug,
+      });
+      setResult(data as SimulationResult);
+    } catch (e: unknown) {
+      const msg = (e as { response?: { data?: { error?: string } }; message?: string })?.response?.data?.error
+        ?? (e as { message?: string })?.message
+        ?? "No se pudo ejecutar la simulación.";
+      setError(msg);
+      setResult(null);
+    } finally { setRunning(false); }
   }
 
   function addInput() {
@@ -1685,21 +1744,90 @@ function SimulatePanel({ flow }: { flow: WabaFlow }) {
             ))}
           </div>
         )}
-        <button
-          onClick={runSimulation}
-          disabled={running}
-          className="flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 disabled:opacity-50"
-        >
-          {running ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
-          Ejecutar simulación
-        </button>
+        <div className="flex flex-wrap gap-2">
+          <button
+            onClick={() => runSimulation("single")}
+            disabled={running}
+            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 disabled:opacity-50"
+          >
+            {running ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
+            Ejecutar simulación
+          </button>
+          <button
+            onClick={() => runSimulation("exhaustive")}
+            disabled={running}
+            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-violet-600 text-white text-sm font-medium hover:bg-violet-700 disabled:opacity-50"
+          >
+            {running ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Zap className="w-4 h-4" />}
+            Explorar todas las vías con IA
+          </button>
+        </div>
+        <p className="text-xs text-slate-500">
+          El modo con IA usa el LLM configurado del tenant para proponer entradas realistas, recorrer ramas y emitir un veredicto.
+        </p>
       </div>
 
+      {error && (
+        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          {error}
+        </div>
+      )}
+
+      {result?.verdict && (
+        <div className={`rounded-2xl border p-4 ${
+          result.verdict.status === "pass"
+            ? "border-green-200 bg-green-50"
+            : result.verdict.status === "warn"
+              ? "border-amber-200 bg-amber-50"
+              : "border-red-200 bg-red-50"
+        }`}>
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Veredicto</p>
+              <p className="mt-1 text-sm font-medium text-slate-800">{result.verdict.summary}</p>
+            </div>
+            <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${
+              result.verdict.status === "pass"
+                ? "bg-green-100 text-green-700"
+                : result.verdict.status === "warn"
+                  ? "bg-amber-100 text-amber-700"
+                  : "bg-red-100 text-red-700"
+            }`}>
+              {result.verdict.status === "pass" ? "Aprobado" : result.verdict.status === "warn" ? "Con observaciones" : "Fallido"}
+            </span>
+          </div>
+
+          {result.verdict.highlights?.length > 0 && (
+            <div className="flex flex-wrap gap-2 mt-3">
+              {result.verdict.highlights.map((item, idx) => (
+                <span key={idx} className="px-2 py-1 rounded-lg bg-white/80 text-xs text-slate-700 border border-white/60">
+                  {item}
+                </span>
+              ))}
+            </div>
+          )}
+
+          {result.verdict.llm?.summary && (
+            <div className="mt-3 rounded-xl bg-white/70 border border-white/60 p-3">
+              <p className="text-xs font-medium text-slate-600">Lectura IA</p>
+              <p className="mt-1 text-xs text-slate-700">{result.verdict.llm.summary}</p>
+              {Array.isArray(result.verdict.llm.risks) && result.verdict.llm.risks.length > 0 && (
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {result.verdict.llm.risks.map((risk, idx) => (
+                    <span key={idx} className="px-2 py-1 rounded-lg bg-slate-100 text-xs text-slate-700">{risk}</span>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Trace */}
-      {trace.length > 0 && (
+      {Array.isArray(result?.trace) && result.trace.length > 0 && (
         <div className="space-y-2">
-          <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">Traza de ejecución ({trace.length} pasos)</p>
-          {trace.map((step, i) => (
+          <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">Traza de ejecución ({result.trace.length} pasos)</p>
+          {result.trace.map((step, i) => (
             <div key={i} className={`rounded-xl border p-3 text-sm ${step.error ? "border-red-200 bg-red-50" : "border-slate-200 bg-white"}`}>
               {step.error ? (
                 <p className="text-red-600 text-xs">{step.error}</p>
@@ -1743,6 +1871,76 @@ function SimulatePanel({ flow }: { flow: WabaFlow }) {
                 </div>
               )}
             </div>
+          ))}
+        </div>
+      )}
+
+      {Array.isArray(result?.paths) && result.paths.length > 0 && (
+        <div className="space-y-3">
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">
+              Rutas exploradas ({result.paths.length})
+            </p>
+            <span className="text-xs text-slate-400">
+              {result.strategy === "llm-assisted" ? "Modo IA" : "Modo determinista"}
+            </span>
+          </div>
+          {result.paths.map((path, pathIndex) => (
+            <details key={path.pathId} className="rounded-2xl border border-slate-200 bg-white p-4" open={pathIndex === 0}>
+              <summary className="cursor-pointer list-none flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-sm font-medium text-slate-800">Ruta {pathIndex + 1}</p>
+                  <p className="text-xs text-slate-500">{path.stepCount ?? path.trace.length} paso(s) · {path.endedBy ?? "completed"}</p>
+                </div>
+                <span className={`text-xs px-2 py-1 rounded-full ${path.trace.some((step) => step.error)
+                  ? "bg-red-100 text-red-700"
+                  : "bg-slate-100 text-slate-600"}`}>
+                  {path.trace.some((step) => step.error) ? "Con error" : "Explorada"}
+                </span>
+              </summary>
+              <div className="mt-4 space-y-2">
+                {path.trace.map((step, i) => (
+                  <div key={`${path.pathId}-${i}`} className={`rounded-xl border p-3 text-sm ${step.error ? "border-red-200 bg-red-50" : "border-slate-200 bg-slate-50"}`}>
+                    {step.error ? (
+                      <p className="text-red-600 text-xs">{step.error}</p>
+                    ) : (
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2">
+                          <span className="w-6 h-6 rounded-full bg-white text-xs font-bold flex items-center justify-center text-slate-600 border border-slate-200 shrink-0">{i + 1}</span>
+                          <span className="font-mono text-xs text-slate-500">{step.nodeId}</span>
+                          <span className={`text-xs px-1.5 py-0.5 rounded ${NODE_TYPE_COLOR[step.nodeType ?? ""] ?? "bg-slate-100 text-slate-600"}`}>{step.nodeType}</span>
+                          {step.llm_intent && <span className="text-xs px-1.5 py-0.5 rounded bg-violet-100 text-violet-700">intent {step.llm_intent}</span>}
+                        </div>
+                        {step.input !== null && step.input !== undefined && (
+                          <p className="text-xs text-blue-600">↳ Input: <span className="font-medium">"{step.input}"</span></p>
+                        )}
+                        {step.output && (
+                          <div className="text-xs text-slate-600 mt-1">
+                            {(step.output as { text?: string }).text && <p>{(step.output as { text: string }).text}</p>}
+                            {(step.output as { type?: string }).type === "buttons" && Array.isArray((step.output as { options?: { title: string }[] }).options) && (
+                              <div className="flex flex-wrap gap-1 mt-1">
+                                {((step.output as { options: { title: string }[] }).options).map((o: { title: string }, j: number) => (
+                                  <span key={j} className="bg-purple-50 text-purple-700 px-2 py-0.5 rounded-lg">{o.title}</span>
+                                ))}
+                              </div>
+                            )}
+                            {(step.output as { type?: string }).type === "condition" && (
+                              <p className="text-orange-700 font-mono">{String((step.output as { expression?: string }).expression ?? "")}</p>
+                            )}
+                            {(step.output as { type?: string }).type === "end" && (
+                              <span className="text-rose-600 font-medium">✓ Conversación finalizada</span>
+                            )}
+                            {(step.output as { type?: string }).type === "api_call_simulated" && (
+                              <p className="font-mono text-green-600">{(step.output as { method?: string; endpoint?: string }).method} {(step.output as { endpoint?: string }).endpoint}</p>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </details>
           ))}
         </div>
       )}

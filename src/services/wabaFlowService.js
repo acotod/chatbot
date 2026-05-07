@@ -14,6 +14,7 @@
  */
 
 const logger = require('../utils/logger');
+const { callLlm, callLlmForJson } = require('./llmService');
 
 // ─────────────────────────────────────────────────────────────────────────────
 // WABA → internal type mapping
@@ -633,6 +634,377 @@ function simulateFlow(definition, inputs = []) {
   return { trace, finalVariables: variables, stepCount: trace.length };
 }
 
+/**
+ * Simulate all reachable routes of a flow.
+ * Branches on menu options and condition branches to cover all possible paths.
+ */
+async function simulateAllPaths(definition, options = {}) {
+  const nodesMap = Object.fromEntries((definition.nodes ?? []).map((n) => [n.id, n]));
+  const MAX_STEPS = Number(options.maxSteps) > 0 ? Number(options.maxSteps) : 60;
+  const MAX_PATHS = Number(options.maxPaths) > 0 ? Number(options.maxPaths) : 200;
+  const tenantId = options.tenantId ?? null;
+  const useLlm = Boolean(options.useLlm && tenantId);
+  const llmCache = new Map();
+
+  const initialState = {
+    currentId: definition.entry_point,
+    trace: [],
+    variables: { ...(definition.variables ?? {}) },
+    stepCount: 0,
+    pathId: 'path_1',
+  };
+
+  const stack = [initialState];
+  const paths = [];
+  let counter = 1;
+  let truncated = false;
+
+  while (stack.length && paths.length < MAX_PATHS) {
+    const state = stack.pop();
+    if (!state) break;
+
+    if (!state.currentId) {
+      paths.push({
+        pathId: state.pathId,
+        trace: state.trace,
+        finalVariables: state.variables,
+        stepCount: state.trace.length,
+        endedBy: 'completed',
+      });
+      continue;
+    }
+
+    if (state.stepCount >= MAX_STEPS) {
+      paths.push({
+        pathId: state.pathId,
+        trace: [...state.trace, { error: 'Simulation aborted: maximum step limit reached (possible cycle)' }],
+        finalVariables: state.variables,
+        stepCount: state.trace.length,
+        endedBy: 'max_steps',
+      });
+      continue;
+    }
+
+    const node = nodesMap[state.currentId];
+    if (!node) {
+      paths.push({
+        pathId: state.pathId,
+        trace: [...state.trace, { error: `Unknown node: ${state.currentId}` }],
+        finalVariables: state.variables,
+        stepCount: state.trace.length,
+        endedBy: 'error',
+      });
+      continue;
+    }
+
+    const baseStep = {
+      nodeId: node.id,
+      nodeType: node.type,
+      input: null,
+      output: null,
+    };
+
+    const nextStates = [];
+
+    if (node.type === 'message') {
+      const step = {
+        ...baseStep,
+        output: { type: 'text', text: _resolveTemplate(node.config?.text ?? '', state.variables) },
+      };
+      nextStates.push({ step, nextId: node.next, variables: state.variables });
+    } else if (node.type === 'input') {
+      const varName = node.config?.variable ?? `input_${node.id}`;
+      const intents = Array.isArray(node.llm_classification?.intents) ? node.llm_classification.intents : [];
+
+      if (intents.length) {
+        for (const intent of intents) {
+          const syntheticInput = await _generateRepresentativeInput({
+            tenantId,
+            useLlm,
+            llmCache,
+            kind: 'intent',
+            node,
+            variables: state.variables,
+            intent,
+          });
+          const nextVars = { ...state.variables, [varName]: syntheticInput, [`${varName}__intent`]: intent };
+          const step = {
+            ...baseStep,
+            input: syntheticInput,
+            output: { type: 'input_prompt', text: node.config?.text ?? '' },
+            variable_captured: { [varName]: syntheticInput },
+            llm_intent: intent,
+          };
+          nextStates.push({
+            step,
+            nextId: node.branches?.[intent] ?? node.next,
+            variables: nextVars,
+            branchLabel: intent,
+          });
+        }
+      } else {
+        const syntheticInput = await _generateRepresentativeInput({
+          tenantId,
+          useLlm,
+          llmCache,
+          kind: 'free_text',
+          node,
+          variables: state.variables,
+        });
+        const nextVars = { ...state.variables, [varName]: syntheticInput };
+        const step = {
+          ...baseStep,
+          input: syntheticInput,
+          output: { type: 'input_prompt', text: node.config?.text ?? '' },
+          variable_captured: { [varName]: syntheticInput },
+        };
+        nextStates.push({ step, nextId: node.next, variables: nextVars });
+      }
+    } else if (node.type === 'menu') {
+      const optionsList = Array.isArray(node.config?.options) ? node.config.options : [];
+      if (optionsList.length) {
+        for (const option of optionsList) {
+          const optionId = String(option.id ?? option.title ?? 'option');
+          const optionTitle = String(option.title ?? option.id ?? optionId);
+          const varName = typeof node.config?.variable === 'string' && node.config.variable.trim()
+            ? node.config.variable.trim()
+            : null;
+          const nextVars = varName ? { ...state.variables, [varName]: optionId } : state.variables;
+
+          const step = {
+            ...baseStep,
+            input: optionId,
+            selected: optionId,
+            output: {
+              type: 'buttons',
+              text: node.config?.text ?? '',
+              options: optionsList,
+            },
+            variable_captured: varName ? { [varName]: optionId } : undefined,
+          };
+
+          nextStates.push({
+            step,
+            nextId: node.branches?.[optionId] ?? node.next,
+            variables: nextVars,
+            branchLabel: optionTitle,
+          });
+        }
+      } else {
+        const step = {
+          ...baseStep,
+          output: {
+            type: 'buttons',
+            text: node.config?.text ?? '',
+            options: [],
+          },
+        };
+        nextStates.push({ step, nextId: node.next, variables: state.variables });
+      }
+    } else if (node.type === 'condition') {
+      const expr = node.config?.expression ?? 'false';
+      const branchEntries = Object.entries(node.branches ?? {});
+
+      if (branchEntries.length === 0 && node.next) {
+        const step = {
+          ...baseStep,
+          output: { type: 'condition', expression: expr, result: null, next: node.next },
+        };
+        nextStates.push({ step, nextId: node.next, variables: state.variables });
+      } else {
+        for (const [branchKey, targetId] of branchEntries) {
+          const step = {
+            ...baseStep,
+            output: {
+              type: 'condition',
+              expression: expr,
+              assumedBranch: branchKey,
+              assumedResult: branchKey === 'true' ? true : branchKey === 'false' ? false : null,
+              next: targetId,
+            },
+          };
+          nextStates.push({ step, nextId: targetId, variables: state.variables, branchLabel: branchKey });
+        }
+      }
+    } else if (node.type === 'action') {
+      const step = {
+        ...baseStep,
+        output: {
+          type: 'api_call_simulated',
+          endpoint: node.config?._integration_config?.endpoint ?? node.config?.endpoint ?? '[integration]',
+          method: node.config?._integration_config?.method ?? node.config?.method ?? 'POST',
+          note: 'Simulated — no real HTTP call made',
+        },
+      };
+      nextStates.push({ step, nextId: node.next, variables: state.variables });
+    } else if (node.type === 'llm') {
+      const renderedUserMsg = node.config?.user_template
+        ? _resolveTemplate(node.config.user_template, { ...state.variables, input: state.variables.input ?? '' })
+        : String(state.variables.input ?? '');
+      const llmReply = await _generateRepresentativeLlmReply({
+        tenantId,
+        useLlm,
+        llmCache,
+        node,
+        variables: state.variables,
+        userMsg: renderedUserMsg,
+      });
+      const step = {
+        ...baseStep,
+        input: renderedUserMsg || null,
+        output: { type: 'text', text: llmReply, llmGenerated: Boolean(useLlm) },
+      };
+      nextStates.push({ step, nextId: node.next, variables: state.variables });
+    } else if (node.type === 'delay') {
+      const step = {
+        ...baseStep,
+        output: { type: 'delay', ms: node.config?.ms ?? 1000 },
+      };
+      nextStates.push({ step, nextId: node.next, variables: state.variables });
+    } else if (node.type === 'end') {
+      const step = {
+        ...baseStep,
+        output: { type: 'end', text: node.config?.text ?? 'Conversación finalizada' },
+      };
+      nextStates.push({ step, nextId: null, variables: state.variables });
+    } else {
+      const step = {
+        ...baseStep,
+        output: { type: 'unknown', raw: node },
+      };
+      nextStates.push({ step, nextId: node.next, variables: state.variables });
+    }
+
+    for (const nxt of nextStates.reverse()) {
+      counter += 1;
+      stack.push({
+        currentId: nxt.nextId,
+        trace: [...state.trace, nxt.step],
+        variables: { ...nxt.variables },
+        stepCount: state.stepCount + 1,
+        pathId: `${state.pathId}.${counter}`,
+      });
+    }
+  }
+
+  if (stack.length) truncated = true;
+
+  return {
+    mode: 'exhaustive',
+    strategy: useLlm ? 'llm-assisted' : 'deterministic',
+    pathCount: paths.length,
+    truncated,
+    limits: { maxPaths: MAX_PATHS, maxSteps: MAX_STEPS },
+    paths,
+  };
+}
+
+async function buildSimulationVerdict(simulationResult, definition, options = {}) {
+  const tenantId = options.tenantId ?? null;
+  const useLlm = Boolean(options.useLlm && tenantId);
+
+  const paths = Array.isArray(simulationResult?.paths)
+    ? simulationResult.paths
+    : [{
+        pathId: 'single',
+        trace: Array.isArray(simulationResult?.trace) ? simulationResult.trace : [],
+        endedBy: 'completed',
+      }];
+
+  const pathCount = paths.length;
+  const errorPathCount = paths.filter((path) =>
+    Array.isArray(path.trace) && path.trace.some((step) => step?.error)
+  ).length;
+  const maxStepPathCount = paths.filter((path) => path.endedBy === 'max_steps').length;
+  const waitingPathCount = paths.filter((path) =>
+    Array.isArray(path.trace) && path.trace.some((step) => step?.waiting_for_input)
+  ).length;
+  const completedPathCount = Math.max(0, pathCount - errorPathCount - maxStepPathCount);
+  const endNodeCount = paths.filter((path) =>
+    Array.isArray(path.trace) && path.trace.some((step) => step?.output?.type === 'end')
+  ).length;
+
+  let status = 'pass';
+  if (errorPathCount > 0) status = 'fail';
+  else if (simulationResult?.truncated || maxStepPathCount > 0 || waitingPathCount > 0) status = 'warn';
+
+  const summary = status === 'pass'
+    ? `Se exploraron ${pathCount} ruta(s) y todas cerraron sin errores.`
+    : status === 'warn'
+      ? `Se exploraron ${pathCount} ruta(s), pero hay ${maxStepPathCount + waitingPathCount} ruta(s) incompletas o potencialmente bloqueadas.`
+      : `Se exploraron ${pathCount} ruta(s) y ${errorPathCount} terminaron con errores.`;
+
+  const highlights = [
+    `${completedPathCount} ruta(s) completadas`,
+    `${endNodeCount} ruta(s) alcanzaron un nodo end`,
+    errorPathCount ? `${errorPathCount} ruta(s) con error` : null,
+    maxStepPathCount ? `${maxStepPathCount} ruta(s) cortadas por límite de pasos` : null,
+    simulationResult?.truncated ? 'La exploración se truncó por límite de rutas' : null,
+  ].filter(Boolean);
+
+  let llmVerdict = null;
+  if (useLlm) {
+    const failingExamples = paths
+      .filter((path) => Array.isArray(path.trace) && path.trace.some((step) => step?.error))
+      .slice(0, 3)
+      .map((path) => ({
+        pathId: path.pathId,
+        errors: path.trace.filter((step) => step?.error).map((step) => step.error),
+      }));
+
+    const systemPrompt = 'You are a QA analyst for chatbot flow simulations. Return concise Spanish JSON only.';
+    const userPrompt = [
+      'Analiza este resultado de simulacion exhaustiva de un flujo conversacional.',
+      `Metadata: ${JSON.stringify(definition?.metadata ?? {})}`,
+      `Resumen numerico: ${JSON.stringify({
+        pathCount,
+        completedPathCount,
+        endNodeCount,
+        errorPathCount,
+        maxStepPathCount,
+        waitingPathCount,
+        truncated: Boolean(simulationResult?.truncated),
+      })}`,
+      `Ejemplos de falla: ${JSON.stringify(failingExamples)}`,
+      'Devuelve JSON con este schema exacto: {"summary":"...","risks":["..."],"recommendedStatus":"pass|warn|fail"}',
+    ].join('\n');
+
+    try {
+      const result = await callLlmForJson(tenantId, systemPrompt, userPrompt);
+      if (result?.json) {
+        llmVerdict = {
+          summary: typeof result.json.summary === 'string' ? result.json.summary : null,
+          risks: Array.isArray(result.json.risks) ? result.json.risks.map(String) : [],
+          recommendedStatus: typeof result.json.recommendedStatus === 'string' ? result.json.recommendedStatus : null,
+          provider: result.provider,
+          model: result.model,
+        };
+        if (['pass', 'warn', 'fail'].includes(llmVerdict.recommendedStatus)) {
+          status = llmVerdict.recommendedStatus;
+        }
+      }
+    } catch (err) {
+      logger.warn({ tenantId, message: err.message }, 'wabaFlowService: failed to build llm verdict');
+    }
+  }
+
+  return {
+    status,
+    summary,
+    highlights,
+    metrics: {
+      pathCount,
+      completedPathCount,
+      endNodeCount,
+      errorPathCount,
+      maxStepPathCount,
+      waitingPathCount,
+      truncated: Boolean(simulationResult?.truncated),
+    },
+    llm: llmVerdict,
+  };
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Private helpers
 // ─────────────────────────────────────────────────────────────────────────────
@@ -640,6 +1012,79 @@ function simulateFlow(definition, inputs = []) {
 function _resolveTemplate(text, variables) {
   if (!text) return '';
   return text.replace(/\{\{(\w+)\}\}/g, (_, key) => variables[key] ?? `{{${key}}}`);
+}
+
+async function _generateRepresentativeInput({ tenantId, useLlm, llmCache, kind, node, variables, intent }) {
+  const cacheKey = JSON.stringify({
+    kind,
+    tenantId,
+    nodeId: node.id,
+    prompt: node.config?.text ?? '',
+    variable: node.config?.variable ?? null,
+    intent: intent ?? null,
+  });
+
+  if (llmCache.has(cacheKey)) return llmCache.get(cacheKey);
+
+  let fallback = kind === 'intent'
+    ? `consulta sobre ${intent}`
+    : `_auto_${node.id}`;
+
+  if (!useLlm) {
+    llmCache.set(cacheKey, fallback);
+    return fallback;
+  }
+
+  const systemPrompt = 'You generate realistic short user inputs for chatbot flow simulation. Return JSON only.';
+  const userPrompt = [
+    'Produce a single Spanish utterance for chatbot flow testing.',
+    `Node prompt: ${JSON.stringify(node.config?.text ?? '')}`,
+    `Variable name: ${JSON.stringify(node.config?.variable ?? null)}`,
+    kind === 'intent' ? `Target intent: ${intent}` : 'Target intent: free_text_generic',
+    `Known variables: ${JSON.stringify(variables ?? {})}`,
+    'Return JSON as {"utterance":"..."} with no explanation.',
+  ].join('\n');
+
+  try {
+    const result = await callLlmForJson(tenantId, systemPrompt, userPrompt);
+    const utterance = String(result?.json?.utterance ?? '').trim();
+    if (utterance) fallback = utterance;
+  } catch (err) {
+    logger.warn({ tenantId, nodeId: node.id, kind, intent, message: err.message }, 'wabaFlowService: failed to generate representative input');
+  }
+
+  llmCache.set(cacheKey, fallback);
+  return fallback;
+}
+
+async function _generateRepresentativeLlmReply({ tenantId, useLlm, llmCache, node, variables, userMsg }) {
+  const fallback = String(node.config?.fallback_text ?? 'No pude generar una respuesta.');
+  const cacheKey = JSON.stringify({
+    kind: 'llm_reply',
+    tenantId,
+    nodeId: node.id,
+    systemPrompt: node.config?.system_prompt ?? '',
+    userMsg,
+    variables,
+  });
+
+  if (llmCache.has(cacheKey)) return llmCache.get(cacheKey);
+  if (!useLlm || !node.config?.system_prompt) {
+    llmCache.set(cacheKey, fallback);
+    return fallback;
+  }
+
+  let reply = fallback;
+  try {
+    const result = await callLlm(tenantId, String(node.config.system_prompt), String(userMsg ?? ''));
+    const text = String(result?.text ?? '').trim();
+    if (text) reply = text;
+  } catch (err) {
+    logger.warn({ tenantId, nodeId: node.id, message: err.message }, 'wabaFlowService: failed to generate llm reply for simulation');
+  }
+
+  llmCache.set(cacheKey, reply);
+  return reply;
 }
 
 function _evalCondition(expression, variables) {
@@ -690,4 +1135,6 @@ module.exports = {
   exportToWaba,
   enrichDefinition,
   simulateFlow,
+  simulateAllPaths,
+  buildSimulationVerdict,
 };
