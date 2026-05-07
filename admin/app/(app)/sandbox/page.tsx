@@ -27,6 +27,7 @@ type SimulationResponse = {
     correlationId: string;
     conversationId: string | null;
     conversationStatus: string | null;
+    outboundMetaMock?: boolean;
   };
 };
 
@@ -86,12 +87,27 @@ export default function SandboxPage() {
 
   const permissionSet = useMemo(() => buildPermissionSet(permissions), [permissions]);
   const canAccessSandbox = superAdmin || permissionSet.has("VIEW_SANDBOX");
+  const canManageSandboxSettings = superAdmin || permissionSet.has("MANAGE_TENANTS");
 
   const { data, isLoading, isError } = useQuery({
-    queryKey: ["sandbox-capabilities"],
-    queryFn: () => sandboxApi.capabilities().then((res) => res.data as CapabilitiesResponse),
-    enabled: canAccessSandbox,
+    queryKey: ["sandbox-capabilities", tenantSlug],
+    queryFn: () =>
+      sandboxApi.capabilities({
+        tenantSlug: superAdmin ? tenantSlug || undefined : undefined,
+      }).then((res) => res.data as CapabilitiesResponse),
+    enabled: canAccessSandbox && (!superAdmin || Boolean(tenantSlug)),
     staleTime: 30_000,
+  });
+
+  const updateSettingsMutation = useMutation({
+    mutationFn: (outboundMetaMock: boolean) =>
+      sandboxApi.updateSettings({
+        tenantSlug: superAdmin ? tenantSlug || undefined : undefined,
+        outboundMetaMock,
+      }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["sandbox-capabilities"] });
+    },
   });
 
   const simulateMutation = useMutation({
@@ -147,6 +163,7 @@ export default function SandboxPage() {
   const selectedRun = runDetailData?.data ?? null;
 
   const runtimeEntries = Object.entries(data?.sandbox.runtime ?? {});
+  const outboundMetaMockEnabled = Boolean(data?.sandbox.runtime?.outboundMetaMock);
 
   if (!canAccessSandbox) {
     return (
@@ -257,6 +274,9 @@ export default function SandboxPage() {
               <p className="font-medium">Ejecución lanzada sobre el runtime real.</p>
               <p className="mt-1">Mensaje: <strong>{simulateMutation.data.simulated.msgId}</strong></p>
               <p>Correlation ID: <strong>{simulateMutation.data.simulated.correlationId}</strong></p>
+              <p>
+                outboundMetaMock: <strong>{simulateMutation.data.simulated.outboundMetaMock ? "activo" : "desactivado"}</strong>
+              </p>
               {simulateMutation.data.simulated.conversationId && (
                 <p>
                   Ejecución: <strong>{simulateMutation.data.simulated.conversationId}</strong> · Estado: <strong>{simulateMutation.data.simulated.conversationStatus ?? "active"}</strong>
@@ -337,6 +357,38 @@ export default function SandboxPage() {
               </div>
             ) : (
               <div className="space-y-3">
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className="font-medium text-slate-900">outboundMetaMock</p>
+                      <p className="text-xs text-slate-500">Cuando está activo, el sandbox no llama a Meta para mensajes salientes.</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => updateSettingsMutation.mutate(!outboundMetaMockEnabled)}
+                      disabled={
+                        updateSettingsMutation.isPending ||
+                        !canManageSandboxSettings ||
+                        (superAdmin && !tenantSlug)
+                      }
+                      className={[
+                        "rounded-xl px-3 py-1.5 text-xs font-medium transition",
+                        outboundMetaMockEnabled
+                          ? "bg-emerald-600 text-white hover:bg-emerald-700"
+                          : "bg-slate-200 text-slate-800 hover:bg-slate-300",
+                        (updateSettingsMutation.isPending || !canManageSandboxSettings || (superAdmin && !tenantSlug))
+                          ? "cursor-not-allowed opacity-60"
+                          : "",
+                      ].join(" ")}
+                    >
+                      {updateSettingsMutation.isPending
+                        ? "Guardando..."
+                        : outboundMetaMockEnabled
+                          ? "Desactivar"
+                          : "Activar"}
+                    </button>
+                  </div>
+                </div>
                 {runtimeEntries.map(([key, enabled]) => (
                   <div key={key} className="flex items-center justify-between rounded-2xl border border-slate-200 px-4 py-3 text-sm">
                     <span className="font-medium text-slate-700">{key}</span>
@@ -345,6 +397,11 @@ export default function SandboxPage() {
                     </span>
                   </div>
                 ))}
+                {updateSettingsMutation.isError && (
+                  <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-xs text-red-700">
+                    No se pudo actualizar outboundMetaMock.
+                  </div>
+                )}
               </div>
             )}
           </section>

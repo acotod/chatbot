@@ -11,9 +11,31 @@ const { getPrismaClient } = require('../services/database');
 const router = express.Router();
 
 const SANDBOX_PERMISSION = 'VIEW_SANDBOX';
+const SANDBOX_SETTINGS_KEY = 'sandbox_settings';
 
 router.use(requireJwt);
 router.use(requirePermiso(SANDBOX_PERMISSION));
+
+async function getSandboxSettings(tenantId) {
+  if (!tenantId) {
+    return { outboundMetaMock: false };
+  }
+
+  const config = await db.getConfig(tenantId, SANDBOX_SETTINGS_KEY);
+  return {
+    outboundMetaMock: Boolean(config?.valor?.outboundMetaMock),
+  };
+}
+
+async function setSandboxSettings(tenantId, nextSettings) {
+  const current = await getSandboxSettings(tenantId);
+  const normalized = {
+    outboundMetaMock: Boolean(nextSettings?.outboundMetaMock ?? current.outboundMetaMock),
+  };
+
+  await db.setConfig(tenantId, SANDBOX_SETTINGS_KEY, normalized);
+  return normalized;
+}
 
 function resolveTenantId(req, body) {
   if (req.admin?.superAdmin) {
@@ -180,7 +202,10 @@ router.get('/runs/:id', async (req, res, next) => {
 
 router.get('/capabilities', async (req, res, next) => {
   try {
-    const tenantId = req.admin?.superAdmin ? null : (req.admin?.tenantId ?? null);
+    const resolved = await resolveTenant(req, req.query);
+    const tenantId = resolved.tenantId ?? (req.admin?.superAdmin ? null : (req.admin?.tenantId ?? null));
+    const settings = await getSandboxSettings(tenantId);
+
     return res.json({
       ok: true,
       sandbox: {
@@ -191,13 +216,42 @@ router.get('/capabilities', async (req, res, next) => {
           flowEngine: true,
           nodeExecutors: true,
           integrationRunner: true,
-          outboundMetaMock: false,
+          outboundMetaMock: settings.outboundMetaMock,
           replay: false,
           compliance: false,
         },
         tenantScope: tenantId,
       },
     });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.patch('/settings', requirePermiso('MANAGE_TENANTS'), async (req, res, next) => {
+  try {
+    const { tenantId } = await resolveTenant(req, req.body);
+    if (!tenantId) {
+      return res.status(400).json({ error: 'tenantId or tenantSlug is required' });
+    }
+
+    if (typeof req.body?.outboundMetaMock !== 'boolean') {
+      return res.status(400).json({ error: 'outboundMetaMock must be a boolean' });
+    }
+
+    const settings = await setSandboxSettings(tenantId, {
+      outboundMetaMock: req.body.outboundMetaMock,
+    });
+
+    audit({
+      adminUserId: req.admin?.adminUserId,
+      tenantId,
+      accion: 'SANDBOX_SETTINGS_UPDATE',
+      entidad: 'sandbox',
+      metadata: settings,
+    });
+
+    return res.json({ ok: true, sandbox: { settings } });
   } catch (err) {
     next(err);
   }
@@ -212,6 +266,7 @@ router.post('/simulate/inbound', async (req, res, next) => {
 
     const phone = String(req.body?.phone ?? '').trim();
     const text = String(req.body?.text ?? '').trim();
+    const settings = await getSandboxSettings(tenantId);
     const creds = await db.getConfig(tenantId, 'wa_credentials');
     const phoneNumberId = String(req.body?.phoneNumberId ?? creds?.valor?.phoneNumberId ?? '').trim();
     const accessToken = typeof req.body?.accessToken === 'string'
@@ -222,7 +277,7 @@ router.post('/simulate/inbound', async (req, res, next) => {
       return res.status(400).json({ error: 'phone and text are required' });
     }
 
-    if (!phoneNumberId || !accessToken) {
+    if (!settings.outboundMetaMock && (!phoneNumberId || !accessToken)) {
       return res.status(400).json({
         error: 'WhatsApp credentials are required',
         detail: 'Configure wa_credentials for the tenant or send phoneNumberId and accessToken explicitly.',
@@ -254,6 +309,7 @@ router.post('/simulate/inbound', async (req, res, next) => {
         sandbox: true,
         source: 'sandbox_emulator',
         initiatedBy: 'admin',
+        outboundMetaMock: settings.outboundMetaMock,
       },
     });
 
@@ -334,6 +390,7 @@ router.post('/simulate/inbound', async (req, res, next) => {
         correlationId: req.correlationId,
         conversationId: latestConversation?.id ?? null,
         conversationStatus: latestConversation?.status ?? null,
+        outboundMetaMock: settings.outboundMetaMock,
       },
     });
   } catch (err) {

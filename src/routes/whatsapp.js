@@ -313,7 +313,10 @@ async function _handleIncomingMessage({ msg, contacts, tenant, phoneNumberId, ac
 
   // ── Chatbot engine ───────────────────────────────────────────────────────
   let chatbotConversationId = null;
-  if (userId !== null && userInput !== null && accessToken) {
+  const canRunWithSandboxMock =
+    conversationMeta?.sandbox === true && conversationMeta?.outboundMetaMock === true;
+
+  if (userId !== null && userInput !== null && (accessToken || canRunWithSandboxMock)) {
     if (conversationMeta?.sandbox === true) {
       try {
         chatbotConversationId = await _runChatbot({
@@ -372,6 +375,7 @@ async function _runChatbot({ tenant, userId, phone, userInput, phoneNumberId, ac
       accessToken,
       correlationId,
       conversationId,
+      conversationMeta,
     });
   } else if (response) {
     await _sendChatbotResponse({
@@ -383,16 +387,20 @@ async function _runChatbot({ tenant, userId, phone, userInput, phoneNumberId, ac
       response,
       correlationId,
       conversationId,
+      conversationMeta,
     });
   }
 
   return conversationId ?? null;
 }
 
-async function _handleFallbackToHuman({ tenant, userId, phone, response, phoneNumberId, accessToken, correlationId, conversationId }) {
+async function _handleFallbackToHuman({ tenant, userId, phone, response, phoneNumberId, accessToken, correlationId, conversationId, conversationMeta }) {
   // Send handoff message to user if provided
   if (response?.text) {
-    await _sendText(phoneNumberId, phone, response.text, accessToken, tenant, userId, correlationId);
+    await _sendText(phoneNumberId, phone, response.text, accessToken, tenant, userId, correlationId, {
+      conversationId,
+      conversationMeta,
+    });
   }
 
   // Create solicitud for human agent follow-up (avoid duplicates)
@@ -410,8 +418,61 @@ async function _handleFallbackToHuman({ tenant, userId, phone, response, phoneNu
   });
 }
 
-async function _sendChatbotResponse({ tenant, userId, phone, phoneNumberId, accessToken, response, correlationId, conversationId }) {
+async function _sendChatbotResponse({ tenant, userId, phone, phoneNumberId, accessToken, response, correlationId, conversationId, conversationMeta }) {
   const type = response?.type ?? 'text';
+  const useSandboxOutboundMock =
+    conversationMeta?.sandbox === true && conversationMeta?.outboundMetaMock === true;
+
+  if (useSandboxOutboundMock) {
+    const mockWaMsgId = `sandbox-outbound-${Date.now()}`;
+    const outboundMsg = await db.saveMensaje({
+      tenantId:       tenant.id,
+      userId,
+      waMsgId:        mockWaMsgId,
+      direccion:      'salida',
+      tipo:           type === 'buttons' ? 'interactive' : 'text',
+      contenido:      { ...(response || {}), mock: true, mockMode: 'outboundMetaMock' },
+      conversationId: conversationId ?? undefined,
+    });
+
+    await _ingestUegBestEffort({
+      tenantId: tenant.id,
+      correlationId,
+      idempotencyKey: outboundMsg.waMsgId ?? `wa_outbound:${outboundMsg.id}`,
+      rawEvent: {
+        channel: 'whatsapp',
+        source: 'sandbox_meta_mock',
+        eventType: 'message_sent',
+        direction: 'outbound',
+        occurredAt: outboundMsg.createdAt,
+        payload: {
+          userId,
+          phone,
+          waMsgId: outboundMsg.waMsgId,
+          tipo: outboundMsg.tipo,
+          contenido: response,
+        },
+        metadata: {
+          route: '/sandbox/simulate/inbound',
+          type: 'chatbot_response_mock',
+          mock: true,
+        },
+      },
+      context: 'chatbot_response_mock',
+    });
+
+    socketService.emit(tenant.id, 'nuevo_mensaje', {
+      id:        outboundMsg.id,
+      userId,
+      phone,
+      tipo:      outboundMsg.tipo,
+      contenido: outboundMsg.contenido,
+      waMsgId:   outboundMsg.waMsgId,
+      createdAt: outboundMsg.createdAt,
+      direccion: 'salida',
+    });
+    return;
+  }
 
   try {
     let waResp;
@@ -519,7 +580,61 @@ function _buildButtonPayload(to, response) {
   };
 }
 
-async function _sendText(phoneNumberId, phone, text, accessToken, tenant, userId, correlationId) {
+async function _sendText(phoneNumberId, phone, text, accessToken, tenant, userId, correlationId, options = {}) {
+  const conversationId = options?.conversationId ?? null;
+  const useSandboxOutboundMock =
+    options?.conversationMeta?.sandbox === true && options?.conversationMeta?.outboundMetaMock === true;
+
+  if (useSandboxOutboundMock) {
+    try {
+      const mockWaMsgId = `sandbox-outbound-${Date.now()}`;
+      const msg = await db.saveMensaje({
+        tenantId:       tenant.id,
+        userId,
+        waMsgId:        mockWaMsgId,
+        direccion:      'salida',
+        tipo:           'text',
+        contenido:      { text, mock: true, mockMode: 'outboundMetaMock' },
+        conversationId: conversationId ?? undefined,
+      });
+
+      await _ingestUegBestEffort({
+        tenantId: tenant.id,
+        correlationId,
+        idempotencyKey: msg.waMsgId ?? `wa_outbound:${msg.id}`,
+        rawEvent: {
+          channel: 'whatsapp',
+          source: 'sandbox_meta_mock',
+          eventType: 'message_sent',
+          direction: 'outbound',
+          occurredAt: msg.createdAt,
+          payload: {
+            userId,
+            phone,
+            waMsgId: msg.waMsgId,
+            tipo: 'text',
+            contenido: { text },
+          },
+          metadata: {
+            route: '/sandbox/simulate/inbound',
+            type: 'fallback_message_mock',
+            mock: true,
+          },
+        },
+        context: 'fallback_message_mock',
+      });
+
+      socketService.emit(tenant.id, 'nuevo_mensaje', {
+        id: msg.id, userId, phone,
+        tipo: 'text', contenido: msg.contenido, waMsgId: msg.waMsgId,
+        createdAt: msg.createdAt, direccion: 'salida',
+      });
+    } catch (err) {
+      logger.warn('_sendText sandbox mock failed', { tenantId: tenant.id, phone, message: err.message });
+    }
+    return;
+  }
+
   try {
     const waResp = await wa.sendTextMessage(phoneNumberId, phone, text, accessToken);
     const msg = await db.saveMensaje({

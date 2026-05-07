@@ -574,7 +574,8 @@ export const conversationsApi = {
 };
 
 export const sandboxApi = {
-  capabilities: () => apiClient.get('/sandbox/capabilities'),
+  capabilities: (params?: { tenantSlug?: string; tenantId?: string }) =>
+    apiClient.get('/sandbox/capabilities', { params }),
   simulateInbound: (data: {
     tenantId?: string;
     tenantSlug?: string;
@@ -588,4 +589,6 @@ export const sandboxApi = {
     apiClient.get('/sandbox/runs', { params }),
   getRun: (id: string, params?: { tenantSlug?: string; tenantId?: string }) =>
     apiClient.get(`/sandbox/runs/${id}`, { params }),
+  updateSettings: (data: { tenantSlug?: string; tenantId?: string; outboundMetaMock: boolean }) =>
+    apiClient.patch('/sandbox/settings', data),
 };
