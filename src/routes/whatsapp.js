@@ -791,15 +791,16 @@ router.get('/conversaciones', requireJwt, async (req, res, next) => {
  */
 router.get('/mensajes', requireJwt, async (req, res, next) => {
   try {
-    const { tenantId, userId, page } = req.query;
+    const { tenantId, userId, page, limit } = req.query;
     if (!tenantId || !userId) {
       return res.status(400).json({ error: 'tenantId and userId are required' });
     }
+    const parsedLimit = Math.min(Math.max(parseInt(limit, 10) || 50, 1), 200);
     const mensajes = await db.listMensajes(tenantId, Number(userId), {
       page: page ? Number(page) : 1,
-      limit: 50,
+      limit: parsedLimit,
     });
-    return res.json({ data: mensajes });
+    return res.json({ data: mensajes, page: page ? Number(page) : 1, limit: parsedLimit, count: mensajes.length });
   } catch (err) {
     next(err);
   }

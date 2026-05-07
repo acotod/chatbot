@@ -404,9 +404,9 @@ export const whatsappApi = {
   listConversaciones: (tenantId: string) =>
     apiClient.get("/whatsapp/conversaciones", { params: { tenantId } }),
   /** Full message history for one user */
-  listMensajes: (tenantId: string, userId: number, page = 1) =>
+  listMensajes: (tenantId: string, userId: number, page = 1, limit = 100) =>
     apiClient.get("/whatsapp/mensajes", {
-      params: { tenantId, userId, page, limit: 50 },
+      params: { tenantId, userId, page, limit },
     }),
   /** Send an outbound text message */
   send: (tenantId: string, to: string, text: string) =>

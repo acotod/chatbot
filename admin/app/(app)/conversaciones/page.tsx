@@ -154,7 +154,7 @@ function ConvHistoryCard({ conv }: { conv: ConvRecord }) {
   const [open, setOpen] = useState(false);
   const { data: eventsData } = useQuery({
     queryKey: ["convEvents", conv.id],
-    queryFn: () => conversationsApi.getEvents(conv.id, { limit: 50 }).then((r) => r.data),
+    queryFn: () => conversationsApi.getEvents(conv.id, { limit: 200 }).then((r) => r.data),
     enabled: open,
     staleTime: 60_000,
   });
@@ -240,6 +240,10 @@ export default function ConversacionesPage() {
   const [activeThread, setActiveThread] = useState<Thread | null>(null);
   const [input, setInput] = useState("");
   const [search, setSearch] = useState("");
+  const [msgPage, setMsgPage] = useState(1);
+  const [olderMessages, setOlderMessages] = useState<Mensaje[]>([]);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(false);
 
   // Context panel state
   const [contextTab, setContextTab] = useState<"solicitudes" | "agentes" | "notas" | "historial">("solicitudes");
@@ -277,11 +281,32 @@ export default function ConversacionesPage() {
   const { data: mensajesData, isLoading: mensajesLoading } = useQuery({
     queryKey: ["mensajes", tenantId, activeThread?.userId],
     queryFn: () =>
-      whatsappApi.listMensajes(tenantId!, activeThread!.userId!, 1).then((r) => r.data),
+      whatsappApi.listMensajes(tenantId!, activeThread!.userId!, 1, 100).then((r) => {
+        setHasMore((r.data?.count ?? r.data?.data?.length ?? 0) >= 100);
+        setOlderMessages([]);
+        setMsgPage(1);
+        return r.data;
+      }),
     enabled: !!tenantId && !!activeThread?.userId,
     staleTime: 0,
   });
-  const messages: Mensaje[] = (mensajesData?.data ?? []).slice().reverse();
+  const latestMessages: Mensaje[] = (mensajesData?.data ?? []).slice().reverse();
+  const messages: Mensaje[] = [...olderMessages, ...latestMessages];
+
+  async function loadMoreMessages() {
+    if (!tenantId || !activeThread?.userId || loadingMore) return;
+    setLoadingMore(true);
+    try {
+      const nextPage = msgPage + 1;
+      const r = await whatsappApi.listMensajes(tenantId, activeThread.userId, nextPage, 100);
+      const older: Mensaje[] = (r.data?.data ?? []).slice().reverse();
+      setOlderMessages((prev) => [...older, ...prev]);
+      setMsgPage(nextPage);
+      setHasMore((r.data?.count ?? older.length) >= 100);
+    } finally {
+      setLoadingMore(false);
+    }
+  }
 
   // Solicitudes for active contact
   const { data: solicitudesData, isLoading: solicitudesLoading, refetch: refetchSolicitudes } = useQuery({
@@ -456,7 +481,12 @@ export default function ConversacionesPage() {
             return (
               <button
                 key={thread.id}
-                onClick={() => setActiveThread(thread)}
+                onClick={() => {
+                  setActiveThread(thread);
+                  setOlderMessages([]);
+                  setMsgPage(1);
+                  setHasMore(false);
+                }}
                 className={cn(
                   "w-full flex items-start gap-3 px-4 py-3.5 hover:bg-slate-50 transition text-left border-b border-slate-50",
                   isActive && "bg-blue-50 hover:bg-blue-50"
@@ -513,6 +543,18 @@ export default function ConversacionesPage() {
                     <div className="h-10 w-48 bg-slate-200 rounded-2xl" />
                   </div>
                 ))}
+              </div>
+            )}
+
+            {!mensajesLoading && hasMore && (
+              <div className="flex justify-center pb-1">
+                <button
+                  onClick={loadMoreMessages}
+                  disabled={loadingMore}
+                  className="text-xs text-blue-600 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 px-4 py-1.5 rounded-full border border-blue-200 transition disabled:opacity-50"
+                >
+                  {loadingMore ? "Cargando..." : "Cargar mensajes anteriores"}
+                </button>
               </div>
             )}
 
