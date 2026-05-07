@@ -49,7 +49,6 @@ export default function AgentesPage() {
     calendarLink: "",
   });
   const [editFormError, setEditFormError] = useState("");
-  const [nuevoPuesto, setNuevoPuesto] = useState("");
 
   const { data, isLoading } = useQuery({
     queryKey: ["agentes", tenantSlug],
@@ -78,19 +77,6 @@ export default function AgentesPage() {
       setForm({ nombre: "", email: "", whatsapp: "", puestoId: "", calendarLink: "" });
     },
     onError: () => setFormError("No se pudo crear el agente. Intentá de nuevo."),
-  });
-
-  const createPuesto = useMutation({
-    mutationFn: () => agentePuestosApi.create(tenantSlug, { nombre: nuevoPuesto.trim() }),
-    onSuccess: (resp) => {
-      qc.invalidateQueries({ queryKey: ["agente-puestos"] });
-      const puesto = resp?.data;
-      if (puesto?.id) {
-        setForm((f) => ({ ...f, puestoId: String(puesto.id) }));
-      }
-      setNuevoPuesto("");
-    },
-    onError: () => setFormError("No se pudo crear el puesto."),
   });
 
   const toggle = useMutation({
@@ -143,15 +129,6 @@ export default function AgentesPage() {
     }
 
     create.mutate();
-  }
-
-  function handleCreatePuesto() {
-    if (!nuevoPuesto.trim()) {
-      setFormError("Escribí un nombre para el puesto.");
-      return;
-    }
-    setFormError("");
-    createPuesto.mutate();
   }
 
   function openEdit(agent: Agente) {
@@ -319,17 +296,7 @@ export default function AgentesPage() {
                 ))}
               </select>
             </div>
-            <div className="mt-2 flex gap-2">
-              <Input
-                label=""
-                value={nuevoPuesto}
-                onChange={(e) => setNuevoPuesto(e.target.value)}
-                placeholder="Crear nuevo puesto..."
-              />
-              <Button type="button" variant="secondary" onClick={handleCreatePuesto} disabled={createPuesto.isPending}>
-                {createPuesto.isPending ? "Creando..." : "Agregar"}
-              </Button>
-            </div>
+            <p className="mt-2 text-xs text-slate-500">Administrá el catálogo en Configuración.</p>
           </div>
           <Input
             label="Liga de calendario"

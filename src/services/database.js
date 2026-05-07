@@ -260,6 +260,21 @@ async function createAgentePuesto({ tenantId, nombre }) {
   });
 }
 
+async function updateAgentePuesto({ id, tenantId, nombre }) {
+  const client = getPrismaClient();
+  if (!client) return null;
+  return client.agentePuesto.updateMany({
+    where: { id, tenantId },
+    data: { nombre },
+  });
+}
+
+async function deleteAgentePuesto({ id, tenantId }) {
+  const client = getPrismaClient();
+  if (!client) return null;
+  return client.agentePuesto.deleteMany({ where: { id, tenantId } });
+}
+
 async function setAgenteEstado(id, tenantId, estado) {
   const client = getPrismaClient();
   if (!client) return null;
@@ -769,6 +784,8 @@ module.exports = {
   updateAgente,
   listAgentePuestos,
   createAgentePuesto,
+  updateAgentePuesto,
+  deleteAgentePuesto,
   setAgenteEstado,
   setAgenteLastSeen,
   // solicitudes

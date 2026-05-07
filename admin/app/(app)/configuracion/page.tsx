@@ -1,13 +1,13 @@
 "use client";
 
-import { agendaApi, apiClient, configApi } from "@/lib/api";
+import { agentePuestosApi, agendaApi, apiClient, configApi } from "@/lib/api";
 import { useAuthStore } from "@/store/auth";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Card, CardContent, CardHeader } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
-import { CalendarDays, Check } from "lucide-react";
+import { CalendarDays, Check, Pencil, Trash2, X } from "lucide-react";
 
 // ── LLM config types ──────────────────────────────────────────────────────────
 type LlmProvider = "openai" | "anthropic" | "custom";
@@ -54,6 +54,11 @@ function ConfigSection({
   );
 }
 
+interface AgentePuesto {
+  id: number;
+  nombre: string;
+}
+
 export default function ConfiguracionPage() {
   const { tenantSlug } = useAuthStore();
   const qc = useQueryClient();
@@ -71,6 +76,10 @@ export default function ConfiguracionPage() {
   // WhatsApp Business credentials
   const [waCreds, setWaCreds] = useState({ phoneNumberId: "", accessToken: "" });
   const [waSaved, setWaSaved] = useState(false);
+  const [puestoNombre, setPuestoNombre] = useState("");
+  const [puestoError, setPuestoError] = useState("");
+  const [editingPuestoId, setEditingPuestoId] = useState<number | null>(null);
+  const [editingPuestoNombre, setEditingPuestoNombre] = useState("");
 
   // LLM config
   const [llm, setLlm] = useState<{
@@ -165,6 +174,43 @@ export default function ConfiguracionPage() {
     },
   });
 
+  const { data: puestosData } = useQuery({
+    queryKey: ["agente-puestos", tenantSlug],
+    queryFn: () => agentePuestosApi.list(tenantSlug!).then((r) => r.data),
+    enabled: !!tenantSlug,
+  });
+
+  const createPuestoMutation = useMutation({
+    mutationFn: () => agentePuestosApi.create(tenantSlug!, { nombre: puestoNombre.trim() }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["agente-puestos", tenantSlug] });
+      setPuestoNombre("");
+      setPuestoError("");
+    },
+    onError: () => setPuestoError("No se pudo crear el puesto."),
+  });
+
+  const updatePuestoMutation = useMutation({
+    mutationFn: ({ id, nombre }: { id: number; nombre: string }) =>
+      agentePuestosApi.update(tenantSlug!, id, { nombre: nombre.trim() }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["agente-puestos", tenantSlug] });
+      setEditingPuestoId(null);
+      setEditingPuestoNombre("");
+      setPuestoError("");
+    },
+    onError: () => setPuestoError("No se pudo actualizar el puesto."),
+  });
+
+  const deletePuestoMutation = useMutation({
+    mutationFn: (id: number) => agentePuestosApi.remove(tenantSlug!, id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["agente-puestos", tenantSlug] });
+      setPuestoError("");
+    },
+    onError: () => setPuestoError("No se pudo eliminar el puesto."),
+  });
+
   const { data: configData } = useQuery({
     queryKey: ["config", tenantSlug, "horarios"],
     queryFn: () =>
@@ -197,6 +243,32 @@ export default function ConfiguracionPage() {
   });
 
   void configData;
+  const puestos: AgentePuesto[] = puestosData?.data ?? puestosData ?? [];
+
+  function handleCreatePuesto() {
+    if (!puestoNombre.trim()) {
+      setPuestoError("Escribí un nombre para el puesto.");
+      return;
+    }
+    setPuestoError("");
+    createPuestoMutation.mutate();
+  }
+
+  function startEditPuesto(puesto: AgentePuesto) {
+    setPuestoError("");
+    setEditingPuestoId(puesto.id);
+    setEditingPuestoNombre(puesto.nombre);
+  }
+
+  function saveEditPuesto() {
+    if (!editingPuestoId) return;
+    if (!editingPuestoNombre.trim()) {
+      setPuestoError("El nombre no puede quedar vacío.");
+      return;
+    }
+    setPuestoError("");
+    updatePuestoMutation.mutate({ id: editingPuestoId, nombre: editingPuestoNombre });
+  }
 
   // --- Agenda feature flag ---
   const { data: agendaFeature } = useQuery({
@@ -426,6 +498,85 @@ export default function ConfiguracionPage() {
         <div className="space-y-4">
           <Input label="Nombre de la organización" placeholder="Clínica Esperanza" />
           <Input label="Color principal (hex)" placeholder="#2563eb" />
+        </div>
+      </ConfigSection>
+
+      {/* Catalogo de puestos */}
+      <ConfigSection
+        title="Catálogo de puestos"
+        description="Administrá los puestos disponibles para asignar a agentes (CRUD)."
+      >
+        <div className="space-y-4">
+          <div className="flex gap-2">
+            <Input
+              label=""
+              placeholder="Ej: Soporte Nivel 1"
+              value={puestoNombre}
+              onChange={(e) => setPuestoNombre(e.target.value)}
+            />
+            <Button type="button" onClick={handleCreatePuesto} disabled={createPuestoMutation.isPending}>
+              {createPuestoMutation.isPending ? "Creando..." : "Crear"}
+            </Button>
+          </div>
+
+          {puestoError && <p className="text-xs text-rose-600">{puestoError}</p>}
+
+          <div className="space-y-2">
+            {puestos.length === 0 ? (
+              <p className="text-sm text-slate-500">No hay puestos creados.</p>
+            ) : (
+              puestos.map((puesto) => {
+                const isEditing = editingPuestoId === puesto.id;
+                return (
+                  <div key={puesto.id} className="flex items-center justify-between gap-2 rounded-lg border border-slate-200 px-3 py-2">
+                    {isEditing ? (
+                      <Input
+                        label=""
+                        value={editingPuestoNombre}
+                        onChange={(e) => setEditingPuestoNombre(e.target.value)}
+                      />
+                    ) : (
+                      <p className="text-sm text-slate-800">{puesto.nombre}</p>
+                    )}
+
+                    <div className="flex items-center gap-2">
+                      {isEditing ? (
+                        <>
+                          <Button type="button" variant="secondary" onClick={saveEditPuesto} disabled={updatePuestoMutation.isPending}>
+                            Guardar
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="secondary"
+                            onClick={() => {
+                              setEditingPuestoId(null);
+                              setEditingPuestoNombre("");
+                            }}
+                          >
+                            <X size={14} />
+                          </Button>
+                        </>
+                      ) : (
+                        <>
+                          <Button type="button" variant="secondary" onClick={() => startEditPuesto(puesto)}>
+                            <Pencil size={14} />
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="secondary"
+                            onClick={() => deletePuestoMutation.mutate(puesto.id)}
+                            disabled={deletePuestoMutation.isPending}
+                          >
+                            <Trash2 size={14} />
+                          </Button>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
         </div>
       </ConfigSection>
 

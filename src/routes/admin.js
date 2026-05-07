@@ -332,7 +332,7 @@ router.post('/tenants/:slug/logo', requirePermiso('MANAGE_TENANTS'), logoUpload.
 // Agentes (per-tenant, admin-managed)
 
 // GET /admin/tenants/:slug/agente-puestos
-router.get('/tenants/:slug/agente-puestos', requirePermiso('VIEW_AGENTES'), async (req, res, next) => {
+router.get('/tenants/:slug/agente-puestos', requirePermiso('MANAGE_TENANTS'), async (req, res, next) => {
     try {
         const tenant = await db.findTenantBySlug(req.params.slug);
         if (!tenant) return res.status(404).json({ error: 'Tenant not found' });
@@ -344,7 +344,7 @@ router.get('/tenants/:slug/agente-puestos', requirePermiso('VIEW_AGENTES'), asyn
 });
 
 // POST /admin/tenants/:slug/agente-puestos
-router.post('/tenants/:slug/agente-puestos', requirePermiso('EDIT_AGENTES'), async (req, res, next) => {
+router.post('/tenants/:slug/agente-puestos', requirePermiso('MANAGE_TENANTS'), async (req, res, next) => {
     try {
         const tenant = await db.findTenantBySlug(req.params.slug);
         if (!tenant) return res.status(404).json({ error: 'Tenant not found' });
@@ -358,6 +358,48 @@ router.post('/tenants/:slug/agente-puestos', requirePermiso('EDIT_AGENTES'), asy
         if (err?.code === 'P2002') {
             return res.status(409).json({ error: 'El puesto ya existe para este tenant' });
         }
+        next(err);
+    }
+});
+
+// PATCH /admin/tenants/:slug/agente-puestos/:id
+router.patch('/tenants/:slug/agente-puestos/:id', requirePermiso('MANAGE_TENANTS'), async (req, res, next) => {
+    try {
+        const tenant = await db.findTenantBySlug(req.params.slug);
+        if (!tenant) return res.status(404).json({ error: 'Tenant not found' });
+
+        const id = Number(req.params.id);
+        const nombre = String(req.body?.nombre ?? '').trim();
+        if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: 'invalid puesto id' });
+        if (!nombre) return res.status(400).json({ error: 'nombre is required' });
+
+        const result = await db.updateAgentePuesto({ id, tenantId: tenant.id, nombre });
+        if (!result || result.count === 0) return res.status(404).json({ error: 'Puesto not found' });
+
+        const puesto = await prisma.agentePuesto.findFirst({ where: { id, tenantId: tenant.id } });
+        return res.json(puesto);
+    } catch (err) {
+        if (err?.code === 'P2002') {
+            return res.status(409).json({ error: 'El puesto ya existe para este tenant' });
+        }
+        next(err);
+    }
+});
+
+// DELETE /admin/tenants/:slug/agente-puestos/:id
+router.delete('/tenants/:slug/agente-puestos/:id', requirePermiso('MANAGE_TENANTS'), async (req, res, next) => {
+    try {
+        const tenant = await db.findTenantBySlug(req.params.slug);
+        if (!tenant) return res.status(404).json({ error: 'Tenant not found' });
+
+        const id = Number(req.params.id);
+        if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: 'invalid puesto id' });
+
+        const result = await db.deleteAgentePuesto({ id, tenantId: tenant.id });
+        if (!result || result.count === 0) return res.status(404).json({ error: 'Puesto not found' });
+
+        return res.status(204).send();
+    } catch (err) {
         next(err);
     }
 });

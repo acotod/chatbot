@@ -280,6 +280,10 @@ export const agentePuestosApi = {
   list: (slug: string) => apiClient.get(`/admin/tenants/${slug}/agente-puestos`),
   create: (slug: string, data: { nombre: string }) =>
     apiClient.post(`/admin/tenants/${slug}/agente-puestos`, data),
+  update: (slug: string, id: number, data: { nombre: string }) =>
+    apiClient.patch(`/admin/tenants/${slug}/agente-puestos/${id}`, data),
+  remove: (slug: string, id: number) =>
+    apiClient.delete(`/admin/tenants/${slug}/agente-puestos/${id}`),
 };
 
 export const metricsApi = {
