@@ -30,6 +30,19 @@ const SOLICITUD_COMMENT_VISIBILITY_VALUES = Object.freeze(
   Object.values(SOLICITUD_COMMENT_VISIBILITY)
 );
 
+const SOLICITUD_ENTERPRISE_DEFAULT_CONFIG = Object.freeze({
+  enterpriseEnabled: true,
+  advancedSearchEnabled: true,
+  slaEnabled: true,
+  warningThresholdMinutes: 60,
+  manualEscalationEnabled: true,
+  autoEscalationEnabled: false,
+  escalationIntervalMinutes: 30,
+  assignmentRulesEnabled: true,
+  customerPortalEnabled: false,
+  webhooksEnabled: false,
+});
+
 function normalizeSolicitudStatus(status, fallback = SOLICITUD_STATUS.OPEN) {
   const raw = String(status ?? '').trim().toLowerCase();
   if (!raw) return fallback;
@@ -220,6 +233,32 @@ async function setConfig(tenantId, clave, valor) {
     update: { valor },
     create: { tenantId, clave, valor },
   });
+}
+
+async function getSolicitudesEnterpriseConfig(tenantId) {
+  const cfg = await getConfig(tenantId, 'solicitudes_enterprise_config');
+  const raw = (cfg && cfg.valor && typeof cfg.valor === 'object') ? cfg.valor : {};
+
+  return {
+    ...SOLICITUD_ENTERPRISE_DEFAULT_CONFIG,
+    ...raw,
+    warningThresholdMinutes: Number(raw.warningThresholdMinutes ?? SOLICITUD_ENTERPRISE_DEFAULT_CONFIG.warningThresholdMinutes),
+    escalationIntervalMinutes: Number(raw.escalationIntervalMinutes ?? SOLICITUD_ENTERPRISE_DEFAULT_CONFIG.escalationIntervalMinutes),
+  };
+}
+
+async function setSolicitudesEnterpriseConfig(tenantId, partialConfig = {}) {
+  const current = await getSolicitudesEnterpriseConfig(tenantId);
+  const next = {
+    ...current,
+    ...(partialConfig && typeof partialConfig === 'object' ? partialConfig : {}),
+  };
+
+  next.warningThresholdMinutes = Math.max(5, Math.min(1440, Number(next.warningThresholdMinutes || 60)));
+  next.escalationIntervalMinutes = Math.max(5, Math.min(1440, Number(next.escalationIntervalMinutes || 30)));
+
+  await setConfig(tenantId, 'solicitudes_enterprise_config', next);
+  return next;
 }
 
 // ---------------------------------------------------------------------------
@@ -587,7 +626,12 @@ async function bulkUpdateSolicitudes({ tenantId, ids = [], updates = {}, actorUs
   return { matched: matched.length, updated };
 }
 
-function calculateSlaStatus(solicitud, now = new Date()) {
+function calculateSlaStatus(solicitud, options = {}) {
+  const now = options instanceof Date ? options : (options?.now instanceof Date ? options.now : new Date());
+  const warningThresholdMinutes = Number(
+    options?.warningThresholdMinutes ?? SOLICITUD_ENTERPRISE_DEFAULT_CONFIG.warningThresholdMinutes
+  );
+
   if (!solicitud) {
     return {
       status: 'no_sla',
@@ -612,8 +656,6 @@ function calculateSlaStatus(solicitud, now = new Date()) {
   const remainingMs = dueAt.getTime() - new Date(now).getTime();
   const minutesRemaining = Math.ceil(remainingMs / 60000);
   const isBreached = remainingMs < 0;
-  const warningThresholdMinutes = 60;
-
   let status = 'on_track';
   if (isBreached) status = 'breached';
   else if (minutesRemaining <= warningThresholdMinutes) status = 'warning';
@@ -639,6 +681,7 @@ async function searchSolicitudes(tenantId, {
   page = 1,
   limit = 20,
   slaStatus,
+  warningThresholdMinutes,
 } = {}) {
   const client = getPrismaClient();
   if (!client) return { data: [], total: 0, page, limit };
@@ -690,7 +733,7 @@ async function searchSolicitudes(tenantId, {
     }
 
     if (slaStatus) {
-      const s = calculateSlaStatus(row).status;
+      const s = calculateSlaStatus(row, { warningThresholdMinutes }).status;
       if (String(slaStatus) !== s) return false;
     }
 
@@ -708,7 +751,7 @@ async function searchSolicitudes(tenantId, {
   };
 }
 
-async function getSolicitudesStats(tenantId) {
+async function getSolicitudesStats(tenantId, options = {}) {
   const client = getPrismaClient();
   if (!client) return {};
 
@@ -732,7 +775,7 @@ async function getSolicitudesStats(tenantId) {
   let slaWarning = 0;
   let slaBreached = 0;
   for (const row of allActive) {
-    const status = calculateSlaStatus(row).status;
+    const status = calculateSlaStatus(row, options).status;
     if (status === 'breached') slaBreached += 1;
     else if (status === 'warning') slaWarning += 1;
     else if (status === 'on_track') slaOnTrack += 1;
@@ -1272,6 +1315,8 @@ module.exports = {
   // config
   getConfig,
   setConfig,
+  getSolicitudesEnterpriseConfig,
+  setSolicitudesEnterpriseConfig,
   // agentes
   listAgentes,
   createAgente,
@@ -1292,6 +1337,7 @@ module.exports = {
   listSolicitudes,
   searchSolicitudes,
   getSolicitudesStats,
+  SOLICITUD_ENTERPRISE_DEFAULT_CONFIG,
   countSolicitudesByEstado,
   updateSolicitudEstado,
   escalateSolicitud,

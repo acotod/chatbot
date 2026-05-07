@@ -3,7 +3,7 @@
 import { agentesApi, solicitudesApi } from "@/lib/api";
 import { useAuthStore } from "@/store/auth";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
@@ -59,6 +59,32 @@ interface Agente {
   estado: string;
 }
 
+interface SolicitudesTenantConfig {
+  enterpriseEnabled: boolean;
+  advancedSearchEnabled: boolean;
+  slaEnabled: boolean;
+  warningThresholdMinutes: number;
+  manualEscalationEnabled: boolean;
+  autoEscalationEnabled: boolean;
+  escalationIntervalMinutes: number;
+  assignmentRulesEnabled: boolean;
+  customerPortalEnabled: boolean;
+  webhooksEnabled: boolean;
+}
+
+const DEFAULT_SOLICITUDES_CONFIG: SolicitudesTenantConfig = {
+  enterpriseEnabled: true,
+  advancedSearchEnabled: true,
+  slaEnabled: true,
+  warningThresholdMinutes: 60,
+  manualEscalationEnabled: true,
+  autoEscalationEnabled: false,
+  escalationIntervalMinutes: 30,
+  assignmentRulesEnabled: true,
+  customerPortalEnabled: false,
+  webhooksEnabled: false,
+};
+
 export default function SolicitudesPage() {
   const { tenantSlug } = useAuthStore();
   const qc = useQueryClient();
@@ -73,8 +99,33 @@ export default function SolicitudesPage() {
     solicitudId: number | null;
   }>({ open: false, solicitudId: null });
   const [selectedAgente, setSelectedAgente] = useState("");
+  const [configOpen, setConfigOpen] = useState(false);
+  const [configDraft, setConfigDraft] = useState<SolicitudesTenantConfig>(DEFAULT_SOLICITUDES_CONFIG);
 
-  const usingAdvancedSearch = Boolean(q || prioridadFilter || slaFilter);
+  const { data: configData } = useQuery({
+    queryKey: ["solicitudes-config", tenantSlug],
+    queryFn: () => solicitudesApi.getConfig(tenantSlug).then((r) => r.data as SolicitudesTenantConfig),
+    enabled: !!tenantSlug,
+  });
+
+  const tenantConfig = { ...DEFAULT_SOLICITUDES_CONFIG, ...(configData || {}) };
+
+  useEffect(() => {
+    setConfigDraft(tenantConfig);
+  }, [
+    tenantConfig.enterpriseEnabled,
+    tenantConfig.advancedSearchEnabled,
+    tenantConfig.slaEnabled,
+    tenantConfig.warningThresholdMinutes,
+    tenantConfig.manualEscalationEnabled,
+    tenantConfig.autoEscalationEnabled,
+    tenantConfig.escalationIntervalMinutes,
+    tenantConfig.assignmentRulesEnabled,
+    tenantConfig.customerPortalEnabled,
+    tenantConfig.webhooksEnabled,
+  ]);
+
+  const usingAdvancedSearch = Boolean((q || prioridadFilter || slaFilter) && tenantConfig.advancedSearchEnabled);
 
   const { data, isLoading } = useQuery({
     queryKey: ["solicitudes", tenantSlug, { q, estado: estadoFilter, prioridad: prioridadFilter, slaStatus: slaFilter, page }],
@@ -150,6 +201,16 @@ export default function SolicitudesPage() {
     },
   });
 
+  const updateConfig = useMutation({
+    mutationFn: (payload: SolicitudesTenantConfig) => solicitudesApi.updateConfig(tenantSlug, payload),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["solicitudes-config", tenantSlug] });
+      qc.invalidateQueries({ queryKey: ["solicitudes"] });
+      qc.invalidateQueries({ queryKey: ["solicitudes-stats"] });
+      setConfigOpen(false);
+    },
+  });
+
   const solicitudes: Solicitud[] = data?.data ?? [];
   const total: number = data?.total ?? 0;
   const agentes: Agente[] = agentesData?.data ?? agentesData ?? [];
@@ -175,21 +236,21 @@ export default function SolicitudesPage() {
             <p className="text-xs text-slate-500 uppercase tracking-wide">En SLA</p>
             <Clock3 size={14} className="text-emerald-500" />
           </div>
-          <p className="text-2xl font-semibold text-emerald-700 mt-1">{stats.sla?.onTrack ?? 0}</p>
+          <p className="text-2xl font-semibold text-emerald-700 mt-1">{tenantConfig.slaEnabled ? (stats.sla?.onTrack ?? 0) : 0}</p>
         </Card>
         <Card className="p-4">
           <div className="flex items-center justify-between">
             <p className="text-xs text-slate-500 uppercase tracking-wide">Por vencer</p>
             <Clock3 size={14} className="text-amber-500" />
           </div>
-          <p className="text-2xl font-semibold text-amber-700 mt-1">{stats.sla?.warning ?? 0}</p>
+          <p className="text-2xl font-semibold text-amber-700 mt-1">{tenantConfig.slaEnabled ? (stats.sla?.warning ?? 0) : 0}</p>
         </Card>
         <Card className="p-4">
           <div className="flex items-center justify-between">
             <p className="text-xs text-slate-500 uppercase tracking-wide">SLA vencido</p>
             <AlertTriangle size={14} className="text-rose-500" />
           </div>
-          <p className="text-2xl font-semibold text-rose-700 mt-1">{stats.sla?.breached ?? 0}</p>
+          <p className="text-2xl font-semibold text-rose-700 mt-1">{tenantConfig.slaEnabled ? (stats.sla?.breached ?? 0) : 0}</p>
         </Card>
       </div>
 
@@ -203,6 +264,7 @@ export default function SolicitudesPage() {
               setQ(e.target.value);
               setPage(1);
             }}
+            disabled={!tenantConfig.advancedSearchEnabled}
             placeholder="Buscar por nombre, teléfono o título"
             className="text-sm bg-transparent focus:outline-none text-slate-700 w-full"
           />
@@ -232,6 +294,7 @@ export default function SolicitudesPage() {
               setPrioridadFilter(e.target.value);
               setPage(1);
             }}
+            disabled={!tenantConfig.advancedSearchEnabled}
             className="text-sm bg-transparent focus:outline-none text-slate-700"
           >
             {PRIORIDADES.map((p) => (
@@ -249,6 +312,7 @@ export default function SolicitudesPage() {
               setSlaFilter(e.target.value);
               setPage(1);
             }}
+            disabled={!tenantConfig.slaEnabled}
             className="text-sm bg-transparent focus:outline-none text-slate-700"
           >
             {SLA_FILTERS.map((s) => (
@@ -262,6 +326,9 @@ export default function SolicitudesPage() {
         <span className="text-sm text-slate-500 ml-auto">
           {total} solicitudes
         </span>
+        <Button variant="secondary" size="sm" onClick={() => setConfigOpen(true)}>
+          Configurar tenant
+        </Button>
       </div>
 
       <Card>
@@ -341,13 +408,15 @@ export default function SolicitudesPage() {
                             Tomar
                           </button>
                         )}
-                        <button
-                          onClick={() => escalateSolicitud.mutate(s.id)}
-                          disabled={escalateSolicitud.isPending}
-                          className="text-xs text-rose-600 hover:text-rose-700 font-medium border border-rose-200 rounded-lg px-2 py-1 bg-rose-50 hover:bg-rose-100 transition"
-                        >
-                          Escalar
-                        </button>
+                        {tenantConfig.manualEscalationEnabled && (
+                          <button
+                            onClick={() => escalateSolicitud.mutate(s.id)}
+                            disabled={escalateSolicitud.isPending}
+                            className="text-xs text-rose-600 hover:text-rose-700 font-medium border border-rose-200 rounded-lg px-2 py-1 bg-rose-50 hover:bg-rose-100 transition"
+                          >
+                            Escalar
+                          </button>
+                        )}
                         <button
                           onClick={() => {
                             setAssignModal({ open: true, solicitudId: s.id });
@@ -431,6 +500,82 @@ export default function SolicitudesPage() {
               disabled={!selectedAgente || assignAgente.isPending}
             >
               {assignAgente.isPending ? "Asignando..." : "Asignar"}
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      <Modal
+        open={configOpen}
+        onClose={() => setConfigOpen(false)}
+        title="Configuración enterprise por tenant"
+      >
+        <div className="space-y-3">
+          <label className="flex items-center gap-2 text-sm text-slate-700">
+            <input
+              type="checkbox"
+              checked={configDraft.advancedSearchEnabled}
+              onChange={(e) => setConfigDraft((prev) => ({ ...prev, advancedSearchEnabled: e.target.checked }))}
+            />
+            Búsqueda avanzada
+          </label>
+          <label className="flex items-center gap-2 text-sm text-slate-700">
+            <input
+              type="checkbox"
+              checked={configDraft.slaEnabled}
+              onChange={(e) => setConfigDraft((prev) => ({ ...prev, slaEnabled: e.target.checked }))}
+            />
+            SLA habilitado
+          </label>
+          <label className="flex items-center gap-2 text-sm text-slate-700">
+            <input
+              type="checkbox"
+              checked={configDraft.manualEscalationEnabled}
+              onChange={(e) => setConfigDraft((prev) => ({ ...prev, manualEscalationEnabled: e.target.checked }))}
+            />
+            Escalación manual
+          </label>
+          <label className="flex items-center gap-2 text-sm text-slate-700">
+            <input
+              type="checkbox"
+              checked={configDraft.assignmentRulesEnabled}
+              onChange={(e) => setConfigDraft((prev) => ({ ...prev, assignmentRulesEnabled: e.target.checked }))}
+            />
+            Reglas de asignación
+          </label>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="space-y-1">
+              <label className="text-xs text-slate-500 uppercase tracking-wide">Umbral warning SLA (min)</label>
+              <input
+                type="number"
+                min={5}
+                max={1440}
+                value={configDraft.warningThresholdMinutes}
+                onChange={(e) => setConfigDraft((prev) => ({ ...prev, warningThresholdMinutes: Number(e.target.value || 60) }))}
+                className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm"
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs text-slate-500 uppercase tracking-wide">Intervalo auto-escalación (min)</label>
+              <input
+                type="number"
+                min={5}
+                max={1440}
+                value={configDraft.escalationIntervalMinutes}
+                onChange={(e) => setConfigDraft((prev) => ({ ...prev, escalationIntervalMinutes: Number(e.target.value || 30) }))}
+                className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm"
+              />
+            </div>
+          </div>
+          <div className="flex justify-end gap-3 pt-2">
+            <Button variant="secondary" onClick={() => setConfigOpen(false)}>
+              Cancelar
+            </Button>
+            <Button
+              onClick={() => updateConfig.mutate(configDraft)}
+              disabled={updateConfig.isPending}
+            >
+              {updateConfig.isPending ? "Guardando..." : "Guardar configuración"}
             </Button>
           </div>
         </div>

@@ -694,6 +694,7 @@ router.get('/tenants/:slug/solicitudes', requirePermiso('VIEW_SOLICITUDES'), asy
         const tenant = await db.findTenantBySlug(req.params.slug);
         if (!tenant) return res.status(404).json({ error: 'Tenant not found' });
         if (denyIfWrongTenant(req, res, tenant.id)) return;
+        const tenantConfig = await db.getSolicitudesEnterpriseConfig(tenant.id);
         const { estado, page, limit, userId } = req.query;
         const normalizedEstado = estado ? db.normalizeSolicitudStatus(estado, '') : '';
         const currentPage = page ? Number(page) : 1;
@@ -709,7 +710,7 @@ router.get('/tenants/:slug/solicitudes', requirePermiso('VIEW_SOLICITUDES'), asy
 
         const enriched = solicitudes.map((item) => ({
             ...item,
-            slaStatus: db.calculateSlaStatus(item),
+            slaStatus: db.calculateSlaStatus(item, { warningThresholdMinutes: tenantConfig.warningThresholdMinutes }),
         }));
 
         const where = {
@@ -736,6 +737,10 @@ router.get('/tenants/:slug/solicitudes/search', requirePermiso('VIEW_SOLICITUDES
         const tenant = await db.findTenantBySlug(req.params.slug);
         if (!tenant) return res.status(404).json({ error: 'Tenant not found' });
         if (denyIfWrongTenant(req, res, tenant.id)) return;
+        const tenantConfig = await db.getSolicitudesEnterpriseConfig(tenant.id);
+        if (!tenantConfig.advancedSearchEnabled) {
+            return res.status(403).json({ error: 'Advanced search is disabled for this tenant' });
+        }
 
         const {
             q,
@@ -763,6 +768,7 @@ router.get('/tenants/:slug/solicitudes/search', requirePermiso('VIEW_SOLICITUDES
             page: page ? Number(page) : 1,
             limit: limit ? Number(limit) : 20,
             slaStatus,
+            warningThresholdMinutes: tenantConfig.warningThresholdMinutes,
         });
 
         return res.json(result);
@@ -777,9 +783,50 @@ router.get('/tenants/:slug/solicitudes/stats', requirePermiso('VIEW_SOLICITUDES'
         const tenant = await db.findTenantBySlug(req.params.slug);
         if (!tenant) return res.status(404).json({ error: 'Tenant not found' });
         if (denyIfWrongTenant(req, res, tenant.id)) return;
+        const tenantConfig = await db.getSolicitudesEnterpriseConfig(tenant.id);
 
-        const stats = await db.getSolicitudesStats(tenant.id);
+        const stats = await db.getSolicitudesStats(tenant.id, {
+            warningThresholdMinutes: tenantConfig.warningThresholdMinutes,
+        });
         return res.json(stats);
+    } catch (err) {
+        next(err);
+    }
+});
+
+// GET /admin/tenants/:slug/solicitudes/config
+router.get('/tenants/:slug/solicitudes/config', requirePermiso('VIEW_SOLICITUDES'), async (req, res, next) => {
+    try {
+        const tenant = await db.findTenantBySlug(req.params.slug);
+        if (!tenant) return res.status(404).json({ error: 'Tenant not found' });
+        if (denyIfWrongTenant(req, res, tenant.id)) return;
+
+        const config = await db.getSolicitudesEnterpriseConfig(tenant.id);
+        return res.json(config);
+    } catch (err) {
+        next(err);
+    }
+});
+
+// PUT /admin/tenants/:slug/solicitudes/config
+router.put('/tenants/:slug/solicitudes/config', requirePermiso('EDIT_SOLICITUDES'), async (req, res, next) => {
+    try {
+        const tenant = await db.findTenantBySlug(req.params.slug);
+        if (!tenant) return res.status(404).json({ error: 'Tenant not found' });
+        if (denyIfWrongTenant(req, res, tenant.id)) return;
+
+        const config = await db.setSolicitudesEnterpriseConfig(tenant.id, req.body || {});
+        audit({
+            adminUserId: req.admin?.adminUserId,
+            tenantId: tenant.id,
+            accion: 'UPDATE_SOLICITUD_CONFIG',
+            entidad: 'solicitud_config',
+            entidadId: tenant.id,
+            ip: req.ip,
+            userAgent: req.headers['user-agent'],
+            metadata: { fields: Object.keys(req.body || {}) },
+        });
+        return res.json(config);
     } catch (err) {
         next(err);
     }
@@ -865,6 +912,10 @@ router.post('/tenants/:slug/solicitudes/:id/escalate', requirePermiso('EDIT_SOLI
         const tenant = await db.findTenantBySlug(req.params.slug);
         if (!tenant) return res.status(404).json({ error: 'Tenant not found' });
         if (denyIfWrongTenant(req, res, tenant.id)) return;
+        const tenantConfig = await db.getSolicitudesEnterpriseConfig(tenant.id);
+        if (!tenantConfig.manualEscalationEnabled) {
+            return res.status(403).json({ error: 'Manual escalation is disabled for this tenant' });
+        }
 
         const reason = req.body?.reason ? String(req.body.reason) : null;
         const escalated = await db.escalateSolicitud({
@@ -1097,6 +1148,10 @@ router.get('/tenants/:slug/sla-policies', requirePermiso('VIEW_SOLICITUDES'), as
         const tenant = await db.findTenantBySlug(req.params.slug);
         if (!tenant) return res.status(404).json({ error: 'Tenant not found' });
         if (denyIfWrongTenant(req, res, tenant.id)) return;
+        const tenantConfig = await db.getSolicitudesEnterpriseConfig(tenant.id);
+        if (!tenantConfig.slaEnabled) {
+            return res.json({ data: [] });
+        }
 
         const data = await db.listSlaPolicies(tenant.id);
         return res.json({ data });
@@ -1111,6 +1166,10 @@ router.post('/tenants/:slug/sla-policies', requirePermiso('EDIT_SOLICITUDES'), a
         const tenant = await db.findTenantBySlug(req.params.slug);
         if (!tenant) return res.status(404).json({ error: 'Tenant not found' });
         if (denyIfWrongTenant(req, res, tenant.id)) return;
+        const tenantConfig = await db.getSolicitudesEnterpriseConfig(tenant.id);
+        if (!tenantConfig.slaEnabled) {
+            return res.status(403).json({ error: 'SLA policies are disabled for this tenant' });
+        }
 
         const nombre = String(req.body?.nombre || '').trim();
         if (!nombre) return res.status(400).json({ error: 'nombre is required' });
@@ -1136,6 +1195,10 @@ router.patch('/tenants/:slug/sla-policies/:id', requirePermiso('EDIT_SOLICITUDES
         const tenant = await db.findTenantBySlug(req.params.slug);
         if (!tenant) return res.status(404).json({ error: 'Tenant not found' });
         if (denyIfWrongTenant(req, res, tenant.id)) return;
+        const tenantConfig = await db.getSolicitudesEnterpriseConfig(tenant.id);
+        if (!tenantConfig.slaEnabled) {
+            return res.status(403).json({ error: 'SLA policies are disabled for this tenant' });
+        }
 
         const updated = await db.updateSlaPolicy(tenant.id, Number(req.params.id), req.body || {});
         if (!updated) return res.status(404).json({ error: 'SLA policy not found' });
@@ -1160,6 +1223,10 @@ router.get('/tenants/:slug/assignment-rules', requirePermiso('VIEW_SOLICITUDES')
         const tenant = await db.findTenantBySlug(req.params.slug);
         if (!tenant) return res.status(404).json({ error: 'Tenant not found' });
         if (denyIfWrongTenant(req, res, tenant.id)) return;
+        const tenantConfig = await db.getSolicitudesEnterpriseConfig(tenant.id);
+        if (!tenantConfig.assignmentRulesEnabled) {
+            return res.json({ data: [] });
+        }
 
         const data = await db.listSolicitudAssignmentRules(tenant.id);
         return res.json({ data });
@@ -1174,6 +1241,10 @@ router.post('/tenants/:slug/assignment-rules', requirePermiso('EDIT_SOLICITUDES'
         const tenant = await db.findTenantBySlug(req.params.slug);
         if (!tenant) return res.status(404).json({ error: 'Tenant not found' });
         if (denyIfWrongTenant(req, res, tenant.id)) return;
+        const tenantConfig = await db.getSolicitudesEnterpriseConfig(tenant.id);
+        if (!tenantConfig.assignmentRulesEnabled) {
+            return res.status(403).json({ error: 'Assignment rules are disabled for this tenant' });
+        }
 
         const created = await db.createSolicitudAssignmentRule(tenant.id, req.body || {});
         audit({
@@ -1195,6 +1266,10 @@ router.patch('/tenants/:slug/assignment-rules/:id', requirePermiso('EDIT_SOLICIT
         const tenant = await db.findTenantBySlug(req.params.slug);
         if (!tenant) return res.status(404).json({ error: 'Tenant not found' });
         if (denyIfWrongTenant(req, res, tenant.id)) return;
+        const tenantConfig = await db.getSolicitudesEnterpriseConfig(tenant.id);
+        if (!tenantConfig.assignmentRulesEnabled) {
+            return res.status(403).json({ error: 'Assignment rules are disabled for this tenant' });
+        }
 
         const updated = await db.updateSolicitudAssignmentRule(tenant.id, Number(req.params.id), req.body || {});
         if (!updated) return res.status(404).json({ error: 'Assignment rule not found' });

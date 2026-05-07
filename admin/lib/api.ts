@@ -252,6 +252,10 @@ export const tenantApi = {
 export const solicitudesApi = {
   list: (slug: string, params?: Record<string, unknown>) =>
     apiClient.get(`/admin/tenants/${slug}/solicitudes`, { params }),
+  getConfig: (slug: string) =>
+    apiClient.get(`/admin/tenants/${slug}/solicitudes/config`),
+  updateConfig: (slug: string, data: Record<string, unknown>) =>
+    apiClient.put(`/admin/tenants/${slug}/solicitudes/config`, data),
   search: (slug: string, params?: Record<string, unknown>) =>
     apiClient.get(`/admin/tenants/${slug}/solicitudes/search`, { params }),
   stats: (slug: string) =>
