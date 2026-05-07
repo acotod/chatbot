@@ -538,6 +538,14 @@ async function _sendText(phoneNumberId, phone, text, accessToken, tenant, userId
   }
 }
 
+router._sandbox = {
+  handleIncomingMessage: _handleIncomingMessage,
+  runChatbot: _runChatbot,
+  sendChatbotResponse: _sendChatbotResponse,
+  sendText: _sendText,
+  verifyMetaSignature,
+};
+
 // ── Send outbound message (used by admin routes) ─────────────────────────────
 
 /**

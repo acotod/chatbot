@@ -14,6 +14,7 @@ const eventsRouter = require('./routes/events');
 const conversationsRouter = require('./routes/conversations');
 const calendarRouter       = require('./routes/calendar');
 const integrationsRouter   = require('./routes/integrations');
+const sandboxRouter        = require('./routes/sandbox');
 const variablesRouter      = require('./routes/variables');
 const flowsRouter          = require('./routes/flows');
 const wabaFlowsRouter      = require('./routes/waba-flows');
@@ -116,6 +117,7 @@ app.use('/llm', llmRouter);
 // Flow management (JWT-protected)
 app.use('/flows', flowsRouter);
 app.use('/integrations', integrationsRouter);
+app.use('/sandbox', sandboxRouter);
 app.use('/variables', variablesRouter);
 app.use('/waba-flows', wabaFlowsRouter);
 app.use('/crm', crmRouter);

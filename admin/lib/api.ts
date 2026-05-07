@@ -553,3 +553,16 @@ export const conversationsApi = {
   updateStatus: (id: string, status: 'completed' | 'abandoned' | 'error') =>
     apiClient.patch(`/conversations/${id}`, { status }),
 };
+
+export const sandboxApi = {
+  capabilities: () => apiClient.get('/sandbox/capabilities'),
+  simulateInbound: (data: {
+    tenantId?: string;
+    tenantSlug?: string;
+    phone: string;
+    text: string;
+    contactName?: string;
+    phoneNumberId?: string;
+    accessToken?: string;
+  }) => apiClient.post('/sandbox/simulate/inbound', data),
+};

@@ -29,6 +29,7 @@ import {
   ShieldCheck,
   Webhook,
   Plug,
+  TestTube2,
   Variable,
 } from "lucide-react";
 import Link from "next/link";
@@ -56,6 +57,7 @@ const NAV_ITEMS: Array<{
   { icon: Variable, label: "Variables", href: "/variables", permission: "EDIT_FLUJOS" },
   { icon: GitBranch, label: "Flujos", href: "/flujos", permission: "VIEW_FLUJOS" },
   { icon: Webhook, label: "WABA Flujos", href: "/waba-flujos", permission: "VIEW_FLUJOS" },
+  { icon: TestTube2, label: "Sandbox", href: "/sandbox", permission: "VIEW_SANDBOX" },
 ];
 
 export function Sidebar() {

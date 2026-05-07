@@ -10,6 +10,7 @@ export type Permission =
   | 'EDIT_AGENTES'
   | 'VIEW_CONVERSACIONES'
   | 'VIEW_FLUJOS'
+  | 'VIEW_SANDBOX'
   | 'EDIT_FLUJOS'
   | 'VIEW_AUDITORIA'
   | 'MANAGE_ROLES'
