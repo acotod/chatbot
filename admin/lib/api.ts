@@ -591,4 +591,8 @@ export const sandboxApi = {
     apiClient.get(`/sandbox/runs/${id}`, { params }),
   updateSettings: (data: { tenantSlug?: string; tenantId?: string; outboundMetaMock: boolean }) =>
     apiClient.patch('/sandbox/settings', data),
+  replayRun: (id: string, data?: { tenantSlug?: string; tenantId?: string; phoneNumberId?: string; accessToken?: string }) =>
+    apiClient.post(`/sandbox/runs/${id}/replay`, data),
+  checkCompliance: (id: string, data?: { tenantSlug?: string; tenantId?: string }) =>
+    apiClient.post(`/sandbox/runs/${id}/compliance`, data),
 };

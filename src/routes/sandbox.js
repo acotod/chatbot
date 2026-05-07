@@ -87,6 +87,78 @@ function buildUserKeyVariants(value) {
   return variants;
 }
 
+function sleep(delayMs) {
+  return new Promise((resolve) => setTimeout(resolve, delayMs));
+}
+
+function getReplayInputsFromEvents(events) {
+  if (!Array.isArray(events)) return [];
+
+  return events.reduce((steps, event) => {
+    if (event?.eventType === 'user_input') {
+      const rawInput = String(event?.payload?.raw_input ?? '').trim();
+      if (rawInput) {
+        steps.push({ type: 'user_input', text: rawInput, createdAt: event.createdAt });
+      }
+      return steps;
+    }
+
+    if (event?.eventType === 'menu_selection') {
+      const selectedId = String(event?.payload?.selected_id ?? '').trim();
+      if (selectedId) {
+        steps.push({ type: 'menu_selection', text: selectedId, createdAt: event.createdAt });
+      }
+    }
+
+    return steps;
+  }, []);
+}
+
+function buildComplianceReport(run) {
+  const events = Array.isArray(run?.events) ? run.events : [];
+  const checks = [
+    {
+      key: 'hasFlowStart',
+      label: 'La corrida registra inicio de flujo',
+      passed: events.some((event) => event.eventType === 'flow_start'),
+    },
+    {
+      key: 'hasUserInteraction',
+      label: 'La corrida registra interaccion del usuario',
+      passed: events.some((event) => event.eventType === 'user_input' || event.eventType === 'menu_selection'),
+    },
+    {
+      key: 'hasOutboundResponse',
+      label: 'La corrida emite al menos una respuesta del bot',
+      passed: events.some((event) => event.eventType === 'message_sent'),
+    },
+    {
+      key: 'hasNoFlowErrors',
+      label: 'La corrida no contiene flow_error',
+      passed: !events.some((event) => event.eventType === 'flow_error'),
+    },
+    {
+      key: 'isFinishedOrTraceable',
+      label: 'La corrida termino o quedo trazable para inspeccion',
+      passed: run?.status !== 'active' || events.length > 0,
+    },
+  ];
+
+  const passedCount = checks.filter((check) => check.passed).length;
+  const verdict = checks.every((check) => check.passed) ? 'pass' : (passedCount >= 3 ? 'warning' : 'fail');
+
+  return {
+    verdict,
+    score: `${passedCount}/${checks.length}`,
+    checks,
+    summary: verdict === 'pass'
+      ? 'La corrida cumple los controles basicos del sandbox.'
+      : verdict === 'warning'
+        ? 'La corrida es parcialmente conforme; revisa los checks pendientes.'
+        : 'La corrida no cumple los controles minimos y requiere correccion.',
+  };
+}
+
 function sandboxConversationWhere(tenantId, userKey) {
   const where = {
     tenantId,
@@ -217,8 +289,8 @@ router.get('/capabilities', async (req, res, next) => {
           nodeExecutors: true,
           integrationRunner: true,
           outboundMetaMock: settings.outboundMetaMock,
-          replay: false,
-          compliance: false,
+          replay: true,
+          compliance: true,
         },
         tenantScope: tenantId,
       },
@@ -393,6 +465,175 @@ router.post('/simulate/inbound', async (req, res, next) => {
         outboundMetaMock: settings.outboundMetaMock,
       },
     });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/runs/:id/replay', async (req, res, next) => {
+  try {
+    const { tenantId, tenant } = await resolveTenant(req, req.body);
+    if (!tenantId) {
+      return res.status(400).json({ error: 'tenantId or tenantSlug is required' });
+    }
+
+    const prisma = getPrismaClient();
+    const run = await prisma.conversation.findFirst({
+      where: {
+        ...sandboxConversationWhere(tenantId),
+        id: req.params.id,
+      },
+      include: {
+        events: {
+          orderBy: { createdAt: 'asc' },
+          select: { id: true, eventType: true, payload: true, createdAt: true },
+        },
+      },
+    });
+
+    if (!run) {
+      return res.status(404).json({ error: 'Sandbox run not found' });
+    }
+
+    const replayInputs = getReplayInputsFromEvents(run.events);
+    if (replayInputs.length === 0) {
+      return res.status(400).json({ error: 'Sandbox run has no replayable user inputs' });
+    }
+
+    const settings = await getSandboxSettings(tenantId);
+    const creds = await db.getConfig(tenantId, 'wa_credentials');
+    const phoneNumberId = String(req.body?.phoneNumberId ?? creds?.valor?.phoneNumberId ?? '').trim();
+    const accessToken = typeof req.body?.accessToken === 'string'
+      ? req.body.accessToken.trim()
+      : String(creds?.valor?.accessToken ?? '').trim();
+
+    if (!settings.outboundMetaMock && (!phoneNumberId || !accessToken)) {
+      return res.status(400).json({
+        error: 'WhatsApp credentials are required',
+        detail: 'Configure wa_credentials for the tenant or send phoneNumberId and accessToken explicitly.',
+      });
+    }
+
+    const sandboxApi = whatsappRouter._sandbox;
+    if (!sandboxApi?.handleIncomingMessage) {
+      return res.status(500).json({ error: 'Sandbox runtime is unavailable' });
+    }
+
+    let latestConversation = null;
+    for (let index = 0; index < replayInputs.length; index += 1) {
+      const step = replayInputs[index];
+      const msg = {
+        id: `sandbox-replay-${req.params.id}-${index + 1}-${Date.now()}`,
+        from: run.userKey,
+        type: 'text',
+        timestamp: String(Math.floor(Date.now() / 1000)),
+        text: { body: step.text },
+      };
+
+      const replayResult = await sandboxApi.handleIncomingMessage({
+        msg,
+        contacts: [{ wa_id: run.userKey, profile: { name: req.body?.contactName ?? 'Sandbox Replay' } }],
+        tenant: tenant ?? { id: tenantId },
+        phoneNumberId,
+        accessToken,
+        correlationId: req.correlationId,
+        conversationMeta: {
+          sandbox: true,
+          source: 'sandbox_replay',
+          initiatedBy: 'admin',
+          replay: true,
+          replaySourceRunId: run.id,
+          outboundMetaMock: settings.outboundMetaMock,
+        },
+      });
+
+      latestConversation = replayResult?.conversationId
+        ? await prisma.conversation.findFirst({
+            where: {
+              ...sandboxConversationWhere(tenantId, run.userKey),
+              id: replayResult.conversationId,
+            },
+            select: { id: true, status: true, startedAt: true },
+          })
+        : latestConversation;
+
+      if (index < replayInputs.length - 1) {
+        await sleep(100);
+      }
+    }
+
+    audit({
+      adminUserId: req.admin?.adminUserId,
+      tenantId,
+      accion: 'SANDBOX_REPLAY_RUN',
+      entidad: 'sandbox',
+      metadata: {
+        sourceRunId: run.id,
+        replayedSteps: replayInputs.length,
+      },
+    });
+
+    return res.json({
+      ok: true,
+      replay: {
+        sourceRunId: run.id,
+        replayedSteps: replayInputs.length,
+        userKey: run.userKey,
+        outboundMetaMock: settings.outboundMetaMock,
+        conversationId: latestConversation?.id ?? null,
+        conversationStatus: latestConversation?.status ?? null,
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/runs/:id/compliance', async (req, res, next) => {
+  try {
+    const { tenantId } = await resolveTenant(req, req.body);
+    if (!tenantId) {
+      return res.status(400).json({ error: 'tenantId or tenantSlug is required' });
+    }
+
+    const prisma = getPrismaClient();
+    const run = await prisma.conversation.findFirst({
+      where: {
+        ...sandboxConversationWhere(tenantId),
+        id: req.params.id,
+      },
+      select: {
+        id: true,
+        status: true,
+        userKey: true,
+        startedAt: true,
+        endedAt: true,
+        events: {
+          orderBy: { createdAt: 'asc' },
+          select: { id: true, eventType: true, payload: true, createdAt: true },
+        },
+      },
+    });
+
+    if (!run) {
+      return res.status(404).json({ error: 'Sandbox run not found' });
+    }
+
+    const report = buildComplianceReport(run);
+
+    audit({
+      adminUserId: req.admin?.adminUserId,
+      tenantId,
+      accion: 'SANDBOX_COMPLIANCE_CHECK',
+      entidad: 'sandbox',
+      metadata: {
+        runId: run.id,
+        verdict: report.verdict,
+        score: report.score,
+      },
+    });
+
+    return res.json({ ok: true, compliance: { runId: run.id, ...report } });
   } catch (err) {
     next(err);
   }

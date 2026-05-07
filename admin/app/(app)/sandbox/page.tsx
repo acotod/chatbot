@@ -68,6 +68,33 @@ type SandboxRunDetail = {
   }>;
 };
 
+type ReplayResponse = {
+  ok: boolean;
+  replay: {
+    sourceRunId: string;
+    replayedSteps: number;
+    userKey: string;
+    outboundMetaMock: boolean;
+    conversationId: string | null;
+    conversationStatus: string | null;
+  };
+};
+
+type ComplianceResponse = {
+  ok: boolean;
+  compliance: {
+    runId: string;
+    verdict: "pass" | "warning" | "fail";
+    score: string;
+    summary: string;
+    checks: Array<{
+      key: string;
+      label: string;
+      passed: boolean;
+    }>;
+  };
+};
+
 function formatDateTime(value: string | null): string {
   if (!value) return "-";
   const date = new Date(value);
@@ -92,6 +119,7 @@ export default function SandboxPage() {
   const [text, setText] = useState("Hola, quiero probar el sandbox.");
   const [contactName, setContactName] = useState("Sandbox User");
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
+  const [complianceReport, setComplianceReport] = useState<ComplianceResponse["compliance"] | null>(null);
   const trimmedPhone = phone.trim();
 
   const permissionSet = useMemo(() => buildPermissionSet(permissions), [permissions]);
@@ -135,6 +163,29 @@ export default function SandboxPage() {
     },
   });
 
+  const replayMutation = useMutation({
+    mutationFn: () =>
+      sandboxApi.replayRun(selectedRunId!, {
+        tenantSlug: superAdmin ? tenantSlug || undefined : undefined,
+      }).then((res) => res.data as ReplayResponse),
+    onSuccess: (result) => {
+      if (result.replay.conversationId) {
+        setSelectedRunId(result.replay.conversationId);
+      }
+      void queryClient.invalidateQueries({ queryKey: ["sandbox-runs"] });
+    },
+  });
+
+  const complianceMutation = useMutation({
+    mutationFn: () =>
+      sandboxApi.checkCompliance(selectedRunId!, {
+        tenantSlug: superAdmin ? tenantSlug || undefined : undefined,
+      }).then((res) => res.data as ComplianceResponse),
+    onSuccess: (result) => {
+      setComplianceReport(result.compliance);
+    },
+  });
+
   const { data: runsData, isLoading: runsLoading } = useQuery({
     queryKey: ["sandbox-runs", tenantSlug, trimmedPhone],
     queryFn: () =>
@@ -158,6 +209,10 @@ export default function SandboxPage() {
       setSelectedRunId(runs[0].id);
     }
   }, [runs, selectedRunId]);
+
+  useEffect(() => {
+    setComplianceReport(null);
+  }, [selectedRunId]);
 
   const { data: runDetailData, isLoading: runDetailLoading } = useQuery({
     queryKey: ["sandbox-run-detail", tenantSlug, selectedRunId],
@@ -311,6 +366,18 @@ export default function SandboxPage() {
             </div>
           )}
 
+          {replayMutation.data && (
+            <div className="mt-4 rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-800">
+              <p className="font-medium">Replay ejecutado.</p>
+              <p>Pasos reproducidos: <strong>{replayMutation.data.replay.replayedSteps}</strong></p>
+              {replayMutation.data.replay.conversationId && (
+                <p>
+                  Nueva ejecución: <strong>{replayMutation.data.replay.conversationId}</strong> · Estado: <strong>{replayMutation.data.replay.conversationStatus ?? "active"}</strong>
+                </p>
+              )}
+            </div>
+          )}
+
           <div className="mt-6 rounded-3xl border border-slate-200 bg-slate-50 p-5">
             <div className="mb-4 flex items-center gap-2 text-slate-900">
               <Clock3 className="h-5 w-5 text-slate-600" />
@@ -437,6 +504,79 @@ export default function SandboxPage() {
               <TestTube2 className="h-5 w-5 text-violet-600" />
               <h2 className="text-lg font-semibold">Línea de tiempo</h2>
             </div>
+
+            <div className="mb-4 grid gap-3 md:grid-cols-2">
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="font-medium text-slate-900">Replay</p>
+                    <p className="mt-1 text-xs text-slate-500">Reproduce la corrida seleccionada usando los eventos de entrada guardados.</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => replayMutation.mutate()}
+                    disabled={!selectedRunId || replayMutation.isPending || (superAdmin && !tenantSlug)}
+                    className="rounded-xl bg-sky-600 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-sky-700 disabled:cursor-not-allowed disabled:bg-slate-300"
+                  >
+                    {replayMutation.isPending ? "Reproduciendo..." : "Simular replay"}
+                  </button>
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="font-medium text-slate-900">Compliance</p>
+                    <p className="mt-1 text-xs text-slate-500">Evalúa si la corrida cumple los checks mínimos de trazabilidad y respuesta.</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => complianceMutation.mutate()}
+                    disabled={!selectedRunId || complianceMutation.isPending || (superAdmin && !tenantSlug)}
+                    className="rounded-xl bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-slate-300"
+                  >
+                    {complianceMutation.isPending ? "Evaluando..." : "Simular compliance"}
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {replayMutation.isError && (
+              <div className="mb-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                {getErrorMessage(replayMutation.error)}
+              </div>
+            )}
+
+            {complianceMutation.isError && (
+              <div className="mb-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                {getErrorMessage(complianceMutation.error)}
+              </div>
+            )}
+
+            {complianceReport && (
+              <div className="mb-4 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="font-medium">Compliance verdict: {complianceReport.verdict}</p>
+                    <p className="text-xs text-emerald-800">Score: {complianceReport.score}</p>
+                  </div>
+                  <span className="rounded-full bg-white px-2.5 py-1 text-xs font-medium text-emerald-800">
+                    {complianceReport.verdict}
+                  </span>
+                </div>
+                <p className="mt-2 text-xs text-emerald-800">{complianceReport.summary}</p>
+                <div className="mt-3 grid gap-2">
+                  {complianceReport.checks.map((check) => (
+                    <div key={check.key} className="flex items-center justify-between rounded-xl border border-emerald-200 bg-white px-3 py-2 text-xs text-slate-700">
+                      <span>{check.label}</span>
+                      <span className={check.passed ? "text-emerald-700" : "text-amber-700"}>
+                        {check.passed ? "ok" : "pendiente"}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {!selectedRunId ? (
               <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-6 text-sm text-slate-500">
