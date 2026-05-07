@@ -132,21 +132,30 @@ function getReplayInputsFromEvents(events) {
 }
 
 function firstMenuOptionId(options) {
+  const ids = collectMenuOptionIds(options);
+  return ids[0] ?? '';
+}
+
+function collectMenuOptionIds(options) {
+  const ids = [];
+
   if (Array.isArray(options)) {
     for (const option of options) {
       const id = String(option?.id ?? option?.value ?? '').trim();
-      if (id) return id;
+      if (id && !ids.includes(id)) ids.push(id);
+
       const rows = Array.isArray(option?.rows) ? option.rows : [];
       for (const row of rows) {
         const rowId = String(row?.id ?? row?.value ?? '').trim();
-        if (rowId) return rowId;
+        if (rowId && !ids.includes(rowId)) ids.push(rowId);
       }
     }
   }
-  return '';
+
+  return ids;
 }
 
-function getAutoReplyFromEvents(events, fallbackInput) {
+function getAutoRepliesFromEvents(events, fallbackInput) {
   if (!Array.isArray(events) || events.length === 0) return null;
 
   for (let index = events.length - 1; index >= 0; index -= 1) {
@@ -156,18 +165,37 @@ function getAutoReplyFromEvents(events, fallbackInput) {
     const payload = event?.payload ?? {};
     const nodeType = String(payload?.node_type ?? '').trim().toLowerCase();
     if (nodeType === 'menu') {
-      const selectedId = firstMenuOptionId(payload?.options);
-      if (selectedId) {
-        return { type: 'menu_selection', text: selectedId };
+      const selectedIds = collectMenuOptionIds(payload?.options);
+      if (selectedIds.length > 0) {
+        return selectedIds.map((selectedId) => ({ type: 'menu_selection', text: selectedId }));
       }
     }
 
     if (nodeType === 'input') {
-      return { type: 'user_input', text: fallbackInput };
+      return [{ type: 'user_input', text: fallbackInput }];
     }
   }
 
   return null;
+}
+
+function getAutoReplyFromEvents(events, fallbackInput) {
+  const replies = getAutoRepliesFromEvents(events, fallbackInput);
+  return Array.isArray(replies) && replies.length > 0 ? replies[0] : null;
+}
+
+function buildSandboxBranchPhone(basePhone, branchIndex) {
+  if (branchIndex <= 0) return basePhone;
+  return `${basePhone}-e2e${branchIndex}`;
+}
+
+function replyKey(reply) {
+  return `${String(reply?.type ?? '').trim().toLowerCase()}:${String(reply?.text ?? '').trim()}`;
+}
+
+function pathKey(path) {
+  if (!Array.isArray(path) || path.length === 0) return '';
+  return path.map((step) => replyKey(step)).join('|');
 }
 
 async function loadSandboxRunWithEvents(prisma, tenantId, conversationId) {
@@ -226,32 +254,24 @@ async function driveSandboxE2E({
   phoneNumberId,
   accessToken,
   initialConversation,
+  initialText,
   maxSteps,
+  maxRuns,
+  traverseAllPaths,
   fallbackInput,
 }) {
-  let latestConversation = initialConversation ?? null;
-  let autoSteps = 0;
-
-  for (let i = 0; i < maxSteps; i += 1) {
-    if (!latestConversation?.id) break;
-
-    const run = await loadSandboxRunWithEvents(prisma, tenantId, latestConversation.id);
-    if (!run || run.status !== 'active') break;
-
-    const nextReply = getAutoReplyFromEvents(run.events, fallbackInput);
-    if (!nextReply?.text) break;
-
+  const startInboundConversation = async ({ phoneForRun }) => {
     const msg = {
-      id: `sandbox-e2e-${latestConversation.id}-${i + 1}-${Date.now()}`,
-      from: phone,
+      id: `sandbox-e2e-initial-${Date.now()}-${Math.floor(Math.random() * 1e5)}`,
+      from: phoneForRun,
       type: 'text',
       timestamp: String(Math.floor(Date.now() / 1000)),
-      text: { body: nextReply.text },
+      text: { body: initialText },
     };
 
-    const replayResult = await sandboxApi.handleIncomingMessage({
+    const startResult = await sandboxApi.handleIncomingMessage({
       msg,
-      contacts: [{ wa_id: phone, profile: { name: req.body?.contactName ?? 'Sandbox E2E' } }],
+      contacts: [{ wa_id: phoneForRun, profile: { name: req.body?.contactName ?? 'Sandbox E2E' } }],
       tenant: tenant ?? { id: tenantId },
       phoneNumberId,
       accessToken,
@@ -265,28 +285,27 @@ async function driveSandboxE2E({
       },
     });
 
-    autoSteps += 1;
-    latestConversation = replayResult?.conversationId
+    let conversation = startResult?.conversationId
       ? await prisma.conversation.findFirst({
           where: {
-            ...sandboxConversationWhere(tenantId, phone),
-            id: replayResult.conversationId,
+            ...sandboxConversationWhere(tenantId, phoneForRun),
+            id: startResult.conversationId,
           },
           select: { id: true, status: true, startedAt: true },
         })
-      : await waitForSandboxConversation({ tenantId, userKey: phone, maxAttempts: 4, delayMs: 120 });
+      : await waitForSandboxConversation({ tenantId, userKey: phoneForRun });
 
-    if (latestConversation?.id) {
+    if (conversation?.id) {
       const tracedRun = await waitForSandboxTrace({
         prisma,
         tenantId,
-        conversationId: latestConversation.id,
-        minEvents: (run.events?.length ?? 0) + 1,
-        maxAttempts: 10,
-        delayMs: 100,
+        conversationId: conversation.id,
+        minEvents: 2,
+        maxAttempts: 14,
+        delayMs: 120,
       });
       if (tracedRun) {
-        latestConversation = {
+        conversation = {
           id: tracedRun.id,
           status: tracedRun.status,
           startedAt: tracedRun.startedAt,
@@ -294,10 +313,175 @@ async function driveSandboxE2E({
       }
     }
 
-    await sleep(80);
+    return conversation;
+  };
+
+  const continueConversationPath = async ({
+    startingConversation,
+    phoneForRun,
+    forcedReplies = [],
+  }) => {
+    let latestConversation = startingConversation ?? null;
+    let autoSteps = 0;
+    const usedReplies = [];
+    const branchPrefixes = [];
+    const branchPrefixKeys = new Set();
+
+    for (let i = 0; i < maxSteps; i += 1) {
+      if (!latestConversation?.id) break;
+
+      const run = await loadSandboxRunWithEvents(prisma, tenantId, latestConversation.id);
+      if (!run || run.status !== 'active') break;
+
+      const replyOptions = getAutoRepliesFromEvents(run.events, fallbackInput);
+      if (!Array.isArray(replyOptions) || replyOptions.length === 0) break;
+
+      const forcedReply = forcedReplies[i];
+      let chosenReply = replyOptions[0];
+
+      if (forcedReply?.text) {
+        const forcedKey = replyKey(forcedReply);
+        const matched = replyOptions.find((option) => replyKey(option) === forcedKey);
+        chosenReply = matched ?? chosenReply;
+      }
+
+      if (!forcedReply && traverseAllPaths && replyOptions.length > 1) {
+        const chosenKey = replyKey(chosenReply);
+        for (const option of replyOptions) {
+          if (replyKey(option) === chosenKey) continue;
+          const candidate = [...usedReplies, option];
+          const candidateKey = pathKey(candidate);
+          if (candidateKey && !branchPrefixKeys.has(candidateKey)) {
+            branchPrefixKeys.add(candidateKey);
+            branchPrefixes.push(candidate);
+          }
+        }
+      }
+
+      const msg = {
+        id: `sandbox-e2e-${latestConversation.id}-${i + 1}-${Date.now()}`,
+        from: phoneForRun,
+        type: 'text',
+        timestamp: String(Math.floor(Date.now() / 1000)),
+        text: { body: chosenReply.text },
+      };
+
+      const replayResult = await sandboxApi.handleIncomingMessage({
+        msg,
+        contacts: [{ wa_id: phoneForRun, profile: { name: req.body?.contactName ?? 'Sandbox E2E' } }],
+        tenant: tenant ?? { id: tenantId },
+        phoneNumberId,
+        accessToken,
+        correlationId: req.correlationId,
+        conversationMeta: {
+          sandbox: true,
+          source: 'sandbox_emulator_e2e',
+          initiatedBy: 'admin',
+          autoE2E: true,
+          outboundMetaMock: settings.outboundMetaMock,
+        },
+      });
+
+      autoSteps += 1;
+      usedReplies.push(chosenReply);
+
+      latestConversation = replayResult?.conversationId
+        ? await prisma.conversation.findFirst({
+            where: {
+              ...sandboxConversationWhere(tenantId, phoneForRun),
+              id: replayResult.conversationId,
+            },
+            select: { id: true, status: true, startedAt: true },
+          })
+        : await waitForSandboxConversation({ tenantId, userKey: phoneForRun, maxAttempts: 4, delayMs: 120 });
+
+      if (latestConversation?.id) {
+        const tracedRun = await waitForSandboxTrace({
+          prisma,
+          tenantId,
+          conversationId: latestConversation.id,
+          minEvents: (run.events?.length ?? 0) + 1,
+          maxAttempts: 10,
+          delayMs: 100,
+        });
+        if (tracedRun) {
+          latestConversation = {
+            id: tracedRun.id,
+            status: tracedRun.status,
+            startedAt: tracedRun.startedAt,
+          };
+        }
+      }
+
+      await sleep(80);
+    }
+
+    return { latestConversation, autoSteps, usedReplies, branchPrefixes };
+  };
+
+  const queue = [];
+  const queued = new Set();
+  const branchRuns = [];
+
+  let rootResult = await continueConversationPath({
+    startingConversation: initialConversation,
+    phoneForRun: phone,
+    forcedReplies: [],
+  });
+
+  for (const prefix of rootResult.branchPrefixes) {
+    const key = pathKey(prefix);
+    if (key && !queued.has(key)) {
+      queued.add(key);
+      queue.push(prefix);
+    }
   }
 
-  return { latestConversation, autoSteps };
+  if (traverseAllPaths) {
+    while (queue.length > 0 && branchRuns.length < Math.max(0, maxRuns - 1)) {
+      const forcedReplies = queue.shift();
+      const phoneForRun = buildSandboxBranchPhone(phone, branchRuns.length + 1);
+      const branchConversation = await startInboundConversation({ phoneForRun });
+      if (!branchConversation?.id) {
+        branchRuns.push({
+          phone: phoneForRun,
+          forcedReplies,
+          conversationId: null,
+          autoSteps: 0,
+        });
+        continue;
+      }
+
+      const branchResult = await continueConversationPath({
+        startingConversation: branchConversation,
+        phoneForRun,
+        forcedReplies,
+      });
+
+      branchRuns.push({
+        phone: phoneForRun,
+        forcedReplies,
+        conversationId: branchResult.latestConversation?.id ?? branchConversation.id,
+        autoSteps: branchResult.autoSteps,
+      });
+
+      for (const prefix of branchResult.branchPrefixes) {
+        const key = pathKey(prefix);
+        if (key && !queued.has(key)) {
+          queued.add(key);
+          queue.push(prefix);
+        }
+      }
+    }
+  }
+
+  const autoSteps = rootResult.autoSteps + branchRuns.reduce((sum, run) => sum + run.autoSteps, 0);
+
+  return {
+    latestConversation: rootResult.latestConversation ?? initialConversation,
+    autoSteps,
+    branchRuns,
+  };
 }
 
 function buildComplianceReport(run) {
@@ -552,7 +736,9 @@ router.post('/simulate/inbound', async (req, res, next) => {
     }
 
     const e2eEnabled = req.body?.e2e !== false;
+    const e2eTraverseAllPaths = req.body?.e2eTraverseAllPaths !== false;
     const e2eMaxSteps = parseLimit(req.body?.e2eMaxSteps, 8, 30);
+    const e2eMaxRuns = parseLimit(req.body?.e2eMaxRuns, 12, 60);
     const e2eFallbackInput = String(req.body?.e2eFallbackInput ?? 'ok').trim() || 'ok';
 
     const simulatedMsgId = `sandbox-${Date.now()}`;
@@ -609,6 +795,7 @@ router.post('/simulate/inbound', async (req, res, next) => {
     }
 
     let autoE2ESteps = 0;
+    let autoE2EBranches = [];
     if (e2eEnabled && latestConversation?.id) {
       const e2eResult = await driveSandboxE2E({
         prisma,
@@ -621,11 +808,15 @@ router.post('/simulate/inbound', async (req, res, next) => {
         phoneNumberId,
         accessToken,
         initialConversation: latestConversation,
+        initialText: text,
         maxSteps: e2eMaxSteps,
+        maxRuns: e2eMaxRuns,
+        traverseAllPaths: e2eTraverseAllPaths,
         fallbackInput: e2eFallbackInput,
       });
       latestConversation = e2eResult.latestConversation ?? latestConversation;
       autoE2ESteps = e2eResult.autoSteps;
+      autoE2EBranches = Array.isArray(e2eResult.branchRuns) ? e2eResult.branchRuns : [];
     }
 
     // Enterprise fallback: always persist a sandbox run so timeline/recent runs are traceable
@@ -682,8 +873,11 @@ router.post('/simulate/inbound', async (req, res, next) => {
         phoneNumberId,
         simulatedMsgId,
         e2eEnabled,
+        e2eTraverseAllPaths,
         e2eMaxSteps,
+        e2eMaxRuns,
         autoE2ESteps,
+        autoE2EBranchRuns: autoE2EBranches.length,
       },
     });
 
@@ -700,8 +894,14 @@ router.post('/simulate/inbound', async (req, res, next) => {
         outboundMetaMock: settings.outboundMetaMock,
         e2e: {
           enabled: e2eEnabled,
+          traverseAllPaths: e2eTraverseAllPaths,
           maxSteps: e2eMaxSteps,
+          maxRuns: e2eMaxRuns,
           autoSteps: autoE2ESteps,
+          branchRuns: autoE2EBranches.length,
+          branchConversationIds: autoE2EBranches
+            .map((branch) => branch?.conversationId)
+            .filter(Boolean),
         },
       },
     });
