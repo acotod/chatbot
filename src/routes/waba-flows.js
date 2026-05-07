@@ -98,6 +98,22 @@ async function resolveTenantId(req, explicitTenantSlug) {
   return null;
 }
 
+async function resolveTenantForFlow(req, flowId, explicitTenantSlug) {
+  const resolvedTenantId = await resolveTenantId(req, explicitTenantSlug);
+  if (resolvedTenantId) return resolvedTenantId;
+
+  // For super-admins without a pinned tenant, infer tenant from the flow.
+  if (req.admin?.superAdmin) {
+    const flow = await prisma.flow.findUnique({
+      where: { id: flowId },
+      select: { tenantId: true },
+    });
+    return flow?.tenantId ?? null;
+  }
+
+  return null;
+}
+
 async function _getIntegrationMap(tenantId) {
   const integrations = await prisma.integration.findMany({
     where: { tenantId, activo: true },
@@ -346,9 +362,10 @@ router.get('/:id', async (req, res, next) => {
 // ─────────────────────────────────────────────────────────────────────────────
 router.get('/:id/versions/:vId', async (req, res, next) => {
   try {
-    const tenantId = tid(req);
     const flowId   = Number(req.params.id);
     const vId      = Number(req.params.vId);
+    const tenantId = await resolveTenantForFlow(req, flowId, req.query.tenantSlug);
+    if (!tenantId) return res.status(400).json({ error: 'tenantSlug is required for WABA flows' });
 
     const version = await prisma.flowVersion.findFirst({
       where: { id: vId, flowId, tenantId },
@@ -524,8 +541,9 @@ router.post('/:id/simulate', async (req, res, next) => {
 // ─────────────────────────────────────────────────────────────────────────────
 router.get('/:id/versions', async (req, res, next) => {
   try {
-    const tenantId = tid(req);
     const flowId = Number(req.params.id);
+    const tenantId = await resolveTenantForFlow(req, flowId, req.query.tenantSlug);
+    if (!tenantId) return res.status(400).json({ error: 'tenantSlug is required for WABA flows' });
 
     const versions = await prisma.flowVersion.findMany({
       where: { flowId, tenantId },
@@ -611,10 +629,11 @@ router.post('/:id/versions', async (req, res, next) => {
 // ─────────────────────────────────────────────────────────────────────────────
 router.put('/:id/versions/:vId/publish', async (req, res, next) => {
   try {
-    const tenantId = tid(req);
     const flowId = Number(req.params.id);
     const vId    = Number(req.params.vId);
     const { publish = true } = req.body;
+    const tenantId = await resolveTenantForFlow(req, flowId, req.body?.tenantSlug ?? req.query?.tenantSlug);
+    if (!tenantId) return res.status(400).json({ error: 'tenantSlug is required for WABA flows' });
 
     const version = await prisma.flowVersion.findFirst({ where: { id: vId, flowId, tenantId } });
     if (!version) return notFound(res, 'Version');
@@ -653,9 +672,10 @@ router.put('/:id/versions/:vId/publish', async (req, res, next) => {
 // ─────────────────────────────────────────────────────────────────────────────
 router.post('/:id/versions/:vId/rollback', async (req, res, next) => {
   try {
-    const tenantId = tid(req);
     const flowId = Number(req.params.id);
     const vId    = Number(req.params.vId);
+    const tenantId = await resolveTenantForFlow(req, flowId, req.body?.tenantSlug ?? req.query?.tenantSlug);
+    if (!tenantId) return res.status(400).json({ error: 'tenantSlug is required for WABA flows' });
 
     const version = await prisma.flowVersion.findFirst({ where: { id: vId, flowId, tenantId } });
     if (!version) return notFound(res, 'Version');

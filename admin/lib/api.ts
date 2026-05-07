@@ -505,16 +505,23 @@ export const wabaFlowsApi = {
     apiClient.post(`/waba-flows/${id}/validate`, data ?? {}),
   simulate: (id: number, data: { inputs?: string[]; versionId?: number; definition?: unknown }) =>
     apiClient.post(`/waba-flows/${id}/simulate`, data),
-  listVersions: (id: number) =>
-    apiClient.get(`/waba-flows/${id}/versions`),
-  getVersion: (id: number, vId: number) =>
-    apiClient.get(`/waba-flows/${id}/versions/${vId}`),
-  saveVersion: (id: number, data: { definition: unknown; changelog?: string }) =>
+  listVersions: (id: number, tenantSlug?: string) =>
+    apiClient.get(`/waba-flows/${id}/versions`, {
+      params: tenantSlug ? { tenantSlug } : undefined,
+    }),
+  getVersion: (id: number, vId: number, tenantSlug?: string) =>
+    apiClient.get(`/waba-flows/${id}/versions/${vId}`, {
+      params: tenantSlug ? { tenantSlug } : undefined,
+    }),
+  saveVersion: (id: number, data: { definition: unknown; changelog?: string; tenantSlug?: string }) =>
     apiClient.post(`/waba-flows/${id}/versions`, data),
-  publishVersion: (id: number, vId: number, publish = true) =>
-    apiClient.put(`/waba-flows/${id}/versions/${vId}/publish`, { publish }),
-  rollback: (id: number, vId: number) =>
-    apiClient.post(`/waba-flows/${id}/versions/${vId}/rollback`),
+  publishVersion: (id: number, vId: number, publish = true, tenantSlug?: string) =>
+    apiClient.put(`/waba-flows/${id}/versions/${vId}/publish`, {
+      publish,
+      ...(tenantSlug ? { tenantSlug } : {}),
+    }),
+  rollback: (id: number, vId: number, tenantSlug?: string) =>
+    apiClient.post(`/waba-flows/${id}/versions/${vId}/rollback`, tenantSlug ? { tenantSlug } : {}),
   importLogs: (params?: { page?: number; limit?: number; tenantSlug?: string }) =>
     apiClient.get("/waba-flows/import-logs", { params }),
   flowsApi: (id: number) => apiClient.get(`/waba-flows/${id}`),

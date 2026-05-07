@@ -1150,7 +1150,7 @@ function FlowBuilder({
 
   const loadLatestVersion = useCallback(async () => {
     try {
-      const { data } = await wabaFlowsApi.listVersions(flow.id);
+      const { data } = await wabaFlowsApi.listVersions(flow.id, tenantSlug);
       const versions = Array.isArray(data)
         ? data
         : Array.isArray((data as { versions?: FlowVersion[] })?.versions)
@@ -1158,12 +1158,12 @@ function FlowBuilder({
           : [];
       if (!versions.length) return;
       const latest = versions[0];
-      const { data: vd } = await wabaFlowsApi.getVersion(flow.id, latest.id);
+      const { data: vd } = await wabaFlowsApi.getVersion(flow.id, latest.id, tenantSlug);
       setActiveVersion({ ...latest, definition: vd.definition });
       setDefinition(vd.definition);
       setJsonText(JSON.stringify(vd.definition, null, 2));
     } catch { /* ignore */ }
-  }, [flow.id]);
+  }, [flow.id, tenantSlug]);
 
   useEffect(() => {
     loadLatestVersion();
@@ -1299,6 +1299,7 @@ function FlowBuilder({
       await wabaFlowsApi.saveVersion(flow.id, {
         definition,
         changelog: changelog || undefined,
+        tenantSlug,
       });
       setChangelog("");
       await loadLatestVersion();
@@ -1510,42 +1511,54 @@ function FlowBuilder({
 // ─────────────────────────────────────────────────────────────────────────────
 // Sub-component: VersionsPanel
 // ─────────────────────────────────────────────────────────────────────────────
-function VersionsPanel({ flow, onRefresh }: { flow: WabaFlow; onRefresh: () => void }) {
+function VersionsPanel({ flow, onRefresh, tenantSlug }: { flow: WabaFlow; onRefresh: () => void; tenantSlug?: string }) {
   const [versions, setVersions] = useState<FlowVersion[]>([]);
   const [loading, setLoading]   = useState(true);
   const [publishing, setPublishing] = useState<number | null>(null);
   const [rollingBack, setRollingBack] = useState<number | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   const reload = useCallback(async () => {
     setLoading(true);
     try {
-      const { data } = await wabaFlowsApi.listVersions(flow.id);
+      const { data } = await wabaFlowsApi.listVersions(flow.id, tenantSlug);
       const normalized = Array.isArray(data)
         ? data
         : Array.isArray((data as { versions?: FlowVersion[] })?.versions)
           ? ((data as { versions: FlowVersion[] }).versions)
           : [];
       setVersions(normalized);
+      setActionError(null);
     } finally { setLoading(false); }
-  }, [flow.id]);
+  }, [flow.id, tenantSlug]);
 
   useEffect(() => { reload(); }, [reload]);
 
   async function togglePublish(v: FlowVersion) {
     setPublishing(v.id);
     try {
-      await wabaFlowsApi.publishVersion(flow.id, v.id, !v.published);
+      await wabaFlowsApi.publishVersion(flow.id, v.id, !v.published, tenantSlug);
       await reload();
       onRefresh();
+    } catch (error: unknown) {
+      const msg = (error as { response?: { data?: { error?: string } }; message?: string })?.response?.data?.error
+        ?? (error as { message?: string })?.message
+        ?? "No se pudo cambiar el estado de publicación.";
+      setActionError(msg);
     } finally { setPublishing(null); }
   }
 
   async function rollback(v: FlowVersion) {
     setRollingBack(v.id);
     try {
-      await wabaFlowsApi.rollback(flow.id, v.id);
+      await wabaFlowsApi.rollback(flow.id, v.id, tenantSlug);
       await reload();
       onRefresh();
+    } catch (error: unknown) {
+      const msg = (error as { response?: { data?: { error?: string } }; message?: string })?.response?.data?.error
+        ?? (error as { message?: string })?.message
+        ?? "No se pudo hacer rollback de la versión.";
+      setActionError(msg);
     } finally { setRollingBack(null); }
   }
 
@@ -1557,6 +1570,11 @@ function VersionsPanel({ flow, onRefresh }: { flow: WabaFlow; onRefresh: () => v
         <h3 className="font-semibold text-slate-700">Historial de versiones — {flow.nombre}</h3>
         <button onClick={reload} className="text-slate-400 hover:text-slate-600"><RefreshCw className="w-4 h-4" /></button>
       </div>
+      {actionError && (
+        <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+          {actionError}
+        </div>
+      )}
       {versions.length === 0 && (
         <div className="text-center py-10 text-slate-400 text-sm">Sin versiones guardadas</div>
       )}
@@ -1842,7 +1860,7 @@ export default function WabaFlujos() {
             onRefresh={loadFlows}
           />
         )}
-        {tab === "versions" && <VersionsPanel flow={selectedFlow} onRefresh={loadFlows} />}
+        {tab === "versions" && <VersionsPanel flow={selectedFlow} onRefresh={loadFlows} tenantSlug={tenantSlug} />}
         {tab === "simulate" && <SimulatePanel flow={selectedFlow} />}
       </div>
     );
