@@ -180,12 +180,39 @@ async function loadSandboxRunWithEvents(prisma, tenantId, conversationId) {
     select: {
       id: true,
       status: true,
+      startedAt: true,
       events: {
         orderBy: { createdAt: 'asc' },
         select: { id: true, eventType: true, payload: true, createdAt: true },
       },
     },
   });
+}
+
+async function waitForSandboxTrace({
+  prisma,
+  tenantId,
+  conversationId,
+  minEvents = 1,
+  maxAttempts = 12,
+  delayMs = 120,
+}) {
+  if (!conversationId) return null;
+
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    const run = await loadSandboxRunWithEvents(prisma, tenantId, conversationId);
+    if (!run) return null;
+
+    if ((run.events?.length ?? 0) >= minEvents || run.status !== 'active') {
+      return run;
+    }
+
+    if (attempt < maxAttempts - 1) {
+      await sleep(delayMs);
+    }
+  }
+
+  return loadSandboxRunWithEvents(prisma, tenantId, conversationId);
 }
 
 async function driveSandboxE2E({
@@ -248,6 +275,24 @@ async function driveSandboxE2E({
           select: { id: true, status: true, startedAt: true },
         })
       : await waitForSandboxConversation({ tenantId, userKey: phone, maxAttempts: 4, delayMs: 120 });
+
+    if (latestConversation?.id) {
+      const tracedRun = await waitForSandboxTrace({
+        prisma,
+        tenantId,
+        conversationId: latestConversation.id,
+        minEvents: (run.events?.length ?? 0) + 1,
+        maxAttempts: 10,
+        delayMs: 100,
+      });
+      if (tracedRun) {
+        latestConversation = {
+          id: tracedRun.id,
+          status: tracedRun.status,
+          startedAt: tracedRun.startedAt,
+        };
+      }
+    }
 
     await sleep(80);
   }
@@ -544,6 +589,24 @@ router.post('/simulate/inbound', async (req, res, next) => {
           select: { id: true, status: true, startedAt: true },
         })
       : await waitForSandboxConversation({ tenantId, userKey: phone });
+
+    if (latestConversation?.id) {
+      const tracedRun = await waitForSandboxTrace({
+        prisma,
+        tenantId,
+        conversationId: latestConversation.id,
+        minEvents: 2,
+        maxAttempts: 14,
+        delayMs: 120,
+      });
+      if (tracedRun) {
+        latestConversation = {
+          id: tracedRun.id,
+          status: tracedRun.status,
+          startedAt: tracedRun.startedAt,
+        };
+      }
+    }
 
     let autoE2ESteps = 0;
     if (e2eEnabled && latestConversation?.id) {
