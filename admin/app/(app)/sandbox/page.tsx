@@ -3,10 +3,10 @@
 import { sandboxApi } from "@/lib/api";
 import { buildPermissionSet } from "@/lib/permissions";
 import { useAuthStore } from "@/store/auth";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import axios from "axios";
 import { Clock3, Play, ShieldCheck, TestTube2, Webhook } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 type CapabilitiesResponse = {
   ok: boolean;
@@ -77,6 +77,7 @@ function getErrorMessage(error: unknown): string {
 
 export default function SandboxPage() {
   const { tenantSlug, superAdmin, permissions } = useAuthStore();
+  const queryClient = useQueryClient();
   const [phone, setPhone] = useState("+5215550000000");
   const [text, setText] = useState("Hola, quiero probar el sandbox.");
   const [contactName, setContactName] = useState("Sandbox User");
@@ -105,6 +106,7 @@ export default function SandboxPage() {
       if (result.simulated.conversationId) {
         setSelectedRunId(result.simulated.conversationId);
       }
+      void queryClient.invalidateQueries({ queryKey: ["sandbox-runs"] });
     },
   });
 
@@ -118,9 +120,19 @@ export default function SandboxPage() {
       }).then((res) => res.data as { ok: boolean; data: SandboxRunListItem[] }),
     enabled: canAccessSandbox && (!superAdmin || Boolean(tenantSlug)) && Boolean(trimmedPhone),
     staleTime: 5_000,
+    refetchInterval: 3_000,
   });
 
   const runs = runsData?.data ?? [];
+
+  useEffect(() => {
+    if (!runs.length) return;
+
+    const stillExists = selectedRunId ? runs.some((run) => run.id === selectedRunId) : false;
+    if (!selectedRunId || !stillExists) {
+      setSelectedRunId(runs[0].id);
+    }
+  }, [runs, selectedRunId]);
 
   const { data: runDetailData, isLoading: runDetailLoading } = useQuery({
     queryKey: ["sandbox-run-detail", tenantSlug, selectedRunId],
