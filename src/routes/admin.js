@@ -795,6 +795,25 @@ router.get('/tenants/:slug/solicitudes/stats', requirePermiso('VIEW_SOLICITUDES'
     }
 });
 
+// GET /admin/tenants/:slug/solicitudes/report
+router.get('/tenants/:slug/solicitudes/report', requirePermiso('VIEW_METRICS'), async (req, res, next) => {
+    try {
+        const tenant = await db.findTenantBySlug(req.params.slug);
+        if (!tenant) return res.status(404).json({ error: 'Tenant not found' });
+        if (denyIfWrongTenant(req, res, tenant.id)) return;
+
+        const report = await db.getSolicitudesReport(tenant.id, {
+            from: req.query?.from,
+            to: req.query?.to,
+            groupBy: req.query?.groupBy,
+        });
+
+        return res.json(report);
+    } catch (err) {
+        next(err);
+    }
+});
+
 // GET /admin/tenants/:slug/solicitudes/config
 router.get('/tenants/:slug/solicitudes/config', requirePermiso('VIEW_SOLICITUDES'), async (req, res, next) => {
     try {

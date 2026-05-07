@@ -339,6 +339,8 @@ export const agentePuestosApi = {
 
 export const metricsApi = {
   get: (slug: string) => apiClient.get(`/admin/tenants/${slug}/metrics`),
+  solicitudesReport: (slug: string, params?: { from?: string; to?: string; groupBy?: "day" | "week" | "month" }) =>
+    apiClient.get(`/admin/tenants/${slug}/solicitudes/report`, { params }),
 };
 
 export const agendaApi = {

@@ -795,6 +795,196 @@ async function getSolicitudesStats(tenantId, options = {}) {
   };
 }
 
+function normalizeDateStart(value, fallback) {
+  if (!value) return fallback;
+  const raw = String(value).trim();
+  if (!raw) return fallback;
+
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+    const parsed = new Date(`${raw}T00:00:00.000Z`);
+    if (!Number.isNaN(parsed.getTime())) return parsed;
+  }
+
+  const parsed = new Date(raw);
+  if (Number.isNaN(parsed.getTime())) return fallback;
+  return parsed;
+}
+
+function normalizeDateEndExclusive(value, fallback) {
+  if (!value) return fallback;
+  const raw = String(value).trim();
+  if (!raw) return fallback;
+
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+    const startOfDay = new Date(`${raw}T00:00:00.000Z`);
+    if (!Number.isNaN(startOfDay.getTime())) {
+      return new Date(startOfDay.getTime() + 24 * 60 * 60 * 1000);
+    }
+  }
+
+  const parsed = new Date(raw);
+  if (Number.isNaN(parsed.getTime())) return fallback;
+  return parsed;
+}
+
+function parseReportGroupBy(groupBy) {
+  const raw = String(groupBy || 'day').toLowerCase();
+  if (raw === 'week') return 'week';
+  if (raw === 'month') return 'month';
+  return 'day';
+}
+
+async function getSolicitudesReport(tenantId, { from, to, groupBy = 'day' } = {}) {
+  const client = getPrismaClient();
+  if (!client) {
+    return {
+      summary: { total: 0, open: 0, inProgress: 0, pendingInfo: 0, completed: 0, rejected: 0, avgResolutionMinutes: null },
+      byStatus: [],
+      byPriority: [],
+      byAgent: [],
+      series: [],
+      range: { from: null, to: null, groupBy: 'day' },
+    };
+  }
+
+  const now = new Date();
+  const defaultStart = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+  const fromDate = normalizeDateStart(from, defaultStart);
+  const toExclusiveDate = normalizeDateEndExclusive(to, now);
+  const bucket = parseReportGroupBy(groupBy);
+
+  const [summaryRows, byStatusRows, byPriorityRows, byAgentRows, seriesRows] = await Promise.all([
+    client.$queryRawUnsafe(
+      `
+      SELECT
+        COUNT(*)::int AS total,
+        COUNT(*) FILTER (WHERE estado = 'open')::int AS open,
+        COUNT(*) FILTER (WHERE estado = 'in_progress')::int AS in_progress,
+        COUNT(*) FILTER (WHERE estado = 'pending_info')::int AS pending_info,
+        COUNT(*) FILTER (WHERE estado = 'completed')::int AS completed,
+        COUNT(*) FILTER (WHERE estado = 'rejected')::int AS rejected,
+        ROUND(AVG(EXTRACT(EPOCH FROM (completed_at - created_at)) / 60) FILTER (WHERE completed_at IS NOT NULL), 2)::float AS avg_resolution_minutes
+      FROM solicitudes
+      WHERE tenant_id = $1
+        AND created_at >= $2
+        AND created_at < $3
+      `,
+      tenantId,
+      fromDate,
+      toExclusiveDate
+    ),
+    client.$queryRawUnsafe(
+      `
+      SELECT
+        COALESCE(estado, 'sin_estado') AS estado,
+        COUNT(*)::int AS total
+      FROM solicitudes
+      WHERE tenant_id = $1
+        AND created_at >= $2
+        AND created_at < $3
+      GROUP BY COALESCE(estado, 'sin_estado')
+      ORDER BY total DESC
+      `,
+      tenantId,
+      fromDate,
+      toExclusiveDate
+    ),
+    client.$queryRawUnsafe(
+      `
+      SELECT
+        COALESCE(prioridad, 'sin_prioridad') AS prioridad,
+        COUNT(*)::int AS total
+      FROM solicitudes
+      WHERE tenant_id = $1
+        AND created_at >= $2
+        AND created_at < $3
+      GROUP BY COALESCE(prioridad, 'sin_prioridad')
+      ORDER BY total DESC
+      `,
+      tenantId,
+      fromDate,
+      toExclusiveDate
+    ),
+    client.$queryRawUnsafe(
+      `
+      SELECT
+        s.agente_id AS agente_id,
+        COALESCE(a.nombre, 'Sin asignar') AS agente_nombre,
+        COUNT(*)::int AS total
+      FROM solicitudes s
+      LEFT JOIN agentes a
+        ON a.id = s.agente_id
+       AND a.tenant_id = s.tenant_id
+      WHERE s.tenant_id = $1
+        AND s.created_at >= $2
+        AND s.created_at < $3
+      GROUP BY s.agente_id, COALESCE(a.nombre, 'Sin asignar')
+      ORDER BY total DESC
+      LIMIT 10
+      `,
+      tenantId,
+      fromDate,
+      toExclusiveDate
+    ),
+    client.$queryRawUnsafe(
+      `
+      SELECT
+        DATE_TRUNC('${bucket}', created_at) AS bucket,
+        COUNT(*)::int AS total,
+        COUNT(*) FILTER (WHERE estado = 'completed')::int AS completed,
+        COUNT(*) FILTER (WHERE estado = 'rejected')::int AS rejected
+      FROM solicitudes
+      WHERE tenant_id = $1
+        AND created_at >= $2
+        AND created_at < $3
+      GROUP BY DATE_TRUNC('${bucket}', created_at)
+      ORDER BY bucket ASC
+      `,
+      tenantId,
+      fromDate,
+      toExclusiveDate
+    ),
+  ]);
+
+  const summary = summaryRows?.[0] || {};
+
+  return {
+    summary: {
+      total: Number(summary.total || 0),
+      open: Number(summary.open || 0),
+      inProgress: Number(summary.in_progress || 0),
+      pendingInfo: Number(summary.pending_info || 0),
+      completed: Number(summary.completed || 0),
+      rejected: Number(summary.rejected || 0),
+      avgResolutionMinutes: summary.avg_resolution_minutes != null ? Number(summary.avg_resolution_minutes) : null,
+    },
+    byStatus: (byStatusRows || []).map((row) => ({
+      estado: String(row.estado),
+      total: Number(row.total || 0),
+    })),
+    byPriority: (byPriorityRows || []).map((row) => ({
+      prioridad: String(row.prioridad),
+      total: Number(row.total || 0),
+    })),
+    byAgent: (byAgentRows || []).map((row) => ({
+      agenteId: row.agente_id != null ? Number(row.agente_id) : null,
+      agenteNombre: String(row.agente_nombre || 'Sin asignar'),
+      total: Number(row.total || 0),
+    })),
+    series: (seriesRows || []).map((row) => ({
+      bucket: row.bucket instanceof Date ? row.bucket.toISOString() : String(row.bucket),
+      total: Number(row.total || 0),
+      completed: Number(row.completed || 0),
+      rejected: Number(row.rejected || 0),
+    })),
+    range: {
+      from: fromDate.toISOString(),
+      to: toExclusiveDate.toISOString(),
+      groupBy: bucket,
+    },
+  };
+}
+
 async function escalateSolicitud({ id, tenantId, actorUserId = null, reason = null }) {
   const client = getPrismaClient();
   if (!client) return null;
@@ -1337,6 +1527,7 @@ module.exports = {
   listSolicitudes,
   searchSolicitudes,
   getSolicitudesStats,
+  getSolicitudesReport,
   SOLICITUD_ENTERPRISE_DEFAULT_CONFIG,
   countSolicitudesByEstado,
   updateSolicitudEstado,

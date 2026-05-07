@@ -14,6 +14,7 @@ import { useAuthStore } from "@/store/auth";
 import { useQuery } from "@tanstack/react-query";
 import {
   Bell,
+  BarChart3,
   Building2,
   CalendarDays,
   ChevronDown,
@@ -46,6 +47,7 @@ const NAV_ITEMS: Array<{
   { icon: LayoutDashboard, label: "Dashboard", href: "/dashboard", permission: "VIEW_DASHBOARD" },
   { icon: MessageCircle, label: "Conversaciones", href: "/conversaciones", permission: "VIEW_CONVERSACIONES" },
   { icon: ClipboardList, label: "Solicitudes", href: "/solicitudes", permission: "VIEW_SOLICITUDES" },
+  { icon: BarChart3, label: "Reportes", href: "/reportes", permission: "VIEW_METRICS" },
   { icon: CalendarDays, label: "Agenda", href: "/agenda", permission: "VIEW_AGENDA" },
   { icon: Users, label: "Agentes", href: "/agentes", permission: "VIEW_AGENTES" },
   { icon: UserCircle2, label: "Contactos", href: "/contactos", permission: "VIEW_CRM" },
