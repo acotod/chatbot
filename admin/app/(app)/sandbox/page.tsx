@@ -155,7 +155,7 @@ export default function SandboxPage() {
           </p>
         </div>
         <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-          Estado inicial: runtime real + simulaci\u00f3n inbound.
+          Estado inicial: runtime real + simulación inbound.
         </div>
       </div>
 
@@ -168,7 +168,7 @@ export default function SandboxPage() {
 
           <div className="grid gap-4 md:grid-cols-2">
             <label className="space-y-2 text-sm text-slate-600">
-              <span>Tel\u00e9fono</span>
+              <span>Teléfono</span>
               <input
                 value={phone}
                 onChange={(e) => setPhone(e.target.value)}
@@ -204,7 +204,7 @@ export default function SandboxPage() {
                   Tenant activo desde selector global: <strong>{tenantSlug || "sin seleccionar"}</strong>
                 </span>
               ) : (
-                <span>El tenant se resuelve desde tu sesi\u00f3n JWT.</span>
+                <span>El tenant se resuelve desde tu sesión JWT.</span>
               )}
             </div>
             <button
@@ -242,12 +242,12 @@ export default function SandboxPage() {
 
           {simulateMutation.data && (
             <div className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
-              <p className="font-medium">Ejecuci\u00f3n lanzada sobre el runtime real.</p>
+              <p className="font-medium">Ejecución lanzada sobre el runtime real.</p>
               <p className="mt-1">Mensaje: <strong>{simulateMutation.data.simulated.msgId}</strong></p>
               <p>Correlation ID: <strong>{simulateMutation.data.simulated.correlationId}</strong></p>
               {simulateMutation.data.simulated.conversationId && (
                 <p>
-                  Run: <strong>{simulateMutation.data.simulated.conversationId}</strong> · Estado: <strong>{simulateMutation.data.simulated.conversationStatus ?? "active"}</strong>
+                  Ejecución: <strong>{simulateMutation.data.simulated.conversationId}</strong> · Estado: <strong>{simulateMutation.data.simulated.conversationStatus ?? "active"}</strong>
                 </p>
               )}
             </div>
@@ -256,7 +256,7 @@ export default function SandboxPage() {
           <div className="mt-6 rounded-3xl border border-slate-200 bg-slate-50 p-5">
             <div className="mb-4 flex items-center gap-2 text-slate-900">
               <Clock3 className="h-5 w-5 text-slate-600" />
-              <h2 className="text-lg font-semibold">Runs recientes</h2>
+              <h2 className="text-lg font-semibold">Ejecuciones recientes</h2>
             </div>
 
             {runsLoading ? (
@@ -267,7 +267,7 @@ export default function SandboxPage() {
               </div>
             ) : runs.length === 0 ? (
               <div className="rounded-2xl border border-dashed border-slate-300 bg-white px-4 py-6 text-sm text-slate-500">
-                A\u00fan no hay ejecuciones para este tel\u00e9fono en el tenant activo.
+                Aún no hay ejecuciones para este teléfono en el tenant activo.
               </div>
             ) : (
               <div className="space-y-3">
@@ -356,7 +356,7 @@ export default function SandboxPage() {
             ) : selectedRun ? (
               <div className="space-y-4">
                 <div className="rounded-2xl bg-slate-50 p-4 text-sm text-slate-600">
-                  <p><strong className="text-slate-900">Run:</strong> {selectedRun.id}</p>
+                  <p><strong className="text-slate-900">Ejecución:</strong> {selectedRun.id}</p>
                   <p><strong className="text-slate-900">Estado:</strong> {selectedRun.status}</p>
                   <p><strong className="text-slate-900">Inicio:</strong> {formatDateTime(selectedRun.startedAt)}</p>
                   <p><strong className="text-slate-900">Fin:</strong> {formatDateTime(selectedRun.endedAt)}</p>
@@ -381,7 +381,7 @@ export default function SandboxPage() {
               </div>
             ) : (
               <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-                No se pudo cargar el detalle del run.
+                No se pudo cargar el detalle de la ejecución.
               </div>
             )}
           </section>
