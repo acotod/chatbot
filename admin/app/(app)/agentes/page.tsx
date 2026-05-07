@@ -1,6 +1,6 @@
 "use client";
 
-import { agentesApi } from "@/lib/api";
+import { agentePuestosApi, agentesApi } from "@/lib/api";
 import { useAuthStore } from "@/store/auth";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
@@ -9,21 +9,37 @@ import { Button } from "@/components/ui/Button";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { Modal } from "@/components/ui/Modal";
 import { Input } from "@/components/ui/Input";
-import { Plus, ToggleLeft, ToggleRight } from "lucide-react";
+import { ExternalLink, Plus, ToggleLeft, ToggleRight } from "lucide-react";
 
 interface Agente {
   id: number;
   nombre: string;
   email: string;
+  whatsapp?: string | null;
+  calendarLink?: string | null;
+  puestoId?: number | null;
+  puesto?: { id: number; nombre: string } | null;
   estado: string;
+}
+
+interface AgentePuesto {
+  id: number;
+  nombre: string;
 }
 
 export default function AgentesPage() {
   const { tenantSlug } = useAuthStore();
   const qc = useQueryClient();
   const [modal, setModal] = useState(false);
-  const [form, setForm] = useState({ nombre: "", email: "" });
+  const [form, setForm] = useState({
+    nombre: "",
+    email: "",
+    whatsapp: "",
+    puestoId: "",
+    calendarLink: "",
+  });
   const [formError, setFormError] = useState("");
+  const [nuevoPuesto, setNuevoPuesto] = useState("");
 
   const { data, isLoading } = useQuery({
     queryKey: ["agentes", tenantSlug],
@@ -31,15 +47,40 @@ export default function AgentesPage() {
     enabled: !!tenantSlug,
   });
 
+  const { data: puestosData } = useQuery({
+    queryKey: ["agente-puestos", tenantSlug],
+    queryFn: () => agentePuestosApi.list(tenantSlug).then((r) => r.data),
+    enabled: !!tenantSlug,
+  });
+
   const create = useMutation({
     mutationFn: () =>
-      agentesApi.create(tenantSlug, { nombre: form.nombre, email: form.email }),
+      agentesApi.create(tenantSlug, {
+        nombre: form.nombre,
+        email: form.email,
+        whatsapp: form.whatsapp,
+        puestoId: Number(form.puestoId),
+        calendarLink: form.calendarLink,
+      }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["agentes"] });
       setModal(false);
-      setForm({ nombre: "", email: "" });
+      setForm({ nombre: "", email: "", whatsapp: "", puestoId: "", calendarLink: "" });
     },
     onError: () => setFormError("No se pudo crear el agente. Intentá de nuevo."),
+  });
+
+  const createPuesto = useMutation({
+    mutationFn: () => agentePuestosApi.create(tenantSlug, { nombre: nuevoPuesto.trim() }),
+    onSuccess: (resp) => {
+      qc.invalidateQueries({ queryKey: ["agente-puestos"] });
+      const puesto = resp?.data;
+      if (puesto?.id) {
+        setForm((f) => ({ ...f, puestoId: String(puesto.id) }));
+      }
+      setNuevoPuesto("");
+    },
+    onError: () => setFormError("No se pudo crear el puesto."),
   });
 
   const toggle = useMutation({
@@ -49,16 +90,38 @@ export default function AgentesPage() {
   });
 
   const agentes: Agente[] = data?.data ?? data ?? [];
+  const puestos: AgentePuesto[] = puestosData?.data ?? puestosData ?? [];
   const activos = agentes.filter((a) => a.estado === "activo").length;
 
   function handleCreate(e: React.FormEvent) {
     e.preventDefault();
     setFormError("");
-    if (!form.nombre.trim() || !form.email.trim()) {
+    if (!form.nombre.trim() || !form.email.trim() || !form.whatsapp.trim() || !form.puestoId || !form.calendarLink.trim()) {
       setFormError("Completá todos los campos.");
       return;
     }
+
+    try {
+      const parsed = new URL(form.calendarLink);
+      if (!["http:", "https:"].includes(parsed.protocol)) {
+        setFormError("La liga del calendario debe iniciar con http:// o https://");
+        return;
+      }
+    } catch {
+      setFormError("La liga del calendario no es valida.");
+      return;
+    }
+
     create.mutate();
+  }
+
+  function handleCreatePuesto() {
+    if (!nuevoPuesto.trim()) {
+      setFormError("Escribí un nombre para el puesto.");
+      return;
+    }
+    setFormError("");
+    createPuesto.mutate();
   }
 
   return (
@@ -104,6 +167,18 @@ export default function AgentesPage() {
                   <div>
                     <p className="font-medium text-slate-900">{a.nombre}</p>
                     <p className="text-xs text-slate-500 mt-0.5">{a.email}</p>
+                    {a.whatsapp && <p className="text-xs text-slate-500">WhatsApp: {a.whatsapp}</p>}
+                    {a.puesto?.nombre && <p className="text-xs text-slate-500">Puesto: {a.puesto.nombre}</p>}
+                    {a.calendarLink && (
+                      <a
+                        href={a.calendarLink}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="mt-1 inline-flex items-center gap-1 text-xs text-blue-600 hover:text-blue-700"
+                      >
+                        Ver calendario <ExternalLink size={12} />
+                      </a>
+                    )}
                     <StatusBadge status={a.estado} className="mt-2" />
                   </div>
                 </div>
@@ -151,6 +226,44 @@ export default function AgentesPage() {
             value={form.email}
             onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
             placeholder="maria@clinica.com"
+          />
+          <Input
+            label="WhatsApp"
+            value={form.whatsapp}
+            onChange={(e) => setForm((f) => ({ ...f, whatsapp: e.target.value }))}
+            placeholder="+5215512345678"
+          />
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">Puesto</label>
+            <div className="flex gap-2">
+              <select
+                value={form.puestoId}
+                onChange={(e) => setForm((f) => ({ ...f, puestoId: e.target.value }))}
+                className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-blue-500"
+              >
+                <option value="">Selecciona un puesto...</option>
+                {puestos.map((p) => (
+                  <option key={p.id} value={p.id}>{p.nombre}</option>
+                ))}
+              </select>
+            </div>
+            <div className="mt-2 flex gap-2">
+              <Input
+                label=""
+                value={nuevoPuesto}
+                onChange={(e) => setNuevoPuesto(e.target.value)}
+                placeholder="Crear nuevo puesto..."
+              />
+              <Button type="button" variant="secondary" onClick={handleCreatePuesto} disabled={createPuesto.isPending}>
+                {createPuesto.isPending ? "Creando..." : "Agregar"}
+              </Button>
+            </div>
+          </div>
+          <Input
+            label="Liga de calendario"
+            value={form.calendarLink}
+            onChange={(e) => setForm((f) => ({ ...f, calendarLink: e.target.value }))}
+            placeholder="https://calendar.google.com/..."
             error={formError}
           />
           <div className="flex justify-end gap-3 pt-2">

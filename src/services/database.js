@@ -198,13 +198,51 @@ async function setConfig(tenantId, clave, valor) {
 async function listAgentes(tenantId) {
   const client = getPrismaClient();
   if (!client) return [];
-  return client.agente.findMany({ where: { tenantId }, orderBy: { createdAt: 'asc' } });
+  return client.agente.findMany({
+    where: { tenantId },
+    include: {
+      puesto: { select: { id: true, nombre: true } },
+    },
+    orderBy: { createdAt: 'asc' },
+  });
 }
 
-async function createAgente({ tenantId, nombre, email }) {
+async function createAgente({ tenantId, nombre, email, whatsapp = null, puestoId = null, calendarLink = null }) {
   const client = getPrismaClient();
   if (!client) return null;
-  return client.agente.create({ data: { tenantId, nombre, email } });
+  return client.agente.create({
+    data: {
+      tenantId,
+      nombre,
+      email,
+      whatsapp,
+      puestoId,
+      calendarLink,
+    },
+    include: {
+      puesto: { select: { id: true, nombre: true } },
+    },
+  });
+}
+
+async function listAgentePuestos(tenantId) {
+  const client = getPrismaClient();
+  if (!client) return [];
+  return client.agentePuesto.findMany({
+    where: { tenantId, activo: true },
+    orderBy: { nombre: 'asc' },
+  });
+}
+
+async function createAgentePuesto({ tenantId, nombre }) {
+  const client = getPrismaClient();
+  if (!client) return null;
+  return client.agentePuesto.create({
+    data: {
+      tenantId,
+      nombre,
+    },
+  });
 }
 
 async function setAgenteEstado(id, tenantId, estado) {
@@ -713,6 +751,8 @@ module.exports = {
   // agentes
   listAgentes,
   createAgente,
+  listAgentePuestos,
+  createAgentePuesto,
   setAgenteEstado,
   setAgenteLastSeen,
   // solicitudes

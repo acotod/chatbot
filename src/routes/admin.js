@@ -331,6 +331,37 @@ router.post('/tenants/:slug/logo', requirePermiso('MANAGE_TENANTS'), logoUpload.
 // ---------------------------------------------------------------------------
 // Agentes (per-tenant, admin-managed)
 
+// GET /admin/tenants/:slug/agente-puestos
+router.get('/tenants/:slug/agente-puestos', requirePermiso('VIEW_AGENTES'), async (req, res, next) => {
+    try {
+        const tenant = await db.findTenantBySlug(req.params.slug);
+        if (!tenant) return res.status(404).json({ error: 'Tenant not found' });
+        const puestos = await db.listAgentePuestos(tenant.id);
+        res.json(puestos);
+    } catch (err) {
+        next(err);
+    }
+});
+
+// POST /admin/tenants/:slug/agente-puestos
+router.post('/tenants/:slug/agente-puestos', requirePermiso('EDIT_AGENTES'), async (req, res, next) => {
+    try {
+        const tenant = await db.findTenantBySlug(req.params.slug);
+        if (!tenant) return res.status(404).json({ error: 'Tenant not found' });
+
+        const nombre = String(req.body?.nombre ?? '').trim();
+        if (!nombre) return res.status(400).json({ error: 'nombre is required' });
+
+        const puesto = await db.createAgentePuesto({ tenantId: tenant.id, nombre });
+        res.status(201).json(puesto);
+    } catch (err) {
+        if (err?.code === 'P2002') {
+            return res.status(409).json({ error: 'El puesto ya existe para este tenant' });
+        }
+        next(err);
+    }
+});
+
 // GET /admin/tenants/:slug/agentes
 router.get('/tenants/:slug/agentes', requirePermiso('VIEW_AGENTES'), async (req, res, next) => {
     try {
@@ -348,11 +379,39 @@ router.post('/tenants/:slug/agentes', requirePermiso('EDIT_AGENTES'), async (req
     try {
         const tenant = await db.findTenantBySlug(req.params.slug);
         if (!tenant) return res.status(404).json({ error: 'Tenant not found' });
-        const { nombre, email } = req.body;
-        if (!nombre || !email) {
-            return res.status(400).json({ error: 'nombre and email are required' });
+        const nombre = String(req.body?.nombre ?? '').trim();
+        const email = String(req.body?.email ?? '').trim();
+        const whatsapp = String(req.body?.whatsapp ?? '').trim();
+        const calendarLink = String(req.body?.calendarLink ?? '').trim();
+        const puestoId = Number(req.body?.puestoId);
+
+        if (!nombre || !email || !whatsapp || !calendarLink || !Number.isInteger(puestoId) || puestoId <= 0) {
+            return res.status(400).json({ error: 'nombre, email, whatsapp, puestoId and calendarLink are required' });
         }
-        const agente = await db.createAgente({ tenantId: tenant.id, nombre, email });
+
+        let calendarUrl;
+        try {
+            calendarUrl = new URL(calendarLink);
+            if (!['http:', 'https:'].includes(calendarUrl.protocol)) {
+                return res.status(400).json({ error: 'calendarLink must be a valid http(s) URL' });
+            }
+        } catch (_err) {
+            return res.status(400).json({ error: 'calendarLink must be a valid URL' });
+        }
+
+        const puesto = await prisma.agentePuesto.findFirst({ where: { id: puestoId, tenantId: tenant.id, activo: true } });
+        if (!puesto) {
+            return res.status(400).json({ error: 'puestoId is invalid for this tenant' });
+        }
+
+        const agente = await db.createAgente({
+            tenantId: tenant.id,
+            nombre,
+            email,
+            whatsapp,
+            puestoId,
+            calendarLink: calendarUrl.toString(),
+        });
         res.status(201).json(agente);
     } catch (err) {
         next(err);

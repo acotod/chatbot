@@ -274,6 +274,12 @@ export const agentesApi = {
     apiClient.patch(`/admin/tenants/${slug}/agentes/${id}/estado`, { estado }),
 };
 
+export const agentePuestosApi = {
+  list: (slug: string) => apiClient.get(`/admin/tenants/${slug}/agente-puestos`),
+  create: (slug: string, data: { nombre: string }) =>
+    apiClient.post(`/admin/tenants/${slug}/agente-puestos`, data),
+};
+
 export const metricsApi = {
   get: (slug: string) => apiClient.get(`/admin/tenants/${slug}/metrics`),
 };
