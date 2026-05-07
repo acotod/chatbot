@@ -252,6 +252,10 @@ export const tenantApi = {
 export const solicitudesApi = {
   list: (slug: string, params?: Record<string, unknown>) =>
     apiClient.get(`/admin/tenants/${slug}/solicitudes`, { params }),
+  search: (slug: string, params?: Record<string, unknown>) =>
+    apiClient.get(`/admin/tenants/${slug}/solicitudes/search`, { params }),
+  stats: (slug: string) =>
+    apiClient.get(`/admin/tenants/${slug}/solicitudes/stats`),
   create: (
     slug: string,
     data: { userId: number; nombre?: string; telefonoContacto?: string; horario?: string; estado?: string }
@@ -264,6 +268,36 @@ export const solicitudesApi = {
     apiClient.patch(`/admin/tenants/${slug}/solicitudes/${id}/agente`, {
       agenteId,
     }),
+  escalate: (slug: string, id: number, reason?: string) =>
+    apiClient.post(`/admin/tenants/${slug}/solicitudes/${id}/escalate`, {
+      reason,
+    }),
+  listComments: (slug: string, id: number) =>
+    apiClient.get(`/admin/tenants/${slug}/solicitudes/${id}/comments`),
+  addComment: (slug: string, id: number, data: { content: string; visibility?: string; attachments?: unknown[] }) =>
+    apiClient.post(`/admin/tenants/${slug}/solicitudes/${id}/comments`, data),
+  history: (slug: string, id: number) =>
+    apiClient.get(`/admin/tenants/${slug}/solicitudes/${id}/history`),
+  update: (slug: string, id: number, data: Record<string, unknown>) =>
+    apiClient.patch(`/admin/tenants/${slug}/solicitudes/${id}`, data),
+  bulkUpdate: (slug: string, ids: number[], updates: Record<string, unknown>) =>
+    apiClient.post(`/admin/tenants/${slug}/solicitudes/bulk-update`, { ids, updates }),
+};
+
+export const slaPoliciesApi = {
+  list: (slug: string) => apiClient.get(`/admin/tenants/${slug}/sla-policies`),
+  create: (slug: string, data: Record<string, unknown>) =>
+    apiClient.post(`/admin/tenants/${slug}/sla-policies`, data),
+  update: (slug: string, id: number, data: Record<string, unknown>) =>
+    apiClient.patch(`/admin/tenants/${slug}/sla-policies/${id}`, data),
+};
+
+export const assignmentRulesApi = {
+  list: (slug: string) => apiClient.get(`/admin/tenants/${slug}/assignment-rules`),
+  create: (slug: string, data: Record<string, unknown>) =>
+    apiClient.post(`/admin/tenants/${slug}/assignment-rules`, data),
+  update: (slug: string, id: number, data: Record<string, unknown>) =>
+    apiClient.patch(`/admin/tenants/${slug}/assignment-rules/${id}`, data),
 };
 
 export const agentesApi = {
