@@ -21,6 +21,10 @@ model Tenant {
   createdAt       DateTime        @default(now()) @map("created_at")
   users           User[]
   solicitudes     Solicitud[]
+  slaPolicies     SlaPolicy[]
+  solicitudAssignmentRules SolicitudAssignmentRule[]
+  solicitudTemplates SolicitudTemplate[]
+  webhookConfigs  WebhookConfig[]
   eventosFlujo    EventoFlujo[]
   agentes         Agente[]
   configuraciones Configuracion[]
@@ -199,6 +203,7 @@ model Solicitud {
   agenteId         Int?     @map("agente_id")
   flowId           Int?     @map("flow_id")
   conversationId   String?  @map("conversation_id") @db.Uuid
+  slaId            Int?     @map("sla_id")
   origin           String   @default("manual") @db.VarChar(20)
   titulo           String?  @db.VarChar(160)
   prioridad        String?  @db.VarChar(20)
@@ -210,6 +215,16 @@ model Solicitud {
   variablesJson    Json?    @map("variables_json")
   attachmentsJson  Json     @default("[]") @map("attachments_json")
   internalComments Json     @default("[]") @map("internal_comments_json")
+  slaCreatedAt     DateTime? @map("sla_created_at")
+  slaCompletedAt   DateTime? @map("sla_completed_at")
+  escalatedAt      DateTime? @map("escalated_at")
+  escalationLevel  Int      @default(0) @map("escalation_level")
+  tags             Json     @default("[]") @map("tags")
+  customFields     Json     @default("{}") @map("custom_fields")
+  resolutionNotes  String?  @map("resolution_notes") @db.Text
+  customerNotes    String?  @map("customer_notes") @db.Text
+  followUpDate     DateTime? @map("follow_up_date")
+  channelSource    String   @default("manual") @db.VarChar(50) @map("channel_source")
   createdAt        DateTime @default(now()) @map("created_at")
   updatedAt        DateTime @default(now()) @updatedAt @map("updated_at")
   completedAt      DateTime? @map("completed_at")
@@ -218,11 +233,131 @@ model Solicitud {
   agente           Agente?  @relation(fields: [agenteId], references: [id])
   flow             Flow?    @relation(fields: [flowId], references: [id], onDelete: SetNull)
   conversation     Conversation? @relation(fields: [conversationId], references: [id], onDelete: SetNull)
+  slaPolicy        SlaPolicy? @relation(fields: [slaId], references: [id], onDelete: SetNull)
+  comments         SolicitudComment[]
+  history          SolicitudHistory[]
 
   @@index([tenantId, estado, createdAt])
   @@index([tenantId, conversationId])
   @@index([tenantId, flowId])
+  @@index([tenantId, slaId])
+  @@index([tenantId, escalationLevel])
+  @@index([tenantId, escalatedAt])
   @@map("solicitudes")
+}
+
+// ── Enterprise: SLA & Solicitudes ─────────────────────────────────────────────
+
+/// SLA Policy: Define response and resolution times for solicitudes
+model SlaPolicy {
+  id                    Int      @id @default(autoincrement())
+  tenantId              String   @map("tenant_id") @db.Uuid
+  nombre                String   @db.VarChar(150)
+  descripcion           String?  @db.Text
+  responseTimeMinutes   Int      @default(60) @map("response_time_minutes")
+  resolutionTimeMinutes Int      @default(1440) @map("resolution_time_minutes")
+  escalationRules       Json     @default("[]") @map("escalation_rules")
+  active                Boolean  @default(true)
+  createdAt             DateTime @default(now()) @map("created_at")
+  updatedAt             DateTime @updatedAt @map("updated_at")
+  tenant                Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  solicitudes           Solicitud[]
+  templates             SolicitudTemplate[]
+
+  @@unique([tenantId, nombre])
+  @@index([tenantId, active])
+  @@map("sla_policies")
+}
+
+/// Solicitud History: Immutable audit trail of all changes
+model SolicitudHistory {
+  id          Int       @id @default(autoincrement())
+  solicitudId Int       @map("solicitud_id")
+  field       String    @db.VarChar(100)
+  oldValue    String?   @map("old_value") @db.Text
+  newValue    String?   @map("new_value") @db.Text
+  userId      Int?      @map("user_id")
+  timestamp   DateTime  @default(now())
+  solicitud   Solicitud @relation(fields: [solicitudId], references: [id], onDelete: Cascade)
+  user        AdminUser? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([solicitudId])
+  @@index([timestamp])
+  @@map("solicitud_history")
+}
+
+/// Solicitud Comments: Collaboration between team members and customers
+model SolicitudComment {
+  id          Int       @id @default(autoincrement())
+  solicitudId Int       @map("solicitud_id")
+  userId      Int?      @map("user_id")
+  content     String    @db.Text
+  /// "internal" | "customer" | "both"
+  visibility  String    @default("internal") @db.VarChar(20)
+  attachments Json      @default("[]")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  solicitud   Solicitud @relation(fields: [solicitudId], references: [id], onDelete: Cascade)
+  user        AdminUser? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([solicitudId])
+  @@index([createdAt])
+  @@map("solicitud_comments")
+}
+
+/// Solicitud Assignment Rules: Auto-route solicitudes based on criteria
+model SolicitudAssignmentRule {
+  id            Int       @id @default(autoincrement())
+  tenantId      String    @map("tenant_id") @db.Uuid
+  criterios     Json      @default("{}")
+  targetAgenteId Int?     @map("target_agente_id")
+  roundRobin    Boolean   @default(false) @map("round_robin")
+  enabled       Boolean   @default(true)
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+  tenant        Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  targetAgente  Agente?   @relation(fields: [targetAgenteId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, enabled])
+  @@map("solicitud_assignment_rules")
+}
+
+/// Solicitud Templates: Pre-configured templates for quick solicitud creation
+model SolicitudTemplate {
+  id                Int       @id @default(autoincrement())
+  tenantId          String    @map("tenant_id") @db.Uuid
+  nombre            String    @db.VarChar(150)
+  prioridad         String    @default("media") @db.VarChar(20)
+  slaId             Int?      @map("sla_id")
+  tags              Json      @default("[]")
+  defaultVariables  Json      @default("{}") @map("default_variables")
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+  tenant            Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  slaPolicy         SlaPolicy? @relation(fields: [slaId], references: [id], onDelete: SetNull)
+
+  @@unique([tenantId, nombre])
+  @@index([tenantId])
+  @@map("solicitud_templates")
+}
+
+/// Webhook Configurations: Send events to external systems
+model WebhookConfig {
+  id               Int       @id @default(autoincrement())
+  tenantId         String    @map("tenant_id") @db.Uuid
+  event            String    @db.VarChar(100)
+  url              String    @db.VarChar(500)
+  active           Boolean   @default(true)
+  lastTriggeredAt  DateTime? @map("last_triggered_at")
+  failureCount     Int       @default(0) @map("failure_count")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+  tenant           Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, event, url])
+  @@index([tenantId])
+  @@index([event])
+  @@map("webhook_configs")
 }
 
 model EventoFlujo {
@@ -256,6 +391,7 @@ model Agente {
   deals             Deal[]
   crmTasks          CrmTask[]
   calendars         Calendar[]
+  assignmentRules   SolicitudAssignmentRule[]
 
   @@index([tenantId, puestoId])
   @@map("agentes")
@@ -306,6 +442,8 @@ model AdminUser {
   agendaEventsCreated AgendaEvent[]       @relation("AgendaEventCreatedBy")
   agendaEventLogs     AgendaEventLog[]
   flowVersionsCreated FlowVersion[]       @relation("FlowVersionCreatedBy")
+  solicitudHistory    SolicitudHistory[]
+  solicitudComments   SolicitudComment[]
 
   @@map("admin_users")
 }

@@ -20,6 +20,16 @@ const SOLICITUD_ACTIVE_STATUS_VALUES = Object.freeze([
   SOLICITUD_STATUS.PENDING_INFO,
 ]);
 
+const SOLICITUD_COMMENT_VISIBILITY = Object.freeze({
+  INTERNAL: 'internal',
+  CUSTOMER: 'customer',
+  BOTH: 'both',
+});
+
+const SOLICITUD_COMMENT_VISIBILITY_VALUES = Object.freeze(
+  Object.values(SOLICITUD_COMMENT_VISIBILITY)
+);
+
 function normalizeSolicitudStatus(status, fallback = SOLICITUD_STATUS.OPEN) {
   const raw = String(status ?? '').trim().toLowerCase();
   if (!raw) return fallback;
@@ -42,6 +52,27 @@ function normalizeSolicitudStatus(status, fallback = SOLICITUD_STATUS.OPEN) {
   };
 
   return aliasMap[raw] ?? fallback;
+}
+
+function normalizeSolicitudCommentVisibility(value, fallback = SOLICITUD_COMMENT_VISIBILITY.INTERNAL) {
+  const raw = String(value ?? '').trim().toLowerCase();
+  if (!raw) return fallback;
+  if (SOLICITUD_COMMENT_VISIBILITY_VALUES.includes(raw)) return raw;
+  return fallback;
+}
+
+function asHistoryValue(value) {
+  if (value === undefined) return null;
+  if (value === null) return null;
+  if (value instanceof Date) return value.toISOString();
+  if (typeof value === 'object') {
+    try {
+      return JSON.stringify(value);
+    } catch (_err) {
+      return String(value);
+    }
+  }
+  return String(value);
 }
 
 function getPrismaClient() {
@@ -302,6 +333,7 @@ async function listSolicitudes(tenantId, { estado, userId, page = 1, limit = 20 
     include: {
       agente: true,
       user: true,
+      slaPolicy: true,
       flow: { select: { id: true, nombre: true } },
       conversation: { select: { id: true, status: true, startedAt: true, endedAt: true } },
     },
@@ -325,19 +357,47 @@ async function updateSolicitudEstado(id, tenantId, estado) {
   const client = getPrismaClient();
   if (!client) return null;
   const normalized = normalizeSolicitudStatus(estado, SOLICITUD_STATUS.OPEN);
-  return client.solicitud.updateMany({
+  const current = await client.solicitud.findFirst({ where: { id, tenantId } });
+  const result = await client.solicitud.updateMany({
     where: { id, tenantId },
     data: {
       estado: normalized,
       completedAt: normalized === SOLICITUD_STATUS.COMPLETED ? new Date() : null,
     },
   });
+
+  if (result.count > 0 && current && current.estado !== normalized) {
+    await client.solicitudHistory.create({
+      data: {
+        solicitudId: id,
+        field: 'estado',
+        oldValue: asHistoryValue(current.estado),
+        newValue: asHistoryValue(normalized),
+      },
+    }).catch(() => {});
+  }
+
+  return result;
 }
 
 async function assignAgenteToSolicitud(id, tenantId, agenteId) {
   const client = getPrismaClient();
   if (!client) return null;
-  return client.solicitud.updateMany({ where: { id, tenantId }, data: { agenteId } });
+  const current = await client.solicitud.findFirst({ where: { id, tenantId } });
+  const result = await client.solicitud.updateMany({ where: { id, tenantId }, data: { agenteId } });
+
+  if (result.count > 0 && current && Number(current.agenteId ?? 0) !== Number(agenteId ?? 0)) {
+    await client.solicitudHistory.create({
+      data: {
+        solicitudId: id,
+        field: 'agenteId',
+        oldValue: asHistoryValue(current.agenteId),
+        newValue: asHistoryValue(agenteId),
+      },
+    }).catch(() => {});
+  }
+
+  return result;
 }
 
 async function getSolicitudById(id, tenantId) {
@@ -362,6 +422,15 @@ async function getSolicitudDetalle(id, tenantId) {
     include: {
       agente: true,
       user: true,
+      slaPolicy: true,
+      comments: {
+        orderBy: { createdAt: 'asc' },
+        include: { user: { select: { id: true, email: true, nombre: true } } },
+      },
+      history: {
+        orderBy: { timestamp: 'desc' },
+        include: { user: { select: { id: true, email: true, nombre: true } } },
+      },
       flow: { select: { id: true, nombre: true } },
       conversation: {
         include: {
@@ -374,6 +443,188 @@ async function getSolicitudDetalle(id, tenantId) {
       },
     },
   });
+}
+
+async function addSolicitudComment({ solicitudId, tenantId, userId, content, visibility, attachments }) {
+  const client = getPrismaClient();
+  if (!client) return null;
+
+  const solicitud = await client.solicitud.findFirst({
+    where: { id: solicitudId, tenantId },
+    select: { id: true },
+  });
+  if (!solicitud) return null;
+
+  const normalizedVisibility = normalizeSolicitudCommentVisibility(visibility);
+  const safeAttachments = Array.isArray(attachments) ? attachments : [];
+
+  const comment = await client.solicitudComment.create({
+    data: {
+      solicitudId,
+      userId: userId ?? null,
+      content,
+      visibility: normalizedVisibility,
+      attachments: safeAttachments,
+    },
+    include: { user: { select: { id: true, email: true, nombre: true } } },
+  });
+
+  await client.solicitudHistory.create({
+    data: {
+      solicitudId,
+      userId: userId ?? null,
+      field: 'comment',
+      oldValue: null,
+      newValue: asHistoryValue({ visibility: normalizedVisibility, commentId: comment.id }),
+    },
+  }).catch(() => {});
+
+  return comment;
+}
+
+async function getSolicitudComments(solicitudId, tenantId) {
+  const client = getPrismaClient();
+  if (!client) return [];
+
+  const solicitud = await client.solicitud.findFirst({
+    where: { id: solicitudId, tenantId },
+    select: { id: true },
+  });
+  if (!solicitud) return [];
+
+  return client.solicitudComment.findMany({
+    where: { solicitudId },
+    orderBy: { createdAt: 'asc' },
+    include: { user: { select: { id: true, email: true, nombre: true } } },
+  });
+}
+
+async function getSolicitudHistory(solicitudId, tenantId) {
+  const client = getPrismaClient();
+  if (!client) return [];
+
+  const solicitud = await client.solicitud.findFirst({
+    where: { id: solicitudId, tenantId },
+    select: { id: true },
+  });
+  if (!solicitud) return [];
+
+  return client.solicitudHistory.findMany({
+    where: { solicitudId },
+    orderBy: { timestamp: 'desc' },
+    include: { user: { select: { id: true, email: true, nombre: true } } },
+  });
+}
+
+async function updateSolicitudFields(id, tenantId, updates = {}, actorUserId = null) {
+  const client = getPrismaClient();
+  if (!client) return null;
+
+  const current = await client.solicitud.findFirst({ where: { id, tenantId } });
+  if (!current) return null;
+
+  const data = {};
+  if (updates.estado !== undefined) {
+    data.estado = normalizeSolicitudStatus(updates.estado, current.estado ?? SOLICITUD_STATUS.OPEN);
+    data.completedAt = data.estado === SOLICITUD_STATUS.COMPLETED ? new Date() : null;
+  }
+  if (updates.prioridad !== undefined) data.prioridad = updates.prioridad || null;
+  if (updates.agenteId !== undefined) data.agenteId = updates.agenteId ? Number(updates.agenteId) : null;
+  if (updates.tags !== undefined) data.tags = Array.isArray(updates.tags) ? updates.tags : [];
+  if (updates.followUpDate !== undefined) data.followUpDate = updates.followUpDate ? new Date(updates.followUpDate) : null;
+  if (updates.resolutionNotes !== undefined) data.resolutionNotes = updates.resolutionNotes || null;
+  if (updates.customerNotes !== undefined) data.customerNotes = updates.customerNotes || null;
+
+  const updated = await client.solicitud.update({ where: { id }, data });
+
+  const fieldMap = [
+    'estado',
+    'prioridad',
+    'agenteId',
+    'tags',
+    'followUpDate',
+    'resolutionNotes',
+    'customerNotes',
+  ];
+
+  for (const field of fieldMap) {
+    if (data[field] === undefined) continue;
+    if (asHistoryValue(current[field]) === asHistoryValue(updated[field])) continue;
+    await client.solicitudHistory.create({
+      data: {
+        solicitudId: id,
+        userId: actorUserId,
+        field,
+        oldValue: asHistoryValue(current[field]),
+        newValue: asHistoryValue(updated[field]),
+      },
+    }).catch(() => {});
+  }
+
+  return updated;
+}
+
+async function bulkUpdateSolicitudes({ tenantId, ids = [], updates = {}, actorUserId = null }) {
+  const client = getPrismaClient();
+  if (!client) return { matched: 0, updated: 0 };
+
+  const normalizedIds = Array.from(new Set((Array.isArray(ids) ? ids : [])
+    .map((v) => Number(v))
+    .filter((v) => Number.isInteger(v) && v > 0)));
+  if (!normalizedIds.length) return { matched: 0, updated: 0 };
+
+  const matched = await client.solicitud.findMany({
+    where: { tenantId, id: { in: normalizedIds } },
+    select: { id: true },
+  });
+
+  let updated = 0;
+  for (const row of matched) {
+    const result = await updateSolicitudFields(row.id, tenantId, updates, actorUserId);
+    if (result) updated += 1;
+  }
+
+  return { matched: matched.length, updated };
+}
+
+function calculateSlaStatus(solicitud, now = new Date()) {
+  if (!solicitud) {
+    return {
+      status: 'no_sla',
+      isBreached: false,
+      minutesRemaining: null,
+      nextEscalationAt: null,
+    };
+  }
+
+  const resolutionMinutes = Number(solicitud?.slaPolicy?.resolutionTimeMinutes ?? 0);
+  if (!Number.isFinite(resolutionMinutes) || resolutionMinutes <= 0) {
+    return {
+      status: 'no_sla',
+      isBreached: false,
+      minutesRemaining: null,
+      nextEscalationAt: null,
+    };
+  }
+
+  const baseStart = solicitud.slaCreatedAt || solicitud.createdAt;
+  const dueAt = new Date(new Date(baseStart).getTime() + (resolutionMinutes * 60 * 1000));
+  const remainingMs = dueAt.getTime() - new Date(now).getTime();
+  const minutesRemaining = Math.ceil(remainingMs / 60000);
+  const isBreached = remainingMs < 0;
+  const warningThresholdMinutes = 60;
+
+  let status = 'on_track';
+  if (isBreached) status = 'breached';
+  else if (minutesRemaining <= warningThresholdMinutes) status = 'warning';
+
+  return {
+    status,
+    isBreached,
+    minutesRemaining,
+    dueAt,
+    nextEscalationAt: isBreached ? new Date(now) : dueAt,
+  };
 }
 
 async function listSolicitudesByConversationId(tenantId, conversationId) {
@@ -791,13 +1042,22 @@ module.exports = {
   // solicitudes
   SOLICITUD_STATUS,
   SOLICITUD_STATUS_VALUES,
+  SOLICITUD_COMMENT_VISIBILITY,
+  SOLICITUD_COMMENT_VISIBILITY_VALUES,
   normalizeSolicitudStatus,
+  normalizeSolicitudCommentVisibility,
   listSolicitudes,
   countSolicitudesByEstado,
   updateSolicitudEstado,
   assignAgenteToSolicitud,
   getSolicitudById,
   getSolicitudDetalle,
+  addSolicitudComment,
+  getSolicitudComments,
+  getSolicitudHistory,
+  updateSolicitudFields,
+  bulkUpdateSolicitudes,
+  calculateSlaStatus,
   listSolicitudesByConversationId,
   createOrReuseFlowTask,
   findTaskForWait,

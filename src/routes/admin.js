@@ -707,6 +707,11 @@ router.get('/tenants/:slug/solicitudes', requirePermiso('VIEW_SOLICITUDES'), asy
             limit: currentLimit,
         });
 
+        const enriched = solicitudes.map((item) => ({
+            ...item,
+            slaStatus: db.calculateSlaStatus(item),
+        }));
+
         const where = {
             tenantId: tenant.id,
             ...(normalizedEstado ? { estado: normalizedEstado } : {}),
@@ -715,7 +720,7 @@ router.get('/tenants/:slug/solicitudes', requirePermiso('VIEW_SOLICITUDES'), asy
         const total = await prisma.solicitud.count({ where });
 
         res.json({
-            data: solicitudes,
+            data: enriched,
             total,
             page: currentPage,
             limit: currentLimit,
@@ -794,6 +799,199 @@ router.patch('/tenants/:slug/solicitudes/:id/agente', requirePermiso('EDIT_SOLIC
         audit({ adminUserId: req.admin?.adminUserId, tenantId: tenant.id, accion: 'ASSIGN_AGENTE', entidad: 'solicitud', entidadId: req.params.id, ip: req.ip, userAgent: req.headers['user-agent'], metadata: { agenteId } });
         socketService.emit(tenant.id, 'AGENT_ASSIGNED', { solicitudId: Number(req.params.id), agenteId: Number(agenteId) });
         res.json(result);
+    } catch (err) {
+        next(err);
+    }
+});
+
+// GET /admin/tenants/:slug/solicitudes/:id/comments
+router.get('/tenants/:slug/solicitudes/:id/comments', requirePermiso('VIEW_SOLICITUDES'), async (req, res, next) => {
+    try {
+        const tenant = await db.findTenantBySlug(req.params.slug);
+        if (!tenant) return res.status(404).json({ error: 'Tenant not found' });
+        if (denyIfWrongTenant(req, res, tenant.id)) return;
+
+        const solicitud = await db.getSolicitudById(Number(req.params.id), tenant.id);
+        if (!solicitud) return res.status(404).json({ error: 'Solicitud not found' });
+
+        const comments = await db.getSolicitudComments(Number(req.params.id), tenant.id);
+        return res.json({ data: comments });
+    } catch (err) {
+        next(err);
+    }
+});
+
+// POST /admin/tenants/:slug/solicitudes/:id/comments
+router.post('/tenants/:slug/solicitudes/:id/comments', requirePermiso('EDIT_SOLICITUDES'), async (req, res, next) => {
+    try {
+        const tenant = await db.findTenantBySlug(req.params.slug);
+        if (!tenant) return res.status(404).json({ error: 'Tenant not found' });
+        if (denyIfWrongTenant(req, res, tenant.id)) return;
+
+        const { content, visibility, attachments } = req.body || {};
+        if (!content || !String(content).trim()) {
+            return res.status(400).json({ error: 'content is required' });
+        }
+
+        const comment = await db.addSolicitudComment({
+            solicitudId: Number(req.params.id),
+            tenantId: tenant.id,
+            userId: req.admin?.adminUserId ?? null,
+            content: String(content).trim(),
+            visibility,
+            attachments,
+        });
+        if (!comment) return res.status(404).json({ error: 'Solicitud not found' });
+
+        audit({
+            adminUserId: req.admin?.adminUserId,
+            tenantId: tenant.id,
+            accion: 'ADD_SOLICITUD_COMMENT',
+            entidad: 'solicitud',
+            entidadId: req.params.id,
+            ip: req.ip,
+            userAgent: req.headers['user-agent'],
+            metadata: { commentId: comment.id, visibility: comment.visibility },
+        });
+
+        socketService.emit(tenant.id, 'SOLICITUD_COMMENT_ADDED', {
+            solicitudId: Number(req.params.id),
+            comment,
+        });
+
+        return res.status(201).json(comment);
+    } catch (err) {
+        next(err);
+    }
+});
+
+// GET /admin/tenants/:slug/solicitudes/:id/history
+router.get('/tenants/:slug/solicitudes/:id/history', requirePermiso('VIEW_SOLICITUDES'), async (req, res, next) => {
+    try {
+        const tenant = await db.findTenantBySlug(req.params.slug);
+        if (!tenant) return res.status(404).json({ error: 'Tenant not found' });
+        if (denyIfWrongTenant(req, res, tenant.id)) return;
+
+        const solicitud = await db.getSolicitudById(Number(req.params.id), tenant.id);
+        if (!solicitud) return res.status(404).json({ error: 'Solicitud not found' });
+
+        const history = await db.getSolicitudHistory(Number(req.params.id), tenant.id);
+        return res.json({ data: history });
+    } catch (err) {
+        next(err);
+    }
+});
+
+// PATCH /admin/tenants/:slug/solicitudes/:id
+router.patch('/tenants/:slug/solicitudes/:id', requirePermiso('EDIT_SOLICITUDES'), async (req, res, next) => {
+    try {
+        const tenant = await db.findTenantBySlug(req.params.slug);
+        if (!tenant) return res.status(404).json({ error: 'Tenant not found' });
+        if (denyIfWrongTenant(req, res, tenant.id)) return;
+
+        const allowedFields = [
+            'estado',
+            'prioridad',
+            'agenteId',
+            'tags',
+            'followUpDate',
+            'resolutionNotes',
+            'customerNotes',
+        ];
+        const updates = {};
+        for (const key of allowedFields) {
+            if (Object.prototype.hasOwnProperty.call(req.body || {}, key)) {
+                updates[key] = req.body[key];
+            }
+        }
+
+        if (!Object.keys(updates).length) {
+            return res.status(400).json({ error: 'No updatable fields provided' });
+        }
+
+        if (updates.estado !== undefined) {
+            const normalizedEstado = db.normalizeSolicitudStatus(updates.estado, '');
+            if (!normalizedEstado || !SOLICITUD_STATES.has(normalizedEstado)) {
+                return res.status(400).json({ error: `estado must be one of: ${Array.from(SOLICITUD_STATES).join(', ')}` });
+            }
+            updates.estado = normalizedEstado;
+        }
+
+        const updated = await db.updateSolicitudFields(
+            Number(req.params.id),
+            tenant.id,
+            updates,
+            req.admin?.adminUserId ?? null,
+        );
+        if (!updated) return res.status(404).json({ error: 'Solicitud not found' });
+
+        audit({
+            adminUserId: req.admin?.adminUserId,
+            tenantId: tenant.id,
+            accion: 'PATCH_SOLICITUD',
+            entidad: 'solicitud',
+            entidadId: req.params.id,
+            ip: req.ip,
+            userAgent: req.headers['user-agent'],
+            metadata: { fields: Object.keys(updates) },
+        });
+
+        socketService.emit(tenant.id, 'SOLICITUD_UPDATED', {
+            solicitudId: Number(req.params.id),
+            fields: Object.keys(updates),
+        });
+
+        return res.json(updated);
+    } catch (err) {
+        next(err);
+    }
+});
+
+// POST /admin/tenants/:slug/solicitudes/bulk-update
+router.post('/tenants/:slug/solicitudes/bulk-update', requirePermiso('EDIT_SOLICITUDES'), async (req, res, next) => {
+    try {
+        const tenant = await db.findTenantBySlug(req.params.slug);
+        if (!tenant) return res.status(404).json({ error: 'Tenant not found' });
+        if (denyIfWrongTenant(req, res, tenant.id)) return;
+
+        const ids = Array.isArray(req.body?.ids) ? req.body.ids : [];
+        const updates = req.body?.updates || {};
+        if (!ids.length) return res.status(400).json({ error: 'ids array is required' });
+        if (!Object.keys(updates).length) return res.status(400).json({ error: 'updates object is required' });
+
+        if (updates.estado !== undefined) {
+            const normalizedEstado = db.normalizeSolicitudStatus(updates.estado, '');
+            if (!normalizedEstado || !SOLICITUD_STATES.has(normalizedEstado)) {
+                return res.status(400).json({ error: `estado must be one of: ${Array.from(SOLICITUD_STATES).join(', ')}` });
+            }
+            updates.estado = normalizedEstado;
+        }
+
+        const result = await db.bulkUpdateSolicitudes({
+            tenantId: tenant.id,
+            ids,
+            updates,
+            actorUserId: req.admin?.adminUserId ?? null,
+        });
+
+        audit({
+            adminUserId: req.admin?.adminUserId,
+            tenantId: tenant.id,
+            accion: 'BULK_UPDATE_SOLICITUDES',
+            entidad: 'solicitud',
+            entidadId: null,
+            ip: req.ip,
+            userAgent: req.headers['user-agent'],
+            metadata: { idsCount: ids.length, fields: Object.keys(updates) },
+        });
+
+        socketService.emit(tenant.id, 'SOLICITUDS_BULK_UPDATED', {
+            ids,
+            fields: Object.keys(updates),
+            result,
+        });
+
+        return res.json(result);
     } catch (err) {
         next(err);
     }
