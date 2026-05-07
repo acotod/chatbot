@@ -865,7 +865,7 @@ async function getSolicitudesReport(tenantId, { from, to, groupBy = 'day' } = {}
         COUNT(*) FILTER (WHERE estado = 'rejected')::int AS rejected,
         ROUND(AVG(EXTRACT(EPOCH FROM (completed_at - created_at)) / 60) FILTER (WHERE completed_at IS NOT NULL), 2)::float AS avg_resolution_minutes
       FROM solicitudes
-      WHERE tenant_id = $1
+      WHERE tenant_id = $1::uuid
         AND created_at >= $2
         AND created_at < $3
       `,
@@ -879,7 +879,7 @@ async function getSolicitudesReport(tenantId, { from, to, groupBy = 'day' } = {}
         COALESCE(estado, 'sin_estado') AS estado,
         COUNT(*)::int AS total
       FROM solicitudes
-      WHERE tenant_id = $1
+      WHERE tenant_id = $1::uuid
         AND created_at >= $2
         AND created_at < $3
       GROUP BY COALESCE(estado, 'sin_estado')
@@ -895,7 +895,7 @@ async function getSolicitudesReport(tenantId, { from, to, groupBy = 'day' } = {}
         COALESCE(prioridad, 'sin_prioridad') AS prioridad,
         COUNT(*)::int AS total
       FROM solicitudes
-      WHERE tenant_id = $1
+      WHERE tenant_id = $1::uuid
         AND created_at >= $2
         AND created_at < $3
       GROUP BY COALESCE(prioridad, 'sin_prioridad')
@@ -915,7 +915,7 @@ async function getSolicitudesReport(tenantId, { from, to, groupBy = 'day' } = {}
       LEFT JOIN agentes a
         ON a.id = s.agente_id
        AND a.tenant_id = s.tenant_id
-      WHERE s.tenant_id = $1
+      WHERE s.tenant_id = $1::uuid
         AND s.created_at >= $2
         AND s.created_at < $3
       GROUP BY s.agente_id, COALESCE(a.nombre, 'Sin asignar')
@@ -934,7 +934,7 @@ async function getSolicitudesReport(tenantId, { from, to, groupBy = 'day' } = {}
         COUNT(*) FILTER (WHERE estado = 'completed')::int AS completed,
         COUNT(*) FILTER (WHERE estado = 'rejected')::int AS rejected
       FROM solicitudes
-      WHERE tenant_id = $1
+      WHERE tenant_id = $1::uuid
         AND created_at >= $2
         AND created_at < $3
       GROUP BY DATE_TRUNC('${bucket}', created_at)
