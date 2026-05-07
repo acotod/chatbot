@@ -1103,6 +1103,112 @@ async function updateSolicitudAssignmentRule(tenantId, id, payload = {}) {
   });
 }
 
+async function listWebhookConfigs(tenantId, { event } = {}) {
+  const client = getPrismaClient();
+  if (!client) return [];
+  return client.webhookConfig.findMany({
+    where: {
+      tenantId,
+      ...(event ? { event: String(event) } : {}),
+    },
+    orderBy: [{ active: 'desc' }, { id: 'asc' }],
+  });
+}
+
+async function createWebhookConfig(tenantId, payload = {}) {
+  const client = getPrismaClient();
+  if (!client) return null;
+
+  const event = String(payload.event || '').trim().toLowerCase();
+  const url = String(payload.url || '').trim();
+  if (!event || !url) return null;
+
+  return client.webhookConfig.create({
+    data: {
+      tenantId,
+      event,
+      url,
+      active: payload.active !== false,
+    },
+  });
+}
+
+async function updateWebhookConfig(tenantId, id, payload = {}) {
+  const client = getPrismaClient();
+  if (!client) return null;
+
+  const current = await client.webhookConfig.findFirst({ where: { id, tenantId } });
+  if (!current) return null;
+
+  return client.webhookConfig.update({
+    where: { id },
+    data: {
+      ...(payload.event !== undefined ? { event: String(payload.event || '').trim().toLowerCase() } : {}),
+      ...(payload.url !== undefined ? { url: String(payload.url || '').trim() } : {}),
+      ...(payload.active !== undefined ? { active: Boolean(payload.active) } : {}),
+    },
+  });
+}
+
+async function deleteWebhookConfig(tenantId, id) {
+  const client = getPrismaClient();
+  if (!client) return null;
+  const current = await client.webhookConfig.findFirst({ where: { id, tenantId } });
+  if (!current) return null;
+  await client.webhookConfig.delete({ where: { id } });
+  return current;
+}
+
+async function markWebhookDeliveryResult(tenantId, webhookId, { ok }) {
+  const client = getPrismaClient();
+  if (!client || !webhookId) return null;
+
+  const data = ok
+    ? { lastTriggeredAt: new Date(), failureCount: 0 }
+    : { lastTriggeredAt: new Date(), failureCount: { increment: 1 } };
+
+  return client.webhookConfig.updateMany({
+    where: { tenantId, id: Number(webhookId) },
+    data,
+  });
+}
+
+async function listSolicitudWebhookDeliveries(tenantId, { event, status, limit = 50 } = {}) {
+  const client = getPrismaClient();
+  if (!client) return [];
+
+  const normalizedLimit = Math.max(1, Math.min(200, Number(limit || 50)));
+  const where = {
+    tenantId,
+    accion: {
+      in: ['SOLICITUD_WEBHOOK_DELIVERED', 'SOLICITUD_WEBHOOK_FAILED'],
+    },
+    ...(status === 'ok' ? { accion: 'SOLICITUD_WEBHOOK_DELIVERED' } : {}),
+    ...(status === 'failed' ? { accion: 'SOLICITUD_WEBHOOK_FAILED' } : {}),
+    ...(event ? {
+      metadata: {
+        path: ['event'],
+        equals: String(event),
+      },
+    } : {}),
+  };
+
+  return client.auditLog.findMany({
+    where,
+    orderBy: { createdAt: 'desc' },
+    take: normalizedLimit,
+    select: {
+      id: true,
+      accion: true,
+      entidad: true,
+      entidadId: true,
+      metadata: true,
+      createdAt: true,
+      adminUser: { select: { id: true, nombre: true, email: true } },
+    },
+  });
+}
+
 async function listSolicitudesByConversationId(tenantId, conversationId) {
   const client = getPrismaClient();
   if (!client || !conversationId) return [];
@@ -1547,6 +1653,12 @@ module.exports = {
   listSolicitudAssignmentRules,
   createSolicitudAssignmentRule,
   updateSolicitudAssignmentRule,
+  listWebhookConfigs,
+  createWebhookConfig,
+  updateWebhookConfig,
+  deleteWebhookConfig,
+  markWebhookDeliveryResult,
+  listSolicitudWebhookDeliveries,
   listSolicitudesByConversationId,
   createOrReuseFlowTask,
   findTaskForWait,

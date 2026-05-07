@@ -48,6 +48,7 @@ const NAV_ITEMS: Array<{
   { icon: MessageCircle, label: "Conversaciones", href: "/conversaciones", permission: "VIEW_CONVERSACIONES" },
   { icon: ClipboardList, label: "Solicitudes", href: "/solicitudes", permission: "VIEW_SOLICITUDES" },
   { icon: BarChart3, label: "Reportes", href: "/reportes", permission: "VIEW_METRICS" },
+  { icon: Webhook, label: "Webhooks", href: "/webhooks", permission: "EDIT_SOLICITUDES" },
   { icon: CalendarDays, label: "Agenda", href: "/agenda", permission: "VIEW_AGENDA" },
   { icon: Users, label: "Agentes", href: "/agentes", permission: "VIEW_AGENTES" },
   { icon: UserCircle2, label: "Contactos", href: "/contactos", permission: "VIEW_CRM" },

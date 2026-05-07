@@ -288,6 +288,18 @@ export const solicitudesApi = {
     apiClient.patch(`/admin/tenants/${slug}/solicitudes/${id}`, data),
   bulkUpdate: (slug: string, ids: number[], updates: Record<string, unknown>) =>
     apiClient.post(`/admin/tenants/${slug}/solicitudes/bulk-update`, { ids, updates }),
+  listWebhooks: (slug: string, params?: { event?: string }) =>
+    apiClient.get(`/admin/tenants/${slug}/solicitudes/webhooks`, { params }),
+  createWebhook: (slug: string, data: { event: string; url: string; active?: boolean }) =>
+    apiClient.post(`/admin/tenants/${slug}/solicitudes/webhooks`, data),
+  updateWebhook: (slug: string, id: number, data: { event?: string; url?: string; active?: boolean }) =>
+    apiClient.patch(`/admin/tenants/${slug}/solicitudes/webhooks/${id}`, data),
+  deleteWebhook: (slug: string, id: number) =>
+    apiClient.delete(`/admin/tenants/${slug}/solicitudes/webhooks/${id}`),
+  listWebhookDeliveries: (slug: string, params?: { event?: string; status?: string; limit?: number }) =>
+    apiClient.get(`/admin/tenants/${slug}/solicitudes/webhooks/deliveries`, { params }),
+  testWebhook: (slug: string, event?: string) =>
+    apiClient.post(`/admin/tenants/${slug}/solicitudes/webhooks/test`, { event }),
 };
 
 export const portalApi = {

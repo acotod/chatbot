@@ -12,6 +12,7 @@ const socketService = require('../services/socketService');
 const wa = require('../services/whatsapp');
 const convLogger = require('../engine/conversationLogger');
 const { generatePortalToken } = require('../services/portalAccess');
+const { WEBHOOK_EVENTS, dispatchSolicitudesWebhookEvent } = require('../services/solicitudesWebhooks');
 
 // Multer: store logos under /app/uploads/logos (persisted volume in prod)
 const UPLOADS_DIR = path.join(process.cwd(), 'uploads', 'logos');
@@ -69,6 +70,10 @@ function denyIfWrongTenant(req, res, tenantId) {
 const AGENDA_TYPES = new Set(['reunion', 'tarea', 'automatizacion', 'webhook']);
 const AGENDA_STATES = new Set(['pendiente', 'en_progreso', 'completado']);
 const SOLICITUD_STATES = new Set(db.SOLICITUD_STATUS_VALUES);
+
+function queueSolicitudWebhook({ tenant, req, event, solicitudId, payload }) {
+    dispatchSolicitudesWebhookEvent({ tenant, req, event, solicitudId, payload }).catch(() => {});
+}
 
 function normalizeOptionalHttpUrl(value) {
     const raw = String(value ?? '').trim();
@@ -683,6 +688,20 @@ router.post('/tenants/:slug/solicitudes', requirePermiso('EDIT_SOLICITUDES'), as
         }, tenant.id);
         audit({ adminUserId: req.admin?.adminUserId, tenantId: tenant.id, accion: 'CREATE_SOLICITUD', entidad: 'solicitud', entidadId: String(solicitud.id), ip: req.ip, userAgent: req.headers['user-agent'], metadata: { userId, nombre } });
         socketService.emit(tenant.id, 'SOLICITUD_CREATED', { solicitud });
+        queueSolicitudWebhook({
+            tenant,
+            req,
+            event: 'solicitud.created',
+            solicitudId: solicitud.id,
+            payload: {
+                id: solicitud.id,
+                estado: solicitud.estado,
+                prioridad: solicitud.prioridad,
+                agenteId: solicitud.agenteId,
+                origin: solicitud.origin,
+                userId: solicitud.userId,
+            },
+        });
         res.status(201).json(solicitud);
     } catch (err) {
         next(err);
@@ -852,6 +871,196 @@ router.put('/tenants/:slug/solicitudes/config', requirePermiso('EDIT_SOLICITUDES
     }
 });
 
+// GET /admin/tenants/:slug/solicitudes/webhooks
+router.get('/tenants/:slug/solicitudes/webhooks', requirePermiso('VIEW_SOLICITUDES'), async (req, res, next) => {
+    try {
+        const tenant = await db.findTenantBySlug(req.params.slug);
+        if (!tenant) return res.status(404).json({ error: 'Tenant not found' });
+        if (denyIfWrongTenant(req, res, tenant.id)) return;
+
+        const tenantConfig = await db.getSolicitudesEnterpriseConfig(tenant.id);
+        const data = await db.listWebhookConfigs(tenant.id, { event: req.query?.event });
+
+        return res.json({
+            enabled: Boolean(tenantConfig?.webhooksEnabled),
+            supportedEvents: Array.from(WEBHOOK_EVENTS),
+            data,
+        });
+    } catch (err) {
+        next(err);
+    }
+});
+
+// POST /admin/tenants/:slug/solicitudes/webhooks
+router.post('/tenants/:slug/solicitudes/webhooks', requirePermiso('EDIT_SOLICITUDES'), async (req, res, next) => {
+    try {
+        const tenant = await db.findTenantBySlug(req.params.slug);
+        if (!tenant) return res.status(404).json({ error: 'Tenant not found' });
+        if (denyIfWrongTenant(req, res, tenant.id)) return;
+
+        const event = String(req.body?.event || '').trim().toLowerCase();
+        const url = String(req.body?.url || '').trim();
+        if (!event || !WEBHOOK_EVENTS.has(event)) {
+            return res.status(400).json({ error: `event must be one of: ${Array.from(WEBHOOK_EVENTS).join(', ')}` });
+        }
+        try {
+            const parsed = new URL(url);
+            if (!['http:', 'https:'].includes(parsed.protocol)) {
+                return res.status(400).json({ error: 'url must be a valid http(s) URL' });
+            }
+        } catch (_err) {
+            return res.status(400).json({ error: 'url must be a valid URL' });
+        }
+
+        const created = await db.createWebhookConfig(tenant.id, {
+            event,
+            url,
+            active: req.body?.active,
+        });
+        if (!created) return res.status(400).json({ error: 'Invalid webhook payload' });
+
+        audit({
+            adminUserId: req.admin?.adminUserId,
+            tenantId: tenant.id,
+            accion: 'CREATE_SOLICITUD_WEBHOOK',
+            entidad: 'webhook_config',
+            entidadId: String(created.id),
+            ip: req.ip,
+            userAgent: req.headers['user-agent'],
+            metadata: { event: created.event, url: created.url, active: created.active },
+        });
+
+        return res.status(201).json(created);
+    } catch (err) {
+        next(err);
+    }
+});
+
+// PATCH /admin/tenants/:slug/solicitudes/webhooks/:id
+router.patch('/tenants/:slug/solicitudes/webhooks/:id', requirePermiso('EDIT_SOLICITUDES'), async (req, res, next) => {
+    try {
+        const tenant = await db.findTenantBySlug(req.params.slug);
+        if (!tenant) return res.status(404).json({ error: 'Tenant not found' });
+        if (denyIfWrongTenant(req, res, tenant.id)) return;
+
+        const patch = {};
+        if (req.body?.event !== undefined) {
+            const event = String(req.body.event || '').trim().toLowerCase();
+            if (!WEBHOOK_EVENTS.has(event)) {
+                return res.status(400).json({ error: `event must be one of: ${Array.from(WEBHOOK_EVENTS).join(', ')}` });
+            }
+            patch.event = event;
+        }
+        if (req.body?.url !== undefined) {
+            const url = String(req.body.url || '').trim();
+            try {
+                const parsed = new URL(url);
+                if (!['http:', 'https:'].includes(parsed.protocol)) {
+                    return res.status(400).json({ error: 'url must be a valid http(s) URL' });
+                }
+            } catch (_err) {
+                return res.status(400).json({ error: 'url must be a valid URL' });
+            }
+            patch.url = url;
+        }
+        if (req.body?.active !== undefined) patch.active = Boolean(req.body.active);
+
+        const updated = await db.updateWebhookConfig(tenant.id, Number(req.params.id), patch);
+        if (!updated) return res.status(404).json({ error: 'Webhook config not found' });
+
+        audit({
+            adminUserId: req.admin?.adminUserId,
+            tenantId: tenant.id,
+            accion: 'UPDATE_SOLICITUD_WEBHOOK',
+            entidad: 'webhook_config',
+            entidadId: req.params.id,
+            ip: req.ip,
+            userAgent: req.headers['user-agent'],
+            metadata: { fields: Object.keys(patch) },
+        });
+
+        return res.json(updated);
+    } catch (err) {
+        next(err);
+    }
+});
+
+// DELETE /admin/tenants/:slug/solicitudes/webhooks/:id
+router.delete('/tenants/:slug/solicitudes/webhooks/:id', requirePermiso('EDIT_SOLICITUDES'), async (req, res, next) => {
+    try {
+        const tenant = await db.findTenantBySlug(req.params.slug);
+        if (!tenant) return res.status(404).json({ error: 'Tenant not found' });
+        if (denyIfWrongTenant(req, res, tenant.id)) return;
+
+        const removed = await db.deleteWebhookConfig(tenant.id, Number(req.params.id));
+        if (!removed) return res.status(404).json({ error: 'Webhook config not found' });
+
+        audit({
+            adminUserId: req.admin?.adminUserId,
+            tenantId: tenant.id,
+            accion: 'DELETE_SOLICITUD_WEBHOOK',
+            entidad: 'webhook_config',
+            entidadId: req.params.id,
+            ip: req.ip,
+            userAgent: req.headers['user-agent'],
+            metadata: { event: removed.event, url: removed.url },
+        });
+
+        return res.status(204).end();
+    } catch (err) {
+        next(err);
+    }
+});
+
+// GET /admin/tenants/:slug/solicitudes/webhooks/deliveries
+router.get('/tenants/:slug/solicitudes/webhooks/deliveries', requirePermiso('VIEW_METRICS'), async (req, res, next) => {
+    try {
+        const tenant = await db.findTenantBySlug(req.params.slug);
+        if (!tenant) return res.status(404).json({ error: 'Tenant not found' });
+        if (denyIfWrongTenant(req, res, tenant.id)) return;
+
+        const data = await db.listSolicitudWebhookDeliveries(tenant.id, {
+            event: req.query?.event,
+            status: req.query?.status,
+            limit: req.query?.limit,
+        });
+
+        return res.json({ data });
+    } catch (err) {
+        next(err);
+    }
+});
+
+// POST /admin/tenants/:slug/solicitudes/webhooks/test
+router.post('/tenants/:slug/solicitudes/webhooks/test', requirePermiso('EDIT_SOLICITUDES'), async (req, res, next) => {
+    try {
+        const tenant = await db.findTenantBySlug(req.params.slug);
+        if (!tenant) return res.status(404).json({ error: 'Tenant not found' });
+        if (denyIfWrongTenant(req, res, tenant.id)) return;
+
+        const event = String(req.body?.event || 'solicitud.updated').trim().toLowerCase();
+        if (!WEBHOOK_EVENTS.has(event)) {
+            return res.status(400).json({ error: `event must be one of: ${Array.from(WEBHOOK_EVENTS).join(', ')}` });
+        }
+
+        queueSolicitudWebhook({
+            tenant,
+            req,
+            event,
+            solicitudId: null,
+            payload: {
+                test: true,
+                triggeredAt: new Date().toISOString(),
+                actor: req.admin?.email || null,
+            },
+        });
+
+        return res.json({ ok: true, queued: true, event });
+    } catch (err) {
+        next(err);
+    }
+});
+
 // GET /admin/tenants/:slug/solicitudes/:id — full detail for CRM-like view
 router.get('/tenants/:slug/solicitudes/:id', requirePermiso('VIEW_SOLICITUDES'), async (req, res, next) => {
     try {
@@ -902,6 +1111,17 @@ router.patch('/tenants/:slug/solicitudes/:id/estado', requirePermiso('EDIT_SOLIC
             await resumeFlowForCompletedTask({ tenantId: tenant.id, solicitud });
         }
 
+        queueSolicitudWebhook({
+            tenant,
+            req,
+            event: 'solicitud.status_changed',
+            solicitudId: Number(req.params.id),
+            payload: {
+                id: Number(req.params.id),
+                estado: normalizedEstado,
+            },
+        });
+
         res.json(result);
     } catch (err) {
         next(err);
@@ -920,6 +1140,16 @@ router.patch('/tenants/:slug/solicitudes/:id/agente', requirePermiso('EDIT_SOLIC
         // Audit + real-time
         audit({ adminUserId: req.admin?.adminUserId, tenantId: tenant.id, accion: 'ASSIGN_AGENTE', entidad: 'solicitud', entidadId: req.params.id, ip: req.ip, userAgent: req.headers['user-agent'], metadata: { agenteId } });
         socketService.emit(tenant.id, 'AGENT_ASSIGNED', { solicitudId: Number(req.params.id), agenteId: Number(agenteId) });
+        queueSolicitudWebhook({
+            tenant,
+            req,
+            event: 'solicitud.assigned',
+            solicitudId: Number(req.params.id),
+            payload: {
+                id: Number(req.params.id),
+                agenteId: Number(agenteId),
+            },
+        });
         res.json(result);
     } catch (err) {
         next(err);
@@ -961,6 +1191,18 @@ router.post('/tenants/:slug/solicitudes/:id/escalate', requirePermiso('EDIT_SOLI
             solicitudId: Number(req.params.id),
             escalationLevel: escalated.escalationLevel,
             reason,
+        });
+
+        queueSolicitudWebhook({
+            tenant,
+            req,
+            event: 'solicitud.escalated',
+            solicitudId: Number(req.params.id),
+            payload: {
+                id: Number(req.params.id),
+                escalationLevel: escalated.escalationLevel,
+                reason,
+            },
         });
 
         return res.json(escalated);
@@ -1059,6 +1301,18 @@ router.post('/tenants/:slug/solicitudes/:id/comments', requirePermiso('EDIT_SOLI
             comment,
         });
 
+        queueSolicitudWebhook({
+            tenant,
+            req,
+            event: 'solicitud.comment_added',
+            solicitudId: Number(req.params.id),
+            payload: {
+                id: Number(req.params.id),
+                commentId: comment.id,
+                visibility: comment.visibility,
+            },
+        });
+
         return res.status(201).json(comment);
     } catch (err) {
         next(err);
@@ -1139,6 +1393,17 @@ router.patch('/tenants/:slug/solicitudes/:id', requirePermiso('EDIT_SOLICITUDES'
         socketService.emit(tenant.id, 'SOLICITUD_UPDATED', {
             solicitudId: Number(req.params.id),
             fields: Object.keys(updates),
+        });
+
+        queueSolicitudWebhook({
+            tenant,
+            req,
+            event: 'solicitud.updated',
+            solicitudId: Number(req.params.id),
+            payload: {
+                id: Number(req.params.id),
+                fields: Object.keys(updates),
+            },
         });
 
         return res.json(updated);
