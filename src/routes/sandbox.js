@@ -215,45 +215,54 @@ function buildEventsDigest(events, maxEvents = 8) {
   return digest;
 }
 
-function getAutoRepliesFromEvents(events, fallbackInput) {
+function getAutoReplyContextFromEvents(events, fallbackInput) {
   if (!Array.isArray(events) || events.length === 0) return null;
 
-  for (let index = events.length - 1; index >= 0; index -= 1) {
-    const event = events[index];
-    if (normalizeEventType(event) !== 'message_sent') continue;
+  const latestEvent = events[events.length - 1];
+  if (normalizeEventType(latestEvent) !== 'message_sent') return null;
 
-    const payload = event?.payload ?? {};
-    const nodeType = String(payload?.node_type ?? '').trim().toLowerCase();
-    if (nodeType === 'menu') {
-      const choices = collectMenuOptionChoices(payload?.options);
-      if (choices.length > 0) {
-        return choices.map((choice) => ({
+  const payload = latestEvent?.payload ?? {};
+  const nodeType = String(payload?.node_type ?? '').trim().toLowerCase();
+
+  if (nodeType === 'menu') {
+    const choices = collectMenuOptionChoices(payload?.options);
+    if (choices.length > 0) {
+      return {
+        promptEventId: latestEvent.id,
+        replies: choices.map((choice) => ({
           type: 'menu_selection',
           text: choice.id,
           label: choice.label,
-        }));
-      }
-    }
-
-    if (nodeType === 'input') {
-      return [{
-        type: 'user_input',
-        text: fallbackInput,
-        prompt: String(payload?.text ?? payload?.body ?? payload?.message ?? '').trim(),
-      }];
-    }
-
-    // Plain message node — any input will advance the flow to the next node
-    if (nodeType === 'message') {
-      return [{
-        type: 'user_input',
-        text: fallbackInput,
-        prompt: '',
-      }];
+        })),
+      };
     }
   }
 
-  return null;
+  if (nodeType === 'input') {
+    return {
+      promptEventId: latestEvent.id,
+      replies: [{
+        type: 'user_input',
+        text: fallbackInput,
+        prompt: String(payload?.text ?? payload?.body ?? payload?.message ?? '').trim(),
+      }],
+    };
+  }
+
+  // Plain message node — any input may advance the flow to the next node.
+  return {
+    promptEventId: latestEvent.id,
+    replies: [{
+      type: 'user_input',
+      text: fallbackInput,
+      prompt: '',
+    }],
+  };
+}
+
+function getAutoRepliesFromEvents(events, fallbackInput) {
+  const ctx = getAutoReplyContextFromEvents(events, fallbackInput);
+  return Array.isArray(ctx?.replies) ? ctx.replies : null;
 }
 
 function getAutoReplyFromEvents(events, fallbackInput) {
@@ -461,6 +470,7 @@ async function driveSandboxE2E({
     const usedReplies = [];
     const branchPrefixes = [];
     const branchPrefixKeys = new Set();
+    let lastPromptEventId = null;
 
     for (let i = 0; i < maxSteps; i += 1) {
       if (!latestConversation?.id) break;
@@ -468,8 +478,13 @@ async function driveSandboxE2E({
       const run = await loadSandboxRunWithEvents(prisma, tenantId, latestConversation.id);
       if (!run || run.status !== 'active') break;
 
-      const replyOptions = getAutoRepliesFromEvents(run.events, fallbackInput);
+      const autoReplyContext = getAutoReplyContextFromEvents(run.events, fallbackInput);
+      if (!autoReplyContext || autoReplyContext.promptEventId === lastPromptEventId) break;
+
+      const replyOptions = autoReplyContext.replies;
       if (!Array.isArray(replyOptions) || replyOptions.length === 0) break;
+
+      lastPromptEventId = autoReplyContext.promptEventId;
 
       const forcedReply = forcedReplies[i];
       let chosenReply = replyOptions[0];
