@@ -312,10 +312,35 @@ async function _handleIncomingMessage({ msg, contacts, tenant, phoneNumberId, ac
   }
 
   // ── Chatbot engine ───────────────────────────────────────────────────────
+  let chatbotConversationId = null;
   if (userId !== null && userInput !== null && accessToken) {
-    _runChatbot({ tenant, userId, phone, userInput, phoneNumberId, accessToken, correlationId, inboundMensajeId: mensajeId, conversationMeta })
-      .catch((err) => logger.error('_runChatbot error', { tenantId: tenant.id, message: err.message }));
+    if (conversationMeta?.sandbox === true) {
+      try {
+        chatbotConversationId = await _runChatbot({
+          tenant,
+          userId,
+          phone,
+          userInput,
+          phoneNumberId,
+          accessToken,
+          correlationId,
+          inboundMensajeId: mensajeId,
+          conversationMeta,
+        });
+      } catch (err) {
+        logger.error('_runChatbot error', { tenantId: tenant.id, message: err.message, sandbox: true });
+      }
+    } else {
+      _runChatbot({ tenant, userId, phone, userInput, phoneNumberId, accessToken, correlationId, inboundMensajeId: mensajeId, conversationMeta })
+        .catch((err) => logger.error('_runChatbot error', { tenantId: tenant.id, message: err.message }));
+    }
   }
+
+  return {
+    userId,
+    messageId: mensajeId,
+    conversationId: chatbotConversationId,
+  };
 }
 
 // ── Chatbot dispatcher ────────────────────────────────────────────────────────
@@ -360,6 +385,8 @@ async function _runChatbot({ tenant, userId, phone, userInput, phoneNumberId, ac
       conversationId,
     });
   }
+
+  return conversationId ?? null;
 }
 
 async function _handleFallbackToHuman({ tenant, userId, phone, response, phoneNumberId, accessToken, correlationId, conversationId }) {

@@ -243,7 +243,7 @@ router.post('/simulate/inbound', async (req, res, next) => {
       text: { body: text },
     };
 
-    await sandboxApi.handleIncomingMessage({
+    const sandboxResult = await sandboxApi.handleIncomingMessage({
       msg,
       contacts: [{ wa_id: phone, profile: { name: req.body?.contactName ?? 'Sandbox User' } }],
       tenant: tenant ?? { id: tenantId },
@@ -257,7 +257,15 @@ router.post('/simulate/inbound', async (req, res, next) => {
       },
     });
 
-    const latestConversation = await waitForSandboxConversation({ tenantId, userKey: phone });
+    const latestConversation = sandboxResult?.conversationId
+      ? await getPrismaClient().conversation.findFirst({
+          where: {
+            ...sandboxConversationWhere(tenantId, phone),
+            id: sandboxResult.conversationId,
+          },
+          select: { id: true, status: true, startedAt: true },
+        })
+      : await waitForSandboxConversation({ tenantId, userKey: phone });
 
     audit({
       adminUserId: req.admin?.adminUserId,
