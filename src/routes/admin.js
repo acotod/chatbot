@@ -730,6 +730,61 @@ router.get('/tenants/:slug/solicitudes', requirePermiso('VIEW_SOLICITUDES'), asy
     }
 });
 
+// GET /admin/tenants/:slug/solicitudes/search
+router.get('/tenants/:slug/solicitudes/search', requirePermiso('VIEW_SOLICITUDES'), async (req, res, next) => {
+    try {
+        const tenant = await db.findTenantBySlug(req.params.slug);
+        if (!tenant) return res.status(404).json({ error: 'Tenant not found' });
+        if (denyIfWrongTenant(req, res, tenant.id)) return;
+
+        const {
+            q,
+            estado,
+            agenteId,
+            prioridad,
+            channelSource,
+            tags,
+            from,
+            to,
+            page,
+            limit,
+            slaStatus,
+        } = req.query;
+
+        const result = await db.searchSolicitudes(tenant.id, {
+            q,
+            estado,
+            agenteId,
+            prioridad,
+            channelSource,
+            tags,
+            from,
+            to,
+            page: page ? Number(page) : 1,
+            limit: limit ? Number(limit) : 20,
+            slaStatus,
+        });
+
+        return res.json(result);
+    } catch (err) {
+        next(err);
+    }
+});
+
+// GET /admin/tenants/:slug/solicitudes/stats
+router.get('/tenants/:slug/solicitudes/stats', requirePermiso('VIEW_SOLICITUDES'), async (req, res, next) => {
+    try {
+        const tenant = await db.findTenantBySlug(req.params.slug);
+        if (!tenant) return res.status(404).json({ error: 'Tenant not found' });
+        if (denyIfWrongTenant(req, res, tenant.id)) return;
+
+        const stats = await db.getSolicitudesStats(tenant.id);
+        return res.json(stats);
+    } catch (err) {
+        next(err);
+    }
+});
+
 // GET /admin/tenants/:slug/solicitudes/:id — full detail for CRM-like view
 router.get('/tenants/:slug/solicitudes/:id', requirePermiso('VIEW_SOLICITUDES'), async (req, res, next) => {
     try {
@@ -799,6 +854,45 @@ router.patch('/tenants/:slug/solicitudes/:id/agente', requirePermiso('EDIT_SOLIC
         audit({ adminUserId: req.admin?.adminUserId, tenantId: tenant.id, accion: 'ASSIGN_AGENTE', entidad: 'solicitud', entidadId: req.params.id, ip: req.ip, userAgent: req.headers['user-agent'], metadata: { agenteId } });
         socketService.emit(tenant.id, 'AGENT_ASSIGNED', { solicitudId: Number(req.params.id), agenteId: Number(agenteId) });
         res.json(result);
+    } catch (err) {
+        next(err);
+    }
+});
+
+// POST /admin/tenants/:slug/solicitudes/:id/escalate
+router.post('/tenants/:slug/solicitudes/:id/escalate', requirePermiso('EDIT_SOLICITUDES'), async (req, res, next) => {
+    try {
+        const tenant = await db.findTenantBySlug(req.params.slug);
+        if (!tenant) return res.status(404).json({ error: 'Tenant not found' });
+        if (denyIfWrongTenant(req, res, tenant.id)) return;
+
+        const reason = req.body?.reason ? String(req.body.reason) : null;
+        const escalated = await db.escalateSolicitud({
+            id: Number(req.params.id),
+            tenantId: tenant.id,
+            actorUserId: req.admin?.adminUserId ?? null,
+            reason,
+        });
+        if (!escalated) return res.status(404).json({ error: 'Solicitud not found' });
+
+        audit({
+            adminUserId: req.admin?.adminUserId,
+            tenantId: tenant.id,
+            accion: 'ESCALATE_SOLICITUD',
+            entidad: 'solicitud',
+            entidadId: req.params.id,
+            ip: req.ip,
+            userAgent: req.headers['user-agent'],
+            metadata: { reason, escalationLevel: escalated.escalationLevel },
+        });
+
+        socketService.emit(tenant.id, 'SOLICITUD_ESCALATED', {
+            solicitudId: Number(req.params.id),
+            escalationLevel: escalated.escalationLevel,
+            reason,
+        });
+
+        return res.json(escalated);
     } catch (err) {
         next(err);
     }
@@ -992,6 +1086,128 @@ router.post('/tenants/:slug/solicitudes/bulk-update', requirePermiso('EDIT_SOLIC
         });
 
         return res.json(result);
+    } catch (err) {
+        next(err);
+    }
+});
+
+// GET /admin/tenants/:slug/sla-policies
+router.get('/tenants/:slug/sla-policies', requirePermiso('VIEW_SOLICITUDES'), async (req, res, next) => {
+    try {
+        const tenant = await db.findTenantBySlug(req.params.slug);
+        if (!tenant) return res.status(404).json({ error: 'Tenant not found' });
+        if (denyIfWrongTenant(req, res, tenant.id)) return;
+
+        const data = await db.listSlaPolicies(tenant.id);
+        return res.json({ data });
+    } catch (err) {
+        next(err);
+    }
+});
+
+// POST /admin/tenants/:slug/sla-policies
+router.post('/tenants/:slug/sla-policies', requirePermiso('EDIT_SOLICITUDES'), async (req, res, next) => {
+    try {
+        const tenant = await db.findTenantBySlug(req.params.slug);
+        if (!tenant) return res.status(404).json({ error: 'Tenant not found' });
+        if (denyIfWrongTenant(req, res, tenant.id)) return;
+
+        const nombre = String(req.body?.nombre || '').trim();
+        if (!nombre) return res.status(400).json({ error: 'nombre is required' });
+
+        const created = await db.createSlaPolicy(tenant.id, req.body || {});
+        audit({
+            adminUserId: req.admin?.adminUserId,
+            tenantId: tenant.id,
+            accion: 'CREATE_SLA_POLICY',
+            entidad: 'sla_policy',
+            entidadId: String(created.id),
+            metadata: { nombre: created.nombre },
+        });
+        return res.status(201).json(created);
+    } catch (err) {
+        next(err);
+    }
+});
+
+// PATCH /admin/tenants/:slug/sla-policies/:id
+router.patch('/tenants/:slug/sla-policies/:id', requirePermiso('EDIT_SOLICITUDES'), async (req, res, next) => {
+    try {
+        const tenant = await db.findTenantBySlug(req.params.slug);
+        if (!tenant) return res.status(404).json({ error: 'Tenant not found' });
+        if (denyIfWrongTenant(req, res, tenant.id)) return;
+
+        const updated = await db.updateSlaPolicy(tenant.id, Number(req.params.id), req.body || {});
+        if (!updated) return res.status(404).json({ error: 'SLA policy not found' });
+
+        audit({
+            adminUserId: req.admin?.adminUserId,
+            tenantId: tenant.id,
+            accion: 'UPDATE_SLA_POLICY',
+            entidad: 'sla_policy',
+            entidadId: req.params.id,
+            metadata: { fields: Object.keys(req.body || {}) },
+        });
+        return res.json(updated);
+    } catch (err) {
+        next(err);
+    }
+});
+
+// GET /admin/tenants/:slug/assignment-rules
+router.get('/tenants/:slug/assignment-rules', requirePermiso('VIEW_SOLICITUDES'), async (req, res, next) => {
+    try {
+        const tenant = await db.findTenantBySlug(req.params.slug);
+        if (!tenant) return res.status(404).json({ error: 'Tenant not found' });
+        if (denyIfWrongTenant(req, res, tenant.id)) return;
+
+        const data = await db.listSolicitudAssignmentRules(tenant.id);
+        return res.json({ data });
+    } catch (err) {
+        next(err);
+    }
+});
+
+// POST /admin/tenants/:slug/assignment-rules
+router.post('/tenants/:slug/assignment-rules', requirePermiso('EDIT_SOLICITUDES'), async (req, res, next) => {
+    try {
+        const tenant = await db.findTenantBySlug(req.params.slug);
+        if (!tenant) return res.status(404).json({ error: 'Tenant not found' });
+        if (denyIfWrongTenant(req, res, tenant.id)) return;
+
+        const created = await db.createSolicitudAssignmentRule(tenant.id, req.body || {});
+        audit({
+            adminUserId: req.admin?.adminUserId,
+            tenantId: tenant.id,
+            accion: 'CREATE_ASSIGNMENT_RULE',
+            entidad: 'solicitud_assignment_rule',
+            entidadId: String(created.id),
+        });
+        return res.status(201).json(created);
+    } catch (err) {
+        next(err);
+    }
+});
+
+// PATCH /admin/tenants/:slug/assignment-rules/:id
+router.patch('/tenants/:slug/assignment-rules/:id', requirePermiso('EDIT_SOLICITUDES'), async (req, res, next) => {
+    try {
+        const tenant = await db.findTenantBySlug(req.params.slug);
+        if (!tenant) return res.status(404).json({ error: 'Tenant not found' });
+        if (denyIfWrongTenant(req, res, tenant.id)) return;
+
+        const updated = await db.updateSolicitudAssignmentRule(tenant.id, Number(req.params.id), req.body || {});
+        if (!updated) return res.status(404).json({ error: 'Assignment rule not found' });
+
+        audit({
+            adminUserId: req.admin?.adminUserId,
+            tenantId: tenant.id,
+            accion: 'UPDATE_ASSIGNMENT_RULE',
+            entidad: 'solicitud_assignment_rule',
+            entidadId: req.params.id,
+            metadata: { fields: Object.keys(req.body || {}) },
+        });
+        return res.json(updated);
     } catch (err) {
         next(err);
     }

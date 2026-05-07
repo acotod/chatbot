@@ -627,6 +627,249 @@ function calculateSlaStatus(solicitud, now = new Date()) {
   };
 }
 
+async function searchSolicitudes(tenantId, {
+  q,
+  estado,
+  agenteId,
+  prioridad,
+  channelSource,
+  tags,
+  from,
+  to,
+  page = 1,
+  limit = 20,
+  slaStatus,
+} = {}) {
+  const client = getPrismaClient();
+  if (!client) return { data: [], total: 0, page, limit };
+
+  const normalizedEstado = estado ? normalizeSolicitudStatus(estado, '') : '';
+  const normalizedQ = String(q ?? '').trim();
+  const normalizedTags = Array.isArray(tags)
+    ? tags.filter((t) => String(t || '').trim())
+    : String(tags ?? '').split(',').map((t) => t.trim()).filter(Boolean);
+
+  const where = {
+    tenantId,
+    ...(normalizedEstado ? { estado: normalizedEstado } : {}),
+    ...(agenteId != null ? { agenteId: Number(agenteId) } : {}),
+    ...(prioridad ? { prioridad: String(prioridad) } : {}),
+    ...(channelSource ? { channelSource: String(channelSource) } : {}),
+    ...(from || to ? {
+      createdAt: {
+        ...(from ? { gte: new Date(from) } : {}),
+        ...(to ? { lte: new Date(to) } : {}),
+      },
+    } : {}),
+    ...(normalizedQ ? {
+      OR: [
+        { nombre: { contains: normalizedQ, mode: 'insensitive' } },
+        { telefonoContacto: { contains: normalizedQ, mode: 'insensitive' } },
+        { titulo: { contains: normalizedQ, mode: 'insensitive' } },
+      ],
+    } : {}),
+  };
+
+  const rows = await client.solicitud.findMany({
+    where,
+    orderBy: { createdAt: 'desc' },
+    include: {
+      agente: true,
+      user: true,
+      slaPolicy: true,
+      flow: { select: { id: true, nombre: true } },
+      conversation: { select: { id: true, status: true, startedAt: true, endedAt: true } },
+    },
+  });
+
+  const filtered = rows.filter((row) => {
+    if (normalizedTags.length) {
+      const rowTags = Array.isArray(row.tags) ? row.tags.map((v) => String(v)) : [];
+      const hasAnyTag = normalizedTags.some((tag) => rowTags.includes(tag));
+      if (!hasAnyTag) return false;
+    }
+
+    if (slaStatus) {
+      const s = calculateSlaStatus(row).status;
+      if (String(slaStatus) !== s) return false;
+    }
+
+    return true;
+  });
+
+  const start = (Number(page) - 1) * Number(limit);
+  const data = filtered.slice(start, start + Number(limit));
+
+  return {
+    data,
+    total: filtered.length,
+    page: Number(page),
+    limit: Number(limit),
+  };
+}
+
+async function getSolicitudesStats(tenantId) {
+  const client = getPrismaClient();
+  if (!client) return {};
+
+  const [total, byEstado, allActive] = await Promise.all([
+    client.solicitud.count({ where: { tenantId } }),
+    client.solicitud.groupBy({
+      by: ['estado'],
+      where: { tenantId },
+      _count: { id: true },
+    }),
+    client.solicitud.findMany({
+      where: {
+        tenantId,
+        estado: { in: SOLICITUD_ACTIVE_STATUS_VALUES },
+      },
+      include: { slaPolicy: true },
+    }),
+  ]);
+
+  let slaOnTrack = 0;
+  let slaWarning = 0;
+  let slaBreached = 0;
+  for (const row of allActive) {
+    const status = calculateSlaStatus(row).status;
+    if (status === 'breached') slaBreached += 1;
+    else if (status === 'warning') slaWarning += 1;
+    else if (status === 'on_track') slaOnTrack += 1;
+  }
+
+  const estado = {};
+  for (const item of byEstado) estado[item.estado ?? 'sin_estado'] = item._count.id;
+
+  return {
+    total,
+    estado,
+    sla: {
+      onTrack: slaOnTrack,
+      warning: slaWarning,
+      breached: slaBreached,
+    },
+  };
+}
+
+async function escalateSolicitud({ id, tenantId, actorUserId = null, reason = null }) {
+  const client = getPrismaClient();
+  if (!client) return null;
+
+  const current = await client.solicitud.findFirst({ where: { id, tenantId } });
+  if (!current) return null;
+
+  const escalationLevel = Number(current.escalationLevel ?? 0) + 1;
+  const updated = await client.solicitud.update({
+    where: { id },
+    data: {
+      escalatedAt: new Date(),
+      escalationLevel,
+      estado: current.estado === SOLICITUD_STATUS.OPEN ? SOLICITUD_STATUS.IN_PROGRESS : current.estado,
+    },
+  });
+
+  await client.solicitudHistory.create({
+    data: {
+      solicitudId: id,
+      userId: actorUserId,
+      field: 'escalation',
+      oldValue: asHistoryValue({ level: current.escalationLevel ?? 0 }),
+      newValue: asHistoryValue({ level: escalationLevel, reason }),
+    },
+  }).catch(() => {});
+
+  return updated;
+}
+
+async function listSlaPolicies(tenantId) {
+  const client = getPrismaClient();
+  if (!client) return [];
+  return client.slaPolicy.findMany({
+    where: { tenantId },
+    orderBy: [{ active: 'desc' }, { nombre: 'asc' }],
+  });
+}
+
+async function createSlaPolicy(tenantId, payload = {}) {
+  const client = getPrismaClient();
+  if (!client) return null;
+  return client.slaPolicy.create({
+    data: {
+      tenantId,
+      nombre: String(payload.nombre || '').trim(),
+      descripcion: payload.descripcion ? String(payload.descripcion) : null,
+      responseTimeMinutes: Number(payload.responseTimeMinutes ?? 60),
+      resolutionTimeMinutes: Number(payload.resolutionTimeMinutes ?? 1440),
+      escalationRules: Array.isArray(payload.escalationRules) ? payload.escalationRules : [],
+      active: payload.active !== false,
+    },
+  });
+}
+
+async function updateSlaPolicy(tenantId, id, payload = {}) {
+  const client = getPrismaClient();
+  if (!client) return null;
+
+  const current = await client.slaPolicy.findFirst({ where: { id, tenantId } });
+  if (!current) return null;
+
+  return client.slaPolicy.update({
+    where: { id },
+    data: {
+      ...(payload.nombre !== undefined ? { nombre: String(payload.nombre || '').trim() } : {}),
+      ...(payload.descripcion !== undefined ? { descripcion: payload.descripcion ? String(payload.descripcion) : null } : {}),
+      ...(payload.responseTimeMinutes !== undefined ? { responseTimeMinutes: Number(payload.responseTimeMinutes) } : {}),
+      ...(payload.resolutionTimeMinutes !== undefined ? { resolutionTimeMinutes: Number(payload.resolutionTimeMinutes) } : {}),
+      ...(payload.escalationRules !== undefined ? { escalationRules: Array.isArray(payload.escalationRules) ? payload.escalationRules : [] } : {}),
+      ...(payload.active !== undefined ? { active: Boolean(payload.active) } : {}),
+    },
+  });
+}
+
+async function listSolicitudAssignmentRules(tenantId) {
+  const client = getPrismaClient();
+  if (!client) return [];
+  return client.solicitudAssignmentRule.findMany({
+    where: { tenantId },
+    include: { targetAgente: { select: { id: true, nombre: true, email: true } } },
+    orderBy: [{ enabled: 'desc' }, { id: 'asc' }],
+  });
+}
+
+async function createSolicitudAssignmentRule(tenantId, payload = {}) {
+  const client = getPrismaClient();
+  if (!client) return null;
+  return client.solicitudAssignmentRule.create({
+    data: {
+      tenantId,
+      criterios: payload.criterios && typeof payload.criterios === 'object' ? payload.criterios : {},
+      targetAgenteId: payload.targetAgenteId ? Number(payload.targetAgenteId) : null,
+      roundRobin: Boolean(payload.roundRobin),
+      enabled: payload.enabled !== false,
+    },
+    include: { targetAgente: { select: { id: true, nombre: true, email: true } } },
+  });
+}
+
+async function updateSolicitudAssignmentRule(tenantId, id, payload = {}) {
+  const client = getPrismaClient();
+  if (!client) return null;
+  const current = await client.solicitudAssignmentRule.findFirst({ where: { id, tenantId } });
+  if (!current) return null;
+
+  return client.solicitudAssignmentRule.update({
+    where: { id },
+    data: {
+      ...(payload.criterios !== undefined ? { criterios: payload.criterios && typeof payload.criterios === 'object' ? payload.criterios : {} } : {}),
+      ...(payload.targetAgenteId !== undefined ? { targetAgenteId: payload.targetAgenteId ? Number(payload.targetAgenteId) : null } : {}),
+      ...(payload.roundRobin !== undefined ? { roundRobin: Boolean(payload.roundRobin) } : {}),
+      ...(payload.enabled !== undefined ? { enabled: Boolean(payload.enabled) } : {}),
+    },
+    include: { targetAgente: { select: { id: true, nombre: true, email: true } } },
+  });
+}
+
 async function listSolicitudesByConversationId(tenantId, conversationId) {
   const client = getPrismaClient();
   if (!client || !conversationId) return [];
@@ -1047,8 +1290,11 @@ module.exports = {
   normalizeSolicitudStatus,
   normalizeSolicitudCommentVisibility,
   listSolicitudes,
+  searchSolicitudes,
+  getSolicitudesStats,
   countSolicitudesByEstado,
   updateSolicitudEstado,
+  escalateSolicitud,
   assignAgenteToSolicitud,
   getSolicitudById,
   getSolicitudDetalle,
@@ -1058,6 +1304,12 @@ module.exports = {
   updateSolicitudFields,
   bulkUpdateSolicitudes,
   calculateSlaStatus,
+  listSlaPolicies,
+  createSlaPolicy,
+  updateSlaPolicy,
+  listSolicitudAssignmentRules,
+  createSolicitudAssignmentRule,
+  updateSolicitudAssignmentRule,
   listSolicitudesByConversationId,
   createOrReuseFlowTask,
   findTaskForWait,
