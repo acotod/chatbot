@@ -290,8 +290,9 @@ export default function ConversacionesPage() {
     enabled: !!tenantId && !!activeThread?.userId,
     staleTime: 0,
   });
-  const latestMessages: Mensaje[] = (mensajesData?.data ?? []).slice().reverse();
-  const messages: Mensaje[] = [...olderMessages, ...latestMessages];
+  // Backend returns newest-first (desc). No reverse — display newest at top.
+  const latestMessages: Mensaje[] = mensajesData?.data ?? [];
+  const messages: Mensaje[] = [...latestMessages, ...olderMessages];
 
   async function loadMoreMessages() {
     if (!tenantId || !activeThread?.userId || loadingMore) return;
@@ -299,8 +300,8 @@ export default function ConversacionesPage() {
     try {
       const nextPage = msgPage + 1;
       const r = await whatsappApi.listMensajes(tenantId, activeThread.userId, nextPage, 100);
-      const older: Mensaje[] = (r.data?.data ?? []).slice().reverse();
-      setOlderMessages((prev) => [...older, ...prev]);
+      const older: Mensaje[] = r.data?.data ?? [];
+      setOlderMessages((prev) => [...prev, ...older]);
       setMsgPage(nextPage);
       setHasMore((r.data?.count ?? older.length) >= 100);
     } finally {
@@ -337,10 +338,13 @@ export default function ConversacionesPage() {
   });
   const convHistory: ConvRecord[] = (convHistoryData as { data?: ConvRecord[] })?.data ?? (Array.isArray(convHistoryData) ? convHistoryData : []);
 
-  // Auto-scroll to bottom on new messages
+  // Scroll to top on new messages (newest first display)
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages.length]);
+    if (messages.length > 0) {
+      const container = messagesEndRef.current?.parentElement;
+      if (container) container.scrollTop = 0;
+    }
+  }, [activeThread?.userId]);
 
   // Send outbound message
   const sendMutation = useMutation({
@@ -546,18 +550,6 @@ export default function ConversacionesPage() {
               </div>
             )}
 
-            {!mensajesLoading && hasMore && (
-              <div className="flex justify-center pb-1">
-                <button
-                  onClick={loadMoreMessages}
-                  disabled={loadingMore}
-                  className="text-xs text-blue-600 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 px-4 py-1.5 rounded-full border border-blue-200 transition disabled:opacity-50"
-                >
-                  {loadingMore ? "Cargando..." : "Cargar mensajes anteriores"}
-                </button>
-              </div>
-            )}
-
             {!mensajesLoading && messages.length === 0 && (
               <div className="flex items-center justify-center h-32 text-slate-400 text-sm">
                 No hay mensajes aún
@@ -584,6 +576,17 @@ export default function ConversacionesPage() {
                 </div>
               );
             })}
+            {!mensajesLoading && hasMore && (
+              <div className="flex justify-center pt-2">
+                <button
+                  onClick={loadMoreMessages}
+                  disabled={loadingMore}
+                  className="text-xs text-blue-600 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 px-4 py-1.5 rounded-full border border-blue-200 transition disabled:opacity-50"
+                >
+                  {loadingMore ? "Cargando..." : "Cargar mensajes anteriores"}
+                </button>
+              </div>
+            )}
             <div ref={messagesEndRef} />
           </div>
 
