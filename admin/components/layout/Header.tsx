@@ -1,8 +1,10 @@
 "use client";
 
 import { tenantApi } from "@/lib/api";
+import { agentAuthApi } from "@/lib/agentApi";
 import { useNotifications } from "@/hooks/useNotifications";
 import { getMe } from "@/lib/useMe";
+import { getStoredAgentAccessToken } from "@/store/agentAuth";
 import { getStoredAccessToken, useAuthStore } from "@/store/auth";
 import { useQuery } from "@tanstack/react-query";
 import { Bell, Search } from "lucide-react";
@@ -59,8 +61,17 @@ export function Header() {
     getServerSnapshot
   );
   const hasAccessToken = isClient && Boolean(getStoredAccessToken());
+  const hasAgentAccessToken = isClient && Boolean(getStoredAgentAccessToken());
+  const isAgentSession = hasAgentAccessToken && !hasAccessToken;
   const apiBase = process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:3200";
   const sessionEmail = isClient ? (getMe()?.email ?? null) : null;
+
+  const { data: agentProfile } = useQuery({
+    queryKey: ["agent-header-profile"],
+    queryFn: () => agentAuthApi.me().then((r) => r.data),
+    enabled: isAgentSession,
+    staleTime: 60_000,
+  });
 
   const { data: tenants = [] } = useQuery<TenantOption[]>({
     queryKey: ["tenants", "header"],
@@ -92,13 +103,20 @@ export function Header() {
   const selectedTenantName = selectedTenant
     ? normalizeTenantName(selectedTenant.nombre, selectedTenant.slug)
     : null;
-  const tenantDisplayName =
-    selectedTenantName || selectedTenant?.slug || tenantSlug || "Admin";
+  const tenantDisplayName = isAgentSession
+    ? (agentProfile?.tenantNombre || agentProfile?.tenantSlug || "Agente")
+    : (selectedTenantName || selectedTenant?.slug || tenantSlug || "Admin");
   const tenantLogoSrc = selectedTenant?.logoUrl
     ? selectedTenant.logoUrl.startsWith("http")
       ? selectedTenant.logoUrl
       : `${apiBase}${selectedTenant.logoUrl}`
     : null;
+  const identityEmail = isAgentSession
+    ? (agentProfile?.email ?? "Sesion de agente")
+    : (sessionEmail ?? "Sin sesión");
+  const identityInitial = isAgentSession
+    ? ((agentProfile?.nombre || "Agente").charAt(0).toUpperCase())
+    : tenantDisplayName.charAt(0).toUpperCase();
   const {
     notifications,
     unreadCount,
@@ -126,6 +144,7 @@ export function Header() {
 
       <div className="flex items-center gap-3">
         {/* Tenant selector */}
+        {!isAgentSession && (
         <div className="hidden sm:block">
           <select
             value={tenantSlug}
@@ -140,8 +159,10 @@ export function Header() {
             ))}
           </select>
         </div>
+        )}
 
         {/* Search */}
+        {!isAgentSession && (
         <div className="relative hidden md:block">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
           <input
@@ -149,8 +170,10 @@ export function Header() {
             className="pl-9 pr-4 py-2 rounded-xl bg-slate-50 border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30 w-56"
           />
         </div>
+        )}
 
         {/* Notifications */}
+        {!isAgentSession && (
         <div className="relative" ref={notificationsRef}>
           <button
             type="button"
@@ -222,10 +245,11 @@ export function Header() {
             </div>
           )}
         </div>
+        )}
 
         {/* Tenant identity */}
         <div className="flex items-center gap-2 pl-3 border-l border-slate-200">
-          {tenantLogoSrc ? (
+          {!isAgentSession && tenantLogoSrc ? (
             <img
               src={tenantLogoSrc}
               alt={`Logo ${tenantDisplayName}`}
@@ -233,12 +257,12 @@ export function Header() {
             />
           ) : (
             <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center text-white text-sm font-semibold">
-              {tenantDisplayName.charAt(0).toUpperCase()}
+              {identityInitial}
             </div>
           )}
           <div className="hidden md:flex flex-col leading-tight">
             <span className="text-sm text-slate-700">{tenantDisplayName}</span>
-            <span className="text-xs text-slate-500">{sessionEmail ?? "Sin sesión"}</span>
+            <span className="text-xs text-slate-500">{identityEmail}</span>
           </div>
         </div>
       </div>
