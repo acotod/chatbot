@@ -77,6 +77,8 @@ export type AgentSolicitud = {
   createdAt: string;
   updatedAt: string;
   completedAt: string | null;
+  user?: { id: number; phone: string | null } | null;
+  conversation?: { id: string; status: string; startedAt: string; endedAt: string | null } | null;
 };
 
 export type AgentSolicitudesResponse = {
