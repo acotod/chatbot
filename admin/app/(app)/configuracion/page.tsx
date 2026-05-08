@@ -77,6 +77,18 @@ export default function ConfiguracionPage() {
   const [waCreds, setWaCreds] = useState({ phoneNumberId: "", accessToken: "" });
   const [waTokenConfigured, setWaTokenConfigured] = useState(false);
   const [waSaved, setWaSaved] = useState(false);
+  const [emailSettings, setEmailSettings] = useState({
+    smtpUrl: "",
+    smtpHost: "",
+    smtpPort: "587",
+    smtpSecure: false,
+    smtpUser: "",
+    smtpPass: "",
+    emailFrom: "",
+    adminBaseUrl: "",
+  });
+  const [emailPassConfigured, setEmailPassConfigured] = useState(false);
+  const [emailSaved, setEmailSaved] = useState(false);
   const [puestoNombre, setPuestoNombre] = useState("");
   const [puestoError, setPuestoError] = useState("");
   const [editingPuestoId, setEditingPuestoId] = useState<number | null>(null);
@@ -126,6 +138,31 @@ export default function ConfiguracionPage() {
     enabled: !!tenantSlug,
   });
   void waCredsData;
+
+  const { data: emailSettingsData } = useQuery({
+    queryKey: ["config", tenantSlug, "email_settings"],
+    queryFn: () =>
+      configApi.get(tenantSlug!, "email_settings").then((r) => {
+        const v = r?.data?.valor;
+        if (v) {
+          setEmailSettings((prev) => ({
+            ...prev,
+            smtpUrl: v.smtpUrl ?? "",
+            smtpHost: v.smtpHost ?? "",
+            smtpPort: v.smtpPort ? String(v.smtpPort) : prev.smtpPort,
+            smtpSecure: Boolean(v.smtpSecure),
+            smtpUser: v.smtpUser ?? "",
+            smtpPass: "",
+            emailFrom: v.emailFrom ?? "",
+            adminBaseUrl: v.adminBaseUrl ?? "",
+          }));
+          setEmailPassConfigured(v.smtpPass === "__configured__");
+        }
+        return r?.data;
+      }),
+    enabled: !!tenantSlug,
+  });
+  void emailSettingsData;
 
   // LLM config query
   const { data: llmConfigData } = useQuery({
@@ -187,6 +224,30 @@ export default function ConfiguracionPage() {
       setWaCreds((prev) => ({ ...prev, accessToken: "" }));
       setWaSaved(true);
       setTimeout(() => setWaSaved(false), 3000);
+    },
+  });
+
+  const saveEmailMutation = useMutation({
+    mutationFn: () =>
+      configApi.set(tenantSlug!, "email_settings", {
+        smtpUrl: emailSettings.smtpUrl.trim(),
+        smtpHost: emailSettings.smtpHost.trim(),
+        smtpPort: emailSettings.smtpPort.trim(),
+        smtpSecure: emailSettings.smtpSecure,
+        smtpUser: emailSettings.smtpUser.trim(),
+        smtpPass:
+          emailSettings.smtpPass.trim() !== ""
+            ? emailSettings.smtpPass.trim()
+            : "__configured__",
+        emailFrom: emailSettings.emailFrom.trim(),
+        adminBaseUrl: emailSettings.adminBaseUrl.trim(),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["config", tenantSlug, "email_settings"] });
+      setEmailPassConfigured(true);
+      setEmailSettings((prev) => ({ ...prev, smtpPass: "" }));
+      setEmailSaved(true);
+      setTimeout(() => setEmailSaved(false), 3000);
     },
   });
 
@@ -442,6 +503,99 @@ export default function ConfiguracionPage() {
               {waSaved ? (
                 <><Check size={16} /> Guardado 💙</>
               ) : saveWaMutation.isPending ? "Guardando..." : "Guardar credenciales"}
+            </Button>
+          </div>
+        </div>
+      </ConfigSection>
+
+      <ConfigSection
+        title="Email transaccional"
+        description="Configurá el SMTP del tenant para password reset y envíos desde flujos de conversación"
+      >
+        <div className="space-y-4">
+          <Input
+            label="SMTP URL"
+            placeholder="smtps://usuario:clave@smtp.mailprovider.com:465"
+            value={emailSettings.smtpUrl}
+            onChange={(e) => setEmailSettings((prev) => ({ ...prev, smtpUrl: e.target.value }))}
+          />
+          <p className="text-xs text-slate-400">
+            Si completás esta URL, tiene prioridad sobre host, puerto y credenciales separadas.
+          </p>
+
+          <div className="grid grid-cols-2 gap-4">
+            <Input
+              label="SMTP Host"
+              placeholder="smtp.gmail.com"
+              value={emailSettings.smtpHost}
+              onChange={(e) => setEmailSettings((prev) => ({ ...prev, smtpHost: e.target.value }))}
+            />
+            <Input
+              label="SMTP Port"
+              placeholder="587"
+              value={emailSettings.smtpPort}
+              onChange={(e) => setEmailSettings((prev) => ({ ...prev, smtpPort: e.target.value }))}
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <Input
+              label="SMTP User"
+              placeholder="notificaciones@tu-dominio.com"
+              value={emailSettings.smtpUser}
+              onChange={(e) => setEmailSettings((prev) => ({ ...prev, smtpUser: e.target.value }))}
+            />
+            <div className="flex flex-col gap-1.5">
+              <label className="text-sm font-medium text-slate-700">SMTP Password</label>
+              <Input
+                type="password"
+                placeholder={emailPassConfigured ? "•••••••• (ya configurado)" : "App password / SMTP password"}
+                value={emailSettings.smtpPass}
+                onChange={(e) => setEmailSettings((prev) => ({ ...prev, smtpPass: e.target.value }))}
+                autoComplete="new-password"
+              />
+              {emailPassConfigured && emailSettings.smtpPass === "" && (
+                <p className="text-xs text-emerald-600 flex items-center gap-1">
+                  <Check size={12} /> Hay una clave SMTP guardada
+                </p>
+              )}
+            </div>
+          </div>
+
+          <label className="flex items-center gap-3 rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm text-slate-700">
+            <input
+              type="checkbox"
+              checked={emailSettings.smtpSecure}
+              onChange={(e) => setEmailSettings((prev) => ({ ...prev, smtpSecure: e.target.checked }))}
+              className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+            />
+            Usar SMTP seguro (TLS/SSL)
+          </label>
+
+          <div className="grid grid-cols-2 gap-4">
+            <Input
+              label="Email From"
+              placeholder="no-reply@tu-dominio.com"
+              value={emailSettings.emailFrom}
+              onChange={(e) => setEmailSettings((prev) => ({ ...prev, emailFrom: e.target.value }))}
+            />
+            <Input
+              label="URL base del admin"
+              placeholder="https://admin.tu-dominio.com"
+              value={emailSettings.adminBaseUrl}
+              onChange={(e) => setEmailSettings((prev) => ({ ...prev, adminBaseUrl: e.target.value }))}
+            />
+          </div>
+
+          <p className="text-xs text-slate-400">
+            Esta URL se usa para construir el enlace de recuperación de agentes. Si el tenant no define nada, el backend sigue usando variables de entorno.
+          </p>
+
+          <div className="flex justify-end">
+            <Button onClick={() => saveEmailMutation.mutate()} disabled={saveEmailMutation.isPending}>
+              {emailSaved ? (
+                <><Check size={16} /> Guardado 💙</>
+              ) : saveEmailMutation.isPending ? "Guardando..." : "Guardar configuración email"}
             </Button>
           </div>
         </div>

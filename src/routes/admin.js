@@ -2245,6 +2245,9 @@ router.put('/tenants/:slug/config/:clave', requirePermiso('MANAGE_TENANTS'), asy
         if (req.params.clave === 'wa_credentials' && config?.valor?.accessToken) {
             return res.json({ ...config, valor: { ...config.valor, accessToken: db.WA_TOKEN_SENTINEL } });
         }
+        if (req.params.clave === 'email_settings' && config?.valor?.smtpPass) {
+            return res.json({ ...config, valor: { ...config.valor, smtpPass: db.CONFIG_SECRET_SENTINEL } });
+        }
         res.json(config);
     } catch (err) {
         next(err);
@@ -2266,6 +2269,9 @@ router.get('/tenants/:slug/config/:clave', requirePermiso('MANAGE_TENANTS'), asy
         }
         if (req.params.clave === 'wa_credentials' && config?.valor?.accessToken) {
             return res.json({ ...config, valor: { ...config.valor, accessToken: db.WA_TOKEN_SENTINEL } });
+        }
+        if (req.params.clave === 'email_settings' && config?.valor?.smtpPass) {
+            return res.json({ ...config, valor: { ...config.valor, smtpPass: db.CONFIG_SECRET_SENTINEL } });
         }
         res.json(config);
     } catch (err) {

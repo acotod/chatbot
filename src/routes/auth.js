@@ -75,10 +75,12 @@ function shouldExposeAgentResetToken() {
   return process.env.EXPOSE_AGENT_RESET_TOKEN === 'true' || process.env.NODE_ENV !== 'production';
 }
 
-function buildAgentResetUrl(rawToken) {
+async function buildAgentResetUrl(tenantId, rawToken) {
   const path = `/agente/reset-password?token=${encodeURIComponent(rawToken)}`;
+  const emailSettings = tenantId ? await db.getEmailSettings(tenantId) : null;
   const origin = String(
-    process.env.AGENT_PORTAL_BASE_URL
+    emailSettings?.adminBaseUrl
+    || process.env.AGENT_PORTAL_BASE_URL
     || process.env.ADMIN_BASE_URL
     || process.env.CUSTOMER_PORTAL_BASE_URL
     || ''
@@ -574,7 +576,7 @@ router.post('/agent/forgot-password', loginRateLimiter, async (req, res) => {
       message: 'Si el agente existe y tiene acceso habilitado, se generó un enlace de recuperación.',
     };
 
-    const resetUrl = buildAgentResetUrl(rawToken);
+    const resetUrl = await buildAgentResetUrl(agent.tenantId, rawToken);
     const deliveryChannels = [];
 
     try {

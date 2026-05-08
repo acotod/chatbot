@@ -69,7 +69,7 @@ async function run(tenantId, integrationRef, variables, opts = {}) {
   const cfg = integration.config;
 
   // Resolve templates in endpoint, headers, and body
-  const endpoint = resolveTemplate(cfg.endpoint ?? '', variables);
+  const endpoint = normalizeEndpointUrl(resolveTemplate(cfg.endpoint ?? '', variables));
   const method   = (cfg.method ?? 'POST').toUpperCase();
   const timeoutMs = cfg.timeout_ms ?? 8000;
   const retries   = cfg.retry_count ?? 1;
@@ -187,6 +187,17 @@ function _applyAuth(headers, auth, variables) {
     const pass = resolveTemplate(auth.pass ?? '', variables);
     headers['Authorization'] = `Basic ${Buffer.from(`${user}:${pass}`).toString('base64')}`;
   }
+}
+
+function normalizeEndpointUrl(endpoint) {
+  if (typeof endpoint !== 'string') return endpoint;
+  const trimmed = endpoint.trim();
+  if (!trimmed) return trimmed;
+  if (/^https?:\/\//i.test(trimmed)) return trimmed;
+  if (!trimmed.startsWith('/')) return trimmed;
+
+  const base = (process.env.INTERNAL_API_BASE_URL || `http://127.0.0.1:${process.env.PORT || '3000'}`).replace(/\/$/, '');
+  return `${base}${trimmed}`;
 }
 
 /**

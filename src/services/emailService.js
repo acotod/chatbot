@@ -1,6 +1,7 @@
 'use strict';
 
 const nodemailer = require('nodemailer');
+const db = require('./database');
 const logger = require('../utils/logger');
 
 class EmailServiceError extends Error {
@@ -11,69 +12,111 @@ class EmailServiceError extends Error {
   }
 }
 
-let cachedTransporter = null;
-let cachedTransportKey = null;
+const tenantTransportCache = new Map();
 
-function getTransportKey() {
+function getTransportKey(config) {
   return JSON.stringify({
-    smtpUrl: process.env.SMTP_URL || '',
-    host: process.env.SMTP_HOST || '',
-    port: process.env.SMTP_PORT || '',
-    secure: process.env.SMTP_SECURE || '',
-    user: process.env.SMTP_USER || '',
-    pass: process.env.SMTP_PASS || '',
+    smtpUrl: config.smtpUrl || '',
+    host: config.host || '',
+    port: config.port || '',
+    secure: config.secure || false,
+    user: config.user || '',
+    pass: config.pass || '',
   });
 }
 
-function hasEmailTransportConfig() {
+function getEnvEmailConfig() {
+  return {
+    smtpUrl: process.env.SMTP_URL || '',
+    host: process.env.SMTP_HOST || '',
+    port: process.env.SMTP_PORT || '',
+    secure: String(process.env.SMTP_SECURE || '').toLowerCase() === 'true',
+    user: process.env.SMTP_USER || '',
+    pass: process.env.SMTP_PASS || '',
+    from: process.env.EMAIL_FROM || process.env.SMTP_FROM || process.env.ADMIN_EMAIL || '',
+    adminBaseUrl: process.env.AGENT_PORTAL_BASE_URL || process.env.ADMIN_BASE_URL || process.env.CUSTOMER_PORTAL_BASE_URL || '',
+  };
+}
+
+async function getEmailConfig(tenantId = null) {
+  const envConfig = getEnvEmailConfig();
+  if (!tenantId) {
+    return envConfig;
+  }
+
+  try {
+    const tenantConfig = await db.getEmailSettings(tenantId);
+    return {
+      smtpUrl: tenantConfig.smtpUrl || envConfig.smtpUrl,
+      host: tenantConfig.smtpHost || envConfig.host,
+      port: tenantConfig.smtpPort || envConfig.port,
+      secure: tenantConfig.smtpSecure || envConfig.secure,
+      user: tenantConfig.smtpUser || envConfig.user,
+      pass: tenantConfig.smtpPass || envConfig.pass,
+      from: tenantConfig.emailFrom || envConfig.from,
+      adminBaseUrl: tenantConfig.adminBaseUrl || envConfig.adminBaseUrl,
+    };
+  } catch (err) {
+    logger.warn({ tenantId, message: err.message }, 'emailService: failed to load tenant email settings; falling back to env');
+    return envConfig;
+  }
+}
+
+function hasEmailTransportConfig(config) {
   return Boolean(
-    process.env.SMTP_URL
-    || (process.env.SMTP_HOST && process.env.SMTP_PORT)
+    config.smtpUrl
+    || (config.host && config.port)
   );
 }
 
-function buildTransportConfig() {
-  if (process.env.SMTP_URL) {
-    return process.env.SMTP_URL;
+function buildTransportConfig(config) {
+  if (config.smtpUrl) {
+    return config.smtpUrl;
   }
 
-  if (!process.env.SMTP_HOST || !process.env.SMTP_PORT) {
+  if (!config.host || !config.port) {
     throw new EmailServiceError('SMTP transport is not configured', 'EMAIL_NOT_CONFIGURED');
   }
 
-  const port = Number(process.env.SMTP_PORT);
-  const secure = String(process.env.SMTP_SECURE || '').toLowerCase() === 'true' || port === 465;
-  const auth = process.env.SMTP_USER
+  const port = Number(config.port);
+  const secure = Boolean(config.secure) || port === 465;
+  const auth = config.user
     ? {
-        user: process.env.SMTP_USER,
-        pass: process.env.SMTP_PASS || '',
+        user: config.user,
+        pass: config.pass || '',
       }
     : undefined;
 
   return {
-    host: process.env.SMTP_HOST,
+    host: config.host,
     port,
     secure,
     auth,
   };
 }
 
-function getTransporter() {
-  if (!hasEmailTransportConfig()) {
+async function getTransporter(tenantId = null) {
+  const config = await getEmailConfig(tenantId);
+
+  if (!hasEmailTransportConfig(config)) {
     throw new EmailServiceError('SMTP transport is not configured', 'EMAIL_NOT_CONFIGURED');
   }
 
-  const nextKey = getTransportKey();
-  if (!cachedTransporter || cachedTransportKey !== nextKey) {
-    cachedTransporter = nodemailer.createTransport(buildTransportConfig());
-    cachedTransportKey = nextKey;
+  const cacheKey = tenantId || '__env__';
+  const nextKey = getTransportKey(config);
+  const cached = tenantTransportCache.get(cacheKey);
+
+  if (!cached || cached.key !== nextKey) {
+    const transporter = nodemailer.createTransport(buildTransportConfig(config));
+    tenantTransportCache.set(cacheKey, { key: nextKey, transporter });
+    return { transporter, config };
   }
 
-  return cachedTransporter;
+  return { transporter: cached.transporter, config };
 }
 
-function resolveFromAddress(explicitFrom) {
-  const value = explicitFrom || process.env.EMAIL_FROM || process.env.SMTP_FROM || process.env.ADMIN_EMAIL || '';
+function resolveFromAddress(config, explicitFrom) {
+  const value = explicitFrom || config.from || '';
   if (!value) {
     throw new EmailServiceError('Sender email is not configured', 'EMAIL_FROM_NOT_CONFIGURED');
   }
@@ -100,11 +143,11 @@ async function sendEmail({
     throw new EmailServiceError('Email body is required', 'EMAIL_BODY_REQUIRED');
   }
 
-  const transporter = getTransporter();
+  const { transporter, config } = await getTransporter(tenantId);
 
   try {
     const result = await transporter.sendMail({
-      from: resolveFromAddress(from),
+      from: resolveFromAddress(config, from),
       to: String(to).trim(),
       subject: String(subject).trim(),
       text: text ? String(text) : undefined,

@@ -12,6 +12,7 @@ const whatsappRouter = require('./routes/whatsapp');
 const llmRouter = require('./routes/llm');
 const eventsRouter = require('./routes/events');
 const conversationsRouter = require('./routes/conversations');
+const notificationsRouter  = require('./routes/notifications');
 const calendarRouter       = require('./routes/calendar');
 const integrationsRouter   = require('./routes/integrations');
 const sandboxRouter        = require('./routes/sandbox');
@@ -95,6 +96,9 @@ app.use('/webhook', resolveTenant, tenantRateLimiter, webhookRouter);
 
 // POST /events/ingest — canonical Unified Event Gateway ingest endpoint
 app.use('/events', resolveTenant, tenantRateLimiter, eventsRouter);
+
+// Internal endpoints exposed to the integration runner via x-api-key
+app.use('/api/notifications', resolveTenant, tenantRateLimiter, notificationsRouter);
 
 // Admin routes (protected by JWT — POST /auth/login to get a token)
 app.use('/admin', adminRouter);

@@ -43,7 +43,8 @@ const SOLICITUD_ENTERPRISE_DEFAULT_CONFIG = Object.freeze({
   webhooksEnabled: false,
 });
 
-const WA_TOKEN_SENTINEL = '__configured__';
+const CONFIG_SECRET_SENTINEL = '__configured__';
+const WA_TOKEN_SENTINEL = CONFIG_SECRET_SENTINEL;
 const WA_TOKEN_ENC_PREFIX = 'enc$1';
 let warnedMissingConfigEncryptionKey = false;
 
@@ -121,7 +122,7 @@ function _getConfigEncryptionKey() {
 
   if (!configuredKey && !fallbackKey && !warnedMissingConfigEncryptionKey) {
     warnedMissingConfigEncryptionKey = true;
-    logger.warn('CONFIG_ENCRYPTION_KEY is not set; using dev fallback for wa_credentials encryption');
+    logger.warn('CONFIG_ENCRYPTION_KEY is not set; using dev fallback for config secret encryption');
   }
 
   return crypto.createHash('sha256').update(String(secret)).digest();
@@ -146,7 +147,7 @@ function _decryptSecret(value) {
 
   const parts = raw.split(':');
   if (parts.length !== 4) {
-    logger.warn('Invalid encrypted wa_credentials token format');
+    logger.warn('Invalid encrypted config secret format');
     return '';
   }
 
@@ -164,7 +165,7 @@ function _decryptSecret(value) {
     ]);
     return decrypted.toString('utf8').trim();
   } catch (err) {
-    logger.error('Failed to decrypt wa_credentials token', { message: err.message });
+    logger.error('Failed to decrypt config secret', { message: err.message });
     return '';
   }
 }
@@ -183,6 +184,36 @@ async function _normalizeWaCredentialsForStorage(tenantId, valor) {
     incoming.accessToken = existingToken;
   } else if (!incomingToken) {
     delete incoming.accessToken;
+  }
+
+  return incoming;
+}
+
+async function _normalizeEmailSettingsForStorage(tenantId, valor) {
+  const incoming = (valor && typeof valor === 'object') ? { ...valor } : {};
+  const existing = await getConfig(tenantId, 'email_settings');
+  const existingPassword = String(existing?.valor?.smtpPass ?? '').trim();
+  const incomingPassword = typeof incoming.smtpPass === 'string' ? incoming.smtpPass.trim() : '';
+
+  incoming.smtpUrl = String(incoming.smtpUrl ?? '').trim();
+  incoming.smtpHost = String(incoming.smtpHost ?? '').trim();
+  incoming.smtpPort = String(incoming.smtpPort ?? '').trim();
+  incoming.smtpUser = String(incoming.smtpUser ?? '').trim();
+  incoming.emailFrom = String(incoming.emailFrom ?? '').trim();
+  incoming.adminBaseUrl = String(incoming.adminBaseUrl ?? '').trim();
+
+  if (incoming.smtpSecure === undefined || incoming.smtpSecure === null || incoming.smtpSecure === '') {
+    delete incoming.smtpSecure;
+  } else {
+    incoming.smtpSecure = Boolean(incoming.smtpSecure);
+  }
+
+  if (incomingPassword && incomingPassword !== CONFIG_SECRET_SENTINEL) {
+    incoming.smtpPass = _encryptSecret(incomingPassword);
+  } else if ((incomingPassword === CONFIG_SECRET_SENTINEL || incomingPassword === '') && existingPassword) {
+    incoming.smtpPass = existingPassword;
+  } else if (!incomingPassword) {
+    delete incoming.smtpPass;
   }
 
   return incoming;
@@ -310,6 +341,8 @@ async function setConfig(tenantId, clave, valor) {
   let persistedValor = valor;
   if (clave === 'wa_credentials') {
     persistedValor = await _normalizeWaCredentialsForStorage(tenantId, valor);
+  } else if (clave === 'email_settings') {
+    persistedValor = await _normalizeEmailSettingsForStorage(tenantId, valor);
   }
 
   return client.configuracion.upsert({
@@ -327,6 +360,22 @@ async function getWaCredentials(tenantId) {
   return {
     phoneNumberId,
     accessToken,
+  };
+}
+
+async function getEmailSettings(tenantId) {
+  const config = await getConfig(tenantId, 'email_settings');
+  const raw = (config && config.valor && typeof config.valor === 'object') ? config.valor : {};
+
+  return {
+    smtpUrl: String(raw.smtpUrl ?? '').trim(),
+    smtpHost: String(raw.smtpHost ?? '').trim(),
+    smtpPort: String(raw.smtpPort ?? '').trim(),
+    smtpSecure: Boolean(raw.smtpSecure),
+    smtpUser: String(raw.smtpUser ?? '').trim(),
+    smtpPass: _decryptSecret(raw.smtpPass),
+    emailFrom: String(raw.emailFrom ?? '').trim(),
+    adminBaseUrl: String(raw.adminBaseUrl ?? '').trim(),
   };
 }
 
@@ -1749,7 +1798,9 @@ module.exports = {
   // config
   getConfig,
   setConfig,
+  getEmailSettings,
   getWaCredentials,
+  CONFIG_SECRET_SENTINEL,
   WA_TOKEN_SENTINEL,
   getSolicitudesEnterpriseConfig,
   setSolicitudesEnterpriseConfig,
