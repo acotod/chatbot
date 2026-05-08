@@ -2,7 +2,9 @@
 
 import { useEffect, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { getStoredAccessToken, useAuthStore } from "@/store/auth";
+import { getStoredAgentAccessToken } from "@/store/agentAuth";
 import { Sidebar } from "./Sidebar";
 import { Header } from "./Header";
 
@@ -24,6 +26,7 @@ export default function MainLayout({
   children: React.ReactNode;
 }) {
   const router = useRouter();
+  const pathname = usePathname();
   const token = useAuthStore((state) => state.token);
   const isClient = useSyncExternalStore(
     subscribeToClientSnapshot,
@@ -31,14 +34,20 @@ export default function MainLayout({
     getServerSnapshot
   );
   const hasAccessToken = isClient && Boolean(token || getStoredAccessToken());
+  const hasAgentAccessToken = isClient && Boolean(getStoredAgentAccessToken());
+  const allowAgentSharedDashboard = pathname === "/dashboard" && hasAgentAccessToken;
 
   useEffect(() => {
-    if (!isClient || hasAccessToken) return;
+    if (!isClient || hasAccessToken || allowAgentSharedDashboard) return;
     router.replace("/login");
-  }, [hasAccessToken, isClient, router]);
+  }, [hasAccessToken, isClient, allowAgentSharedDashboard, router]);
 
-  if (!isClient || !hasAccessToken) {
+  if (!isClient || (!hasAccessToken && !allowAgentSharedDashboard)) {
     return <div className="min-h-screen bg-slate-50" />;
+  }
+
+  if (allowAgentSharedDashboard && !hasAccessToken) {
+    return <main className="min-h-screen bg-slate-50 p-6">{children}</main>;
   }
 
   return (

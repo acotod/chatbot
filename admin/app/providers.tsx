@@ -1,6 +1,7 @@
 "use client";
 
 import { authApi } from "@/lib/api";
+import { getStoredAgentAccessToken } from "@/store/agentAuth";
 import { getStoredAccessToken, getStoredRefreshToken, useAuthStore } from "@/store/auth";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { usePathname, useRouter } from "next/navigation";
@@ -15,18 +16,20 @@ function SessionSecurityGuard() {
   const { token, refreshToken, tokenExpiresAt, logout } = useAuthStore();
   const lastActivityAtRef = useRef<number>(0);
   const hasAccessToken = Boolean(token || getStoredAccessToken());
+  const hasAgentAccessToken = Boolean(getStoredAgentAccessToken());
+  const isAgentOnSharedDashboard = pathname === "/dashboard" && hasAgentAccessToken;
   const effectiveRefreshToken = refreshToken ?? getStoredRefreshToken();
 
   useEffect(() => {
     if (pathname.startsWith("/login") || pathname.startsWith("/portal") || pathname.startsWith("/agente")) return;
-    if (hasAccessToken) return;
+    if (hasAccessToken || isAgentOnSharedDashboard) return;
 
     logout();
     router.replace("/login");
-  }, [hasAccessToken, logout, pathname, router]);
+  }, [hasAccessToken, isAgentOnSharedDashboard, logout, pathname, router]);
 
   useEffect(() => {
-    if (!hasAccessToken || pathname.startsWith("/login") || pathname.startsWith("/agente")) return;
+    if (!hasAccessToken || pathname.startsWith("/login") || pathname.startsWith("/agente") || isAgentOnSharedDashboard) return;
 
     const now = Date.now();
     if (tokenExpiresAt && now >= tokenExpiresAt) {
@@ -34,10 +37,10 @@ function SessionSecurityGuard() {
       router.replace("/login?reason=expired");
       return;
     }
-  }, [hasAccessToken, tokenExpiresAt, pathname, logout, router]);
+  }, [hasAccessToken, tokenExpiresAt, pathname, isAgentOnSharedDashboard, logout, router]);
 
   useEffect(() => {
-    if (!hasAccessToken || pathname.startsWith("/login") || pathname.startsWith("/agente")) return;
+    if (!hasAccessToken || pathname.startsWith("/login") || pathname.startsWith("/agente") || isAgentOnSharedDashboard) return;
 
     lastActivityAtRef.current = Date.now();
 
@@ -101,7 +104,7 @@ function SessionSecurityGuard() {
       });
       document.removeEventListener("visibilitychange", handleVisibility);
     };
-  }, [hasAccessToken, effectiveRefreshToken, tokenExpiresAt, pathname, logout, router]);
+  }, [hasAccessToken, effectiveRefreshToken, tokenExpiresAt, pathname, isAgentOnSharedDashboard, logout, router]);
 
   useEffect(() => {
     const onStorage = (event: StorageEvent) => {

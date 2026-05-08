@@ -17,9 +17,10 @@ type AgentLoginScreenProps = {
 };
 
 function resolveAgentNextPath(next: string | undefined): string {
+  if (next === "/dashboard") return "/dashboard";
   if (next === "/agente/perfil") return "/agente/perfil";
   if (next === "/agente/dashboard") return "/agente/dashboard";
-  return "/agente/dashboard";
+  return "/dashboard";
 }
 
 function getAuthErrorMessage(error: unknown): string {

@@ -1,5 +1,7 @@
 "use client";
 
+import { agentAuthApi } from "@/lib/agentApi";
+import { getStoredAgentAccessToken, useAgentAuthStore } from "@/store/agentAuth";
 import { metricsApi, solicitudesApi, whatsappApi } from "@/lib/api";
 import { buildPermissionSet } from "@/lib/permissions";
 import { useAuthStore } from "@/store/auth";
@@ -17,6 +19,23 @@ import {
   ResponsiveContainer,
   CartesianGrid,
 } from "recharts";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
+
+type AgentProfile = {
+  agenteId: number;
+  tenantId: string;
+  tenantSlug: string;
+  tenantNombre: string | null;
+  nombre: string;
+  email: string;
+  whatsapp: string | null;
+  estado: string;
+  puesto: { id: number; nombre: string } | null;
+  calendarLink: string | null;
+  lastSeenAt: string | null;
+};
 
 function KpiCard({
   icon: Icon,
@@ -50,10 +69,100 @@ function KpiCard({
 }
 
 export default function DashboardPage() {
+  const router = useRouter();
+  const { logout: logoutAgent } = useAgentAuthStore();
+  const hasAgentAccessToken = Boolean(getStoredAgentAccessToken());
   const { tenantSlug, superAdmin, permissions } = useAuthStore();
+  const [agentProfile, setAgentProfile] = useState<AgentProfile | null>(null);
+  const [agentLoading, setAgentLoading] = useState(false);
+  const [agentError, setAgentError] = useState("");
   const permissionSet = buildPermissionSet(permissions);
   const canViewMetrics = superAdmin || permissionSet.has("VIEW_METRICS");
   const canViewSolicitudes = superAdmin || permissionSet.has("VIEW_SOLICITUDES");
+
+  useEffect(() => {
+    if (!hasAgentAccessToken || tenantSlug) return;
+
+    let cancelled = false;
+    setAgentLoading(true);
+    setAgentError("");
+
+    async function loadAgentProfile() {
+      try {
+        const res = await agentAuthApi.me();
+        if (!cancelled) {
+          setAgentProfile(res.data);
+        }
+      } catch {
+        if (!cancelled) {
+          setAgentError("No se pudo cargar el dashboard de agente.");
+          logoutAgent();
+          router.replace("/agente/login?reason=expired");
+        }
+      } finally {
+        if (!cancelled) {
+          setAgentLoading(false);
+        }
+      }
+    }
+
+    void loadAgentProfile();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [hasAgentAccessToken, tenantSlug, logoutAgent, router]);
+
+  if (hasAgentAccessToken && !tenantSlug) {
+    if (agentLoading) {
+      return <div className="rounded-3xl bg-white border border-slate-200 shadow-sm p-6 text-sm text-slate-500">Cargando dashboard...</div>;
+    }
+
+    if (agentError) {
+      return <div className="rounded-3xl bg-white border border-red-200 shadow-sm p-6 text-sm text-red-600">{agentError}</div>;
+    }
+
+    if (!agentProfile) {
+      return null;
+    }
+
+    return (
+      <div className="space-y-6">
+        <div className="rounded-3xl bg-white border border-slate-200 shadow-sm p-6 sm:p-8">
+          <p className="text-sm font-medium uppercase tracking-[0.2em] text-cyan-600">Dashboard</p>
+          <h1 className="mt-2 text-3xl font-semibold tracking-tight text-slate-900">Panel de agente</h1>
+          <p className="mt-2 text-slate-600">Vista principal de tu acceso operativo.</p>
+        </div>
+
+        <div className="grid gap-4 sm:grid-cols-3">
+          <div className="rounded-3xl bg-white border border-slate-200 shadow-sm p-6 sm:col-span-2">
+            <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Bienvenido</p>
+            <h2 className="mt-2 text-2xl font-semibold text-slate-900">{agentProfile.nombre}</h2>
+            <p className="mt-2 text-sm text-slate-600">
+              Tenant: <span className="font-medium text-slate-900">{agentProfile.tenantNombre || agentProfile.tenantSlug}</span>
+            </p>
+            <p className="mt-1 text-sm text-slate-600">
+              Estado: <span className="font-medium text-slate-900">{agentProfile.estado}</span>
+            </p>
+            <div className="mt-4">
+              <Link href="/agente/perfil" className="inline-flex rounded-xl bg-cyan-600 px-4 py-2 text-sm font-medium text-white hover:bg-cyan-700 transition">
+                Ver perfil completo
+              </Link>
+            </div>
+          </div>
+
+          <div className="rounded-3xl bg-white border border-slate-200 shadow-sm p-6">
+            <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Resumen</p>
+            <div className="mt-3 space-y-2 text-sm text-slate-600">
+              <p><span className="font-medium text-slate-900">Email:</span> {agentProfile.email}</p>
+              <p><span className="font-medium text-slate-900">Puesto:</span> {agentProfile.puesto?.nombre || "Sin puesto"}</p>
+              <p><span className="font-medium text-slate-900">Ultimo acceso:</span> {agentProfile.lastSeenAt ? new Date(agentProfile.lastSeenAt).toLocaleString("es-ES") : "Sin registro"}</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   const { data: metrics } = useQuery({
     queryKey: ["metrics", tenantSlug],
