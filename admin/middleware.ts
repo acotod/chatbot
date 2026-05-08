@@ -22,8 +22,8 @@ export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const isLoginPath = pathname.startsWith('/login');
   const isPortalPath = pathname.startsWith('/portal');
-  const isAgentPath = pathname.startsWith('/agente');
-  const isAgentLoginPath = pathname.startsWith('/agente/login');
+  const isAgentPath = pathname === '/agente' || pathname.startsWith('/agente/');
+  const isAgentLoginPath = pathname === '/agente/login';
 
   if (isAgentPath) {
     if (agentToken) {
