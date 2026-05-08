@@ -92,6 +92,7 @@ function buildTransportConfig(config) {
     port,
     secure,
     auth,
+    tls: { rejectUnauthorized: false },
   };
 }
 
