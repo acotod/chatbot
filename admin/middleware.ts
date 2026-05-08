@@ -39,7 +39,7 @@ export function middleware(request: NextRequest) {
 
     if (agentToken && isAgentLoginPath) {
       const nextParam = request.nextUrl.searchParams.get('next');
-      const target = nextParam === '/agente/perfil' ? '/agente/perfil' : '/agente';
+      const target = nextParam === '/agente/perfil' ? '/agente/perfil' : '/agente/dashboard';
       return NextResponse.redirect(new URL(target, request.url));
     }
 
