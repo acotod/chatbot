@@ -50,7 +50,7 @@ async function getEmailConfig(tenantId = null) {
       smtpUrl: tenantConfig.smtpUrl || envConfig.smtpUrl,
       host: tenantConfig.smtpHost || envConfig.host,
       port: tenantConfig.smtpPort || envConfig.port,
-      secure: tenantConfig.smtpSecure || envConfig.secure,
+      secure: (typeof tenantConfig.smtpSecure === 'boolean') ? tenantConfig.smtpSecure : envConfig.secure,
       user: tenantConfig.smtpUser || envConfig.user,
       pass: tenantConfig.smtpPass || envConfig.pass,
       from: tenantConfig.emailFrom || envConfig.from,

@@ -205,7 +205,14 @@ async function _normalizeEmailSettingsForStorage(tenantId, valor) {
   if (incoming.smtpSecure === undefined || incoming.smtpSecure === null || incoming.smtpSecure === '') {
     delete incoming.smtpSecure;
   } else {
-    incoming.smtpSecure = Boolean(incoming.smtpSecure);
+    const rawSmtpSecure = String(incoming.smtpSecure).trim().toLowerCase();
+    if (rawSmtpSecure === 'true' || rawSmtpSecure === '1' || rawSmtpSecure === 'yes' || rawSmtpSecure === 'on') {
+      incoming.smtpSecure = true;
+    } else if (rawSmtpSecure === 'false' || rawSmtpSecure === '0' || rawSmtpSecure === 'no' || rawSmtpSecure === 'off') {
+      incoming.smtpSecure = false;
+    } else {
+      incoming.smtpSecure = Boolean(incoming.smtpSecure);
+    }
   }
 
   if (incomingPassword && incomingPassword !== CONFIG_SECRET_SENTINEL) {
