@@ -18,6 +18,9 @@ type AgentLoginScreenProps = {
 
 function resolveAgentNextPath(next: string | undefined): string {
   if (next === "/dashboard") return "/dashboard";
+  if (next === "/solicitudes") return "/solicitudes";
+  if (next === "/agenda") return "/agenda";
+  if (next === "/contactos") return "/contactos";
   if (next === "/agente/perfil") return "/agente/perfil";
   if (next === "/agente/dashboard") return "/agente/dashboard";
   return "/dashboard";

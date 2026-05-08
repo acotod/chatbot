@@ -42,6 +42,64 @@ export type AgentKpisResponse = {
   lastSeenAt: string | null;
 };
 
+export type AgentSolicitud = {
+  id: number;
+  titulo: string | null;
+  nombre: string | null;
+  telefonoContacto: string | null;
+  estado: string | null;
+  prioridad: string | null;
+  createdAt: string;
+  updatedAt: string;
+  completedAt: string | null;
+};
+
+export type AgentSolicitudesResponse = {
+  page: number;
+  limit: number;
+  total: number;
+  status: string;
+  data: AgentSolicitud[];
+};
+
+export type AgentAgendaEvent = {
+  id: number;
+  titulo: string;
+  descripcion: string | null;
+  tipo: string;
+  color: string;
+  estado: string;
+  startAt: string;
+  endAt: string;
+};
+
+export type AgentAgendaResponse = {
+  total: number;
+  data: AgentAgendaEvent[];
+};
+
+export type AgentContacto = {
+  id: number;
+  phone: string | null;
+  nombre: string | null;
+  email: string | null;
+  empresa: string | null;
+  cargo: string | null;
+  canalOrigen: string | null;
+  etiquetas: string[];
+  leadScore: number;
+  ultimoContacto: string | null;
+  createdAt: string;
+  _count?: { solicitudes: number };
+};
+
+export type AgentContactosResponse = {
+  page: number;
+  limit: number;
+  total: number;
+  data: AgentContacto[];
+};
+
 export const agentAuthApi = {
   login: (tenantSlug: string, email: string, password: string) =>
     agentApiClient.post<AgentLoginResponse>("/auth/agent/login", {
@@ -63,6 +121,12 @@ export const agentAuthApi = {
     agentApiClient.get<AgentLoginResponse["profile"]>("/auth/agent/me"),
   kpis: () =>
     agentApiClient.get<AgentKpisResponse>("/auth/agent/kpis"),
+  solicitudes: (params?: { status?: "assigned" | "completed"; page?: number; limit?: number }) =>
+    agentApiClient.get<AgentSolicitudesResponse>("/auth/agent/solicitudes", { params }),
+  agenda: (params?: { start?: string; end?: string; estado?: string }) =>
+    agentApiClient.get<AgentAgendaResponse>("/auth/agent/agenda", { params }),
+  contactos: (params?: { q?: string; page?: number; limit?: number }) =>
+    agentApiClient.get<AgentContactosResponse>("/auth/agent/contactos", { params }),
   logout: () =>
     agentApiClient.post("/auth/agent/logout"),
 };

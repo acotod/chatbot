@@ -3,9 +3,12 @@
 import { AgendaEventFormData, AgendaEventModal, AgendaTipo } from "@/components/agenda/AgendaEventModal";
 import { Button } from "@/components/ui/Button";
 import { Card, CardContent, CardHeader } from "@/components/ui/Card";
+import { agentAuthApi, type AgentAgendaEvent } from "@/lib/agentApi";
 import { agendaApi, agentesApi, tenantApi } from "@/lib/api";
 import { getMe } from "@/lib/useMe";
+import { getStoredAgentAccessToken } from "@/store/agentAuth";
 import { useAuthStore } from "@/store/auth";
+import { getStoredAccessToken } from "@/store/auth";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import dayGridPlugin from "@fullcalendar/daygrid";
 import interactionPlugin from "@fullcalendar/interaction";
@@ -84,12 +87,20 @@ export default function AgendaPage() {
   const calendarRef = useRef<FullCalendar | null>(null);
   const { tenantSlug } = useAuthStore();
   const me = getMe();
+  const hasAccessToken = Boolean(getStoredAccessToken());
+  const hasAgentAccessToken = Boolean(getStoredAgentAccessToken());
+  const isAgentSession = hasAgentAccessToken && !hasAccessToken;
 
   const [slotMinutes, setSlotMinutes] = useState<SlotMinutes>(30);
   const [filterTipo, setFilterTipo] = useState<string>("");
   const [filterEstado, setFilterEstado] = useState<string>("");
   const [filterAgenteId, setFilterAgenteId] = useState<string>("");
   const [theme, setTheme] = useState<"light" | "dark">("light");
+  const [agentAgendaRange] = useState(() => {
+    const start = new Date();
+    const end = new Date(start.getTime() + 30 * 24 * 60 * 60 * 1000);
+    return { start, end };
+  });
   const [range, setRange] = useState(() => {
     const start = startOfWeekMonday(new Date());
     const end = new Date(start);
@@ -99,6 +110,16 @@ export default function AgendaPage() {
 
   const [modalOpen, setModalOpen] = useState(false);
   const [selectedEvent, setSelectedEvent] = useState<AgendaEventFormData | null>(null);
+
+  const { data: agentAgenda, isLoading: agentAgendaLoading } = useQuery({
+    queryKey: ["agent-agenda", agentAgendaRange.start.toISOString(), agentAgendaRange.end.toISOString()],
+    queryFn: () =>
+      agentAuthApi
+        .agenda({ start: agentAgendaRange.start.toISOString(), end: agentAgendaRange.end.toISOString() })
+        .then((r) => r.data),
+    enabled: isAgentSession,
+    staleTime: 30_000,
+  });
 
   const { data: tenants = [] } = useQuery({
     queryKey: ["tenants"],
@@ -292,6 +313,54 @@ export default function AgendaPage() {
       })),
     [eventsQuery.data]
   );
+
+  if (isAgentSession) {
+    const rows: AgentAgendaEvent[] = agentAgenda?.data ?? [];
+    return (
+      <div className="space-y-5">
+        <div className="rounded-2xl border border-slate-200 bg-white p-5">
+          <h1 className="text-xl font-semibold text-slate-900">Mi agenda</h1>
+          <p className="mt-1 text-sm text-slate-600">Eventos asignados al agente (proximos 30 dias).</p>
+          <p className="mt-3 text-sm text-slate-500">{agentAgenda?.total ?? 0} eventos</p>
+        </div>
+
+        <Card>
+          <CardContent className="p-0">
+            {agentAgendaLoading ? (
+              <div className="py-16 text-center text-slate-400 text-sm">Cargando agenda...</div>
+            ) : rows.length === 0 ? (
+              <div className="py-16 text-center text-slate-400 text-sm">No hay eventos asignados.</div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="min-w-full text-sm">
+                  <thead className="bg-slate-50 text-slate-600">
+                    <tr>
+                      <th className="px-4 py-3 text-left font-medium">Evento</th>
+                      <th className="px-4 py-3 text-left font-medium">Tipo</th>
+                      <th className="px-4 py-3 text-left font-medium">Estado</th>
+                      <th className="px-4 py-3 text-left font-medium">Inicio</th>
+                      <th className="px-4 py-3 text-left font-medium">Fin</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {rows.map((event) => (
+                      <tr key={event.id} className="border-t border-slate-100">
+                        <td className="px-4 py-3 text-slate-800">{event.titulo}</td>
+                        <td className="px-4 py-3 text-slate-600">{event.tipo}</td>
+                        <td className="px-4 py-3 text-slate-600">{event.estado}</td>
+                        <td className="px-4 py-3 text-slate-600">{new Date(event.startAt).toLocaleString("es-CR")}</td>
+                        <td className="px-4 py-3 text-slate-600">{new Date(event.endAt).toLocaleString("es-CR")}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   if (!tenantSlug) {
     return (

@@ -35,14 +35,14 @@ export default function MainLayout({
   );
   const hasAccessToken = isClient && Boolean(token || getStoredAccessToken());
   const hasAgentAccessToken = isClient && Boolean(getStoredAgentAccessToken());
-  const allowAgentSharedDashboard = pathname === "/dashboard" && hasAgentAccessToken;
+  const allowAgentSharedRoute = ["/dashboard", "/solicitudes", "/agenda", "/contactos"].includes(pathname) && hasAgentAccessToken;
 
   useEffect(() => {
-    if (!isClient || hasAccessToken || allowAgentSharedDashboard) return;
+    if (!isClient || hasAccessToken || allowAgentSharedRoute) return;
     router.replace("/login");
-  }, [hasAccessToken, isClient, allowAgentSharedDashboard, router]);
+  }, [hasAccessToken, isClient, allowAgentSharedRoute, router]);
 
-  if (!isClient || (!hasAccessToken && !allowAgentSharedDashboard)) {
+  if (!isClient || (!hasAccessToken && !allowAgentSharedRoute)) {
     return <div className="min-h-screen bg-slate-50" />;
   }
 

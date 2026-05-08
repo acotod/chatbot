@@ -20,7 +20,8 @@ export function middleware(request: NextRequest) {
   const token = request.cookies.get('admin_token')?.value;
   const agentToken = request.cookies.get('agent_token')?.value;
   const { pathname } = request.nextUrl;
-  const isSharedDashboardPath = pathname === '/dashboard';
+  const AGENT_SHARED_PATHS = new Set(['/dashboard', '/solicitudes', '/agenda', '/contactos']);
+  const isAgentSharedPath = AGENT_SHARED_PATHS.has(pathname);
   const isLoginPath = pathname.startsWith('/login');
   const isPortalPath = pathname.startsWith('/portal');
   const isAgentPath = pathname === '/agente' || pathname.startsWith('/agente/');
@@ -40,7 +41,9 @@ export function middleware(request: NextRequest) {
 
     if (agentToken && isAgentLoginPath) {
       const nextParam = request.nextUrl.searchParams.get('next');
-      const target = nextParam === '/agente/perfil' ? '/agente/perfil' : '/dashboard';
+      const target = (nextParam && (nextParam === '/agente/perfil' || AGENT_SHARED_PATHS.has(nextParam)))
+        ? nextParam
+        : '/dashboard';
       return NextResponse.redirect(new URL(target, request.url));
     }
 
@@ -51,8 +54,8 @@ export function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  // Allow agent users to access the shared dashboard route without admin token.
-  if (!token && agentToken && isSharedDashboardPath) {
+  // Allow agent users to access selected shared routes without admin token.
+  if (!token && agentToken && isAgentSharedPath) {
     return NextResponse.next();
   }
 

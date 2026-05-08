@@ -864,6 +864,163 @@ router.get('/agent/kpis', requireAgentJwt, async (req, res, next) => {
   }
 });
 
+// ── GET /auth/agent/solicitudes ─────────────────────────────────────────────
+router.get('/agent/solicitudes', requireAgentJwt, async (req, res, next) => {
+  try {
+    const tenantId = req.agent?.tenantId;
+    const agenteId = Number(req.agent?.agenteId);
+    if (!tenantId || !Number.isInteger(agenteId) || agenteId <= 0) {
+      return res.status(400).json({ error: 'Invalid agent context' });
+    }
+
+    const status = String(req.query.status || 'assigned').trim().toLowerCase();
+    const page = Math.max(1, Number.parseInt(String(req.query.page || '1'), 10) || 1);
+    const limit = Math.min(100, Math.max(1, Number.parseInt(String(req.query.limit || '20'), 10) || 20));
+    const skip = (page - 1) * limit;
+
+    const where = { tenantId, agenteId };
+    if (status === 'completed') {
+      where.estado = 'completed';
+    } else {
+      where.estado = { in: ['open', 'in_progress', 'pending_info'] };
+    }
+
+    const [total, data] = await Promise.all([
+      prisma.solicitud.count({ where }),
+      prisma.solicitud.findMany({
+        where,
+        orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
+        skip,
+        take: limit,
+        select: {
+          id: true,
+          titulo: true,
+          nombre: true,
+          telefonoContacto: true,
+          estado: true,
+          prioridad: true,
+          createdAt: true,
+          updatedAt: true,
+          completedAt: true,
+        },
+      }),
+    ]);
+
+    return res.json({ page, limit, total, status, data });
+  } catch (err) {
+    return next(err);
+  }
+});
+
+// ── GET /auth/agent/agenda ──────────────────────────────────────────────────
+router.get('/agent/agenda', requireAgentJwt, async (req, res, next) => {
+  try {
+    const tenantId = req.agent?.tenantId;
+    const agenteId = Number(req.agent?.agenteId);
+    if (!tenantId || !Number.isInteger(agenteId) || agenteId <= 0) {
+      return res.status(400).json({ error: 'Invalid agent context' });
+    }
+
+    const start = req.query.start ? new Date(String(req.query.start)) : null;
+    const end = req.query.end ? new Date(String(req.query.end)) : null;
+    if ((start && Number.isNaN(start.getTime())) || (end && Number.isNaN(end.getTime()))) {
+      return res.status(400).json({ error: 'start/end must be valid ISO dates' });
+    }
+
+    const where = {
+      tenantId,
+      assignments: { some: { agenteId } },
+    };
+    if (req.query.estado) {
+      where.estado = String(req.query.estado);
+    }
+    if (start || end) {
+      where.startAt = {};
+      if (start) where.startAt.gte = start;
+      if (end) where.startAt.lte = end;
+    }
+
+    const data = await prisma.agendaEvent.findMany({
+      where,
+      orderBy: [{ startAt: 'asc' }, { id: 'asc' }],
+      include: {
+        assignments: {
+          include: {
+            agente: { select: { id: true, nombre: true, email: true, estado: true } },
+          },
+        },
+      },
+      take: 200,
+    });
+
+    return res.json({ total: data.length, data });
+  } catch (err) {
+    return next(err);
+  }
+});
+
+// ── GET /auth/agent/contactos ───────────────────────────────────────────────
+router.get('/agent/contactos', requireAgentJwt, async (req, res, next) => {
+  try {
+    const tenantId = req.agent?.tenantId;
+    const agenteId = Number(req.agent?.agenteId);
+    if (!tenantId || !Number.isInteger(agenteId) || agenteId <= 0) {
+      return res.status(400).json({ error: 'Invalid agent context' });
+    }
+
+    const q = String(req.query.q || '').trim();
+    const page = Math.max(1, Number.parseInt(String(req.query.page || '1'), 10) || 1);
+    const limit = Math.min(100, Math.max(1, Number.parseInt(String(req.query.limit || '50'), 10) || 50));
+    const skip = (page - 1) * limit;
+
+    const where = {
+      tenantId,
+      solicitudes: { some: { agenteId } },
+    };
+
+    if (q) {
+      where.OR = [
+        { nombre: { contains: q, mode: 'insensitive' } },
+        { phone: { contains: q } },
+        { email: { contains: q, mode: 'insensitive' } },
+        { empresa: { contains: q, mode: 'insensitive' } },
+      ];
+    }
+
+    const [total, data] = await Promise.all([
+      prisma.user.count({ where }),
+      prisma.user.findMany({
+        where,
+        orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
+        skip,
+        take: limit,
+        select: {
+          id: true,
+          phone: true,
+          nombre: true,
+          email: true,
+          empresa: true,
+          cargo: true,
+          canalOrigen: true,
+          etiquetas: true,
+          leadScore: true,
+          ultimoContacto: true,
+          createdAt: true,
+          _count: {
+            select: {
+              solicitudes: { where: { agenteId } },
+            },
+          },
+        },
+      }),
+    ]);
+
+    return res.json({ page, limit, total, data });
+  } catch (err) {
+    return next(err);
+  }
+});
+
 // ── POST /auth/logout ─────────────────────────────────────────────────────────
 router.post('/logout', requireJwt, async (req, res) => {
   const { refreshToken } = req.body;

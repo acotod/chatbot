@@ -1,7 +1,10 @@
 "use client";
 
 import { agentesApi, solicitudesApi } from "@/lib/api";
+import { agentAuthApi, type AgentSolicitud } from "@/lib/agentApi";
 import { useAuthStore } from "@/store/auth";
+import { getStoredAccessToken } from "@/store/auth";
+import { getStoredAgentAccessToken } from "@/store/agentAuth";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { StatusBadge } from "@/components/ui/StatusBadge";
@@ -88,6 +91,17 @@ const DEFAULT_SOLICITUDES_CONFIG: SolicitudesTenantConfig = {
 export default function SolicitudesPage() {
   const { tenantSlug } = useAuthStore();
   const qc = useQueryClient();
+  const hasAccessToken = Boolean(getStoredAccessToken());
+  const hasAgentAccessToken = Boolean(getStoredAgentAccessToken());
+  const isAgentSession = hasAgentAccessToken && !hasAccessToken;
+
+  const [agentStatusFilter, setAgentStatusFilter] = useState<"assigned" | "completed">("assigned");
+
+  const { data: agentSolicitudes, isLoading: isAgentSolicitudesLoading } = useQuery({
+    queryKey: ["agent-solicitudes", agentStatusFilter],
+    queryFn: () => agentAuthApi.solicitudes({ status: agentStatusFilter, page: 1, limit: 50 }).then((r) => r.data),
+    enabled: isAgentSession,
+  });
 
   const [q, setQ] = useState("");
   const [estadoFilter, setEstadoFilter] = useState("");
@@ -226,6 +240,73 @@ export default function SolicitudesPage() {
       id: assignModal.solicitudId,
       agenteId: parseInt(selectedAgente),
     });
+  }
+
+  if (isAgentSession) {
+    const rows: AgentSolicitud[] = agentSolicitudes?.data ?? [];
+    const agentTotal = Number(agentSolicitudes?.total ?? 0);
+    const heading = agentStatusFilter === "assigned" ? "Solicitudes asignadas" : "Solicitudes finalizadas";
+
+    return (
+      <div className="space-y-5">
+        <div className="rounded-2xl border border-slate-200 bg-white p-5">
+          <h1 className="text-xl font-semibold text-slate-900">{heading}</h1>
+          <p className="mt-1 text-sm text-slate-600">Vista del agente sobre sus solicitudes.</p>
+          <div className="mt-4 inline-flex rounded-xl border border-slate-200 bg-slate-50 p-1">
+            <button
+              type="button"
+              onClick={() => setAgentStatusFilter("assigned")}
+              className={`px-3 py-1.5 text-sm rounded-lg ${agentStatusFilter === "assigned" ? "bg-white text-slate-900 shadow-sm" : "text-slate-600"}`}
+            >
+              Asignadas
+            </button>
+            <button
+              type="button"
+              onClick={() => setAgentStatusFilter("completed")}
+              className={`px-3 py-1.5 text-sm rounded-lg ${agentStatusFilter === "completed" ? "bg-white text-slate-900 shadow-sm" : "text-slate-600"}`}
+            >
+              Finalizadas
+            </button>
+          </div>
+          <p className="mt-3 text-sm text-slate-500">{agentTotal} resultados</p>
+        </div>
+
+        <Card>
+          {isAgentSolicitudesLoading ? (
+            <div className="py-16 text-center text-slate-400 text-sm">Cargando solicitudes...</div>
+          ) : rows.length === 0 ? (
+            <div className="py-16 text-center text-slate-400 text-sm">No hay solicitudes para este filtro.</div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="min-w-full text-sm">
+                <thead className="bg-slate-50 text-slate-600">
+                  <tr>
+                    <th className="px-4 py-3 text-left font-medium">ID</th>
+                    <th className="px-4 py-3 text-left font-medium">Titulo</th>
+                    <th className="px-4 py-3 text-left font-medium">Contacto</th>
+                    <th className="px-4 py-3 text-left font-medium">Estado</th>
+                    <th className="px-4 py-3 text-left font-medium">Prioridad</th>
+                    <th className="px-4 py-3 text-left font-medium">Actualizada</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map((s) => (
+                    <tr key={s.id} className="border-t border-slate-100">
+                      <td className="px-4 py-3 text-slate-700">#{s.id}</td>
+                      <td className="px-4 py-3 text-slate-700">{s.titulo || s.nombre || "Sin titulo"}</td>
+                      <td className="px-4 py-3 text-slate-600">{s.nombre || s.telefonoContacto || "-"}</td>
+                      <td className="px-4 py-3 text-slate-700">{ESTADO_LABELS[s.estado || ""] ?? s.estado ?? "-"}</td>
+                      <td className="px-4 py-3 text-slate-700">{PRIORIDAD_LABELS[s.prioridad || ""] ?? s.prioridad ?? "-"}</td>
+                      <td className="px-4 py-3 text-slate-500">{formatDate(s.updatedAt)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </Card>
+      </div>
+    );
   }
 
   return (

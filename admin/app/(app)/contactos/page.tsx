@@ -2,6 +2,7 @@
 
 import { useState, useCallback } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { agentAuthApi, type AgentContacto } from "@/lib/agentApi";
 import { crmApi } from "@/lib/api";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
@@ -44,6 +45,8 @@ import {
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
 import { useAuthStore } from "@/store/auth";
+import { getStoredAccessToken } from "@/store/auth";
+import { getStoredAgentAccessToken } from "@/store/agentAuth";
 
 interface Contact {
   id: number;
@@ -111,6 +114,9 @@ function LeadScoreBadge({ score }: { score: number | null }) {
 export default function ContactosPage() {
   const { tenantSlug } = useAuthStore();
   const qc = useQueryClient();
+  const hasAccessToken = Boolean(getStoredAccessToken());
+  const hasAgentAccessToken = Boolean(getStoredAgentAccessToken());
+  const isAgentSession = hasAgentAccessToken && !hasAccessToken;
 
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
@@ -118,6 +124,13 @@ export default function ContactosPage() {
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<Partial<Contact> | null>(null);
+
+  const { data: agentContactos, isLoading: isAgentContactosLoading } = useQuery({
+    queryKey: ["agent-contactos", debouncedSearch],
+    queryFn: () =>
+      agentAuthApi.contactos({ q: debouncedSearch || undefined, page: 1, limit: 100 }).then((r) => r.data),
+    enabled: isAgentSession,
+  });
 
   const handleSearchChange = useCallback((v: string) => {
     setSearch(v);
@@ -182,6 +195,86 @@ export default function ContactosPage() {
     }
     if (fd.get("leadScore")) payload.leadScore = Number(fd.get("leadScore"));
     saveMutation.mutate(payload);
+  }
+
+  if (isAgentSession) {
+    const rows: AgentContacto[] = agentContactos?.data ?? [];
+    return (
+      <div className="p-6 space-y-6">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <UserCircle2 className="w-7 h-7 text-blue-600" />
+            <div>
+              <h1 className="text-2xl font-bold text-gray-900">Contactos</h1>
+              <p className="text-sm text-gray-500">{agentContactos?.total ?? 0} contactos asociados a tus solicitudes</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="relative max-w-md">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+          <Input
+            className="pl-10"
+            placeholder="Buscar por nombre, telefono, email, empresa..."
+            value={search}
+            onChange={e => handleSearchChange(e.target.value)}
+          />
+        </div>
+
+        <div className="rounded-xl border bg-white shadow-sm overflow-hidden">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Contacto</TableHead>
+                <TableHead>Canal</TableHead>
+                <TableHead>Etiquetas</TableHead>
+                <TableHead>Solicitudes</TableHead>
+                <TableHead>Ultimo contacto</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {isAgentContactosLoading ? (
+                <TableRow>
+                  <TableCell colSpan={5} className="text-center py-12 text-gray-400">Cargando...</TableCell>
+                </TableRow>
+              ) : rows.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={5} className="text-center py-12 text-gray-400">No hay contactos</TableCell>
+                </TableRow>
+              ) : rows.map((c) => (
+                <TableRow key={c.id}>
+                  <TableCell>
+                    <div>
+                      <p className="font-medium text-gray-900">{c.nombre ?? c.phone ?? "-"}</p>
+                      <div className="flex items-center gap-3 mt-0.5">
+                        {c.phone && <span className="text-xs text-gray-500 flex items-center gap-1"><Phone className="w-3 h-3" />{c.phone}</span>}
+                        {c.email && <span className="text-xs text-gray-500 flex items-center gap-1"><Mail className="w-3 h-3" />{c.email}</span>}
+                      </div>
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    <Badge variant="outline" className="text-xs capitalize">{c.canalOrigen ?? "-"}</Badge>
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex flex-wrap gap-1">
+                      {(c.etiquetas ?? []).slice(0, 3).map((t) => (
+                        <Badge key={t} variant="secondary" className="text-xs gap-1">
+                          <Tag className="w-2.5 h-2.5" />{t}
+                        </Badge>
+                      ))}
+                    </div>
+                  </TableCell>
+                  <TableCell className="text-sm text-gray-600">{c._count?.solicitudes ?? 0}</TableCell>
+                  <TableCell className="text-xs text-gray-500">
+                    {c.ultimoContacto ? format(new Date(c.ultimoContacto), "dd MMM yyyy", { locale: es }) : "-"}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+      </div>
+    );
   }
 
   return (

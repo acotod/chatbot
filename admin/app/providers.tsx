@@ -17,19 +17,19 @@ function SessionSecurityGuard() {
   const lastActivityAtRef = useRef<number>(0);
   const hasAccessToken = Boolean(token || getStoredAccessToken());
   const hasAgentAccessToken = Boolean(getStoredAgentAccessToken());
-  const isAgentOnSharedDashboard = pathname === "/dashboard" && hasAgentAccessToken;
+  const isAgentOnSharedRoute = ["/dashboard", "/solicitudes", "/agenda", "/contactos"].includes(pathname) && hasAgentAccessToken;
   const effectiveRefreshToken = refreshToken ?? getStoredRefreshToken();
 
   useEffect(() => {
     if (pathname.startsWith("/login") || pathname.startsWith("/portal") || pathname.startsWith("/agente")) return;
-    if (hasAccessToken || isAgentOnSharedDashboard) return;
+    if (hasAccessToken || isAgentOnSharedRoute) return;
 
     logout();
     router.replace("/login");
-  }, [hasAccessToken, isAgentOnSharedDashboard, logout, pathname, router]);
+  }, [hasAccessToken, isAgentOnSharedRoute, logout, pathname, router]);
 
   useEffect(() => {
-    if (!hasAccessToken || pathname.startsWith("/login") || pathname.startsWith("/agente") || isAgentOnSharedDashboard) return;
+    if (!hasAccessToken || pathname.startsWith("/login") || pathname.startsWith("/agente") || isAgentOnSharedRoute) return;
 
     const now = Date.now();
     if (tokenExpiresAt && now >= tokenExpiresAt) {
@@ -37,10 +37,10 @@ function SessionSecurityGuard() {
       router.replace("/login?reason=expired");
       return;
     }
-  }, [hasAccessToken, tokenExpiresAt, pathname, isAgentOnSharedDashboard, logout, router]);
+  }, [hasAccessToken, tokenExpiresAt, pathname, isAgentOnSharedRoute, logout, router]);
 
   useEffect(() => {
-    if (!hasAccessToken || pathname.startsWith("/login") || pathname.startsWith("/agente") || isAgentOnSharedDashboard) return;
+    if (!hasAccessToken || pathname.startsWith("/login") || pathname.startsWith("/agente") || isAgentOnSharedRoute) return;
 
     lastActivityAtRef.current = Date.now();
 
@@ -104,7 +104,7 @@ function SessionSecurityGuard() {
       });
       document.removeEventListener("visibilitychange", handleVisibility);
     };
-  }, [hasAccessToken, effectiveRefreshToken, tokenExpiresAt, pathname, isAgentOnSharedDashboard, logout, router]);
+  }, [hasAccessToken, effectiveRefreshToken, tokenExpiresAt, pathname, isAgentOnSharedRoute, logout, router]);
 
   useEffect(() => {
     const onStorage = (event: StorageEvent) => {
