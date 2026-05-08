@@ -110,7 +110,7 @@ export default function AgentProfilePage() {
             </div>
 
             <div className="rounded-3xl bg-white border border-slate-200 shadow-sm p-6">
-              <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Tenant</p>
+              <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Empresa</p>
               <h2 className="mt-2 text-2xl font-semibold text-slate-900">{profile.tenantNombre || profile.tenantSlug}</h2>
               <div className="mt-4 space-y-2 text-sm text-slate-600">
                 <p><span className="font-medium text-slate-900">Slug:</span> {profile.tenantSlug}</p>

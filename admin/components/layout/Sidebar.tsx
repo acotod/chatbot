@@ -65,7 +65,7 @@ const NAV_ITEMS: Array<{
   { icon: CreditCard, label: "Facturación", href: "/facturacion", superAdminOnly: true },
   { icon: ScrollText, label: "Auditoría", href: "/auditoria", permission: "VIEW_AUDITORIA" },
   { icon: ShieldCheck, label: "Roles", href: "/roles", permission: "MANAGE_ROLES" },
-  { icon: Building2, label: "Tenants", href: "/tenants", permission: "MANAGE_TENANTS" },
+  { icon: Building2, label: "Empresas", href: "/tenants", permission: "MANAGE_TENANTS" },
   { icon: Plug, label: "Integraciones", href: "/integraciones", permission: "MANAGE_TENANTS" },
   { icon: Variable, label: "Variables", href: "/variables", permission: "EDIT_FLUJOS" },
   { icon: Webhook, label: "WABA Flujos", href: "/waba-flujos", permission: "VIEW_FLUJOS" },
@@ -254,7 +254,7 @@ export function Sidebar() {
           {dropdownOpen && (
             <div className="mt-1 bg-white border border-slate-200 rounded-lg shadow-md overflow-hidden z-50">
               {tenants.length === 0 && (
-                <p className="px-3 py-2 text-xs text-slate-400">Sin tenants</p>
+                <p className="px-3 py-2 text-xs text-slate-400">Sin empresas</p>
               )}
               {tenants.map((t) => (
                 <button

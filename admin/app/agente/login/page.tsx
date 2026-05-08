@@ -30,7 +30,7 @@ function getAuthErrorMessage(error: unknown): string {
 
   const status = error.response?.status;
   if (status === 400 || status === 401) {
-    return "Tenant, email o contraseña incorrectos.";
+    return "Empresa, email o contraseña incorrectos.";
   }
   if (status === 403) {
     return "Tu acceso de agente está inactivo. Contactá al administrador.";
@@ -90,7 +90,7 @@ function AgentLoginScreen({ reason, nextPath }: AgentLoginScreenProps) {
     setResetPreview(null);
 
     if (!tenantSlug.trim() || !email.trim()) {
-      setError("Ingresá tenant y email para solicitar el restablecimiento.");
+      setError("Ingresá empresa y email para solicitar el restablecimiento.");
       return;
     }
 
@@ -129,7 +129,7 @@ function AgentLoginScreen({ reason, nextPath }: AgentLoginScreenProps) {
           Ingreso operativo
         </h2>
         <p className="text-slate-600 text-base mb-7">
-          Entrá con tu tenant, email y contraseña para ver tu perfil único.
+          Entrá con tu empresa, email y contraseña para ver tu perfil único.
         </p>
 
         {reason === "expired" && (
@@ -140,7 +140,7 @@ function AgentLoginScreen({ reason, nextPath }: AgentLoginScreenProps) {
 
         <form onSubmit={handleSubmit} className="space-y-4.5">
           <div className="flex flex-col gap-1.5">
-            <label className="text-sm font-medium text-slate-700">Tenant</label>
+            <label className="text-sm font-medium text-slate-700">Empresa</label>
             <input
               type="text"
               value={tenantSlug}

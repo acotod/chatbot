@@ -104,7 +104,7 @@ export default function AgentDashboardPage() {
               <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Bienvenido</p>
               <h2 className="mt-2 text-2xl font-semibold text-slate-900">{profile.nombre}</h2>
               <p className="mt-2 text-sm text-slate-600">
-                Tenant: <span className="font-medium text-slate-900">{profile.tenantNombre || profile.tenantSlug}</span>
+                Empresa: <span className="font-medium text-slate-900">{profile.tenantNombre || profile.tenantSlug}</span>
               </p>
               <p className="mt-1 text-sm text-slate-600">
                 Estado: <span className="font-medium text-slate-900">{profile.estado}</span>

@@ -56,13 +56,13 @@ export default function TenantsPage() {
     onSuccess: () => {
       setForm({ nombre: "", slug: "", plan: "free" });
       setError("");
-      setInfo("Tenant creado correctamente.");
+      setInfo("Empresa creada correctamente.");
       qc.invalidateQueries({ queryKey: ["tenants"] });
       qc.invalidateQueries({ queryKey: ["tenants", "header"] });
     },
     onError: () => {
       setInfo("");
-      setError("No se pudo crear el tenant. Revisá nombre/slug o permisos.");
+      setError("No se pudo crear la empresa. Revisá nombre/slug o permisos.");
     },
   });
 
@@ -70,12 +70,12 @@ export default function TenantsPage() {
     mutationFn: ({ slug, activo }: { slug: string; activo: boolean }) =>
       activo ? tenantApi.deactivate(slug) : tenantApi.activate(slug),
     onSuccess: () => {
-      setInfo("Estado del tenant actualizado.");
+      setInfo("Estado de la empresa actualizado.");
       qc.invalidateQueries({ queryKey: ["tenants"] });
       qc.invalidateQueries({ queryKey: ["tenants", "header"] });
     },
     onError: () => {
-      setError("No se pudo actualizar el estado del tenant.");
+      setError("No se pudo actualizar el estado de la empresa.");
     },
   });
 
@@ -86,7 +86,7 @@ export default function TenantsPage() {
       qc.invalidateQueries({ queryKey: ["tenants"] });
     },
     onError: () => {
-      setError("No se pudo rotar la API key del tenant.");
+      setError("No se pudo rotar la API key de la empresa.");
     },
   });
 
@@ -131,7 +131,7 @@ export default function TenantsPage() {
     <div className="space-y-6">
       <Card>
         <CardHeader>
-          <h2 className="font-semibold text-slate-800">Nuevo tenant</h2>
+          <h2 className="font-semibold text-slate-800">Nueva empresa</h2>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleCreate} className="grid grid-cols-1 md:grid-cols-4 gap-3">
@@ -162,7 +162,7 @@ export default function TenantsPage() {
             <div className="flex items-end">
               <Button type="submit" className="w-full" disabled={createTenant.isPending}>
                 <Plus size={16} />
-                {createTenant.isPending ? "Creando..." : "Crear tenant"}
+                {createTenant.isPending ? "Creando..." : "Crear empresa"}
               </Button>
             </div>
           </form>
@@ -178,18 +178,18 @@ export default function TenantsPage() {
 
       <Card>
         <CardHeader>
-          <h2 className="font-semibold text-slate-800">Administrar tenants</h2>
+          <h2 className="font-semibold text-slate-800">Administrar empresas</h2>
         </CardHeader>
         <CardContent>
-          {isLoading && <p className="text-sm text-slate-500">Cargando tenants...</p>}
+          {isLoading && <p className="text-sm text-slate-500">Cargando empresas...</p>}
           {isError && (
             <p className="text-sm text-red-600">
-              No se pudo cargar tenants. Verificá que tu usuario sea super admin y tenga permisos.
+              No se pudo cargar empresas. Verificá que tu usuario sea super admin y tenga permisos.
             </p>
           )}
 
           {!isLoading && !isError && tenants.length === 0 && (
-            <p className="text-sm text-slate-500">No hay tenants creados.</p>
+            <p className="text-sm text-slate-500">No hay empresas creadas.</p>
           )}
 
           {!isLoading && !isError && tenants.length > 0 && (

@@ -6,7 +6,7 @@ const PLANS = [
     name: "Starter",
     price: "$29",
     period: "/mes",
-    features: ["1 tenant", "1,000 msgs/mes", "1 agente", "Soporte básico"],
+    features: ["1 empresa", "1,000 msgs/mes", "1 agente", "Soporte básico"],
     current: false,
   },
   {
@@ -14,7 +14,7 @@ const PLANS = [
     price: "$79",
     period: "/mes",
     features: [
-      "5 tenants",
+      "5 empresas",
       "10,000 msgs/mes",
       "10 agentes",
       "Analytics",
@@ -27,7 +27,7 @@ const PLANS = [
     price: "Custom",
     period: "",
     features: [
-      "Tenants ilimitados",
+      "Empresas ilimitadas",
       "Mensajes ilimitados",
       "Agentes ilimitados",
       "SLA 99.9%",
@@ -72,7 +72,7 @@ export default function FacturacionPage() {
             {[
               { label: "Mensajes este mes", used: 4200, total: 10000 },
               { label: "Agentes activos", used: 3, total: 10 },
-              { label: "Tenants", used: 2, total: 5 },
+              { label: "Empresas", used: 2, total: 5 },
             ].map((item) => (
               <div key={item.label}>
                 <div className="flex items-center justify-between text-sm mb-1.5">

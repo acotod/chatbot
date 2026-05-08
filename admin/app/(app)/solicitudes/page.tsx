@@ -331,7 +331,7 @@ export default function SolicitudesPage() {
           {total} solicitudes
         </span>
         <Button variant="secondary" size="sm" onClick={() => setConfigOpen(true)}>
-          Configurar tenant
+          Configurar empresa
         </Button>
       </div>
 
@@ -533,7 +533,7 @@ export default function SolicitudesPage() {
       <Modal
         open={configOpen}
         onClose={() => setConfigOpen(false)}
-        title="Configuración enterprise por tenant"
+        title="Configuración enterprise por empresa"
       >
         <div className="space-y-3">
           <label className="flex items-center gap-2 text-sm text-slate-700">

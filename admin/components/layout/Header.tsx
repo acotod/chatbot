@@ -45,7 +45,7 @@ const TITLES: Record<string, string> = {
   "/agentes": "Agentes",
   "/configuracion": "Configuración",
   "/facturacion": "Facturación",
-  "/tenants": "Tenants",
+  "/tenants": "Empresas",
 };
 
 export function Header() {
@@ -132,7 +132,7 @@ export function Header() {
             onChange={(e) => setTenantSlug(e.target.value)}
             className="px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30 min-w-44"
           >
-            {tenants.length === 0 && <option value="">Sin tenants</option>}
+            {tenants.length === 0 && <option value="">Sin empresas</option>}
             {tenants.map((tenant) => (
               <option key={tenant.id} value={tenant.slug}>
                 {`${normalizeTenantName(tenant.nombre, tenant.slug)} (${tenant.slug})`}

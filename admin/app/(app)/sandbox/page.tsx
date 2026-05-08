@@ -18,12 +18,12 @@ type CapabilitiesResponse = {
 };
 
 const APPLIED_CHANGES = [
-  "Activacion real por tenant de outboundMetaMock.",
+  "Activacion real por empresa de outboundMetaMock.",
   "Endpoint PATCH /sandbox/settings para cambiar outboundMetaMock.",
-  "Capabilities devuelve el valor real por tenant.",
+  "Capabilities devuelve el valor real por empresa.",
   "El runtime sandbox usa el flag para evitar llamadas salientes a Meta cuando esta activo.",
   "La UI del Sandbox permite activar y desactivar outboundMetaMock.",
-  "El cliente API admin ya soporta capabilities por tenant y actualizacion de settings.",
+  "El cliente API admin ya soporta capabilities por empresa y actualizacion de settings.",
 ];
 
 type SimulationResponse = {
@@ -320,10 +320,10 @@ export default function SandboxPage() {
             <div>
               {superAdmin ? (
                 <span>
-                  Tenant activo desde selector global: <strong>{tenantSlug || "sin seleccionar"}</strong>
+                  Empresa activa desde selector global: <strong>{tenantSlug || "sin seleccionar"}</strong>
                 </span>
               ) : (
-                <span>El tenant se resuelve desde tu sesión JWT.</span>
+                <span>La empresa se resuelve desde tu sesión JWT.</span>
               )}
             </div>
             <button
@@ -401,7 +401,7 @@ export default function SandboxPage() {
               </div>
             ) : runs.length === 0 ? (
               <div className="rounded-2xl border border-dashed border-slate-300 bg-white px-4 py-6 text-sm text-slate-500">
-                Aún no hay ejecuciones para este teléfono en el tenant activo.
+                Aún no hay ejecuciones para este teléfono en la empresa activa.
               </div>
             ) : (
               <div className="space-y-3">

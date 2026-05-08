@@ -189,7 +189,7 @@ function ImportModal({ onClose, onImported, tenantSlug }: { onClose: () => void;
   async function handleImport() {
     setError("");
     if (!tenantSlug) {
-      setError("Selecciona un tenant antes de importar.");
+      setError("Selecciona una empresa antes de importar.");
       return;
     }
     let parsed: unknown;
@@ -316,7 +316,7 @@ function CreateFlowModal({ onClose, onCreated, tenantSlug }: { onClose: () => vo
 
   async function handleCreate() {
     if (!nombre.trim()) { setError("El nombre es obligatorio"); return; }
-    if (!tenantSlug) { setError("Selecciona un tenant antes de crear el flujo."); return; }
+    if (!tenantSlug) { setError("Selecciona una empresa antes de crear el flujo."); return; }
     setError("");
     setLoading(true);
     try {
@@ -1764,7 +1764,7 @@ function SimulatePanel({ flow }: { flow: WabaFlow }) {
           </button>
         </div>
         <p className="text-xs text-slate-500">
-          El modo con IA usa el LLM configurado del tenant para proponer entradas realistas, recorrer ramas y emitir un veredicto.
+          El modo con IA usa el LLM configurado de la empresa para proponer entradas realistas, recorrer ramas y emitir un veredicto.
         </p>
       </div>
 
@@ -2126,7 +2126,7 @@ export default function WabaFlujos() {
 
       {!tenantSlug && (
         <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-          Selecciona un tenant en el encabezado para listar o importar flujos WABA.
+          Selecciona una empresa en el encabezado para listar o importar flujos WABA.
         </div>
       )}
 
