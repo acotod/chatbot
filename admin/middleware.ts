@@ -24,6 +24,8 @@ export function middleware(request: NextRequest) {
   const isPortalPath = pathname.startsWith('/portal');
   const isAgentPath = pathname === '/agente' || pathname.startsWith('/agente/');
   const isAgentLoginPath = pathname === '/agente/login';
+  const isAgentResetPasswordPath = pathname === '/agente/reset-password';
+  const isAgentPublicPath = isAgentLoginPath || isAgentResetPasswordPath;
 
   if (isAgentPath) {
     if (agentToken) {
@@ -39,7 +41,7 @@ export function middleware(request: NextRequest) {
       return NextResponse.redirect(new URL('/agente/perfil', request.url));
     }
 
-    if (!agentToken && !isAgentLoginPath) {
+    if (!agentToken && !isAgentPublicPath) {
       return NextResponse.redirect(new URL('/agente/login', request.url));
     }
 
