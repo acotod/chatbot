@@ -49,6 +49,7 @@ model Tenant {
   deals                Deal[]
   crmTasks             CrmTask[]
   agentePuestos        AgentePuesto[]
+  adminNotifications   AdminNotification[]
 
   @@map("tenants")
 }
@@ -444,8 +445,29 @@ model AdminUser {
   flowVersionsCreated FlowVersion[]       @relation("FlowVersionCreatedBy")
   solicitudHistory    SolicitudHistory[]
   solicitudComments   SolicitudComment[]
+  notifications       AdminNotification[]
 
   @@map("admin_users")
+}
+
+model AdminNotification {
+  id          Int       @id @default(autoincrement())
+  tenantId    String    @map("tenant_id") @db.Uuid
+  adminUserId Int       @map("admin_user_id")
+  type        String    @db.VarChar(60)
+  title       String    @db.VarChar(160)
+  message     String    @db.Text
+  data        Json?
+  readAt      DateTime? @map("read_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  tenant      Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  adminUser   AdminUser @relation(fields: [adminUserId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, createdAt])
+  @@index([adminUserId, createdAt])
+  @@index([tenantId, adminUserId, readAt])
+  @@map("admin_notifications")
 }
 
 model Role {

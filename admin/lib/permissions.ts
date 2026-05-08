@@ -16,6 +16,7 @@ export type Permission =
   | 'VIEW_AUDITORIA'
   | 'MANAGE_ROLES'
   | 'MANAGE_TENANTS'
+  | 'VIEW_NOTIFICATIONS'
   | 'VIEW_METRICS';
 
 export interface AdminUser {

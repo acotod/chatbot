@@ -14,6 +14,7 @@ const convLogger = require('../engine/conversationLogger');
 const { generatePortalToken } = require('../services/portalAccess');
 const { WEBHOOK_EVENTS, dispatchSolicitudesWebhookEvent } = require('../services/solicitudesWebhooks');
 const lockoutPolicy = require('../services/lockoutPolicy');
+const { createAdminNotification, serializeNotification } = require('../services/adminNotifications');
 
 // Multer: store logos under /app/uploads/logos (persisted volume in prod)
 const UPLOADS_DIR = path.join(process.cwd(), 'uploads', 'logos');
@@ -149,6 +150,12 @@ function parseIsoDate(value) {
     if (!value) return null;
     const dt = new Date(value);
     return Number.isNaN(dt.getTime()) ? null : dt;
+}
+
+function parsePagination(pageRaw, limitRaw) {
+    const page = Math.max(Number(pageRaw) || 1, 1);
+    const limit = Math.min(Math.max(Number(limitRaw) || 10, 1), 50);
+    return { page, limit, skip: (page - 1) * limit };
 }
 
 async function runAgendaStartHooks({ tenantId, event, actorAdminUserId }) {
@@ -1149,7 +1156,111 @@ router.patch('/tenants/:slug/solicitudes/:id/agente', requirePermiso('EDIT_SOLIC
                 agenteId: Number(agenteId),
             },
         });
+
+        await createAdminNotification({
+            tenantId: tenant.id,
+            adminUserId: req.admin?.adminUserId,
+            type: 'solicitud.assigned',
+            title: 'Solicitud asignada',
+            message: `La solicitud #${Number(req.params.id)} fue asignada al agente #${Number(agenteId)}.`,
+            data: { solicitudId: Number(req.params.id), agenteId: Number(agenteId) },
+        });
+
         res.json(result);
+    } catch (err) {
+        next(err);
+    }
+});
+
+// ---------------------------------------------------------------------------
+// Notificaciones admin (per-user)
+// ---------------------------------------------------------------------------
+
+// GET /admin/tenants/:slug/notifications?page=1&limit=10
+router.get('/tenants/:slug/notifications', requirePermiso('VIEW_NOTIFICATIONS'), async (req, res, next) => {
+    try {
+        const tenant = await db.findTenantBySlug(req.params.slug);
+        if (!tenant) return res.status(404).json({ error: 'Tenant not found' });
+        if (denyIfWrongTenant(req, res, tenant.id)) return;
+
+        const { page, limit, skip } = parsePagination(req.query?.page, req.query?.limit);
+        const where = {
+            tenantId: tenant.id,
+            ...(req.admin?.superAdmin ? {} : { adminUserId: req.admin?.adminUserId }),
+        };
+
+        const [items, total, unreadCount] = await Promise.all([
+            prisma.adminNotification.findMany({
+                where,
+                orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+                skip,
+                take: limit,
+            }),
+            prisma.adminNotification.count({ where }),
+            prisma.adminNotification.count({ where: { ...where, readAt: null } }),
+        ]);
+
+        return res.json({
+            data: items.map(serializeNotification),
+            total,
+            unreadCount,
+            page,
+            limit,
+        });
+    } catch (err) {
+        next(err);
+    }
+});
+
+// PATCH /admin/tenants/:slug/notifications/:id/read
+router.patch('/tenants/:slug/notifications/:id/read', requirePermiso('VIEW_NOTIFICATIONS'), async (req, res, next) => {
+    try {
+        const tenant = await db.findTenantBySlug(req.params.slug);
+        if (!tenant) return res.status(404).json({ error: 'Tenant not found' });
+        if (denyIfWrongTenant(req, res, tenant.id)) return;
+
+        const id = Number(req.params.id);
+        if (!Number.isInteger(id) || id <= 0) {
+            return res.status(400).json({ error: 'invalid notification id' });
+        }
+
+        const where = {
+            id,
+            tenantId: tenant.id,
+            ...(req.admin?.superAdmin ? {} : { adminUserId: req.admin?.adminUserId }),
+        };
+
+        const found = await prisma.adminNotification.findFirst({ where });
+        if (!found) return res.status(404).json({ error: 'Notification not found' });
+
+        const updated = await prisma.adminNotification.update({
+            where: { id },
+            data: { readAt: found.readAt || new Date() },
+        });
+
+        return res.json(serializeNotification(updated));
+    } catch (err) {
+        next(err);
+    }
+});
+
+// PATCH /admin/tenants/:slug/notifications/read-all
+router.patch('/tenants/:slug/notifications/read-all', requirePermiso('VIEW_NOTIFICATIONS'), async (req, res, next) => {
+    try {
+        const tenant = await db.findTenantBySlug(req.params.slug);
+        if (!tenant) return res.status(404).json({ error: 'Tenant not found' });
+        if (denyIfWrongTenant(req, res, tenant.id)) return;
+
+        const result = await prisma.adminNotification.updateMany({
+            where: {
+                tenantId: tenant.id,
+                readAt: null,
+                ...(req.admin?.superAdmin ? {} : { adminUserId: req.admin?.adminUserId }),
+            },
+            data: { readAt: new Date() },
+        });
+
+        return res.json({ updated: result.count });
     } catch (err) {
         next(err);
     }

@@ -254,6 +254,15 @@ export const tenantApi = {
   },
 };
 
+export const notificationsApi = {
+  list: (slug: string, params?: { page?: number; limit?: number }) =>
+    apiClient.get(`/admin/tenants/${slug}/notifications`, { params }),
+  markAsRead: (slug: string, id: number) =>
+    apiClient.patch(`/admin/tenants/${slug}/notifications/${id}/read`),
+  markAllAsRead: (slug: string) =>
+    apiClient.patch(`/admin/tenants/${slug}/notifications/read-all`),
+};
+
 export const solicitudesApi = {
   list: (slug: string, params?: Record<string, unknown>) =>
     apiClient.get(`/admin/tenants/${slug}/solicitudes`, { params }),

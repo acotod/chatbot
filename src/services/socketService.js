@@ -53,6 +53,9 @@ function init(httpServer) {
       }
 
       socket.join(`tenant:${tenantId}`);
+      if (payload.adminUserId) {
+        socket.join(`tenant:${tenantId}:admin:${payload.adminUserId}`);
+      }
       logger.info({ socketId: socket.id, tenantId }, 'socket joined tenant room');
     }
 
@@ -81,8 +84,20 @@ function emit(tenantId, event, data) {
   }
 }
 
+/**
+ * Emit an event only to one admin inside a tenant.
+ * @param {string} tenantId
+ * @param {number|string} adminUserId
+ * @param {string} event
+ * @param {*} data
+ */
+function emitToAdmin(tenantId, adminUserId, event, data) {
+  if (!_io || !tenantId || !adminUserId) return;
+  _io.to(`tenant:${tenantId}:admin:${adminUserId}`).emit(event, data);
+}
+
 function getIo() {
   return _io;
 }
 
-module.exports = { init, emit, getIo };
+module.exports = { init, emit, emitToAdmin, getIo };

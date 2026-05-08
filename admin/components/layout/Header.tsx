@@ -1,12 +1,13 @@
 "use client";
 
 import { tenantApi } from "@/lib/api";
+import { useNotifications } from "@/hooks/useNotifications";
 import { getMe } from "@/lib/useMe";
 import { getStoredAccessToken, useAuthStore } from "@/store/auth";
 import { useQuery } from "@tanstack/react-query";
 import { Bell, Search } from "lucide-react";
 import { usePathname } from "next/navigation";
-import { useEffect, useSyncExternalStore } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 
 function subscribeToClientSnapshot() {
   return () => {};
@@ -50,6 +51,8 @@ const TITLES: Record<string, string> = {
 export function Header() {
   const pathname = usePathname();
   const { tenantSlug, setTenantSlug } = useAuthStore();
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const notificationsRef = useRef<HTMLDivElement | null>(null);
   const isClient = useSyncExternalStore(
     subscribeToClientSnapshot,
     getClientSnapshot,
@@ -96,6 +99,26 @@ export function Header() {
       ? selectedTenant.logoUrl
       : `${apiBase}${selectedTenant.logoUrl}`
     : null;
+  const {
+    notifications,
+    unreadCount,
+    isLoading: isLoadingNotifications,
+    markAsRead,
+    markAllAsRead,
+    isMarkingAll,
+  } = useNotifications(tenantSlug || null, selectedTenant?.id ?? null);
+
+  useEffect(() => {
+    if (!notificationsOpen) return;
+    const onPointerDown = (event: MouseEvent) => {
+      if (!notificationsRef.current) return;
+      if (!notificationsRef.current.contains(event.target as Node)) {
+        setNotificationsOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", onPointerDown);
+    return () => document.removeEventListener("mousedown", onPointerDown);
+  }, [notificationsOpen]);
 
   return (
     <header className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-6 shrink-0">
@@ -128,17 +151,77 @@ export function Header() {
         </div>
 
         {/* Notifications */}
-        <button
-          type="button"
-          disabled
-          aria-disabled="true"
-          title="Notificaciones: próximamente"
-          className="relative p-2 rounded-xl bg-slate-50 cursor-not-allowed"
-        >
-          <Bell className="w-5 h-5 text-slate-500" />
-          <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full" />
-          <span className="sr-only">Notificaciones (próximamente)</span>
-        </button>
+        <div className="relative" ref={notificationsRef}>
+          <button
+            type="button"
+            onClick={() => setNotificationsOpen((v) => !v)}
+            title="Notificaciones"
+            className="relative p-2 rounded-xl bg-slate-50 border border-slate-200 hover:bg-slate-100"
+          >
+            <Bell className="w-5 h-5 text-slate-600" />
+            {unreadCount > 0 && (
+              <span className="absolute -top-1 -right-1 min-w-5 h-5 px-1 rounded-full bg-red-600 text-white text-[10px] font-semibold flex items-center justify-center">
+                {unreadCount > 99 ? "99+" : unreadCount}
+              </span>
+            )}
+            <span className="sr-only">Notificaciones</span>
+          </button>
+
+          {notificationsOpen && (
+            <div className="absolute right-0 mt-2 w-96 max-w-[calc(100vw-2rem)] rounded-2xl border border-slate-200 bg-white shadow-lg z-40 overflow-hidden">
+              <div className="px-4 py-3 border-b border-slate-200 flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-semibold text-slate-900">Notificaciones</p>
+                  <p className="text-xs text-slate-500">{unreadCount} sin leer</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => markAllAsRead()}
+                  disabled={isMarkingAll || unreadCount === 0}
+                  className="text-xs text-blue-700 disabled:text-slate-400"
+                >
+                  Marcar todas
+                </button>
+              </div>
+
+              <div className="max-h-96 overflow-y-auto">
+                {isLoadingNotifications && (
+                  <div className="px-4 py-6 text-sm text-slate-500">Cargando notificaciones...</div>
+                )}
+
+                {!isLoadingNotifications && notifications.length === 0 && (
+                  <div className="px-4 py-6 text-sm text-slate-500">No hay notificaciones.</div>
+                )}
+
+                {!isLoadingNotifications && notifications.map((item) => (
+                  <div
+                    key={item.id}
+                    className={`px-4 py-3 border-b border-slate-100 ${item.readAt ? "bg-white" : "bg-blue-50/50"}`}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-slate-900 truncate">{item.title}</p>
+                        <p className="text-xs text-slate-600 mt-1 break-words">{item.message}</p>
+                        <p className="text-[11px] text-slate-400 mt-1">
+                          {new Date(item.createdAt).toLocaleString("es-CR")}
+                        </p>
+                      </div>
+                      {!item.readAt && (
+                        <button
+                          type="button"
+                          onClick={() => markAsRead(item.id)}
+                          className="text-xs text-blue-700 whitespace-nowrap"
+                        >
+                          Marcar leída
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
 
         {/* Tenant identity */}
         <div className="flex items-center gap-2 pl-3 border-l border-slate-200">
