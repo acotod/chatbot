@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { rbacApi, tenantApi } from "@/lib/api";
 import { getMe } from "@/lib/useMe";
+import { getStoredAccessToken } from "@/store/auth";
 import { Plus, Trash2, Shield, Users, Pencil } from "lucide-react";
 import { Modal } from "@/components/ui/Modal";
 import axios from "axios";
@@ -25,6 +26,7 @@ function getAssignableRoles(roles: Role[], isTenantAdmin: boolean, tenantId: str
 export default function RolesPage() {
   const qc = useQueryClient();
   const me = getMe();
+  const hasAccessToken = Boolean(getStoredAccessToken());
   const isTenantAdmin = !me?.superAdmin && !!me?.tenantId;
   const [tab, setTab] = useState<"roles" | "users">("roles");
   const [showRoleModal, setShowRoleModal] = useState(false);
@@ -50,6 +52,7 @@ export default function RolesPage() {
   const { data: tenants = [] } = useQuery<Tenant[]>({
     queryKey: ["tenants"],
     queryFn: () => tenantApi.list().then((r) => r.data),
+    enabled: hasAccessToken,
   });
 
   const deleteRole = useMutation({

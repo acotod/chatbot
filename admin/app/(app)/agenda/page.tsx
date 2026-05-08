@@ -127,6 +127,7 @@ export default function AgendaPage() {
       const res = await tenantApi.list();
       return Array.isArray(res.data) ? res.data : [];
     },
+    enabled: hasAccessToken && !isAgentSession,
   });
 
   const activeTenantId = useMemo(() => {

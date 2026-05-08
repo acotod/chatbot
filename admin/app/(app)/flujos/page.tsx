@@ -10,7 +10,7 @@ import ReactFlow, {
 } from "reactflow";
 import "reactflow/dist/style.css";
 import { flowsApi, llmApi, tenantApi } from "@/lib/api";
-import { useAuthStore } from "@/store/auth";
+import { getStoredAccessToken, useAuthStore } from "@/store/auth";
 import {
   AlertTriangle, CheckCircle2, Plus, Save, Sparkles, Trash2, Wrench,
   Upload, Download, ShieldAlert, ShieldCheck, Play, Phone, Zap, ArrowRight,
@@ -291,6 +291,7 @@ const NODE_TYPES = { flowNode: FlowNode };
 export default function FlujoSPage() {
   const qc = useQueryClient();
   const { tenantSlug } = useAuthStore();
+  const hasAccessToken = Boolean(getStoredAccessToken());
 
   // Tabs
   const [activeTab, setActiveTab] = useState<MainTab>("builder");
@@ -419,6 +420,7 @@ export default function FlujoSPage() {
   const { data: tenants = [] } = useQuery<Tenant[]>({
     queryKey: ["tenants"],
     queryFn: () => tenantApi.list().then(r => r.data),
+    enabled: hasAccessToken,
   });
 
   const { data: flows = [], isLoading } = useQuery<DbFlow[]>({

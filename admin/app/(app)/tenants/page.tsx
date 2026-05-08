@@ -3,6 +3,7 @@
 import { tenantApi } from "@/lib/api";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRef, useState } from "react";
+import { getStoredAccessToken } from "@/store/auth";
 import { Card, CardContent, CardHeader } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
@@ -36,6 +37,7 @@ interface Tenant {
 
 export default function TenantsPage() {
   const qc = useQueryClient();
+  const hasAccessToken = Boolean(getStoredAccessToken());
   const [form, setForm] = useState({ nombre: "", slug: "", plan: "free" as PlanValue });
   const [error, setError] = useState("");
   const [info, setInfo] = useState("");
@@ -44,6 +46,7 @@ export default function TenantsPage() {
   const { data, isLoading, isError } = useQuery({
     queryKey: ["tenants"],
     queryFn: () => tenantApi.list().then((r) => r.data),
+    enabled: hasAccessToken,
   });
 
   const createTenant = useMutation({
