@@ -38,7 +38,9 @@ export function middleware(request: NextRequest) {
     }
 
     if (agentToken && isAgentLoginPath) {
-      return NextResponse.redirect(new URL('/agente/perfil', request.url));
+      const nextParam = request.nextUrl.searchParams.get('next');
+      const target = nextParam === '/agente/perfil' ? '/agente/perfil' : '/agente';
+      return NextResponse.redirect(new URL(target, request.url));
     }
 
     if (!agentToken && !isAgentPublicPath) {

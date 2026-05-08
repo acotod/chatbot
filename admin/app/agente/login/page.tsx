@@ -11,6 +11,16 @@ type AgentLoginPageProps = {
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
 };
 
+type AgentLoginScreenProps = {
+  reason: string | null;
+  nextPath: string;
+};
+
+function resolveAgentNextPath(next: string | undefined): string {
+  if (next === "/agente/perfil") return "/agente/perfil";
+  return "/agente";
+}
+
 function getAuthErrorMessage(error: unknown): string {
   if (!axios.isAxiosError(error)) {
     return "No se pudo iniciar sesión. Intenta nuevamente.";
@@ -34,11 +44,14 @@ export default async function AgentLoginPage({ searchParams }: AgentLoginPagePro
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
   const reasonValue = resolvedSearchParams?.reason;
   const reason = Array.isArray(reasonValue) ? reasonValue[0] : reasonValue;
+  const nextValue = resolvedSearchParams?.next;
+  const nextRaw = Array.isArray(nextValue) ? nextValue[0] : nextValue;
+  const nextPath = resolveAgentNextPath(nextRaw);
 
-  return <AgentLoginScreen reason={reason ?? null} />;
+  return <AgentLoginScreen reason={reason ?? null} nextPath={nextPath} />;
 }
 
-function AgentLoginScreen({ reason }: { reason: string | null }) {
+function AgentLoginScreen({ reason, nextPath }: AgentLoginScreenProps) {
   const router = useRouter();
   const { setToken } = useAgentAuthStore();
   const [tenantSlug, setTenantSlug] = useState("");
@@ -60,7 +73,7 @@ function AgentLoginScreen({ reason }: { reason: string | null }) {
     try {
       const res = await agentAuthApi.login(tenantSlug.trim().toLowerCase(), email.trim().toLowerCase(), password);
       setToken(res.data.accessToken);
-      router.push("/agente/perfil");
+      router.replace(nextPath);
     } catch (err) {
       setError(getAuthErrorMessage(err));
     } finally {
