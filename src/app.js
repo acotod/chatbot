@@ -48,8 +48,27 @@ const configuredAllowedOrigins = (process.env.ALLOWED_ORIGINS || '')
   .map((o) => o.trim())
   .filter(Boolean);
 
+function expandLoopbackOriginAliases(origins) {
+  const expanded = new Set(origins);
+
+  for (const origin of origins) {
+    try {
+      const u = new URL(origin);
+      if (u.hostname === 'localhost') {
+        expanded.add(`${u.protocol}//127.0.0.1${u.port ? `:${u.port}` : ''}`);
+      } else if (u.hostname === '127.0.0.1') {
+        expanded.add(`${u.protocol}//localhost${u.port ? `:${u.port}` : ''}`);
+      }
+    } catch {
+      // Ignore malformed configured origins and keep startup resilient.
+    }
+  }
+
+  return [...expanded];
+}
+
 const allowedOrigins = configuredAllowedOrigins.length > 0
-  ? configuredAllowedOrigins
+  ? expandLoopbackOriginAliases(configuredAllowedOrigins)
   : defaultAllowedOrigins;
 
 const corsOptions = {
@@ -59,7 +78,7 @@ const corsOptions = {
     cb(new Error('Not allowed by CORS'));
   },
   methods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'x-api-key', 'x-correlation-id', 'x-idempotency-key'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'x-api-key', 'x-correlation-id', 'x-idempotency-key', 'x-tab-id'],
   credentials: true,
 };
 
