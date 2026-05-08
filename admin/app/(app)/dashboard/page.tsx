@@ -4,7 +4,7 @@ import { agentAuthApi } from "@/lib/agentApi";
 import { getStoredAgentAccessToken, useAgentAuthStore } from "@/store/agentAuth";
 import { metricsApi, solicitudesApi, whatsappApi } from "@/lib/api";
 import { buildPermissionSet } from "@/lib/permissions";
-import { useAuthStore } from "@/store/auth";
+import { getStoredAccessToken, useAuthStore } from "@/store/auth";
 import { useQuery } from "@tanstack/react-query";
 import { AlertTriangle, CalendarCheck, ClipboardList, MessageSquare, TrendingUp } from "lucide-react";
 import { StatusBadge } from "@/components/ui/StatusBadge";
@@ -71,7 +71,9 @@ function KpiCard({
 export default function DashboardPage() {
   const router = useRouter();
   const { logout: logoutAgent } = useAgentAuthStore();
+  const hasAdminAccessToken = Boolean(getStoredAccessToken());
   const hasAgentAccessToken = Boolean(getStoredAgentAccessToken());
+  const isAgentSession = hasAgentAccessToken && !hasAdminAccessToken;
   const { tenantSlug, superAdmin, permissions } = useAuthStore();
   const [agentProfile, setAgentProfile] = useState<AgentProfile | null>(null);
   const [agentLoading, setAgentLoading] = useState(false);
@@ -81,7 +83,7 @@ export default function DashboardPage() {
   const canViewSolicitudes = superAdmin || permissionSet.has("VIEW_SOLICITUDES");
 
   useEffect(() => {
-    if (!hasAgentAccessToken || tenantSlug) return;
+    if (!isAgentSession) return;
 
     let cancelled = false;
     setAgentLoading(true);
@@ -111,9 +113,9 @@ export default function DashboardPage() {
     return () => {
       cancelled = true;
     };
-  }, [hasAgentAccessToken, tenantSlug, logoutAgent, router]);
+  }, [isAgentSession, logoutAgent, router]);
 
-  if (hasAgentAccessToken && !tenantSlug) {
+  if (isAgentSession) {
     if (agentLoading) {
       return <div className="rounded-3xl bg-white border border-slate-200 shadow-sm p-6 text-sm text-slate-500">Cargando dashboard...</div>;
     }
