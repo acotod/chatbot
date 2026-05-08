@@ -62,7 +62,8 @@ export function Header() {
   );
   const hasAccessToken = isClient && Boolean(getStoredAccessToken());
   const hasAgentAccessToken = isClient && Boolean(getStoredAgentAccessToken());
-  const isAgentSession = hasAgentAccessToken && !hasAccessToken;
+  const isAgentSharedRoute = ["/dashboard", "/solicitudes", "/agenda", "/contactos"].includes(pathname);
+  const isAgentSession = hasAgentAccessToken && (isAgentSharedRoute || !hasAccessToken);
   const apiBase = process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:3200";
   const sessionEmail = isClient ? (getMe()?.email ?? null) : null;
 
@@ -79,7 +80,7 @@ export function Header() {
       const res = await tenantApi.list();
       return Array.isArray(res.data) ? res.data : [];
     },
-    enabled: hasAccessToken,
+    enabled: hasAccessToken && !isAgentSession,
     staleTime: 60_000,
   });
 
@@ -124,7 +125,7 @@ export function Header() {
     markAsRead,
     markAllAsRead,
     isMarkingAll,
-  } = useNotifications(tenantSlug || null, selectedTenant?.id ?? null);
+  } = useNotifications(!isAgentSession ? (tenantSlug || null) : null, !isAgentSession ? (selectedTenant?.id ?? null) : null);
 
   useEffect(() => {
     if (!notificationsOpen) return;
