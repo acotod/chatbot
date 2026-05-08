@@ -106,20 +106,6 @@ function SessionSecurityGuard() {
     };
   }, [hasAccessToken, effectiveRefreshToken, tokenExpiresAt, pathname, isAgentOnSharedRoute, logout, router]);
 
-  useEffect(() => {
-    const onStorage = (event: StorageEvent) => {
-      if (event.key === "admin_token" && !event.newValue) {
-        logout();
-        if (!pathname.startsWith("/login") && !pathname.startsWith("/agente")) {
-          router.replace("/login?reason=signedout");
-        }
-      }
-    };
-
-    window.addEventListener("storage", onStorage);
-    return () => window.removeEventListener("storage", onStorage);
-  }, [logout, pathname, router]);
-
   return null;
 }
 

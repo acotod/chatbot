@@ -1,11 +1,10 @@
 import { create } from "zustand";
-import { persist } from "zustand/middleware";
+import { createJSONStorage, persist } from "zustand/middleware";
 import { normalizePermissions, type Permission } from "@/lib/permissions";
 import { clearTabSession } from "@/lib/tabManager";
 
 // Module-level refresh timer handle
 let _proactiveRefreshTimer: ReturnType<typeof setTimeout> | null = null;
-
 const ACCESS_TOKEN_STORAGE_KEY = "admin_token";
 const REFRESH_TOKEN_STORAGE_KEY = "admin_refresh_token";
 const AUTH_STORAGE_KEY = "auth-storage";
@@ -13,25 +12,47 @@ const AUTH_STORAGE_KEY = "auth-storage";
 type PersistedAuthState = {
   token?: string | null;
   refreshToken?: string | null;
+  tokenExpiresAt?: number | null;
+  tenantSlug?: string;
+  superAdmin?: boolean;
+  permissions?: Permission[];
 };
 
-function syncAccessTokenCookie(token: string | null) {
-  if (typeof document === "undefined" || typeof window === "undefined") return;
-  const secureAttr = window.location.protocol === "https:" ? "; Secure" : "";
+function safeSessionStorageGet(key: string): string | null {
+  if (typeof window === "undefined") return null;
 
-  if (token) {
-    document.cookie = `admin_token=${token}; path=/; SameSite=Strict${secureAttr}; max-age=${60 * 60 * 8}`;
-    return;
+  try {
+    return sessionStorage.getItem(key);
+  } catch {
+    return null;
   }
+}
 
-  document.cookie = `admin_token=; path=/; SameSite=Strict${secureAttr}; max-age=0`;
+function safeSessionStorageSet(key: string, value: string) {
+  if (typeof window === "undefined") return;
+
+  try {
+    sessionStorage.setItem(key, value);
+  } catch {
+    // Ignore storage failures and keep session in memory.
+  }
+}
+
+function safeSessionStorageRemove(key: string) {
+  if (typeof window === "undefined") return;
+
+  try {
+    sessionStorage.removeItem(key);
+  } catch {
+    // Ignore storage failures and keep cleanup best-effort.
+  }
 }
 
 function readPersistedAuthState(): PersistedAuthState | null {
   if (typeof window === "undefined") return null;
 
   try {
-    const raw = localStorage.getItem(AUTH_STORAGE_KEY);
+    const raw = sessionStorage.getItem(AUTH_STORAGE_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw) as { state?: PersistedAuthState };
     return parsed?.state ?? null;
@@ -43,13 +64,12 @@ function readPersistedAuthState(): PersistedAuthState | null {
 export function getStoredAccessToken(): string | null {
   if (typeof window === "undefined") return null;
 
-  const directToken = localStorage.getItem(ACCESS_TOKEN_STORAGE_KEY);
+  const directToken = safeSessionStorageGet(ACCESS_TOKEN_STORAGE_KEY);
   if (directToken) return directToken;
 
   const persistedToken = readPersistedAuthState()?.token ?? null;
   if (persistedToken) {
-    localStorage.setItem(ACCESS_TOKEN_STORAGE_KEY, persistedToken);
-    syncAccessTokenCookie(persistedToken);
+    safeSessionStorageSet(ACCESS_TOKEN_STORAGE_KEY, persistedToken);
   }
 
   return persistedToken;
@@ -58,12 +78,12 @@ export function getStoredAccessToken(): string | null {
 export function getStoredRefreshToken(): string | null {
   if (typeof window === "undefined") return null;
 
-  const directToken = localStorage.getItem(REFRESH_TOKEN_STORAGE_KEY);
+  const directToken = safeSessionStorageGet(REFRESH_TOKEN_STORAGE_KEY);
   if (directToken) return directToken;
 
   const persistedToken = readPersistedAuthState()?.refreshToken ?? null;
   if (persistedToken) {
-    localStorage.setItem(REFRESH_TOKEN_STORAGE_KEY, persistedToken);
+    safeSessionStorageSet(REFRESH_TOKEN_STORAGE_KEY, persistedToken);
   }
 
   return persistedToken;
@@ -71,10 +91,9 @@ export function getStoredRefreshToken(): string | null {
 
 export function clearStoredAuth() {
   if (typeof window === "undefined") return;
-  localStorage.removeItem(ACCESS_TOKEN_STORAGE_KEY);
-  localStorage.removeItem(REFRESH_TOKEN_STORAGE_KEY);
-  localStorage.removeItem(AUTH_STORAGE_KEY);
-  syncAccessTokenCookie(null);
+  safeSessionStorageRemove(ACCESS_TOKEN_STORAGE_KEY);
+  safeSessionStorageRemove(REFRESH_TOKEN_STORAGE_KEY);
+  safeSessionStorageRemove(AUTH_STORAGE_KEY);
   clearTabSession();
 }
 
@@ -126,13 +145,12 @@ export const useAuthStore = create<AuthState>()(
     (set) => ({
       token: null,
       refreshToken: null,
-        tokenExpiresAt: null,
+      tokenExpiresAt: null,
       tenantSlug: "",
       superAdmin: false,
       permissions: [],
       setToken: (token, expiresIn) => {
-        localStorage.setItem(ACCESS_TOKEN_STORAGE_KEY, token);
-        syncAccessTokenCookie(token);
+        safeSessionStorageSet(ACCESS_TOKEN_STORAGE_KEY, token);
         const tokenExpiresAt = expiresIn
           ? Date.now() + expiresIn * 1000
           : parseJwtExpToUnixMs(token);
@@ -140,9 +158,9 @@ export const useAuthStore = create<AuthState>()(
       },
       setRefreshToken: (token) => {
         if (token) {
-          localStorage.setItem(REFRESH_TOKEN_STORAGE_KEY, token);
+          safeSessionStorageSet(REFRESH_TOKEN_STORAGE_KEY, token);
         } else {
-          localStorage.removeItem(REFRESH_TOKEN_STORAGE_KEY);
+          safeSessionStorageRemove(REFRESH_TOKEN_STORAGE_KEY);
         }
         set({ refreshToken: token });
       },
@@ -160,10 +178,11 @@ export const useAuthStore = create<AuthState>()(
     }),
     {
       name: "auth-storage",
+      storage: createJSONStorage(() => (typeof window === "undefined" ? undefined : sessionStorage)),
       partialize: (s) => ({
         token: s.token,
         refreshToken: s.refreshToken,
-          tokenExpiresAt: s.tokenExpiresAt,
+        tokenExpiresAt: s.tokenExpiresAt,
         tenantSlug: s.tenantSlug,
         superAdmin: s.superAdmin,
         permissions: s.permissions,

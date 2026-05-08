@@ -1,7 +1,7 @@
 import { getStoredAccessToken } from "@/store/auth";
 
 /**
- * Decodes the JWT stored in localStorage and returns the current admin user's
+ * Decodes the JWT stored in the current tab session and returns the current admin user's
  * basic identity: adminUserId, email, superAdmin, tenantId.
  * No network request — pure client-side decode of the already-validated token.
  */

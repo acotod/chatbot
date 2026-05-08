@@ -6,6 +6,7 @@ import {
   useContext,
   useMemo,
   useState,
+  type MouseEvent,
   type ButtonHTMLAttributes,
   type HTMLAttributes,
   type ReactNode,
@@ -49,16 +50,21 @@ interface TabsTriggerProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 export function TabsTrigger({ value, className, ...props }: TabsTriggerProps) {
   const ctx = useContext(TabsContext);
   const active = ctx?.value === value;
+  const { onClick: callerOnClick, ...buttonProps } = props;
+  const handleClick = (event: MouseEvent<HTMLButtonElement>) => {
+    ctx?.setValue(value);
+    callerOnClick?.(event);
+  };
   return (
     <button
       type="button"
+      {...buttonProps}
       className={cn(
         "rounded-lg px-3 py-1.5 text-xs font-medium transition-colors",
         active ? "bg-white text-slate-900 shadow-sm" : "text-slate-600 hover:text-slate-900",
         className
       )}
-      onClick={() => ctx?.setValue(value)}
-      {...props}
+      onClick={handleClick}
     />
   );
 }

@@ -10,6 +10,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { MessageCircle } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+import { getStoredRefreshToken } from "@/store/auth";
 
 type AuthResponse = {
   accessToken: string;
@@ -118,7 +119,7 @@ export default function LoginPage() {
 
     // Schedule proactive token refresh 2 min before expiry
     scheduleProactiveRefresh(response.expiresIn ?? 900, async () => {
-      const rt = localStorage.getItem("admin_refresh_token");
+      const rt = getStoredRefreshToken();
       if (!rt) return;
       const { default: axios } = await import("axios");
       const apiBase = process.env.NEXT_PUBLIC_API_URL?.trim() ||

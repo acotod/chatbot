@@ -1,5 +1,6 @@
 'use client';
 import { io, Socket } from 'socket.io-client';
+import { getStoredAccessToken } from '@/store/auth';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://127.0.0.1:3200';
 
@@ -7,10 +8,7 @@ let socket: Socket | null = null;
 let activeTenantId: string | null = null;
 
 export function getSocket(tenantId: string): Socket {
-  const token =
-    typeof window !== 'undefined'
-      ? (localStorage.getItem('admin_token') ?? '')
-      : '';
+  const token = typeof window !== 'undefined' ? (getStoredAccessToken() ?? '') : '';
 
   if (socket && activeTenantId !== tenantId) {
     socket.disconnect();

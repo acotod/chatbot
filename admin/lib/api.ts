@@ -73,7 +73,7 @@ export const apiClient = axios.create({
   timeout: 10000,
 });
 
-// Attach JWT token from localStorage on every request
+// Attach the per-tab JWT token on every request
 apiClient.interceptors.request.use((config) => {
   if (typeof window !== "undefined") {
     const token = getStoredAccessToken() ?? useAuthStore.getState().token;
@@ -133,7 +133,7 @@ apiClient.interceptors.response.use(
       typeof window !== "undefined" &&
       !window.location.pathname.startsWith("/login") &&
       !url.includes("/auth/refresh") &&
-      !!localStorage.getItem("admin_refresh_token");
+      !!getStoredRefreshToken();
 
     // Only log non-recoverable errors immediately; recoverable 401s are logged only if refresh fails
     if (!isRecoverable401) {
