@@ -4,8 +4,8 @@
  * This ensures requests from different tabs can be isolated
  */
 
-const TAB_ID_KEY = 'admin_tab_id';
 const TAB_ID_SESSION_KEY = 'admin_tab_id_session';
+let inMemoryTabId = '';
 
 /**
  * Generate a unique ID for this tab
@@ -14,21 +14,40 @@ function generateTabId(): string {
   return `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 }
 
+function readSessionTabId(): string {
+  if (typeof window === 'undefined') return '';
+  try {
+    return sessionStorage.getItem(TAB_ID_SESSION_KEY) ?? '';
+  } catch {
+    return inMemoryTabId;
+  }
+}
+
+function writeSessionTabId(tabId: string): void {
+  inMemoryTabId = tabId;
+  if (typeof window === 'undefined') return;
+  try {
+    sessionStorage.setItem(TAB_ID_SESSION_KEY, tabId);
+  } catch {
+    // Fallback to in-memory storage when sessionStorage is unavailable.
+  }
+}
+
 /**
  * Get or create the tab ID for the current tab
  * Uses sessionStorage to ensure each tab gets its own ID
  */
 export function getTabId(): string {
   if (typeof window === 'undefined') return '';
-  
-  // First check sessionStorage (per-tab storage)
-  const sessionTabId = sessionStorage.getItem(TAB_ID_SESSION_KEY);
+
+  // Prefer per-tab session storage, fallback to in-memory when blocked.
+  const sessionTabId = readSessionTabId();
   if (sessionTabId) return sessionTabId;
-  
+
   // Generate and store new tabId
   const newTabId = generateTabId();
-  sessionStorage.setItem(TAB_ID_SESSION_KEY, newTabId);
-  
+  writeSessionTabId(newTabId);
+
   return newTabId;
 }
 
@@ -37,7 +56,12 @@ export function getTabId(): string {
  */
 export function clearTabSession(): void {
   if (typeof window === 'undefined') return;
-  sessionStorage.removeItem(TAB_ID_SESSION_KEY);
+  inMemoryTabId = '';
+  try {
+    sessionStorage.removeItem(TAB_ID_SESSION_KEY);
+  } catch {
+    // No-op when sessionStorage is unavailable.
+  }
 }
 
 /**
