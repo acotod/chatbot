@@ -2,11 +2,23 @@
 
 import { tenantApi } from "@/lib/api";
 import { getMe } from "@/lib/useMe";
-import { useAuthStore } from "@/store/auth";
+import { getStoredAccessToken, useAuthStore } from "@/store/auth";
 import { useQuery } from "@tanstack/react-query";
 import { Bell, Search } from "lucide-react";
 import { usePathname } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useSyncExternalStore } from "react";
+
+function subscribeToClientSnapshot() {
+  return () => {};
+}
+
+function getClientSnapshot() {
+  return true;
+}
+
+function getServerSnapshot() {
+  return false;
+}
 
 interface TenantOption {
   id: string;
@@ -38,15 +50,14 @@ const TITLES: Record<string, string> = {
 export function Header() {
   const pathname = usePathname();
   const { tenantSlug, setTenantSlug } = useAuthStore();
-  const [mounted, setMounted] = useState(false);
-  const [sessionEmail, setSessionEmail] = useState<string | null>(null);
+  const isClient = useSyncExternalStore(
+    subscribeToClientSnapshot,
+    getClientSnapshot,
+    getServerSnapshot
+  );
+  const hasAccessToken = isClient && Boolean(getStoredAccessToken());
   const apiBase = process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:3200";
-
-  useEffect(() => {
-    setMounted(true);
-    const me = getMe();
-    setSessionEmail(me?.email ?? null);
-  }, []);
+  const sessionEmail = isClient ? (getMe()?.email ?? null) : null;
 
   const { data: tenants = [] } = useQuery<TenantOption[]>({
     queryKey: ["tenants", "header"],
@@ -54,6 +65,7 @@ export function Header() {
       const res = await tenantApi.list();
       return Array.isArray(res.data) ? res.data : [];
     },
+    enabled: hasAccessToken,
     staleTime: 60_000,
   });
 
@@ -143,7 +155,7 @@ export function Header() {
           )}
           <div className="hidden md:flex flex-col leading-tight">
             <span className="text-sm text-slate-700">{tenantDisplayName}</span>
-            <span className="text-xs text-slate-500">{mounted ? (sessionEmail ?? "Sin sesión") : "Sin sesión"}</span>
+            <span className="text-xs text-slate-500">{sessionEmail ?? "Sin sesión"}</span>
           </div>
         </div>
       </div>

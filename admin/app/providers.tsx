@@ -1,7 +1,7 @@
 "use client";
 
 import { authApi } from "@/lib/api";
-import { useAuthStore } from "@/store/auth";
+import { getStoredAccessToken, getStoredRefreshToken, useAuthStore } from "@/store/auth";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
@@ -13,10 +13,20 @@ function SessionSecurityGuard() {
   const pathname = usePathname();
   const router = useRouter();
   const { token, refreshToken, tokenExpiresAt, logout } = useAuthStore();
-  const lastActivityAtRef = useRef<number>(Date.now());
+  const lastActivityAtRef = useRef<number>(0);
+  const hasAccessToken = Boolean(token || getStoredAccessToken());
+  const effectiveRefreshToken = refreshToken ?? getStoredRefreshToken();
 
   useEffect(() => {
-    if (!token || pathname.startsWith("/login")) return;
+    if (pathname.startsWith("/login") || pathname.startsWith("/portal")) return;
+    if (hasAccessToken) return;
+
+    logout();
+    router.replace("/login");
+  }, [hasAccessToken, logout, pathname, router]);
+
+  useEffect(() => {
+    if (!hasAccessToken || pathname.startsWith("/login")) return;
 
     const now = Date.now();
     if (tokenExpiresAt && now >= tokenExpiresAt) {
@@ -24,10 +34,12 @@ function SessionSecurityGuard() {
       router.replace("/login?reason=expired");
       return;
     }
-  }, [token, tokenExpiresAt, pathname, logout, router]);
+  }, [hasAccessToken, tokenExpiresAt, pathname, logout, router]);
 
   useEffect(() => {
-    if (!token || pathname.startsWith("/login")) return;
+    if (!hasAccessToken || pathname.startsWith("/login")) return;
+
+    lastActivityAtRef.current = Date.now();
 
     const touch = () => {
       lastActivityAtRef.current = Date.now();
@@ -35,7 +47,9 @@ function SessionSecurityGuard() {
 
     const runLogout = async (reason: "inactive" | "expired") => {
       try {
-        await authApi.logout(refreshToken ?? undefined);
+        if (hasAccessToken || effectiveRefreshToken) {
+          await authApi.logout(effectiveRefreshToken ?? undefined);
+        }
       } catch {
         // Best effort logout on server, always clear client state.
       } finally {
@@ -87,7 +101,7 @@ function SessionSecurityGuard() {
       });
       document.removeEventListener("visibilitychange", handleVisibility);
     };
-  }, [token, refreshToken, tokenExpiresAt, pathname, logout, router]);
+  }, [hasAccessToken, effectiveRefreshToken, tokenExpiresAt, pathname, logout, router]);
 
   useEffect(() => {
     const onStorage = (event: StorageEvent) => {

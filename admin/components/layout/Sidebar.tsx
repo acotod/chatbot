@@ -4,13 +4,12 @@ import { authApi, solicitudesApi, tenantApi } from "@/lib/api";
 import { addLog } from "@/lib/errorLogger";
 import { buildPermissionSet, normalizePermissions, type Permission } from "@/lib/permissions";
 import {
-  canAccessNavItem,
   filterAuthorizedNavItems,
   resolveAuthorizedFallback,
   resolveBlockedPathRedirect,
 } from "@/lib/sidebarAccess";
 import { cn } from "@/lib/utils";
-import { useAuthStore } from "@/store/auth";
+import { getStoredAccessToken, getStoredRefreshToken, useAuthStore } from "@/store/auth";
 import { useQuery } from "@tanstack/react-query";
 import {
   Bell,
@@ -35,7 +34,19 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+
+function subscribeToClientSnapshot() {
+  return () => {};
+}
+
+function getClientSnapshot() {
+  return true;
+}
+
+function getServerSnapshot() {
+  return false;
+}
 
 const NAV_ITEMS: Array<{
   icon: React.ComponentType<{ size?: number; className?: string }>;
@@ -67,7 +78,12 @@ export function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
   const { logout, tenantSlug, superAdmin, permissions, setTenantSlug, setPermissions } = useAuthStore();
-  const [mounted, setMounted] = useState(false);
+  const isClient = useSyncExternalStore(
+    subscribeToClientSnapshot,
+    getClientSnapshot,
+    getServerSnapshot
+  );
+  const hasAccessToken = isClient && Boolean(getStoredAccessToken());
 
   const [tenants, setTenants] = useState<{ slug: string; nombre: string }[]>([]);
   const [dropdownOpen, setDropdownOpen] = useState(false);
@@ -82,14 +98,10 @@ export function Sidebar() {
     return slug;
   }
 
-  useEffect(() => {
-    setMounted(true);
-  }, []);
-
   const { data: meData, isLoading: authMeLoading } = useQuery({
     queryKey: ["auth-me"],
     queryFn: () => authApi.me().then((r) => r.data),
-    enabled: mounted,
+    enabled: hasAccessToken,
     staleTime: 60_000,
   });
 
@@ -108,12 +120,12 @@ export function Sidebar() {
 
   // Fetch tenant list for superAdmins
   useEffect(() => {
-    if (!superAdmin) return;
+    if (!superAdmin || !hasAccessToken) return;
     tenantApi.list().then((res) => {
       const data = (res.data as { slug: string; nombre: string }[]) ?? [];
       setTenants(data);
     }).catch(() => {});
-  }, [superAdmin]);
+  }, [hasAccessToken, superAdmin]);
 
   // Close dropdown on outside click
   useEffect(() => {
@@ -128,11 +140,10 @@ export function Sidebar() {
 
   async function handleLogout() {
     try {
-      const refreshToken =
-        typeof window !== "undefined"
-          ? localStorage.getItem("admin_refresh_token") ?? undefined
-          : undefined;
-      await authApi.logout(refreshToken);
+      const refreshToken = getStoredRefreshToken() ?? undefined;
+      if (hasAccessToken || refreshToken) {
+        await authApi.logout(refreshToken);
+      }
     } catch {
       // Best effort: even if API logout fails, clear client auth state.
     } finally {
@@ -204,13 +215,13 @@ export function Sidebar() {
       solicitudesApi
         .list(tenantSlug!, { estado: "open", page: 1, limit: 1 })
         .then((r) => r.data),
-    enabled: mounted && !!tenantSlug && canViewSolicitudes,
+    enabled: hasAccessToken && !!tenantSlug && canViewSolicitudes,
     staleTime: 30_000,
   });
 
   const solicitudesPendientes = Number(solicitudesPendientesData?.total ?? 0);
 
-  if (!mounted) {
+  if (!isClient) {
     return (
       <aside className="w-64 bg-white border-r border-slate-200 flex flex-col h-screen sticky top-0" />
     );

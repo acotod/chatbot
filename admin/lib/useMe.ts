@@ -1,3 +1,5 @@
+import { getStoredAccessToken } from "@/store/auth";
+
 /**
  * Decodes the JWT stored in localStorage and returns the current admin user's
  * basic identity: adminUserId, email, superAdmin, tenantId.
@@ -21,7 +23,7 @@ function parseJwt(token: string): Record<string, unknown> | null {
 
 export function getMe(): Me | null {
   if (typeof window === "undefined") return null;
-  const token = localStorage.getItem("admin_token");
+  const token = getStoredAccessToken();
   if (!token) return null;
   const payload = parseJwt(token);
   if (!payload) return null;

@@ -1,6 +1,12 @@
 import axios from "axios";
 import { addLog } from "./errorLogger";
-import { scheduleProactiveRefresh, useAuthStore } from "@/store/auth";
+import {
+  clearStoredAuth,
+  getStoredAccessToken,
+  getStoredRefreshToken,
+  scheduleProactiveRefresh,
+  useAuthStore,
+} from "@/store/auth";
 
 function isLocalHostname(hostname: string): boolean {
   return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "0.0.0.0";
@@ -56,7 +62,7 @@ export const apiClient = axios.create({
 // Attach JWT token from localStorage on every request
 apiClient.interceptors.request.use((config) => {
   if (typeof window !== "undefined") {
-    const token = localStorage.getItem("admin_token");
+    const token = getStoredAccessToken() ?? useAuthStore.getState().token;
     if (token) config.headers.Authorization = `Bearer ${token}`;
   }
   return config;
@@ -74,10 +80,7 @@ let refreshPromise: Promise<string> | null = null;
 
 function clearAuthAndRedirect() {
   if (typeof window === "undefined") return;
-  localStorage.removeItem("admin_token");
-  localStorage.removeItem("admin_refresh_token");
-  localStorage.removeItem("auth-storage");
-  document.cookie = "admin_token=; path=/; SameSite=Strict; max-age=0";
+  clearStoredAuth();
   window.location.href = "/login";
 }
 
@@ -137,7 +140,7 @@ apiClient.interceptors.response.use(
     }
 
     if (isRecoverable401) {
-      const storedRefreshToken = localStorage.getItem("admin_refresh_token");
+      const storedRefreshToken = getStoredRefreshToken();
 
       if (!storedRefreshToken) {
         clearAuthAndRedirect();
@@ -154,10 +157,10 @@ apiClient.interceptors.response.use(
             .then((res) => {
               const { accessToken, expiresIn } = res.data;
               // Update store & schedule proactive refresh
-              const { setToken, refreshToken: rt } = useAuthStore.getState();
+              const { setToken } = useAuthStore.getState();
               setToken(accessToken, expiresIn);
               scheduleProactiveRefresh(expiresIn ?? 900, async () => {
-                const currentRefreshToken = localStorage.getItem("admin_refresh_token");
+                const currentRefreshToken = getStoredRefreshToken();
                 if (!currentRefreshToken) return;
                 const r = await refreshClient.post<{ accessToken: string; expiresIn?: number }>(
                   "/auth/refresh",
@@ -224,7 +227,9 @@ export const authApi = {
       credential,
     }),
   logout: (refreshToken?: string) =>
-    apiClient.post("/auth/logout", refreshToken ? { refreshToken } : {}),
+    refreshToken || getStoredAccessToken()
+      ? apiClient.post("/auth/logout", refreshToken ? { refreshToken } : {})
+      : Promise.resolve({ data: null }),
   refresh: (refreshToken: string) =>
     refreshClient.post<{ accessToken: string }>("/auth/refresh", { refreshToken }),
 };

@@ -5,6 +5,77 @@ import { normalizePermissions, type Permission } from "@/lib/permissions";
 // Module-level refresh timer handle
 let _proactiveRefreshTimer: ReturnType<typeof setTimeout> | null = null;
 
+const ACCESS_TOKEN_STORAGE_KEY = "admin_token";
+const REFRESH_TOKEN_STORAGE_KEY = "admin_refresh_token";
+const AUTH_STORAGE_KEY = "auth-storage";
+
+type PersistedAuthState = {
+  token?: string | null;
+  refreshToken?: string | null;
+};
+
+function syncAccessTokenCookie(token: string | null) {
+  if (typeof document === "undefined" || typeof window === "undefined") return;
+  const secureAttr = window.location.protocol === "https:" ? "; Secure" : "";
+
+  if (token) {
+    document.cookie = `admin_token=${token}; path=/; SameSite=Strict${secureAttr}; max-age=${60 * 60 * 8}`;
+    return;
+  }
+
+  document.cookie = `admin_token=; path=/; SameSite=Strict${secureAttr}; max-age=0`;
+}
+
+function readPersistedAuthState(): PersistedAuthState | null {
+  if (typeof window === "undefined") return null;
+
+  try {
+    const raw = localStorage.getItem(AUTH_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as { state?: PersistedAuthState };
+    return parsed?.state ?? null;
+  } catch {
+    return null;
+  }
+}
+
+export function getStoredAccessToken(): string | null {
+  if (typeof window === "undefined") return null;
+
+  const directToken = localStorage.getItem(ACCESS_TOKEN_STORAGE_KEY);
+  if (directToken) return directToken;
+
+  const persistedToken = readPersistedAuthState()?.token ?? null;
+  if (persistedToken) {
+    localStorage.setItem(ACCESS_TOKEN_STORAGE_KEY, persistedToken);
+    syncAccessTokenCookie(persistedToken);
+  }
+
+  return persistedToken;
+}
+
+export function getStoredRefreshToken(): string | null {
+  if (typeof window === "undefined") return null;
+
+  const directToken = localStorage.getItem(REFRESH_TOKEN_STORAGE_KEY);
+  if (directToken) return directToken;
+
+  const persistedToken = readPersistedAuthState()?.refreshToken ?? null;
+  if (persistedToken) {
+    localStorage.setItem(REFRESH_TOKEN_STORAGE_KEY, persistedToken);
+  }
+
+  return persistedToken;
+}
+
+export function clearStoredAuth() {
+  if (typeof window === "undefined") return;
+  localStorage.removeItem(ACCESS_TOKEN_STORAGE_KEY);
+  localStorage.removeItem(REFRESH_TOKEN_STORAGE_KEY);
+  localStorage.removeItem(AUTH_STORAGE_KEY);
+  syncAccessTokenCookie(null);
+}
+
 function parseJwtExpToUnixMs(token: string): number | null {
   try {
     const payload = JSON.parse(atob(token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/"))) as {
@@ -58,12 +129,8 @@ export const useAuthStore = create<AuthState>()(
       superAdmin: false,
       permissions: [],
       setToken: (token, expiresIn) => {
-        localStorage.setItem("admin_token", token);
-        // Sync to cookie so Next.js middleware can read it (server-side)
-        if (typeof document !== "undefined") {
-          const secureAttr = window.location.protocol === "https:" ? "; Secure" : "";
-          document.cookie = `admin_token=${token}; path=/; SameSite=Strict${secureAttr}; max-age=${60 * 60 * 8}`;
-        }
+        localStorage.setItem(ACCESS_TOKEN_STORAGE_KEY, token);
+        syncAccessTokenCookie(token);
         const tokenExpiresAt = expiresIn
           ? Date.now() + expiresIn * 1000
           : parseJwtExpToUnixMs(token);
@@ -71,9 +138,9 @@ export const useAuthStore = create<AuthState>()(
       },
       setRefreshToken: (token) => {
         if (token) {
-          localStorage.setItem("admin_refresh_token", token);
+          localStorage.setItem(REFRESH_TOKEN_STORAGE_KEY, token);
         } else {
-          localStorage.removeItem("admin_refresh_token");
+          localStorage.removeItem(REFRESH_TOKEN_STORAGE_KEY);
         }
         set({ refreshToken: token });
       },
@@ -81,14 +148,7 @@ export const useAuthStore = create<AuthState>()(
       setPermissions: (superAdmin, permissions) =>
         set({ superAdmin, permissions: normalizePermissions(permissions) }),
       logout: () => {
-        localStorage.removeItem("admin_token");
-        localStorage.removeItem("admin_refresh_token");
-        localStorage.removeItem("auth-storage");
-        // Clear cookie so middleware redirects to /login immediately
-        if (typeof document !== "undefined") {
-          const secureAttr = window.location.protocol === "https:" ? "; Secure" : "";
-          document.cookie = `admin_token=; path=/; SameSite=Strict${secureAttr}; max-age=0`;
-        }
+        clearStoredAuth();
         if (_proactiveRefreshTimer) {
           clearTimeout(_proactiveRefreshTimer);
           _proactiveRefreshTimer = null;
