@@ -75,6 +75,7 @@ export default function ConfiguracionPage() {
 
   // WhatsApp Business credentials
   const [waCreds, setWaCreds] = useState({ phoneNumberId: "", accessToken: "" });
+  const [waTokenConfigured, setWaTokenConfigured] = useState(false);
   const [waSaved, setWaSaved] = useState(false);
   const [puestoNombre, setPuestoNombre] = useState("");
   const [puestoError, setPuestoError] = useState("");
@@ -106,7 +107,13 @@ export default function ConfiguracionPage() {
     queryFn: () =>
       configApi.get(tenantSlug, "wa_credentials").then((r) => {
         const v = r?.data?.valor;
-        if (v?.phoneNumberId) setWaCreds(v);
+        if (v) {
+          setWaCreds({
+            phoneNumberId: v.phoneNumberId ?? "",
+            accessToken: "",
+          });
+          setWaTokenConfigured(v.accessToken === "__configured__");
+        }
         return r?.data;
       }),
     enabled: !!tenantSlug,
@@ -165,10 +172,12 @@ export default function ConfiguracionPage() {
     mutationFn: () =>
       configApi.set(tenantSlug, "wa_credentials", {
         phoneNumberId: waCreds.phoneNumberId,
-        accessToken: waCreds.accessToken,
+        accessToken: waCreds.accessToken.trim() !== "" ? waCreds.accessToken.trim() : "__configured__",
       }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["config", tenantSlug, "wa_credentials"] });
+      setWaTokenConfigured(true);
+      setWaCreds((prev) => ({ ...prev, accessToken: "" }));
       setWaSaved(true);
       setTimeout(() => setWaSaved(false), 3000);
     },
@@ -386,9 +395,10 @@ export default function ConfiguracionPage() {
           />
           <Input
             label="Access Token"
-            placeholder="EAAGm..."
+            placeholder={waTokenConfigured ? "•••••••• (ya configurado)" : "EAAGm..."}
             value={waCreds.accessToken}
             onChange={(e) => setWaCreds((c) => ({ ...c, accessToken: e.target.value }))}
+            type="password"
           />
           <p className="text-xs text-slate-400">
             Token de usuario del sistema con permiso <code>whatsapp_business_messaging</code>.

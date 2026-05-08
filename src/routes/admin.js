@@ -201,9 +201,7 @@ async function runAgendaStartHooks({ tenantId, event, actorAdminUserId }) {
 async function sendFlowContentToUser({ tenantId, userPhone, content }) {
     if (!userPhone || !content) return;
 
-    const creds = await db.getConfig(tenantId, 'wa_credentials');
-    const phoneNumberId = creds?.valor?.phoneNumberId;
-    const accessToken = creds?.valor?.accessToken;
+    const { phoneNumberId, accessToken } = await db.getWaCredentials(tenantId);
     if (!phoneNumberId || !accessToken) return;
 
     if (content.type === 'text' || content.type === 'end' || content.type === 'handoff') {
@@ -2117,6 +2115,9 @@ router.put('/tenants/:slug/config/:clave', requirePermiso('MANAGE_TENANTS'), asy
         if (req.params.clave === 'llm_config' && config?.valor?.api_key) {
             return res.json({ ...config, valor: { ...config.valor, api_key: '__configured__' } });
         }
+        if (req.params.clave === 'wa_credentials' && config?.valor?.accessToken) {
+            return res.json({ ...config, valor: { ...config.valor, accessToken: db.WA_TOKEN_SENTINEL } });
+        }
         res.json(config);
     } catch (err) {
         next(err);
@@ -2135,6 +2136,9 @@ router.get('/tenants/:slug/config/:clave', requirePermiso('MANAGE_TENANTS'), asy
         // Mask api_key for llm_config — never expose it to the client
         if (req.params.clave === 'llm_config' && config?.valor?.api_key) {
             return res.json({ ...config, valor: { ...config.valor, api_key: '__configured__' } });
+        }
+        if (req.params.clave === 'wa_credentials' && config?.valor?.accessToken) {
+            return res.json({ ...config, valor: { ...config.valor, accessToken: db.WA_TOKEN_SENTINEL } });
         }
         res.json(config);
     } catch (err) {

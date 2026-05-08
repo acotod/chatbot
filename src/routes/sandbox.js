@@ -875,11 +875,11 @@ router.post('/simulate/inbound', async (req, res, next) => {
     const phone = String(req.body?.phone ?? '').trim();
     const text = String(req.body?.text ?? '').trim();
     const settings = await getSandboxSettings(tenantId);
-    const creds = await db.getConfig(tenantId, 'wa_credentials');
-    const phoneNumberId = String(req.body?.phoneNumberId ?? creds?.valor?.phoneNumberId ?? '').trim();
+    const creds = await db.getWaCredentials(tenantId);
+    const phoneNumberId = String(req.body?.phoneNumberId ?? creds?.phoneNumberId ?? '').trim();
     const accessToken = typeof req.body?.accessToken === 'string'
       ? req.body.accessToken.trim()
-      : String(creds?.valor?.accessToken ?? '').trim();
+      : String(creds?.accessToken ?? '').trim();
 
     if (!phone || !text) {
       return res.status(400).json({ error: 'phone and text are required' });
@@ -1107,11 +1107,11 @@ router.post('/runs/:id/replay', async (req, res, next) => {
     }
 
     const settings = await getSandboxSettings(tenantId);
-    const creds = await db.getConfig(tenantId, 'wa_credentials');
-    const phoneNumberId = String(req.body?.phoneNumberId ?? creds?.valor?.phoneNumberId ?? '').trim();
+    const creds = await db.getWaCredentials(tenantId);
+    const phoneNumberId = String(req.body?.phoneNumberId ?? creds?.phoneNumberId ?? '').trim();
     const accessToken = typeof req.body?.accessToken === 'string'
       ? req.body.accessToken.trim()
-      : String(creds?.valor?.accessToken ?? '').trim();
+      : String(creds?.accessToken ?? '').trim();
 
     if (!settings.outboundMetaMock && (!phoneNumberId || !accessToken)) {
       return res.status(400).json({
@@ -1271,11 +1271,11 @@ router.post('/simulate/flows/auto', async (req, res, next) => {
     }
 
     const settings = await getSandboxSettings(tenantId);
-    const creds = await db.getConfig(tenantId, 'wa_credentials');
-    const phoneNumberId = String(req.body?.phoneNumberId ?? creds?.valor?.phoneNumberId ?? '').trim();
+    const creds = await db.getWaCredentials(tenantId);
+    const phoneNumberId = String(req.body?.phoneNumberId ?? creds?.phoneNumberId ?? '').trim();
     const accessToken = typeof req.body?.accessToken === 'string'
       ? req.body.accessToken.trim()
-      : String(creds?.valor?.accessToken ?? '').trim();
+      : String(creds?.accessToken ?? '').trim();
 
     if (!settings.outboundMetaMock && (!phoneNumberId || !accessToken)) {
       return res.status(400).json({

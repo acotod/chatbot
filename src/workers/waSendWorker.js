@@ -29,9 +29,9 @@ async function processSend(payload) {
   }
 
   // Load credentials
-  const creds = await db.getConfig(tenantId, 'wa_credentials');
-  const accessToken   = creds?.valor?.accessToken;
-  const phoneNumberId = creds?.valor?.phoneNumberId;
+  const creds = await db.getWaCredentials(tenantId);
+  const accessToken = creds?.accessToken;
+  const phoneNumberId = creds?.phoneNumberId;
 
   if (!accessToken || !phoneNumberId) {
     logger.warn('waSendWorker: no credentials for tenant', { tenantId });

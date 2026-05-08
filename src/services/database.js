@@ -43,6 +43,10 @@ const SOLICITUD_ENTERPRISE_DEFAULT_CONFIG = Object.freeze({
   webhooksEnabled: false,
 });
 
+const WA_TOKEN_SENTINEL = '__configured__';
+const WA_TOKEN_ENC_PREFIX = 'enc$1';
+let warnedMissingConfigEncryptionKey = false;
+
 function normalizeSolicitudStatus(status, fallback = SOLICITUD_STATUS.OPEN) {
   const raw = String(status ?? '').trim().toLowerCase();
   if (!raw) return fallback;
@@ -108,6 +112,80 @@ function getPrismaClient() {
 // to the caller at creation time and never persisted in plain text.
 function _hashApiKey(rawKey) {
   return crypto.createHash('sha256').update(rawKey).digest('hex');
+}
+
+function _getConfigEncryptionKey() {
+  const configuredKey = process.env.CONFIG_ENCRYPTION_KEY || process.env.WA_TOKEN_ENCRYPTION_KEY;
+  const fallbackKey = process.env.JWT_SECRET;
+  const secret = configuredKey || fallbackKey || 'dev-secret';
+
+  if (!configuredKey && !fallbackKey && !warnedMissingConfigEncryptionKey) {
+    warnedMissingConfigEncryptionKey = true;
+    logger.warn('CONFIG_ENCRYPTION_KEY is not set; using dev fallback for wa_credentials encryption');
+  }
+
+  return crypto.createHash('sha256').update(String(secret)).digest();
+}
+
+function _encryptSecret(plainText) {
+  const text = String(plainText ?? '').trim();
+  if (!text) return '';
+
+  const iv = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv('aes-256-gcm', _getConfigEncryptionKey(), iv);
+  const encrypted = Buffer.concat([cipher.update(text, 'utf8'), cipher.final()]);
+  const authTag = cipher.getAuthTag();
+
+  return `${WA_TOKEN_ENC_PREFIX}:${iv.toString('base64')}:${authTag.toString('base64')}:${encrypted.toString('base64')}`;
+}
+
+function _decryptSecret(value) {
+  const raw = String(value ?? '').trim();
+  if (!raw) return '';
+  if (!raw.startsWith(`${WA_TOKEN_ENC_PREFIX}:`)) return raw;
+
+  const parts = raw.split(':');
+  if (parts.length !== 4) {
+    logger.warn('Invalid encrypted wa_credentials token format');
+    return '';
+  }
+
+  try {
+    const [, ivB64, authTagB64, encryptedB64] = parts;
+    const decipher = crypto.createDecipheriv(
+      'aes-256-gcm',
+      _getConfigEncryptionKey(),
+      Buffer.from(ivB64, 'base64')
+    );
+    decipher.setAuthTag(Buffer.from(authTagB64, 'base64'));
+    const decrypted = Buffer.concat([
+      decipher.update(Buffer.from(encryptedB64, 'base64')),
+      decipher.final(),
+    ]);
+    return decrypted.toString('utf8').trim();
+  } catch (err) {
+    logger.error('Failed to decrypt wa_credentials token', { message: err.message });
+    return '';
+  }
+}
+
+async function _normalizeWaCredentialsForStorage(tenantId, valor) {
+  const incoming = (valor && typeof valor === 'object') ? { ...valor } : {};
+  const existing = await getConfig(tenantId, 'wa_credentials');
+  const existingToken = String(existing?.valor?.accessToken ?? '').trim();
+  const incomingToken = typeof incoming.accessToken === 'string' ? incoming.accessToken.trim() : '';
+
+  incoming.phoneNumberId = String(incoming.phoneNumberId ?? '').trim();
+
+  if (incomingToken && incomingToken !== WA_TOKEN_SENTINEL) {
+    incoming.accessToken = _encryptSecret(incomingToken);
+  } else if ((incomingToken === WA_TOKEN_SENTINEL || incomingToken === '') && existingToken) {
+    incoming.accessToken = existingToken;
+  } else if (!incomingToken) {
+    delete incoming.accessToken;
+  }
+
+  return incoming;
 }
 
 async function findTenantByApiKey(apiKey) {
@@ -228,11 +306,28 @@ async function getConfig(tenantId, clave) {
 async function setConfig(tenantId, clave, valor) {
   const client = getPrismaClient();
   if (!client) return null;
+
+  let persistedValor = valor;
+  if (clave === 'wa_credentials') {
+    persistedValor = await _normalizeWaCredentialsForStorage(tenantId, valor);
+  }
+
   return client.configuracion.upsert({
     where: { tenantId_clave: { tenantId, clave } },
-    update: { valor },
-    create: { tenantId, clave, valor },
+    update: { valor: persistedValor },
+    create: { tenantId, clave, valor: persistedValor },
   });
+}
+
+async function getWaCredentials(tenantId) {
+  const config = await getConfig(tenantId, 'wa_credentials');
+  const phoneNumberId = String(config?.valor?.phoneNumberId ?? '').trim();
+  const accessToken = _decryptSecret(config?.valor?.accessToken);
+
+  return {
+    phoneNumberId,
+    accessToken,
+  };
 }
 
 async function getSolicitudesEnterpriseConfig(tenantId) {
@@ -1611,6 +1706,8 @@ module.exports = {
   // config
   getConfig,
   setConfig,
+  getWaCredentials,
+  WA_TOKEN_SENTINEL,
   getSolicitudesEnterpriseConfig,
   setSolicitudesEnterpriseConfig,
   // agentes

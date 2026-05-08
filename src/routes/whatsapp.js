@@ -124,8 +124,7 @@ router.post('/', verifyMetaSignature, async (req, res) => {
         }
 
         // Get access token for outbound replies
-        const creds = await db.getConfig(tenant.id, 'wa_credentials');
-        const accessToken = creds?.valor?.accessToken;
+        const { accessToken } = await db.getWaCredentials(tenant.id);
 
         // Handle status updates (delivery receipts)
         for (const status of value.statuses ?? []) {
@@ -703,12 +702,12 @@ router.post('/send', async (req, res, next) => {
       return res.status(400).json({ error: 'tenantId, to and text are required' });
     }
 
-    const creds = await db.getConfig(tenantId, 'wa_credentials');
-    if (!creds?.valor?.phoneNumberId || !creds?.valor?.accessToken) {
+    const creds = await db.getWaCredentials(tenantId);
+    if (!creds?.phoneNumberId || !creds?.accessToken) {
       return res.status(422).json({ error: 'WhatsApp credentials not configured for this tenant' });
     }
 
-    const { phoneNumberId, accessToken } = creds.valor;
+    const { phoneNumberId, accessToken } = creds;
 
     const user    = await db.findOrCreateUser(to, tenantId);
     const waResp  = await wa.sendTextMessage(phoneNumberId, to, text, accessToken);
