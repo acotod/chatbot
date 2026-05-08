@@ -917,6 +917,8 @@ router.get('/agent/solicitudes', requireAgentJwt, async (req, res, next) => {
           createdAt: true,
           updatedAt: true,
           completedAt: true,
+          user: { select: { id: true, phone: true } },
+          conversation: { select: { id: true, status: true, startedAt: true, endedAt: true } },
         },
       }),
     ]);
