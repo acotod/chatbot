@@ -9,6 +9,19 @@ import {
 } from "@/store/auth";
 import { getTabId } from "./tabManager";
 
+let inMemoryRequestTabId = "";
+
+function getRequestTabId(): string {
+  const fromManager = getTabId();
+  if (fromManager) {
+    inMemoryRequestTabId = fromManager;
+    return fromManager;
+  }
+  if (inMemoryRequestTabId) return inMemoryRequestTabId;
+  inMemoryRequestTabId = `${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
+  return inMemoryRequestTabId;
+}
+
 function isLocalHostname(hostname: string): boolean {
   return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "0.0.0.0";
 }
@@ -65,9 +78,9 @@ apiClient.interceptors.request.use((config) => {
   if (typeof window !== "undefined") {
     const token = getStoredAccessToken() ?? useAuthStore.getState().token;
     if (token) config.headers.Authorization = `Bearer ${token}`;
-    
+
     // Add tab ID to every request for tab-level access control
-    const tabId = getTabId();
+    const tabId = getRequestTabId();
     if (tabId) config.headers["x-tab-id"] = tabId;
   }
   return config;
@@ -209,12 +222,18 @@ apiClient.interceptors.response.use(
 // ── Auth ────────────────────────────────────────────────────────────────────
 export const authApi = {
   login: (email: string, password: string) => {
-    const tabId = getTabId();
-    return apiClient.post<{ accessToken: string; refreshToken?: string; expiresIn: number; superAdmin: boolean }>("/auth/login", {
-      email,
-      password,
-      tabId,
-    });
+    const tabId = getRequestTabId();
+    return apiClient.post<{ accessToken: string; refreshToken?: string; expiresIn: number; superAdmin: boolean }>(
+      "/auth/login",
+      {
+        email,
+        password,
+        tabId,
+      },
+      {
+        headers: { "x-tab-id": tabId },
+      }
+    );
   },
   me: () =>
     apiClient.get<{

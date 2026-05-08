@@ -3,6 +3,19 @@ import { API_BASE } from "./api";
 import { getStoredAgentAccessToken } from "@/store/agentAuth";
 import { getTabId } from "./tabManager";
 
+let inMemoryRequestTabId = "";
+
+function getRequestTabId(): string {
+  const fromManager = getTabId();
+  if (fromManager) {
+    inMemoryRequestTabId = fromManager;
+    return fromManager;
+  }
+  if (inMemoryRequestTabId) return inMemoryRequestTabId;
+  inMemoryRequestTabId = `${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
+  return inMemoryRequestTabId;
+}
+
 export const agentApiClient = axios.create({
   baseURL: API_BASE,
   headers: { "Content-Type": "application/json" },
@@ -14,13 +27,13 @@ agentApiClient.interceptors.request.use((config) => {
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }
-  
+
   // Add tab ID to every request for tab-level access control
   if (typeof window !== "undefined") {
-    const tabId = getTabId();
+    const tabId = getRequestTabId();
     if (tabId) config.headers["x-tab-id"] = tabId;
   }
-  
+
   return config;
 });
 
@@ -110,13 +123,19 @@ export type AgentContactosResponse = {
 
 export const agentAuthApi = {
   login: (tenantSlug: string, email: string, password: string) => {
-    const tabId = getTabId();
-    return agentApiClient.post<AgentLoginResponse>("/auth/agent/login", {
-      tenantSlug,
-      email,
-      password,
-      tabId,
-    });
+    const tabId = getRequestTabId();
+    return agentApiClient.post<AgentLoginResponse>(
+      "/auth/agent/login",
+      {
+        tenantSlug,
+        email,
+        password,
+        tabId,
+      },
+      {
+        headers: { "x-tab-id": tabId },
+      }
+    );
   },
   forgotPassword: (tenantSlug: string, email: string) =>
     agentApiClient.post<{ message: string; deliveryChannels?: string[]; resetToken?: string; resetUrl?: string; expiresAt?: string }>("/auth/agent/forgot-password", {

@@ -4,6 +4,34 @@ import { clearTabSession } from "@/lib/tabManager";
 
 const ACCESS_TOKEN_STORAGE_KEY = "agent_token";
 const AUTH_STORAGE_KEY = "agent-auth-storage";
+let inMemoryAgentToken: string | null = null;
+
+function safeStorageGet(key: string): string | null {
+  if (typeof window === "undefined") return null;
+  try {
+    return localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+function safeStorageSet(key: string, value: string) {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.setItem(key, value);
+  } catch {
+    // Ignore storage failures and keep session in memory.
+  }
+}
+
+function safeStorageRemove(key: string) {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.removeItem(key);
+  } catch {
+    // Ignore storage failures and keep cleanup best-effort.
+  }
+}
 
 type PersistedAgentAuthState = {
   token?: string | null;
@@ -37,12 +65,15 @@ function readPersistedAgentAuthState(): PersistedAgentAuthState | null {
 export function getStoredAgentAccessToken(): string | null {
   if (typeof window === "undefined") return null;
 
-  const directToken = localStorage.getItem(ACCESS_TOKEN_STORAGE_KEY);
+  const directToken = safeStorageGet(ACCESS_TOKEN_STORAGE_KEY);
   if (directToken) return directToken;
+
+  if (inMemoryAgentToken) return inMemoryAgentToken;
 
   const persistedToken = readPersistedAgentAuthState()?.token ?? null;
   if (persistedToken) {
-    localStorage.setItem(ACCESS_TOKEN_STORAGE_KEY, persistedToken);
+    safeStorageSet(ACCESS_TOKEN_STORAGE_KEY, persistedToken);
+    inMemoryAgentToken = persistedToken;
     syncAccessTokenCookie(persistedToken);
   }
 
@@ -51,8 +82,9 @@ export function getStoredAgentAccessToken(): string | null {
 
 export function clearStoredAgentAuth() {
   if (typeof window === "undefined") return;
-  localStorage.removeItem(ACCESS_TOKEN_STORAGE_KEY);
-  localStorage.removeItem(AUTH_STORAGE_KEY);
+  inMemoryAgentToken = null;
+  safeStorageRemove(ACCESS_TOKEN_STORAGE_KEY);
+  safeStorageRemove(AUTH_STORAGE_KEY);
   syncAccessTokenCookie(null);
   clearTabSession();
 }
@@ -82,7 +114,8 @@ export const useAgentAuthStore = create<AgentAuthState>()(
       token: null,
       tokenExpiresAt: null,
       setToken: (token) => {
-        localStorage.setItem(ACCESS_TOKEN_STORAGE_KEY, token);
+        inMemoryAgentToken = token;
+        safeStorageSet(ACCESS_TOKEN_STORAGE_KEY, token);
         syncAccessTokenCookie(token);
         set({ token, tokenExpiresAt: parseJwtExpToUnixMs(token) });
       },
