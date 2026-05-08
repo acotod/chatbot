@@ -1,6 +1,7 @@
 "use client";
 
 import { metricsApi, solicitudesApi, whatsappApi } from "@/lib/api";
+import { buildPermissionSet } from "@/lib/permissions";
 import { useAuthStore } from "@/store/auth";
 import { useQuery } from "@tanstack/react-query";
 import { AlertTriangle, CalendarCheck, ClipboardList, MessageSquare, TrendingUp } from "lucide-react";
@@ -49,12 +50,15 @@ function KpiCard({
 }
 
 export default function DashboardPage() {
-  const { tenantSlug } = useAuthStore();
+  const { tenantSlug, superAdmin, permissions } = useAuthStore();
+  const permissionSet = buildPermissionSet(permissions);
+  const canViewMetrics = superAdmin || permissionSet.has("VIEW_METRICS");
+  const canViewSolicitudes = superAdmin || permissionSet.has("VIEW_SOLICITUDES");
 
   const { data: metrics } = useQuery({
     queryKey: ["metrics", tenantSlug],
     queryFn: () => metricsApi.get(tenantSlug).then((r) => r.data),
-    enabled: !!tenantSlug,
+    enabled: !!tenantSlug && canViewMetrics,
   });
 
   const { data: tenantData } = useQuery({
@@ -80,7 +84,7 @@ export default function DashboardPage() {
     queryKey: ["solicitudes", tenantSlug, { limit: 5 }],
     queryFn: () =>
       solicitudesApi.list(tenantSlug, { limit: 5, page: 1 }).then((r) => r.data),
-    enabled: !!tenantSlug,
+    enabled: !!tenantSlug && canViewSolicitudes,
   });
 
   const solicitudes = solicitudesData?.data ?? [];

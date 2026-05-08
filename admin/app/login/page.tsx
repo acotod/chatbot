@@ -2,6 +2,7 @@
 
 import { authApi } from "@/lib/api";
 import { addLog, initGlobalErrorLogger } from "@/lib/errorLogger";
+import { buildPermissionSet, normalizePermissions, type Permission } from "@/lib/permissions";
 import { scheduleProactiveRefresh, useAuthStore } from "@/store/auth";
 import { DebugPanel } from "@/components/DebugPanel";
 import axios from "axios";
@@ -16,13 +17,38 @@ type AuthResponse = {
   superAdmin: boolean;
 };
 
+const LOGIN_REDIRECT_ORDER: Array<{ href: string; permission: Permission }> = [
+  { href: "/dashboard", permission: "VIEW_DASHBOARD" },
+  { href: "/conversaciones", permission: "VIEW_CONVERSACIONES" },
+  { href: "/solicitudes", permission: "VIEW_SOLICITUDES" },
+  { href: "/reportes", permission: "VIEW_METRICS" },
+  { href: "/agenda", permission: "VIEW_AGENDA" },
+  { href: "/agentes", permission: "VIEW_AGENTES" },
+  { href: "/contactos", permission: "VIEW_CRM" },
+  { href: "/configuracion", permission: "MANAGE_TENANTS" },
+  { href: "/auditoria", permission: "VIEW_AUDITORIA" },
+  { href: "/roles", permission: "MANAGE_ROLES" },
+  { href: "/tenants", permission: "MANAGE_TENANTS" },
+  { href: "/integraciones", permission: "MANAGE_TENANTS" },
+  { href: "/variables", permission: "EDIT_FLUJOS" },
+  { href: "/waba-flujos", permission: "VIEW_FLUJOS" },
+  { href: "/webhooks", permission: "EDIT_SOLICITUDES" },
+  { href: "/sandbox", permission: "VIEW_SANDBOX" },
+];
+
+function resolvePostLoginRoute(superAdmin: boolean, permissions: Permission[]): string {
+  if (superAdmin) return "/dashboard";
+  const permissionSet = buildPermissionSet(permissions);
+  return LOGIN_REDIRECT_ORDER.find((item) => permissionSet.has(item.permission))?.href ?? "/login";
+}
+
 export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
-  const { setToken, setPermissions, setRefreshToken } = useAuthStore();
+  const { setToken, setPermissions, setRefreshToken, setTenantSlug } = useAuthStore();
   const router = useRouter();
 
   // Initialize error logger on mount
@@ -65,6 +91,26 @@ export default function LoginPage() {
     setToken(response.accessToken, response.expiresIn);
     setRefreshToken(response.refreshToken ?? null);
     setPermissions(Boolean(response.superAdmin), []);
+
+    let targetRoute = "/dashboard";
+    try {
+      const meResponse = await authApi.me();
+      const normalizedPermissions = normalizePermissions(meResponse.data?.permissions);
+      const isSuperAdmin = Boolean(meResponse.data?.superAdmin);
+
+      setPermissions(isSuperAdmin, normalizedPermissions);
+
+      const meTenantSlug = String(meResponse.data?.tenantSlug ?? "").trim();
+      if (!isSuperAdmin && meTenantSlug) {
+        setTenantSlug(meTenantSlug);
+      }
+
+      targetRoute = resolvePostLoginRoute(isSuperAdmin, normalizedPermissions);
+    } catch {
+      // Keep dashboard fallback if /auth/me fails after successful login.
+      targetRoute = "/dashboard";
+    }
+
     // Schedule proactive token refresh 2 min before expiry
     scheduleProactiveRefresh(response.expiresIn ?? 900, async () => {
       const rt = localStorage.getItem("admin_refresh_token");
@@ -78,7 +124,7 @@ export default function LoginPage() {
       setToken(r.data.accessToken, r.data.expiresIn);
       scheduleProactiveRefresh(r.data.expiresIn ?? 900, async () => {});
     });
-    router.push("/dashboard");
+    router.push(targetRoute);
   }
 
   async function handleSubmit(e: React.FormEvent) {
