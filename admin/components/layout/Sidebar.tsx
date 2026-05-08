@@ -1,6 +1,7 @@
 "use client";
 
 import { authApi, solicitudesApi, tenantApi } from "@/lib/api";
+import { agentAuthApi } from "@/lib/agentApi";
 import { addLog } from "@/lib/errorLogger";
 import { buildPermissionSet, normalizePermissions, type Permission } from "@/lib/permissions";
 import {
@@ -10,6 +11,7 @@ import {
 } from "@/lib/sidebarAccess";
 import { cn } from "@/lib/utils";
 import { getStoredAccessToken, getStoredRefreshToken, useAuthStore } from "@/store/auth";
+import { getStoredAgentAccessToken, useAgentAuthStore } from "@/store/agentAuth";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   BarChart3,
@@ -73,16 +75,28 @@ const NAV_ITEMS: Array<{
   { icon: TestTube2, label: "Sandbox", href: "/sandbox", permission: "VIEW_SANDBOX" },
 ];
 
+const AGENT_NAV_ITEMS: Array<{
+  icon: React.ComponentType<{ size?: number; className?: string }>;
+  label: string;
+  href: string;
+}> = [
+  { icon: LayoutDashboard, label: "Dashboard", href: "/dashboard" },
+  { icon: UserCircle2, label: "Perfil", href: "/agente/perfil" },
+];
+
 export function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
   const { logout, tenantSlug, superAdmin, permissions, setTenantSlug, setPermissions } = useAuthStore();
+  const { logout: logoutAgent } = useAgentAuthStore();
   const isClient = useSyncExternalStore(
     subscribeToClientSnapshot,
     getClientSnapshot,
     getServerSnapshot
   );
   const hasAccessToken = isClient && Boolean(getStoredAccessToken());
+  const hasAgentAccessToken = isClient && Boolean(getStoredAgentAccessToken());
+  const isAgentSession = hasAgentAccessToken && !hasAccessToken;
   const queryClient = useQueryClient();
 
   const [tenants, setTenants] = useState<{ slug: string; nombre: string }[]>([]);
@@ -101,7 +115,7 @@ export function Sidebar() {
   const { data: meData, isLoading: authMeLoading } = useQuery({
     queryKey: ["auth-me"],
     queryFn: () => authApi.me().then((r) => r.data),
-    enabled: hasAccessToken,
+    enabled: hasAccessToken && !isAgentSession,
     staleTime: 60_000,
   });
 
@@ -139,6 +153,19 @@ export function Sidebar() {
   }, []);
 
   async function handleLogout() {
+    if (isAgentSession) {
+      try {
+        await agentAuthApi.logout();
+      } catch {
+        // Best effort.
+      } finally {
+        queryClient.clear();
+        logoutAgent();
+        router.push("/agente/login");
+      }
+      return;
+    }
+
     try {
       const refreshToken = getStoredRefreshToken() ?? undefined;
       if (hasAccessToken || refreshToken) {
@@ -160,8 +187,8 @@ export function Sidebar() {
 
   // Filter nav items based on permissions
   const filteredNavItems = useMemo<(typeof NAV_ITEMS)[number][]>(
-    () => filterAuthorizedNavItems(NAV_ITEMS, accessContext),
-    [accessContext]
+    () => (isAgentSession ? AGENT_NAV_ITEMS : filterAuthorizedNavItems(NAV_ITEMS, accessContext)),
+    [accessContext, isAgentSession]
   );
 
   const authorizedFallbackHref = useMemo(
@@ -171,6 +198,7 @@ export function Sidebar() {
 
   // Guard: block direct URL access to modules without permission.
   useEffect(() => {
+    if (isAgentSession) return;
     if (!superAdmin && authMeLoading && permissionSet.size === 0) return;
 
     const blockedRoute = resolveBlockedPathRedirect(
@@ -199,6 +227,7 @@ export function Sidebar() {
       router.replace(fallback);
     }
   }, [
+    isAgentSession,
     pathname,
     superAdmin,
     authMeLoading,
@@ -216,7 +245,7 @@ export function Sidebar() {
       solicitudesApi
         .list(tenantSlug!, { estado: "open", page: 1, limit: 1 })
         .then((r) => r.data),
-    enabled: hasAccessToken && !!tenantSlug && canViewSolicitudes,
+    enabled: hasAccessToken && !isAgentSession && !!tenantSlug && canViewSolicitudes,
     staleTime: 30_000,
   });
 
@@ -239,7 +268,7 @@ export function Sidebar() {
       </div>
 
       {/* Tenant selector — only visible to superAdmin */}
-      {superAdmin && (
+      {superAdmin && !isAgentSession && (
         <div className="px-3 py-2 border-b border-slate-100" ref={dropdownRef}>
           <button
             onClick={() => setDropdownOpen((o) => !o)}
@@ -294,7 +323,7 @@ export function Sidebar() {
                 size={18}
               />
               {item.label}
-              {item.label === "Solicitudes" && solicitudesPendientes > 0 && (
+              {item.label === "Solicitudes" && !isAgentSession && solicitudesPendientes > 0 && (
                 <span className="ml-auto bg-red-100 text-red-600 text-xs font-semibold px-2 py-0.5 rounded-full">
                   {solicitudesPendientes > 99 ? "99+" : solicitudesPendientes}
                 </span>

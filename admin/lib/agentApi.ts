@@ -34,6 +34,14 @@ export type AgentLoginResponse = {
   };
 };
 
+export type AgentKpisResponse = {
+  solicitudesActivas: number;
+  solicitudesCompletadasMes: number;
+  agendaProximos7Dias: number;
+  agendaVencida: number;
+  lastSeenAt: string | null;
+};
+
 export const agentAuthApi = {
   login: (tenantSlug: string, email: string, password: string) =>
     agentApiClient.post<AgentLoginResponse>("/auth/agent/login", {
@@ -53,6 +61,8 @@ export const agentAuthApi = {
     }),
   me: () =>
     agentApiClient.get<AgentLoginResponse["profile"]>("/auth/agent/me"),
+  kpis: () =>
+    agentApiClient.get<AgentKpisResponse>("/auth/agent/kpis"),
   logout: () =>
     agentApiClient.post("/auth/agent/logout"),
 };

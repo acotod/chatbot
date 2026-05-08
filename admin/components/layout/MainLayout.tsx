@@ -46,10 +46,6 @@ export default function MainLayout({
     return <div className="min-h-screen bg-slate-50" />;
   }
 
-  if (allowAgentSharedDashboard && !hasAccessToken) {
-    return <main className="min-h-screen bg-slate-50 p-6">{children}</main>;
-  }
-
   return (
     <div className="flex h-screen bg-slate-50 overflow-hidden">
       <Sidebar />

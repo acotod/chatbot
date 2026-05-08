@@ -78,6 +78,15 @@ export default function DashboardPage() {
   const [agentProfile, setAgentProfile] = useState<AgentProfile | null>(null);
   const [agentLoading, setAgentLoading] = useState(false);
   const [agentError, setAgentError] = useState("");
+  const {
+    data: agentKpis,
+    isLoading: agentKpisLoading,
+  } = useQuery({
+    queryKey: ["agent-kpis", agentProfile?.agenteId ?? null],
+    queryFn: () => agentAuthApi.kpis().then((r) => r.data),
+    enabled: isAgentSession,
+    staleTime: 30_000,
+  });
   const permissionSet = buildPermissionSet(permissions);
   const canViewMetrics = superAdmin || permissionSet.has("VIEW_METRICS");
   const canViewSolicitudes = superAdmin || permissionSet.has("VIEW_SOLICITUDES");
@@ -134,6 +143,37 @@ export default function DashboardPage() {
           <p className="text-sm font-medium uppercase tracking-[0.2em] text-cyan-600">Dashboard</p>
           <h1 className="mt-2 text-3xl font-semibold tracking-tight text-slate-900">Panel de agente</h1>
           <p className="mt-2 text-slate-600">Vista principal de tu acceso operativo.</p>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+          <KpiCard
+            icon={ClipboardList}
+            title="Solicitudes activas"
+            value={agentKpisLoading ? "..." : (agentKpis?.solicitudesActivas ?? 0)}
+            sub="Asignadas a vos"
+            color="bg-amber-100 text-amber-600"
+          />
+          <KpiCard
+            icon={CalendarCheck}
+            title="Completadas (mes)"
+            value={agentKpisLoading ? "..." : (agentKpis?.solicitudesCompletadasMes ?? 0)}
+            sub="Resueltas este mes"
+            color="bg-green-100 text-green-600"
+          />
+          <KpiCard
+            icon={TrendingUp}
+            title="Agenda próximos 7 días"
+            value={agentKpisLoading ? "..." : (agentKpis?.agendaProximos7Dias ?? 0)}
+            sub="Eventos próximos"
+            color="bg-blue-100 text-blue-600"
+          />
+          <KpiCard
+            icon={AlertTriangle}
+            title="Agenda vencida"
+            value={agentKpisLoading ? "..." : (agentKpis?.agendaVencida ?? 0)}
+            sub="Pendientes pasados"
+            color="bg-red-100 text-red-600"
+          />
         </div>
 
         <div className="grid gap-4 sm:grid-cols-3">

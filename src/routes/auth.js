@@ -796,6 +796,74 @@ router.get('/agent/me', requireAgentJwt, async (req, res) => {
   });
 });
 
+// ── GET /auth/agent/kpis ─────────────────────────────────────────────────────
+router.get('/agent/kpis', requireAgentJwt, async (req, res, next) => {
+  try {
+    const tenantId = req.agent?.tenantId;
+    const agenteId = Number(req.agent?.agenteId);
+    if (!tenantId || !Number.isInteger(agenteId) || agenteId <= 0) {
+      return res.status(400).json({ error: 'Invalid agent context' });
+    }
+
+    const now = new Date();
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const weekAhead = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+    const activeSolicitudStates = ['open', 'in_progress', 'pending_info'];
+
+    const [
+      solicitudesActivas,
+      solicitudesCompletadasMes,
+      agendaProximos7Dias,
+      agendaVencida,
+    ] = await Promise.all([
+      prisma.solicitud.count({
+        where: {
+          tenantId,
+          agenteId,
+          estado: { in: activeSolicitudStates },
+        },
+      }),
+      prisma.solicitud.count({
+        where: {
+          tenantId,
+          agenteId,
+          completedAt: { gte: monthStart },
+        },
+      }),
+      prisma.agendaEventAssignment.count({
+        where: {
+          agenteId,
+          event: {
+            tenantId,
+            startAt: { gte: now, lte: weekAhead },
+            estado: { notIn: ['cancelado', 'cancelled'] },
+          },
+        },
+      }),
+      prisma.agendaEventAssignment.count({
+        where: {
+          agenteId,
+          event: {
+            tenantId,
+            endAt: { lt: now },
+            estado: { in: ['pendiente'] },
+          },
+        },
+      }),
+    ]);
+
+    return res.json({
+      solicitudesActivas,
+      solicitudesCompletadasMes,
+      agendaProximos7Dias,
+      agendaVencida,
+      lastSeenAt: req.agent?.lastSeenAt ?? null,
+    });
+  } catch (err) {
+    return next(err);
+  }
+});
+
 // ── POST /auth/logout ─────────────────────────────────────────────────────────
 router.post('/logout', requireJwt, async (req, res) => {
   const { refreshToken } = req.body;
