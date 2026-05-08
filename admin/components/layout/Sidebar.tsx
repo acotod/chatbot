@@ -12,7 +12,6 @@ import { cn } from "@/lib/utils";
 import { getStoredAccessToken, getStoredRefreshToken, useAuthStore } from "@/store/auth";
 import { useQuery } from "@tanstack/react-query";
 import {
-  Bell,
   BarChart3,
   Building2,
   CalendarDays,
@@ -305,16 +304,6 @@ export function Sidebar() {
 
       {/* Bottom */}
       <div className="px-3 py-4 border-t border-slate-100 space-y-1">
-        <button
-          type="button"
-          disabled
-          aria-disabled="true"
-          title="Notificaciones: próximamente"
-          className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-slate-400 bg-slate-50 cursor-not-allowed"
-        >
-          <Bell size={18} className="text-slate-400" />
-          Notificaciones (próximamente)
-        </button>
         <button
           type="button"
           onClick={handleLogout}
