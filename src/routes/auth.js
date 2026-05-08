@@ -9,6 +9,7 @@ const { PrismaClient } = require('@prisma/client');
 const { audit } = require('../services/audit');
 const { getRedisClient } = require('../services/redis');
 const requireJwt = require('../middleware/requireJwt');
+const lockoutPolicy = require('../services/lockoutPolicy');
 
 const prisma = new PrismaClient();
 const router = express.Router();
@@ -194,6 +195,11 @@ router.post('/login', loginRateLimiter, async (req, res) => {
   try {
     const user = await findAdminUserByEmailCaseInsensitive(email);
 
+    // Get tenant-specific lockout policy (or defaults)
+    const policy = await lockoutPolicy.getPolicy(user?.tenantId || null);
+    const MAX_ATTEMPTS_POLICY = policy.maxAttempts;
+    const LOCKOUT_MINUTES_POLICY = policy.lockoutMinutes;
+
     // Generic invalid-credentials response (timing-safe: always run bcrypt)
     const dummyHash = '$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy';
     const passwordToCheck = user ? user.passwordHash : dummyHash;
@@ -203,8 +209,8 @@ router.post('/login', loginRateLimiter, async (req, res) => {
       // Increment failedAttempts and maybe lock the account
       if (user) {
         const newAttempts = user.failedAttempts + 1;
-        const lockedUntil = newAttempts >= MAX_ATTEMPTS
-          ? new Date(Date.now() + LOCKOUT_MINUTES * 60 * 1000)
+        const lockedUntil = newAttempts >= MAX_ATTEMPTS_POLICY
+          ? new Date(Date.now() + LOCKOUT_MINUTES_POLICY * 60 * 1000)
           : null;
         await prisma.adminUser.update({
           where: { id: user.id },

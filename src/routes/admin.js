@@ -13,6 +13,7 @@ const wa = require('../services/whatsapp');
 const convLogger = require('../engine/conversationLogger');
 const { generatePortalToken } = require('../services/portalAccess');
 const { WEBHOOK_EVENTS, dispatchSolicitudesWebhookEvent } = require('../services/solicitudesWebhooks');
+const lockoutPolicy = require('../services/lockoutPolicy');
 
 // Multer: store logos under /app/uploads/logos (persisted volume in prod)
 const UPLOADS_DIR = path.join(process.cwd(), 'uploads', 'logos');
@@ -2141,6 +2142,80 @@ router.get('/tenants/:slug/config/:clave', requirePermiso('MANAGE_TENANTS'), asy
             return res.json({ ...config, valor: { ...config.valor, accessToken: db.WA_TOKEN_SENTINEL } });
         }
         res.json(config);
+    } catch (err) {
+        next(err);
+    }
+});
+
+// ---------------------------------------------------------------------------
+// Account Lockout Policy
+// ---------------------------------------------------------------------------
+
+// GET /admin/tenants/:slug/lockout-policy
+// Fetch current lockout policy for tenant
+router.get('/tenants/:slug/lockout-policy', requirePermiso('MANAGE_TENANTS'), async (req, res, next) => {
+    try {
+        const tenant = await db.findTenantBySlug(req.params.slug);
+        if (!tenant) return res.status(404).json({ error: 'Tenant not found' });
+        if (denyIfWrongTenant(req, res, tenant.id)) return;
+
+        const policy = await lockoutPolicy.getPolicy(tenant.id);
+        res.json(policy);
+    } catch (err) {
+        next(err);
+    }
+});
+
+// PUT /admin/tenants/:slug/lockout-policy
+// Update lockout policy for tenant
+router.put('/tenants/:slug/lockout-policy', requirePermiso('MANAGE_TENANTS'), async (req, res, next) => {
+    try {
+        const tenant = await db.findTenantBySlug(req.params.slug);
+        if (!tenant) return res.status(404).json({ error: 'Tenant not found' });
+        if (denyIfWrongTenant(req, res, tenant.id)) return;
+
+        const { maxAttempts, lockoutMinutes } = req.body;
+        if (maxAttempts === undefined || lockoutMinutes === undefined) {
+            return res.status(400).json({ error: 'maxAttempts and lockoutMinutes are required' });
+        }
+
+        const policy = await lockoutPolicy.updatePolicy(tenant.id, { maxAttempts, lockoutMinutes });
+        
+        // Audit
+        audit({
+            adminUserId: req.user?.adminUserId,
+            tenantId: tenant.id,
+            accion: 'UPDATE_LOCKOUT_POLICY',
+            entidad: 'lockout_policy',
+            metadata: { maxAttempts: policy.maxAttempts, lockoutMinutes: policy.lockoutMinutes },
+        });
+
+        res.json(policy);
+    } catch (err) {
+        next(err);
+    }
+});
+
+// DELETE /admin/tenants/:slug/lockout-policy
+// Reset policy to defaults
+router.delete('/tenants/:slug/lockout-policy', requirePermiso('MANAGE_TENANTS'), async (req, res, next) => {
+    try {
+        const tenant = await db.findTenantBySlug(req.params.slug);
+        if (!tenant) return res.status(404).json({ error: 'Tenant not found' });
+        if (denyIfWrongTenant(req, res, tenant.id)) return;
+
+        const policy = await lockoutPolicy.resetPolicy(tenant.id);
+        
+        // Audit
+        audit({
+            adminUserId: req.user?.adminUserId,
+            tenantId: tenant.id,
+            accion: 'RESET_LOCKOUT_POLICY',
+            entidad: 'lockout_policy',
+            metadata: { resettedTo: policy },
+        });
+
+        res.json({ message: 'Policy reset to defaults', policy });
     } catch (err) {
         next(err);
     }

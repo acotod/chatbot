@@ -102,6 +102,13 @@ export default function ConfiguracionPage() {
   const [llmKeyConfigured, setLlmKeyConfigured] = useState(false);
   const [llmSaved, setLlmSaved] = useState(false);
 
+  // Account Lockout Policy
+  const [lockoutPolicy, setLockoutPolicy] = useState({
+    maxAttempts: 5,
+    lockoutMinutes: 15,
+  });
+  const [lockoutSaved, setLockoutSaved] = useState(false);
+
   const { data: waCredsData } = useQuery({
     queryKey: ["config", tenantSlug, "wa_credentials"],
     queryFn: () =>
@@ -232,6 +239,32 @@ export default function ConfiguracionPage() {
         })
         .catch(() => null),
     enabled: !!tenantSlug,
+  });
+
+  const { data: lockoutPolicyData } = useQuery({
+    queryKey: ["lockout-policy", tenantSlug],
+    queryFn: () =>
+      apiClient
+        .get(`/admin/tenants/${tenantSlug}/lockout-policy`)
+        .then((r) => {
+          const v = r.data;
+          if (v?.maxAttempts && v?.lockoutMinutes) {
+            setLockoutPolicy({ maxAttempts: v.maxAttempts, lockoutMinutes: v.lockoutMinutes });
+          }
+          return r.data;
+        })
+        .catch(() => null),
+    enabled: !!tenantSlug,
+  });
+
+  const saveLockoutPolicyMutation = useMutation({
+    mutationFn: () =>
+      apiClient.put(`/admin/tenants/${tenantSlug}/lockout-policy`, lockoutPolicy),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["lockout-policy", tenantSlug] });
+      setLockoutSaved(true);
+      setTimeout(() => setLockoutSaved(false), 3000);
+    },
   });
 
   const saveMutation = useMutation({
@@ -621,6 +654,57 @@ export default function ConfiguracionPage() {
               }`}
             />
           </button>
+        </div>
+      </ConfigSection>
+
+      {/* Política de Bloqueo de Cuenta */}
+      <ConfigSection
+        title="Seguridad: Política de Bloqueo de Cuenta"
+        description="Configurá los intentos máximos de login fallidos y la duración del bloqueo temporal"
+      >
+        <div className="space-y-4">
+          <div className="grid grid-cols-2 gap-4">
+            <Input
+              label="Máximo de intentos fallidos"
+              type="number"
+              min="1"
+              max="20"
+              value={lockoutPolicy.maxAttempts}
+              onChange={(e) => {
+                const val = Math.max(1, Math.min(20, parseInt(e.target.value) || 5));
+                setLockoutPolicy((p) => ({ ...p, maxAttempts: val }));
+              }}
+            />
+            <Input
+              label="Duración del bloqueo (minutos)"
+              type="number"
+              min="1"
+              max="1440"
+              value={lockoutPolicy.lockoutMinutes}
+              onChange={(e) => {
+                const val = Math.max(1, Math.min(1440, parseInt(e.target.value) || 15));
+                setLockoutPolicy((p) => ({ ...p, lockoutMinutes: val }));
+              }}
+            />
+          </div>
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+            <p className="text-xs text-blue-900">
+              💡 Después de {lockoutPolicy.maxAttempts} intentos fallidos, la cuenta se bloqueará por {lockoutPolicy.lockoutMinutes} minuto{lockoutPolicy.lockoutMinutes !== 1 ? 's' : ''}.
+            </p>
+          </div>
+          <div className="flex justify-end">
+            <Button 
+              onClick={() => saveLockoutPolicyMutation.mutate()} 
+              disabled={saveLockoutPolicyMutation.isPending}
+            >
+              {lockoutSaved ? (
+                <>
+                  <Check size={16} />
+                  Guardado 💙
+                </>
+              ) : saveLockoutPolicyMutation.isPending ? "Guardando..." : "Guardar política"}
+            </Button>
+          </div>
         </div>
       </ConfigSection>
 
