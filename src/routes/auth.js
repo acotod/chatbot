@@ -7,8 +7,13 @@ const rateLimit = require('express-rate-limit');
 const { ipKeyGenerator } = require('express-rate-limit');
 const { PrismaClient } = require('@prisma/client');
 const { audit } = require('../services/audit');
+const db = require('../services/database');
 const { getRedisClient } = require('../services/redis');
+const logger = require('../utils/logger');
+const { sendEmail, EmailServiceError } = require('../services/emailService');
+const wa = require('../services/whatsapp');
 const requireJwt = require('../middleware/requireJwt');
+const requireAgentJwt = require('../middleware/requireAgentJwt');
 const lockoutPolicy = require('../services/lockoutPolicy');
 
 const prisma = new PrismaClient();
@@ -18,6 +23,7 @@ const router = express.Router();
 
 const ACCESS_TTL  = parseInt(process.env.ACCESS_TOKEN_TTL  || '900',  10); // 15 min
 const REFRESH_TTL = parseInt(process.env.REFRESH_TOKEN_TTL || '604800', 10); // 7 days
+const AGENT_PASSWORD_RESET_TTL_MINUTES = parseInt(process.env.AGENT_PASSWORD_RESET_TTL_MINUTES || '60', 10);
 const MAX_ATTEMPTS    = parseInt(process.env.LOGIN_MAX_ATTEMPTS    || '5',  10);
 const LOCKOUT_MINUTES = parseInt(process.env.LOGIN_LOCKOUT_MINUTES || '15', 10);
 
@@ -65,6 +71,26 @@ function signLegacyRefresh(secret, email) {
   );
 }
 
+function shouldExposeAgentResetToken() {
+  return process.env.EXPOSE_AGENT_RESET_TOKEN === 'true' || process.env.NODE_ENV !== 'production';
+}
+
+function buildAgentResetUrl(rawToken) {
+  const path = `/agente/reset-password?token=${encodeURIComponent(rawToken)}`;
+  const origin = String(
+    process.env.AGENT_PORTAL_BASE_URL
+    || process.env.ADMIN_BASE_URL
+    || process.env.CUSTOMER_PORTAL_BASE_URL
+    || ''
+  ).trim().replace(/\/$/, '');
+  return origin ? `${origin}${path}` : path;
+}
+
+function normalizeWhatsappRecipient(value) {
+  const digits = String(value || '').replace(/\D+/g, '');
+  return digits || null;
+}
+
 function verifyLegacyRefresh(token, secret) {
   try {
     const payload = jwt.verify(token, secret);
@@ -89,6 +115,46 @@ async function findAdminUserByEmailCaseInsensitive(email) {
   return prisma.adminUser.findFirst({
     where: { email: { equals: email, mode: 'insensitive' } },
   });
+}
+
+async function findAgentByTenantAndEmailCaseInsensitive(tenantSlug, email) {
+  return prisma.agente.findFirst({
+    where: {
+      tenant: { slug: tenantSlug },
+      email: { equals: email, mode: 'insensitive' },
+    },
+    include: {
+      tenant: { select: { id: true, slug: true, nombre: true } },
+      puesto: { select: { id: true, nombre: true } },
+    },
+  });
+}
+
+async function createAgentPasswordReset(agent) {
+  const rawToken = crypto.randomBytes(32).toString('hex');
+  const tokenHash = hashToken(rawToken);
+  const expiresAt = new Date(Date.now() + AGENT_PASSWORD_RESET_TTL_MINUTES * 60 * 1000);
+
+  await prisma.agentPasswordReset.updateMany({
+    where: {
+      agenteId: agent.id,
+      usedAt: null,
+    },
+    data: { usedAt: new Date() },
+  });
+
+  await prisma.agentPasswordReset.create({
+    data: {
+      agenteId: agent.id,
+      tokenHash,
+      expiresAt,
+    },
+  });
+
+  return {
+    rawToken,
+    expiresAt,
+  };
 }
 
 function normalizeGraphBaseUrl() {
@@ -413,6 +479,241 @@ router.post('/google', loginRateLimiter, async (req, res) => {
   }
 });
 
+// ── POST /auth/agent/login ───────────────────────────────────────────────────
+router.post('/agent/login', loginRateLimiter, async (req, res) => {
+  const tenantSlug = String(req.body?.tenantSlug ?? '').trim().toLowerCase();
+  const password = req.body?.password;
+  const email = normalizeEmail(req.body?.email);
+  const jwtSecret = process.env.JWT_SECRET;
+  const ip = req.ip;
+  const userAgent = req.headers['user-agent'] || '';
+
+  if (!jwtSecret) return res.status(503).json({ error: 'JWT_SECRET not configured' });
+  if (!tenantSlug || !email || !password) {
+    return res.status(400).json({ error: 'tenantSlug, email and password are required' });
+  }
+
+  try {
+    const agent = await findAgentByTenantAndEmailCaseInsensitive(tenantSlug, email);
+    const dummyHash = '$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy';
+    const passwordToCheck = agent?.passwordHash || dummyHash;
+    const valid = await bcrypt.compare(password, passwordToCheck);
+
+    if (!agent || !agent.passwordHash || !valid) {
+      audit({ accion: 'LOGIN_FAILED', entidad: 'agente', ip, userAgent, metadata: { tenantSlug, email } });
+      return res.status(401).json({ error: 'Invalid credentials' });
+    }
+
+    if (agent.estado !== 'activo') {
+      audit({ accion: 'LOGIN_BLOCKED', entidad: 'agente', entidadId: String(agent.id), ip, userAgent, metadata: { tenantSlug, email, reason: 'inactive' } });
+      return res.status(403).json({ error: 'Agent account is inactive' });
+    }
+
+    await prisma.agente.update({
+      where: { id: agent.id },
+      data: { lastSeenAt: new Date() },
+    });
+
+    const { token: accessToken } = signAccess(
+      { sub: 'agent', agenteId: agent.id, tenantId: agent.tenantId, tenantSlug: agent.tenant.slug, email: agent.email },
+      jwtSecret,
+    );
+
+    audit({
+      accion: 'LOGIN',
+      entidad: 'agente',
+      entidadId: String(agent.id),
+      tenantId: agent.tenantId,
+      ip,
+      userAgent,
+      metadata: { tenantSlug: agent.tenant.slug, email: agent.email },
+    });
+
+    return res.json({
+      accessToken,
+      expiresIn: ACCESS_TTL,
+      profile: {
+        agenteId: agent.id,
+        tenantId: agent.tenantId,
+        tenantSlug: agent.tenant.slug,
+        tenantNombre: agent.tenant.nombre,
+        nombre: agent.nombre,
+        email: agent.email,
+        whatsapp: agent.whatsapp,
+        estado: agent.estado,
+        puesto: agent.puesto,
+        calendarLink: agent.calendarLink,
+        lastSeenAt: new Date().toISOString(),
+      },
+    });
+  } catch {
+    return res.status(500).json({ error: 'Agent auth error' });
+  }
+});
+
+// ── POST /auth/agent/forgot-password ─────────────────────────────────────────
+router.post('/agent/forgot-password', loginRateLimiter, async (req, res) => {
+  const tenantSlug = String(req.body?.tenantSlug ?? '').trim().toLowerCase();
+  const email = normalizeEmail(req.body?.email);
+  const ip = req.ip;
+  const userAgent = req.headers['user-agent'] || '';
+
+  if (!tenantSlug || !email) {
+    return res.status(400).json({ error: 'tenantSlug and email are required' });
+  }
+
+  try {
+    const agent = await findAgentByTenantAndEmailCaseInsensitive(tenantSlug, email);
+    if (!agent || !agent.passwordHash || agent.estado !== 'activo') {
+      audit({ accion: 'PASSWORD_RESET_REQUEST', entidad: 'agente', ip, userAgent, metadata: { tenantSlug, email, delivered: false } });
+      return res.json({ message: 'Si el agente existe y tiene acceso habilitado, se generó un enlace de recuperación.' });
+    }
+
+    const { rawToken, expiresAt } = await createAgentPasswordReset(agent);
+    const response = {
+      message: 'Si el agente existe y tiene acceso habilitado, se generó un enlace de recuperación.',
+    };
+
+    const resetUrl = buildAgentResetUrl(rawToken);
+    const deliveryChannels = [];
+
+    try {
+      await sendEmail({
+        to: agent.email,
+        subject: `Recuperacion de acceso para ${agent.tenant?.nombre || agent.tenant?.slug || tenantSlug}`,
+        text: [
+          `Hola ${agent.nombre || 'agente'},`,
+          '',
+          'Recibimos una solicitud para restablecer tu contrasena de acceso.',
+          `Usa este enlace: ${resetUrl}`,
+          `Este enlace vence el ${expiresAt.toISOString()}.`,
+          '',
+          'Si no solicitaste este cambio, ignora este mensaje.',
+        ].join('\n'),
+        html: [
+          `<p>Hola ${agent.nombre || 'agente'},</p>`,
+          '<p>Recibimos una solicitud para restablecer tu contrasena de acceso.</p>',
+          `<p><a href="${resetUrl}">Abrir enlace de recuperacion</a></p>`,
+          `<p>Este enlace vence el <strong>${expiresAt.toISOString()}</strong>.</p>`,
+          '<p>Si no solicitaste este cambio, ignora este mensaje.</p>',
+        ].join(''),
+        tenantId: agent.tenantId,
+        metadata: {
+          route: 'auth/agent/forgot-password',
+          tenantSlug,
+          agenteId: agent.id,
+        },
+      });
+      deliveryChannels.push('email');
+    } catch (err) {
+      if (err instanceof EmailServiceError) {
+        logger.warn({ tenantSlug, email, code: err.code, message: err.message }, 'auth.agent.forgotPassword: email delivery unavailable');
+      } else {
+        logger.warn({ tenantSlug, email, message: err.message }, 'auth.agent.forgotPassword: email delivery failed');
+      }
+    }
+
+    const whatsappRecipient = normalizeWhatsappRecipient(agent.whatsapp);
+    if (whatsappRecipient) {
+      try {
+        const { phoneNumberId, accessToken } = await db.getWaCredentials(agent.tenantId);
+        if (phoneNumberId && accessToken) {
+          await wa.sendTextMessage(
+            phoneNumberId,
+            whatsappRecipient,
+            [
+              `Hola ${agent.nombre || 'agente'}.`,
+              'Recibimos una solicitud para restablecer tu contrasena de acceso.',
+              `Abri este enlace: ${resetUrl}`,
+              `Vence: ${expiresAt.toISOString()}.`,
+              'Si no solicitaste este cambio, ignora este mensaje.',
+            ].join(' '),
+            accessToken,
+          );
+          deliveryChannels.push('whatsapp');
+        }
+      } catch (err) {
+        logger.warn({ tenantSlug, email, whatsapp: agent.whatsapp, message: err.message }, 'auth.agent.forgotPassword: whatsapp delivery failed');
+      }
+    }
+
+    response.deliveryChannels = deliveryChannels;
+
+    if (shouldExposeAgentResetToken()) {
+      response.resetToken = rawToken;
+      response.resetUrl = resetUrl;
+      response.expiresAt = expiresAt.toISOString();
+    }
+
+    audit({ accion: 'PASSWORD_RESET_REQUEST', entidad: 'agente', entidadId: String(agent.id), tenantId: agent.tenantId, ip, userAgent, metadata: { tenantSlug, email, delivered: deliveryChannels.length > 0, channels: deliveryChannels } });
+    return res.json(response);
+  } catch {
+    return res.status(500).json({ error: 'Agent password reset request failed' });
+  }
+});
+
+// ── POST /auth/agent/reset-password ──────────────────────────────────────────
+router.post('/agent/reset-password', async (req, res) => {
+  const token = String(req.body?.token ?? '').trim();
+  const password = String(req.body?.password ?? '');
+  const ip = req.ip;
+  const userAgent = req.headers['user-agent'] || '';
+
+  if (!token || !password) {
+    return res.status(400).json({ error: 'token and password are required' });
+  }
+  if (password.trim().length < 8) {
+    return res.status(400).json({ error: 'password must contain at least 8 characters' });
+  }
+
+  try {
+    const tokenHash = hashToken(token);
+    const reset = await prisma.agentPasswordReset.findUnique({
+      where: { tokenHash },
+      include: {
+        agente: {
+          include: {
+            tenant: { select: { slug: true } },
+          },
+        },
+      },
+    });
+
+    if (!reset || reset.usedAt || reset.expiresAt < new Date()) {
+      return res.status(400).json({ error: 'Invalid or expired reset token' });
+    }
+    if (reset.agente.estado !== 'activo') {
+      return res.status(403).json({ error: 'Agent account is inactive' });
+    }
+
+    const passwordHash = await bcrypt.hash(password.trim(), 12);
+    await prisma.$transaction([
+      prisma.agente.update({
+        where: { id: reset.agenteId },
+        data: { passwordHash, lastSeenAt: new Date() },
+      }),
+      prisma.agentPasswordReset.update({
+        where: { id: reset.id },
+        data: { usedAt: new Date() },
+      }),
+    ]);
+
+    audit({
+      accion: 'PASSWORD_RESET',
+      entidad: 'agente',
+      entidadId: String(reset.agenteId),
+      tenantId: reset.agente.tenantId,
+      ip,
+      userAgent,
+      metadata: { tenantSlug: reset.agente.tenant?.slug ?? null, email: reset.agente.email },
+    });
+
+    return res.json({ message: 'Password updated successfully' });
+  } catch {
+    return res.status(500).json({ error: 'Agent password reset failed' });
+  }
+});
+
 // ── POST /auth/refresh ────────────────────────────────────────────────────────
 router.post('/refresh', async (req, res) => {
   const { refreshToken } = req.body;
@@ -475,6 +776,24 @@ router.get('/me', requireJwt, async (req, res) => {
   });
 });
 
+// ── GET /auth/agent/me ───────────────────────────────────────────────────────
+router.get('/agent/me', requireAgentJwt, async (req, res) => {
+  const agent = req.agent || {};
+  return res.json({
+    agenteId: agent.agenteId ?? null,
+    tenantId: agent.tenantId ?? null,
+    tenantSlug: agent.tenantSlug ?? null,
+    tenantNombre: agent.tenantNombre ?? null,
+    nombre: agent.nombre ?? null,
+    email: agent.email ?? null,
+    whatsapp: agent.whatsapp ?? null,
+    estado: agent.estado ?? null,
+    puesto: agent.puesto ?? null,
+    calendarLink: agent.calendarLink ?? null,
+    lastSeenAt: agent.lastSeenAt ?? null,
+  });
+});
+
 // ── POST /auth/logout ─────────────────────────────────────────────────────────
 router.post('/logout', requireJwt, async (req, res) => {
   const { refreshToken } = req.body;
@@ -502,6 +821,29 @@ router.post('/logout', requireJwt, async (req, res) => {
   } catch (_) { /* best effort */ }
 
   audit({ adminUserId: req.admin.adminUserId, tenantId: req.admin.tenantId, accion: 'LOGOUT', entidad: 'admin_user', ip: req.ip, userAgent: req.headers['user-agent'] });
+  return res.json({ message: 'Logged out successfully' });
+});
+
+// ── POST /auth/agent/logout ──────────────────────────────────────────────────
+router.post('/agent/logout', requireAgentJwt, async (req, res) => {
+  try {
+    const redis = getRedisClient();
+    if (redis && req.agent._jti && req.agent._exp) {
+      const ttl = req.agent._exp - Math.floor(Date.now() / 1000);
+      if (ttl > 0) {
+        await redis.set(`jwt:bl:${req.agent._jti}`, '1', 'EX', ttl);
+      }
+    }
+  } catch (_) { /* best effort */ }
+
+  audit({
+    accion: 'LOGOUT',
+    entidad: 'agente',
+    entidadId: String(req.agent.agenteId),
+    tenantId: req.agent.tenantId,
+    ip: req.ip,
+    userAgent: req.headers['user-agent'],
+  });
   return res.json({ message: 'Logged out successfully' });
 });
 

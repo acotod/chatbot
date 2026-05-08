@@ -1,5 +1,6 @@
 const express = require('express');
 const crypto = require('crypto');
+const bcrypt = require('bcryptjs');
 const path = require('path');
 const fs = require('fs');
 const multer = require('multer');
@@ -520,15 +521,21 @@ router.post('/tenants/:slug/agentes', requirePermiso('EDIT_AGENTES'), async (req
         }
 
         const puestoId = Number(req.body?.puestoId);
+        const password = typeof req.body?.password === 'string' ? req.body.password.trim() : '';
 
         if (!nombre || !email || !whatsapp || !Number.isInteger(puestoId) || puestoId <= 0) {
             return res.status(400).json({ error: 'nombre, email, whatsapp and puestoId are required' });
+        }
+        if (password && password.length < 8) {
+            return res.status(400).json({ error: 'password must contain at least 8 characters' });
         }
 
         const puesto = await prisma.agentePuesto.findFirst({ where: { id: puestoId, tenantId: tenant.id, activo: true } });
         if (!puesto) {
             return res.status(400).json({ error: 'puestoId is invalid for this tenant' });
         }
+
+        const passwordHash = password ? await bcrypt.hash(password, 12) : null;
 
         const agente = await db.createAgente({
             tenantId: tenant.id,
@@ -537,6 +544,7 @@ router.post('/tenants/:slug/agentes', requirePermiso('EDIT_AGENTES'), async (req
             whatsapp,
             puestoId,
             calendarLink: calendarLinkValidation.value,
+            passwordHash,
         });
 
         const assignedCalendarId = await assignCalendarToAgente({
@@ -596,6 +604,7 @@ router.patch('/tenants/:slug/agentes/:id', requirePermiso('EDIT_AGENTES'), async
         }
 
         const puestoId = Number(req.body?.puestoId);
+        const password = typeof req.body?.password === 'string' ? req.body.password.trim() : '';
 
         if (!Number.isInteger(id) || id <= 0) {
             return res.status(400).json({ error: 'invalid agente id' });
@@ -603,11 +612,16 @@ router.patch('/tenants/:slug/agentes/:id', requirePermiso('EDIT_AGENTES'), async
         if (!nombre || !email || !whatsapp || !Number.isInteger(puestoId) || puestoId <= 0) {
             return res.status(400).json({ error: 'nombre, email, whatsapp and puestoId are required' });
         }
+        if (password && password.length < 8) {
+            return res.status(400).json({ error: 'password must contain at least 8 characters' });
+        }
 
         const puesto = await prisma.agentePuesto.findFirst({ where: { id: puestoId, tenantId: tenant.id, activo: true } });
         if (!puesto) {
             return res.status(400).json({ error: 'puestoId is invalid for this tenant' });
         }
+
+        const passwordHash = password ? await bcrypt.hash(password, 12) : undefined;
 
         const result = await db.updateAgente({
             id,
@@ -617,6 +631,7 @@ router.patch('/tenants/:slug/agentes/:id', requirePermiso('EDIT_AGENTES'), async
             whatsapp,
             puestoId,
             calendarLink: calendarLinkValidation.value,
+            passwordHash,
         });
         if (!result || result.count === 0) {
             return res.status(404).json({ error: 'Agente not found' });

@@ -379,6 +379,7 @@ model Agente {
   tenantId    String      @map("tenant_id") @db.Uuid
   nombre      String      @db.VarChar(100)
   email       String      @db.VarChar(150)
+  passwordHash String?    @map("password_hash") @db.VarChar(255)
   whatsapp    String?     @db.VarChar(30)
   puestoId    Int?        @map("puesto_id")
   calendarLink String?    @map("calendar_link") @db.VarChar(500)
@@ -393,9 +394,24 @@ model Agente {
   crmTasks          CrmTask[]
   calendars         Calendar[]
   assignmentRules   SolicitudAssignmentRule[]
+  passwordResets    AgentPasswordReset[]
 
   @@index([tenantId, puestoId])
+  @@index([tenantId, email])
   @@map("agentes")
+}
+
+model AgentPasswordReset {
+  id          Int      @id @default(autoincrement())
+  agenteId    Int      @map("agente_id")
+  tokenHash   String   @unique @map("token_hash") @db.VarChar(64)
+  expiresAt   DateTime @map("expires_at")
+  usedAt      DateTime? @map("used_at")
+  createdAt   DateTime @default(now()) @map("created_at")
+  agente      Agente   @relation(fields: [agenteId], references: [id], onDelete: Cascade)
+
+  @@index([agenteId, expiresAt])
+  @@map("agent_password_resets")
 }
 
 model AgentePuesto {

@@ -18,7 +18,7 @@ function SessionSecurityGuard() {
   const effectiveRefreshToken = refreshToken ?? getStoredRefreshToken();
 
   useEffect(() => {
-    if (pathname.startsWith("/login") || pathname.startsWith("/portal")) return;
+    if (pathname.startsWith("/login") || pathname.startsWith("/portal") || pathname.startsWith("/agente")) return;
     if (hasAccessToken) return;
 
     logout();
@@ -26,7 +26,7 @@ function SessionSecurityGuard() {
   }, [hasAccessToken, logout, pathname, router]);
 
   useEffect(() => {
-    if (!hasAccessToken || pathname.startsWith("/login")) return;
+    if (!hasAccessToken || pathname.startsWith("/login") || pathname.startsWith("/agente")) return;
 
     const now = Date.now();
     if (tokenExpiresAt && now >= tokenExpiresAt) {
@@ -37,7 +37,7 @@ function SessionSecurityGuard() {
   }, [hasAccessToken, tokenExpiresAt, pathname, logout, router]);
 
   useEffect(() => {
-    if (!hasAccessToken || pathname.startsWith("/login")) return;
+    if (!hasAccessToken || pathname.startsWith("/login") || pathname.startsWith("/agente")) return;
 
     lastActivityAtRef.current = Date.now();
 
@@ -107,7 +107,7 @@ function SessionSecurityGuard() {
     const onStorage = (event: StorageEvent) => {
       if (event.key === "admin_token" && !event.newValue) {
         logout();
-        if (!pathname.startsWith("/login")) {
+        if (!pathname.startsWith("/login") && !pathname.startsWith("/agente")) {
           router.replace("/login?reason=signedout");
         }
       }

@@ -15,6 +15,7 @@ interface Agente {
   id: number;
   nombre: string;
   email: string;
+  passwordConfigured?: boolean;
   whatsapp?: string | null;
   calendarLink?: string | null;
   puestoId?: number | null;
@@ -42,6 +43,7 @@ export default function AgentesPage() {
   const [form, setForm] = useState({
     nombre: "",
     email: "",
+    password: "",
     whatsapp: "",
     puestoId: "",
     calendarLink: "",
@@ -51,6 +53,7 @@ export default function AgentesPage() {
   const [editForm, setEditForm] = useState({
     nombre: "",
     email: "",
+    password: "",
     whatsapp: "",
     puestoId: "",
     calendarLink: "",
@@ -81,6 +84,7 @@ export default function AgentesPage() {
       agentesApi.create(tenantSlug, {
         nombre: form.nombre,
         email: form.email,
+        password: form.password.trim() || undefined,
         whatsapp: form.whatsapp,
         puestoId: Number(form.puestoId),
         calendarLink: form.calendarLink,
@@ -89,7 +93,7 @@ export default function AgentesPage() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["agentes"] });
       setModal(false);
-      setForm({ nombre: "", email: "", whatsapp: "", puestoId: "", calendarLink: "", calendarId: "" });
+      setForm({ nombre: "", email: "", password: "", whatsapp: "", puestoId: "", calendarLink: "", calendarId: "" });
     },
     onError: () => setFormError("No se pudo crear el agente. Intentá de nuevo."),
   });
@@ -106,6 +110,7 @@ export default function AgentesPage() {
       return agentesApi.update(tenantSlug, editingId, {
         nombre: editForm.nombre,
         email: editForm.email,
+        password: editForm.password.trim() || undefined,
         whatsapp: editForm.whatsapp,
         puestoId: Number(editForm.puestoId),
         calendarLink: editForm.calendarLink,
@@ -116,7 +121,7 @@ export default function AgentesPage() {
       qc.invalidateQueries({ queryKey: ["agentes"] });
       setEditModal(false);
       setEditingId(null);
-      setEditForm({ nombre: "", email: "", whatsapp: "", puestoId: "", calendarLink: "", calendarId: "" });
+      setEditForm({ nombre: "", email: "", password: "", whatsapp: "", puestoId: "", calendarLink: "", calendarId: "" });
     },
     onError: () => setEditFormError("No se pudo actualizar el agente."),
   });
@@ -136,6 +141,10 @@ export default function AgentesPage() {
     setFormError("");
     if (!form.nombre.trim() || !form.email.trim() || !form.whatsapp.trim() || !form.puestoId) {
       setFormError("Completá nombre, email, WhatsApp y puesto.");
+      return;
+    }
+    if (form.password.trim() && form.password.trim().length < 8) {
+      setFormError("La contraseña del agente debe tener al menos 8 caracteres.");
       return;
     }
 
@@ -161,6 +170,7 @@ export default function AgentesPage() {
     setEditForm({
       nombre: agent.nombre ?? "",
       email: agent.email ?? "",
+      password: "",
       whatsapp: agent.whatsapp ?? "",
       puestoId: agent.puestoId ? String(agent.puestoId) : "",
       calendarLink: agent.calendarLink ?? "",
@@ -174,6 +184,10 @@ export default function AgentesPage() {
     setEditFormError("");
     if (!editForm.nombre.trim() || !editForm.email.trim() || !editForm.whatsapp.trim() || !editForm.puestoId) {
       setEditFormError("Completá nombre, email, WhatsApp y puesto.");
+      return;
+    }
+    if (editForm.password.trim() && editForm.password.trim().length < 8) {
+      setEditFormError("La contraseña del agente debe tener al menos 8 caracteres.");
       return;
     }
 
@@ -238,6 +252,9 @@ export default function AgentesPage() {
                     <p className="text-xs text-slate-500 mt-0.5">{a.email}</p>
                     {a.whatsapp && <p className="text-xs text-slate-500">WhatsApp: {a.whatsapp}</p>}
                     {a.puesto?.nombre && <p className="text-xs text-slate-500">Puesto: {a.puesto.nombre}</p>}
+                    <p className="text-xs text-slate-500">
+                      Acceso agente: {a.passwordConfigured ? "habilitado" : "sin credenciales"}
+                    </p>
                     {a.calendarLink && (
                       <a
                         href={a.calendarLink}
@@ -303,6 +320,14 @@ export default function AgentesPage() {
             onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
             placeholder="maria@clinica.com"
           />
+          <Input
+            label="Contraseña de acceso"
+            type="password"
+            value={form.password}
+            onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))}
+            placeholder="Mínimo 8 caracteres"
+          />
+          <p className="-mt-2 text-xs text-slate-500">Si la definís, el agente podrá entrar por /agente/login con su tenant, email y contraseña.</p>
           <Input
             label="WhatsApp"
             value={form.whatsapp}
@@ -386,6 +411,14 @@ export default function AgentesPage() {
             onChange={(e) => setEditForm((f) => ({ ...f, email: e.target.value }))}
             placeholder="maria@clinica.com"
           />
+          <Input
+            label="Nueva contraseña de acceso"
+            type="password"
+            value={editForm.password}
+            onChange={(e) => setEditForm((f) => ({ ...f, password: e.target.value }))}
+            placeholder="Dejala vacía para conservar la actual"
+          />
+          <p className="-mt-2 text-xs text-slate-500">Este perfil usa un acceso único sin módulos adicionales: solo login y perfil de agente.</p>
           <Input
             label="WhatsApp"
             value={editForm.whatsapp}

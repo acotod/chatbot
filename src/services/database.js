@@ -360,49 +360,92 @@ async function setSolicitudesEnterpriseConfig(tenantId, partialConfig = {}) {
 // Agente helpers (scoped to tenant)
 // ---------------------------------------------------------------------------
 
+const AGENTE_PUBLIC_SELECT = {
+  id: true,
+  tenantId: true,
+  nombre: true,
+  email: true,
+  whatsapp: true,
+  puestoId: true,
+  calendarLink: true,
+  estado: true,
+  lastSeenAt: true,
+  createdAt: true,
+  puesto: { select: { id: true, nombre: true } },
+};
+
+function serializeAgente(agente) {
+  if (!agente) return null;
+  return {
+    ...agente,
+    passwordConfigured: Boolean(agente.passwordHash),
+  };
+}
+
 async function listAgentes(tenantId) {
   const client = getPrismaClient();
   if (!client) return [];
-  return client.agente.findMany({
+  const agentes = await client.agente.findMany({
     where: { tenantId },
-    include: {
-      puesto: { select: { id: true, nombre: true } },
+    select: {
+      ...AGENTE_PUBLIC_SELECT,
+      passwordHash: true,
     },
     orderBy: { createdAt: 'asc' },
   });
+  return agentes.map(serializeAgente);
 }
 
-async function createAgente({ tenantId, nombre, email, whatsapp = null, puestoId = null, calendarLink = null }) {
+async function createAgente({ tenantId, nombre, email, whatsapp = null, puestoId = null, calendarLink = null, passwordHash = null }) {
   const client = getPrismaClient();
   if (!client) return null;
-  return client.agente.create({
+  const agente = await client.agente.create({
     data: {
       tenantId,
       nombre,
       email,
+      passwordHash,
       whatsapp,
       puestoId,
       calendarLink,
     },
-    include: {
-      puesto: { select: { id: true, nombre: true } },
+    select: {
+      ...AGENTE_PUBLIC_SELECT,
+      passwordHash: true,
     },
   });
+  return serializeAgente(agente);
 }
 
-async function updateAgente({ id, tenantId, nombre, email, whatsapp = null, puestoId = null, calendarLink = null }) {
+async function updateAgente({ id, tenantId, nombre, email, whatsapp = null, puestoId = null, calendarLink = null, passwordHash }) {
   const client = getPrismaClient();
   if (!client) return null;
-  return client.agente.updateMany({
+  const data = {
+    nombre,
+    email,
+    whatsapp,
+    puestoId,
+    calendarLink,
+  };
+
+  if (passwordHash !== undefined) {
+    data.passwordHash = passwordHash;
+  }
+
+  await client.agente.updateMany({
     where: { id, tenantId },
-    data: {
-      nombre,
-      email,
-      whatsapp,
-      puestoId,
-      calendarLink,
+    data,
+  });
+
+  const agente = await client.agente.findFirst({
+    where: { id, tenantId },
+    select: {
+      ...AGENTE_PUBLIC_SELECT,
+      passwordHash: true,
     },
   });
+
+  return serializeAgente(agente);
 }
 
 async function listAgentePuestos(tenantId) {

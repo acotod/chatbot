@@ -51,7 +51,7 @@ function resolveApiBase(): string {
   return "http://127.0.0.1:3200";
 }
 
-const API_BASE = resolveApiBase();
+export const API_BASE = resolveApiBase();
 
 export const apiClient = axios.create({
   baseURL: API_BASE,
