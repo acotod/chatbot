@@ -10,7 +10,7 @@ import {
 } from "@/lib/sidebarAccess";
 import { cn } from "@/lib/utils";
 import { getStoredAccessToken, getStoredRefreshToken, useAuthStore } from "@/store/auth";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   BarChart3,
   Building2,
@@ -83,6 +83,7 @@ export function Sidebar() {
     getServerSnapshot
   );
   const hasAccessToken = isClient && Boolean(getStoredAccessToken());
+  const queryClient = useQueryClient();
 
   const [tenants, setTenants] = useState<{ slug: string; nombre: string }[]>([]);
   const [dropdownOpen, setDropdownOpen] = useState(false);
@@ -146,6 +147,7 @@ export function Sidebar() {
     } catch {
       // Best effort: even if API logout fails, clear client auth state.
     } finally {
+      queryClient.clear();
       logout();
       router.push("/login");
     }

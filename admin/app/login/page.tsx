@@ -6,6 +6,7 @@ import { buildPermissionSet, normalizePermissions, type Permission } from "@/lib
 import { scheduleProactiveRefresh, useAuthStore } from "@/store/auth";
 import { DebugPanel } from "@/components/DebugPanel";
 import axios from "axios";
+import { useQueryClient } from "@tanstack/react-query";
 import { MessageCircle } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -50,6 +51,7 @@ export default function LoginPage() {
 
   const { setToken, setPermissions, setRefreshToken, setTenantSlug } = useAuthStore();
   const router = useRouter();
+  const queryClient = useQueryClient();
 
   // Initialize error logger on mount
   useEffect(() => {
@@ -88,6 +90,9 @@ export default function LoginPage() {
   }
 
   async function applyAuthSession(response: AuthResponse) {
+    // Prevent stale cached data from a previous account leaking into the new session.
+    queryClient.clear();
+
     setToken(response.accessToken, response.expiresIn);
     setRefreshToken(response.refreshToken ?? null);
     setPermissions(Boolean(response.superAdmin), []);
