@@ -689,7 +689,22 @@ router.post('/tenants/:slug/solicitudes', requirePermiso('EDIT_SOLICITUDES'), as
         const tenant = await db.findTenantBySlug(req.params.slug);
         if (!tenant) return res.status(404).json({ error: 'Tenant not found' });
         if (denyIfWrongTenant(req, res, tenant.id)) return;
-        const { userId, nombre, telefonoContacto, horario, estado, flowId, conversationId, origin, titulo, prioridad, flowNodeRef } = req.body;
+        const {
+            userId,
+            nombre,
+            telefonoContacto,
+            horario,
+            estado,
+            flowId,
+            conversationId,
+            origin,
+            titulo,
+            prioridad,
+            flowNodeRef,
+            categoria,
+            subcategoria,
+            dueAt,
+        } = req.body;
         if (!userId) return res.status(400).json({ error: 'userId is required' });
         const normalizedEstado = db.normalizeSolicitudStatus(estado, db.SOLICITUD_STATUS.OPEN);
         if (!SOLICITUD_STATES.has(normalizedEstado)) {
@@ -706,6 +721,9 @@ router.post('/tenants/:slug/solicitudes', requirePermiso('EDIT_SOLICITUDES'), as
             title: titulo || null,
             priority: prioridad || null,
             flow_node_ref: flowNodeRef || null,
+            categoria: categoria || null,
+            subcategoria: subcategoria || null,
+            due_at: dueAt || null,
         }, tenant.id);
         audit({ adminUserId: req.admin?.adminUserId, tenantId: tenant.id, accion: 'CREATE_SOLICITUD', entidad: 'solicitud', entidadId: String(solicitud.id), ip: req.ip, userAgent: req.headers['user-agent'], metadata: { userId, nombre } });
         socketService.emit(tenant.id, 'SOLICITUD_CREATED', { solicitud });
@@ -736,7 +754,7 @@ router.get('/tenants/:slug/solicitudes', requirePermiso('VIEW_SOLICITUDES'), asy
         if (!tenant) return res.status(404).json({ error: 'Tenant not found' });
         if (denyIfWrongTenant(req, res, tenant.id)) return;
         const tenantConfig = await db.getSolicitudesEnterpriseConfig(tenant.id);
-        const { estado, page, limit, userId } = req.query;
+        const { estado, page, limit, userId, categoria } = req.query;
         const normalizedEstado = estado ? db.normalizeSolicitudStatus(estado, '') : '';
         const currentPage = page ? Number(page) : 1;
         const currentLimit = limit ? Number(limit) : 20;
@@ -745,9 +763,12 @@ router.get('/tenants/:slug/solicitudes', requirePermiso('VIEW_SOLICITUDES'), asy
         const solicitudes = await db.listSolicitudes(tenant.id, {
             estado: normalizedEstado || undefined,
             userId: normalizedUserId,
+            categoria: categoria || undefined,
             page: currentPage,
             limit: currentLimit,
         });
+
+        const normalizedCategoria = String(categoria || '').trim();
 
         const enriched = solicitudes.map((item) => ({
             ...item,
@@ -758,6 +779,7 @@ router.get('/tenants/:slug/solicitudes', requirePermiso('VIEW_SOLICITUDES'), asy
             tenantId: tenant.id,
             ...(normalizedEstado ? { estado: normalizedEstado } : {}),
             ...(normalizedUserId !== undefined ? { userId: normalizedUserId } : {}),
+            ...(normalizedCategoria ? { categoria: normalizedCategoria } : {}),
         };
         const total = await prisma.solicitud.count({ where });
 
@@ -788,10 +810,14 @@ router.get('/tenants/:slug/solicitudes/search', requirePermiso('VIEW_SOLICITUDES
             estado,
             agenteId,
             prioridad,
+            categoria,
+            subcategoria,
             channelSource,
             tags,
             from,
             to,
+            dueFrom,
+            dueTo,
             page,
             limit,
             slaStatus,
@@ -802,10 +828,14 @@ router.get('/tenants/:slug/solicitudes/search', requirePermiso('VIEW_SOLICITUDES
             estado,
             agenteId,
             prioridad,
+            categoria,
+            subcategoria,
             channelSource,
             tags,
             from,
             to,
+            dueFrom,
+            dueTo,
             page: page ? Number(page) : 1,
             limit: limit ? Number(limit) : 20,
             slaStatus,
@@ -1472,8 +1502,11 @@ router.patch('/tenants/:slug/solicitudes/:id', requirePermiso('EDIT_SOLICITUDES'
             'estado',
             'prioridad',
             'agenteId',
+            'categoria',
+            'subcategoria',
             'tags',
             'followUpDate',
+            'dueAt',
             'resolutionNotes',
             'customerNotes',
         ];

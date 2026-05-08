@@ -93,6 +93,23 @@ function asHistoryValue(value) {
   return String(value);
 }
 
+function normalizeOptionalText(value, maxLen = null) {
+  if (value === undefined || value === null) return null;
+  const text = String(value).trim();
+  if (!text) return null;
+  if (Number.isInteger(maxLen) && maxLen > 0) {
+    return text.slice(0, maxLen);
+  }
+  return text;
+}
+
+function normalizeOptionalDate(value) {
+  if (value === undefined || value === null || value === '') return null;
+  const parsed = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(parsed.getTime())) return null;
+  return parsed;
+}
+
 function getPrismaClient() {
   if (!prisma) {
     try {
@@ -300,6 +317,9 @@ async function saveSolicitud(userId, data, tenantId) {
   }
 
   const estado = normalizeSolicitudStatus(data.estado, SOLICITUD_STATUS.OPEN);
+  const dueAt = normalizeOptionalDate(data.due_at ?? data.dueAt);
+  const categoria = normalizeOptionalText(data.categoria ?? data.category, 80);
+  const subcategoria = normalizeOptionalText(data.subcategoria ?? data.subcategory, 120);
 
   const solicitud = await client.solicitud.create({
     data: {
@@ -316,9 +336,13 @@ async function saveSolicitud(userId, data, tenantId) {
       telefonoContacto: data.telefono_contacto || null,
       horario: data.horario || null,
       estado,
+      categoria,
+      subcategoria,
       variablesJson: data.variables_json || null,
       attachmentsJson: Array.isArray(data.attachments_json) ? data.attachments_json : [],
       internalComments: Array.isArray(data.internal_comments_json) ? data.internal_comments_json : [],
+      dueAt,
+      firstResponseAt: estado !== SOLICITUD_STATUS.OPEN ? new Date() : null,
       completedAt: estado === SOLICITUD_STATUS.COMPLETED ? new Date() : null,
     },
   });
@@ -549,13 +573,15 @@ async function setAgenteEstado(id, tenantId, estado) {
 // Solicitud helpers (scoped to tenant)
 // ---------------------------------------------------------------------------
 
-async function listSolicitudes(tenantId, { estado, userId, page = 1, limit = 20 } = {}) {
+async function listSolicitudes(tenantId, { estado, userId, categoria, page = 1, limit = 20 } = {}) {
   const client = getPrismaClient();
   if (!client) return [];
   const normalizedEstado = estado ? normalizeSolicitudStatus(estado, '') : '';
+  const normalizedCategoria = normalizeOptionalText(categoria, 80);
   const where = {
     tenantId,
     ...(normalizedEstado ? { estado: normalizedEstado } : {}),
+    ...(normalizedCategoria ? { categoria: normalizedCategoria } : {}),
     ...(userId !== undefined ? { userId: Number(userId) } : {}),
   };
   return client.solicitud.findMany({
@@ -756,17 +782,35 @@ async function updateSolicitudFields(id, tenantId, updates = {}, actorUserId = n
   const current = await client.solicitud.findFirst({ where: { id, tenantId } });
   if (!current) return null;
 
+  const actorType = String(updates.__actorType || 'admin');
+  const actorAgenteId = updates.__actorAgenteId !== undefined ? Number(updates.__actorAgenteId) : null;
+  const shouldMarkFirstResponse = updates.__markFirstResponseAt !== false;
+
+  delete updates.__actorType;
+  delete updates.__actorAgenteId;
+  delete updates.__markFirstResponseAt;
+
   const data = {};
   if (updates.estado !== undefined) {
     data.estado = normalizeSolicitudStatus(updates.estado, current.estado ?? SOLICITUD_STATUS.OPEN);
     data.completedAt = data.estado === SOLICITUD_STATUS.COMPLETED ? new Date() : null;
   }
-  if (updates.prioridad !== undefined) data.prioridad = updates.prioridad || null;
+  if (updates.prioridad !== undefined) data.prioridad = normalizeOptionalText(updates.prioridad, 20);
   if (updates.agenteId !== undefined) data.agenteId = updates.agenteId ? Number(updates.agenteId) : null;
   if (updates.tags !== undefined) data.tags = Array.isArray(updates.tags) ? updates.tags : [];
-  if (updates.followUpDate !== undefined) data.followUpDate = updates.followUpDate ? new Date(updates.followUpDate) : null;
-  if (updates.resolutionNotes !== undefined) data.resolutionNotes = updates.resolutionNotes || null;
-  if (updates.customerNotes !== undefined) data.customerNotes = updates.customerNotes || null;
+  if (updates.followUpDate !== undefined) data.followUpDate = normalizeOptionalDate(updates.followUpDate);
+  if (updates.dueAt !== undefined) data.dueAt = normalizeOptionalDate(updates.dueAt);
+  if (updates.categoria !== undefined) data.categoria = normalizeOptionalText(updates.categoria, 80);
+  if (updates.subcategoria !== undefined) data.subcategoria = normalizeOptionalText(updates.subcategoria, 120);
+  if (updates.resolutionNotes !== undefined) data.resolutionNotes = normalizeOptionalText(updates.resolutionNotes);
+  if (updates.customerNotes !== undefined) data.customerNotes = normalizeOptionalText(updates.customerNotes);
+
+  if (shouldMarkFirstResponse && current.firstResponseAt == null) {
+    const nextEstado = data.estado ?? current.estado;
+    if ([SOLICITUD_STATUS.IN_PROGRESS, SOLICITUD_STATUS.PENDING_INFO, SOLICITUD_STATUS.COMPLETED].includes(nextEstado)) {
+      data.firstResponseAt = new Date();
+    }
+  }
 
   const updated = await client.solicitud.update({ where: { id }, data });
 
@@ -776,6 +820,10 @@ async function updateSolicitudFields(id, tenantId, updates = {}, actorUserId = n
     'agenteId',
     'tags',
     'followUpDate',
+    'dueAt',
+    'categoria',
+    'subcategoria',
+    'firstResponseAt',
     'resolutionNotes',
     'customerNotes',
   ];
@@ -786,12 +834,24 @@ async function updateSolicitudFields(id, tenantId, updates = {}, actorUserId = n
     await client.solicitudHistory.create({
       data: {
         solicitudId: id,
-        userId: actorUserId,
+        userId: actorType === 'admin' ? actorUserId : null,
         field,
         oldValue: asHistoryValue(current[field]),
         newValue: asHistoryValue(updated[field]),
       },
     }).catch(() => {});
+
+    if (actorType === 'agente' && Number.isInteger(actorAgenteId) && actorAgenteId > 0) {
+      await client.solicitudHistory.create({
+        data: {
+          solicitudId: id,
+          userId: null,
+          field: `agent:${field}`,
+          oldValue: asHistoryValue(current[field]),
+          newValue: asHistoryValue({ value: updated[field], agenteId: actorAgenteId }),
+        },
+      }).catch(() => {});
+    }
   }
 
   return updated;
@@ -868,10 +928,14 @@ async function searchSolicitudes(tenantId, {
   estado,
   agenteId,
   prioridad,
+  categoria,
+  subcategoria,
   channelSource,
   tags,
   from,
   to,
+  dueFrom,
+  dueTo,
   page = 1,
   limit = 20,
   slaStatus,
@@ -891,11 +955,19 @@ async function searchSolicitudes(tenantId, {
     ...(normalizedEstado ? { estado: normalizedEstado } : {}),
     ...(agenteId != null ? { agenteId: Number(agenteId) } : {}),
     ...(prioridad ? { prioridad: String(prioridad) } : {}),
+    ...(categoria ? { categoria: String(categoria) } : {}),
+    ...(subcategoria ? { subcategoria: String(subcategoria) } : {}),
     ...(channelSource ? { channelSource: String(channelSource) } : {}),
     ...(from || to ? {
       createdAt: {
         ...(from ? { gte: new Date(from) } : {}),
         ...(to ? { lte: new Date(to) } : {}),
+      },
+    } : {}),
+    ...(dueFrom || dueTo ? {
+      dueAt: {
+        ...(dueFrom ? { gte: new Date(dueFrom) } : {}),
+        ...(dueTo ? { lte: new Date(dueTo) } : {}),
       },
     } : {}),
     ...(normalizedQ ? {

@@ -213,6 +213,8 @@ model Solicitud {
   telefonoContacto String?  @db.VarChar(20)   @map("telefono_contacto")
   horario          String?  @db.VarChar(20)
   estado           String?  @db.VarChar(50)
+  categoria        String?  @db.VarChar(80)
+  subcategoria     String?  @db.VarChar(120)
   variablesJson    Json?    @map("variables_json")
   attachmentsJson  Json     @default("[]") @map("attachments_json")
   internalComments Json     @default("[]") @map("internal_comments_json")
@@ -225,6 +227,8 @@ model Solicitud {
   resolutionNotes  String?  @map("resolution_notes") @db.Text
   customerNotes    String?  @map("customer_notes") @db.Text
   followUpDate     DateTime? @map("follow_up_date")
+  dueAt            DateTime? @map("due_at")
+  firstResponseAt  DateTime? @map("first_response_at")
   channelSource    String   @default("manual") @db.VarChar(50) @map("channel_source")
   createdAt        DateTime @default(now()) @map("created_at")
   updatedAt        DateTime @default(now()) @updatedAt @map("updated_at")
@@ -244,6 +248,8 @@ model Solicitud {
   @@index([tenantId, slaId])
   @@index([tenantId, escalationLevel])
   @@index([tenantId, escalatedAt])
+  @@index([tenantId, categoria, estado])
+  @@index([tenantId, dueAt])
   @@map("solicitudes")
 }
 

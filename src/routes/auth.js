@@ -910,6 +910,10 @@ router.get('/agent/solicitudes', requireAgentJwt, async (req, res, next) => {
           telefonoContacto: true,
           estado: true,
           prioridad: true,
+          categoria: true,
+          subcategoria: true,
+          dueAt: true,
+          firstResponseAt: true,
           createdAt: true,
           updatedAt: true,
           completedAt: true,
@@ -918,6 +922,86 @@ router.get('/agent/solicitudes', requireAgentJwt, async (req, res, next) => {
     ]);
 
     return res.json({ page, limit, total, status, data });
+  } catch (err) {
+    return next(err);
+  }
+});
+
+// ── PATCH /auth/agent/solicitudes/:id ──────────────────────────────────────
+router.patch('/agent/solicitudes/:id', requireAgentJwt, async (req, res, next) => {
+  try {
+    const tenantId = req.agent?.tenantId;
+    const agenteId = Number(req.agent?.agenteId);
+    const solicitudId = Number(req.params.id);
+    if (!tenantId || !Number.isInteger(agenteId) || agenteId <= 0) {
+      return res.status(400).json({ error: 'Invalid agent context' });
+    }
+    if (!Number.isInteger(solicitudId) || solicitudId <= 0) {
+      return res.status(400).json({ error: 'Invalid solicitud id' });
+    }
+
+    const solicitud = await db.getSolicitudById(solicitudId, tenantId);
+    if (!solicitud) return res.status(404).json({ error: 'Solicitud not found' });
+    if (Number(solicitud.agenteId || 0) !== agenteId) {
+      return res.status(403).json({ error: 'Solicitud is not assigned to this agent' });
+    }
+
+    const allowedFields = [
+      'estado',
+      'prioridad',
+      'categoria',
+      'subcategoria',
+      'followUpDate',
+      'dueAt',
+      'resolutionNotes',
+      'customerNotes',
+    ];
+
+    const updates = {};
+    for (const key of allowedFields) {
+      if (Object.prototype.hasOwnProperty.call(req.body || {}, key)) {
+        updates[key] = req.body[key];
+      }
+    }
+
+    if (!Object.keys(updates).length) {
+      return res.status(400).json({ error: 'No updatable fields provided' });
+    }
+
+    if (updates.estado !== undefined) {
+      const normalizedEstado = db.normalizeSolicitudStatus(updates.estado, '');
+      if (!normalizedEstado || !Object.values(db.SOLICITUD_STATUS).includes(normalizedEstado)) {
+        return res.status(400).json({ error: 'estado is invalid' });
+      }
+      updates.estado = normalizedEstado;
+    }
+
+    const updated = await db.updateSolicitudFields(
+      solicitudId,
+      tenantId,
+      {
+        ...updates,
+        __actorType: 'agente',
+        __actorAgenteId: agenteId,
+        __markFirstResponseAt: true,
+      },
+      null,
+    );
+
+    if (!updated) return res.status(404).json({ error: 'Solicitud not found' });
+
+    audit({
+      adminUserId: null,
+      tenantId,
+      accion: 'AGENT_UPDATE_SOLICITUD',
+      entidad: 'solicitud',
+      entidadId: String(solicitudId),
+      ip: req.ip,
+      userAgent: req.headers['user-agent'],
+      metadata: { agenteId, fields: Object.keys(updates) },
+    });
+
+    return res.json(updated);
   } catch (err) {
     return next(err);
   }

@@ -1,6 +1,6 @@
 "use client";
 
-import { agentesApi, solicitudesApi } from "@/lib/api";
+import { agentesApi, conversationsApi, solicitudesApi } from "@/lib/api";
 import { agentAuthApi, type AgentSolicitud } from "@/lib/agentApi";
 import { useAuthStore } from "@/store/auth";
 import { getStoredAccessToken } from "@/store/auth";
@@ -11,12 +11,14 @@ import { StatusBadge } from "@/components/ui/StatusBadge";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Modal } from "@/components/ui/Modal";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { formatDate } from "@/lib/utils";
-import { AlertTriangle, Clock3, Filter, Search, UserCheck } from "lucide-react";
+import { AlertTriangle, Clock3, Filter, MessageCircleMore, Search, UserCheck } from "lucide-react";
 import { useSocket } from "@/hooks/useSocket";
 
 const ESTADOS = ["", "open", "in_progress", "pending_info", "completed", "rejected"];
 const PRIORIDADES = ["", "baja", "media", "alta"];
+const CATEGORIAS = ["", "tecnico", "facturacion", "comercial", "soporte", "otro"];
 const SLA_FILTERS = ["", "on_track", "warning", "breached", "no_sla"];
 
 const ESTADO_LABELS: Record<string, string> = {
@@ -40,20 +42,45 @@ const PRIORIDAD_LABELS: Record<string, string> = {
   alta: "Alta",
 };
 
+const CATEGORIA_LABELS: Record<string, string> = {
+  tecnico: "Tecnico",
+  facturacion: "Facturacion",
+  comercial: "Comercial",
+  soporte: "Soporte",
+  otro: "Otro",
+};
+
 interface Solicitud {
   id: number;
+  titulo?: string | null;
   nombre?: string;
   telefonoContacto?: string;
   horario?: string;
   estado: string;
   prioridad?: string;
+  categoria?: string | null;
+  subcategoria?: string | null;
+  dueAt?: string | null;
+  firstResponseAt?: string | null;
   escalationLevel?: number;
   createdAt: string;
+  conversation?: { id: string } | null;
+  user?: { phone?: string | null } | null;
   slaStatus?: {
     status: string;
     minutesRemaining: number | null;
   };
-  agente?: { nombre: string } | null;
+  agente?: { id?: number; nombre: string } | null;
+}
+
+interface ConversationItem {
+  id: string;
+  userKey: string;
+  status: string;
+  startedAt: string;
+  endedAt: string | null;
+  flow?: { nombre: string } | null;
+  solicitudes?: Array<{ id: number; estado: string; createdAt: string }>;
 }
 
 interface Agente {
@@ -106,12 +133,26 @@ export default function SolicitudesPage() {
   const [q, setQ] = useState("");
   const [estadoFilter, setEstadoFilter] = useState("");
   const [prioridadFilter, setPrioridadFilter] = useState("");
+  const [categoriaFilter, setCategoriaFilter] = useState("");
   const [slaFilter, setSlaFilter] = useState("");
   const [page, setPage] = useState(1);
   const [assignModal, setAssignModal] = useState<{
     open: boolean;
     solicitudId: number | null;
   }>({ open: false, solicitudId: null });
+  const [detailModal, setDetailModal] = useState<{
+    open: boolean;
+    solicitud: Solicitud | null;
+  }>({ open: false, solicitud: null });
+  const [detailTab, setDetailTab] = useState<"resumen" | "conversaciones">("resumen");
+  const [detailDraft, setDetailDraft] = useState({
+    estado: "",
+    prioridad: "",
+    agenteId: "",
+    categoria: "",
+    subcategoria: "",
+    dueAt: "",
+  });
   const [selectedAgente, setSelectedAgente] = useState("");
   const [configOpen, setConfigOpen] = useState(false);
   const [configDraft, setConfigDraft] = useState<SolicitudesTenantConfig>(DEFAULT_SOLICITUDES_CONFIG);
@@ -142,18 +183,19 @@ export default function SolicitudesPage() {
   const usingAdvancedSearch = Boolean((q || prioridadFilter || slaFilter) && tenantConfig.advancedSearchEnabled);
 
   const { data, isLoading } = useQuery({
-    queryKey: ["solicitudes", tenantSlug, { q, estado: estadoFilter, prioridad: prioridadFilter, slaStatus: slaFilter, page }],
+    queryKey: ["solicitudes", tenantSlug, { q, estado: estadoFilter, prioridad: prioridadFilter, categoria: categoriaFilter, slaStatus: slaFilter, page }],
     queryFn: () =>
       (usingAdvancedSearch
         ? solicitudesApi.search(tenantSlug, {
             q: q || undefined,
             estado: estadoFilter || undefined,
             prioridad: prioridadFilter || undefined,
+            categoria: categoriaFilter || undefined,
             slaStatus: slaFilter || undefined,
             page,
             limit: 15,
           })
-        : solicitudesApi.list(tenantSlug, { estado: estadoFilter || undefined, page, limit: 15 })
+        : solicitudesApi.list(tenantSlug, { estado: estadoFilter || undefined, categoria: categoriaFilter || undefined, page, limit: 15 })
       ).then((r) => r.data),
     enabled: !!tenantSlug,
   });
@@ -229,6 +271,71 @@ export default function SolicitudesPage() {
     mutationFn: (id: number) => solicitudesApi.createPortalToken(tenantSlug, id),
   });
 
+  const saveSolicitud = useMutation({
+    mutationFn: ({ id, data }: { id: number; data: Record<string, unknown> }) =>
+      solicitudesApi.update(tenantSlug, id, data),
+    onSuccess: async () => {
+      await qc.invalidateQueries({ queryKey: ["solicitudes"] });
+      await qc.invalidateQueries({ queryKey: ["solicitudes-stats"] });
+      setDetailModal((prev) => ({
+        ...prev,
+        solicitud: prev.solicitud
+          ? {
+              ...prev.solicitud,
+              estado: detailDraft.estado || prev.solicitud.estado,
+              prioridad: detailDraft.prioridad || prev.solicitud.prioridad,
+              categoria: detailDraft.categoria || null,
+              subcategoria: detailDraft.subcategoria || null,
+              dueAt: detailDraft.dueAt ? new Date(detailDraft.dueAt).toISOString() : null,
+              agente: detailDraft.agenteId
+                ? {
+                    id: Number(detailDraft.agenteId),
+                    nombre: prev.solicitud.agente?.nombre ?? "Asignado",
+                  }
+                : null,
+            }
+          : prev.solicitud,
+      }));
+    },
+  });
+
+  const updateAgentSolicitud = useMutation({
+    mutationFn: ({ id, data }: { id: number; data: Record<string, unknown> }) =>
+      agentAuthApi.updateSolicitud(id, data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["agent-solicitudes"] });
+    },
+  });
+
+  useEffect(() => {
+    if (!detailModal.solicitud) return;
+    setDetailDraft({
+      estado: detailModal.solicitud.estado || "",
+      prioridad: detailModal.solicitud.prioridad || "",
+      agenteId: detailModal.solicitud.agente?.id ? String(detailModal.solicitud.agente.id) : "",
+      categoria: detailModal.solicitud.categoria || "",
+      subcategoria: detailModal.solicitud.subcategoria || "",
+      dueAt: detailModal.solicitud.dueAt ? String(detailModal.solicitud.dueAt).slice(0, 16) : "",
+    });
+  }, [
+    detailModal.solicitud?.id,
+    detailModal.solicitud?.estado,
+    detailModal.solicitud?.prioridad,
+    detailModal.solicitud?.agente?.id,
+    detailModal.solicitud?.categoria,
+    detailModal.solicitud?.subcategoria,
+    detailModal.solicitud?.dueAt,
+  ]);
+
+  const detailClientKey = detailModal.solicitud?.user?.phone ?? detailModal.solicitud?.telefonoContacto ?? "";
+  const { data: conversationData, isLoading: conversationsLoading } = useQuery({
+    queryKey: ["solicitud-conversations", tenantSlug, detailClientKey],
+    queryFn: () => conversationsApi.list({ userKey: detailClientKey, limit: 50 }).then((r) => r.data),
+    enabled: Boolean(detailModal.open && detailModal.solicitud && detailClientKey && detailTab === "conversaciones"),
+    staleTime: 30_000,
+  });
+  const conversations: ConversationItem[] = (conversationData as { data?: ConversationItem[] })?.data ?? (Array.isArray(conversationData) ? conversationData : []);
+
   const solicitudes: Solicitud[] = data?.data ?? [];
   const total: number = data?.total ?? 0;
   const agentes: Agente[] = agentesData?.data ?? agentesData ?? [];
@@ -284,9 +391,12 @@ export default function SolicitudesPage() {
                     <th className="px-4 py-3 text-left font-medium">ID</th>
                     <th className="px-4 py-3 text-left font-medium">Titulo</th>
                     <th className="px-4 py-3 text-left font-medium">Contacto</th>
+                    <th className="px-4 py-3 text-left font-medium">Categoria</th>
                     <th className="px-4 py-3 text-left font-medium">Estado</th>
                     <th className="px-4 py-3 text-left font-medium">Prioridad</th>
+                    <th className="px-4 py-3 text-left font-medium">Vence</th>
                     <th className="px-4 py-3 text-left font-medium">Actualizada</th>
+                    <th className="px-4 py-3 text-left font-medium">Acciones</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -295,9 +405,33 @@ export default function SolicitudesPage() {
                       <td className="px-4 py-3 text-slate-700">#{s.id}</td>
                       <td className="px-4 py-3 text-slate-700">{s.titulo || s.nombre || "Sin titulo"}</td>
                       <td className="px-4 py-3 text-slate-600">{s.nombre || s.telefonoContacto || "-"}</td>
+                      <td className="px-4 py-3 text-slate-700">{CATEGORIA_LABELS[s.categoria || ""] ?? s.categoria ?? "-"}</td>
                       <td className="px-4 py-3 text-slate-700">{ESTADO_LABELS[s.estado || ""] ?? s.estado ?? "-"}</td>
                       <td className="px-4 py-3 text-slate-700">{PRIORIDAD_LABELS[s.prioridad || ""] ?? s.prioridad ?? "-"}</td>
+                      <td className="px-4 py-3 text-slate-500">{s.dueAt ? formatDate(s.dueAt) : "-"}</td>
                       <td className="px-4 py-3 text-slate-500">{formatDate(s.updatedAt)}</td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-2">
+                          {s.estado === "open" && (
+                            <button
+                              type="button"
+                              onClick={() => updateAgentSolicitud.mutate({ id: s.id, data: { estado: "in_progress" } })}
+                              className="rounded-lg border border-blue-200 bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700"
+                            >
+                              Tomar
+                            </button>
+                          )}
+                          {s.estado !== "completed" && s.estado !== "rejected" && (
+                            <button
+                              type="button"
+                              onClick={() => updateAgentSolicitud.mutate({ id: s.id, data: { estado: "completed" } })}
+                              className="rounded-lg border border-emerald-200 bg-emerald-50 px-2 py-1 text-xs font-medium text-emerald-700"
+                            >
+                              Completar
+                            </button>
+                          )}
+                        </div>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -392,6 +526,23 @@ export default function SolicitudesPage() {
 
         <div className="flex items-center gap-2 bg-white border border-slate-200 rounded-xl px-3 py-2">
           <select
+            value={categoriaFilter}
+            onChange={(e) => {
+              setCategoriaFilter(e.target.value);
+              setPage(1);
+            }}
+            className="text-sm bg-transparent focus:outline-none text-slate-700"
+          >
+            {CATEGORIAS.map((c) => (
+              <option key={c} value={c}>
+                {c === "" ? "Todas las categorias" : CATEGORIA_LABELS[c] ?? c}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div className="flex items-center gap-2 bg-white border border-slate-200 rounded-xl px-3 py-2">
+          <select
             value={slaFilter}
             onChange={(e) => {
               setSlaFilter(e.target.value);
@@ -430,7 +581,7 @@ export default function SolicitudesPage() {
             <table className="w-full text-sm">
               <thead className="bg-slate-50 border-b border-slate-200">
                 <tr>
-                  {["Nombre", "Teléfono", "Prioridad", "SLA", "Agente", "Estado", "Fecha", "Acciones"].map(
+                  {["Nombre", "Telefono", "Categoria", "Prioridad", "SLA", "Agente", "Estado", "Vence", "Fecha", "Acciones"].map(
                     (h) => (
                       <th
                         key={h}
@@ -450,6 +601,9 @@ export default function SolicitudesPage() {
                     </td>
                     <td className="px-5 py-3.5 text-slate-600">
                       {s.telefonoContacto || "-"}
+                    </td>
+                    <td className="px-5 py-3.5 text-slate-600">
+                      {s.categoria ? (CATEGORIA_LABELS[s.categoria] ?? s.categoria) : "-"}
                     </td>
                     <td className="px-5 py-3.5 text-slate-600">
                       {s.prioridad ? (PRIORIDAD_LABELS[s.prioridad] ?? s.prioridad) : "-"}
@@ -476,6 +630,9 @@ export default function SolicitudesPage() {
                     </td>
                     <td className="px-5 py-3.5">
                       <StatusBadge status={s.estado} />
+                    </td>
+                    <td className="px-5 py-3.5 text-slate-500 text-xs">
+                      {s.dueAt ? formatDate(s.dueAt) : "-"}
                     </td>
                     <td className="px-5 py-3.5 text-slate-500 text-xs">
                       {formatDate(s.createdAt)}
@@ -532,6 +689,16 @@ export default function SolicitudesPage() {
                         >
                           <UserCheck size={12} />
                           Asignar
+                        </button>
+                        <button
+                          onClick={() => {
+                            setDetailModal({ open: true, solicitud: s });
+                            setDetailTab("resumen");
+                          }}
+                          className="text-xs text-slate-700 hover:text-slate-900 font-medium border border-slate-200 rounded-lg px-2 py-1 bg-white hover:bg-slate-50 transition flex items-center gap-1"
+                        >
+                          <MessageCircleMore size={12} />
+                          Conversaciones
                         </button>
                       </div>
                     </td>
@@ -685,6 +852,238 @@ export default function SolicitudesPage() {
             </Button>
           </div>
         </div>
+      </Modal>
+
+      <Modal
+        open={detailModal.open}
+        onClose={() => setDetailModal({ open: false, solicitud: null })}
+        title="Detalle de solicitud"
+        className="max-w-4xl"
+      >
+        {detailModal.solicitud && (
+          <Tabs defaultValue={detailTab} className="space-y-4">
+            <TabsList className="w-full justify-start overflow-x-auto">
+              <TabsTrigger value="resumen" onClick={() => setDetailTab("resumen")}>Resumen</TabsTrigger>
+              <TabsTrigger value="conversaciones" onClick={() => setDetailTab("conversaciones")}>Conversaciones del cliente</TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="resumen" className="space-y-4">
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                  <p className="text-xs uppercase tracking-wide text-slate-500">Cliente</p>
+                  <p className="mt-1 font-medium text-slate-900">{detailModal.solicitud.nombre || "Sin nombre"}</p>
+                  <p className="text-sm text-slate-600">{detailModal.solicitud.telefonoContacto || "Sin teléfono"}</p>
+                </div>
+                <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                  <p className="text-xs uppercase tracking-wide text-slate-500">Estado</p>
+                  <div className="mt-1"><StatusBadge status={detailModal.solicitud.estado} /></div>
+                  <p className="text-sm text-slate-600 mt-2">Creada: {formatDate(detailModal.solicitud.createdAt)}</p>
+                </div>
+                <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                  <p className="text-xs uppercase tracking-wide text-slate-500">Agente</p>
+                  <p className="mt-1 text-sm text-slate-700">{detailModal.solicitud.agente?.nombre ?? "Sin asignar"}</p>
+                </div>
+                <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                  <p className="text-xs uppercase tracking-wide text-slate-500">Conexión</p>
+                  <p className="mt-1 text-sm text-slate-700">{detailClientKey || "Sin identificador de cliente"}</p>
+                </div>
+                <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                  <p className="text-xs uppercase tracking-wide text-slate-500">Vencimiento</p>
+                  <p className="mt-1 text-sm text-slate-700">{detailModal.solicitud.dueAt ? formatDate(detailModal.solicitud.dueAt) : "Sin fecha"}</p>
+                </div>
+                <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                  <p className="text-xs uppercase tracking-wide text-slate-500">Primera respuesta</p>
+                  <p className="mt-1 text-sm text-slate-700">{detailModal.solicitud.firstResponseAt ? formatDate(detailModal.solicitud.firstResponseAt) : "Pendiente"}</p>
+                </div>
+              </div>
+              <div className="rounded-xl border border-slate-200 bg-white p-4 space-y-3">
+                <p className="text-sm font-medium text-slate-900">Gestionar solicitud</p>
+                <div className="grid gap-3 sm:grid-cols-3">
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-medium uppercase tracking-wide text-slate-500">Estado</label>
+                    <select
+                      value={detailDraft.estado}
+                      onChange={(e) => setDetailDraft((prev) => ({ ...prev, estado: e.target.value }))}
+                      className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm"
+                    >
+                      {ESTADOS.filter(Boolean).map((estado) => (
+                        <option key={estado} value={estado}>
+                          {ESTADO_LABELS[estado] ?? estado}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-medium uppercase tracking-wide text-slate-500">Prioridad</label>
+                    <select
+                      value={detailDraft.prioridad}
+                      onChange={(e) => setDetailDraft((prev) => ({ ...prev, prioridad: e.target.value }))}
+                      className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm"
+                    >
+                      {PRIORIDADES.filter(Boolean).map((prioridad) => (
+                        <option key={prioridad} value={prioridad}>
+                          {PRIORIDAD_LABELS[prioridad] ?? prioridad}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-medium uppercase tracking-wide text-slate-500">Agente</label>
+                    <select
+                      value={detailDraft.agenteId}
+                      onChange={(e) => setDetailDraft((prev) => ({ ...prev, agenteId: e.target.value }))}
+                      className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm"
+                    >
+                      <option value="">Sin asignar</option>
+                      {agentes
+                        .filter((a) => a.estado === "activo")
+                        .map((a) => (
+                          <option key={a.id} value={a.id}>
+                            {a.nombre}
+                          </option>
+                        ))}
+                    </select>
+                  </div>
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-medium uppercase tracking-wide text-slate-500">Categoria</label>
+                      <select
+                        value={detailDraft.categoria}
+                        onChange={(e) => setDetailDraft((prev) => ({ ...prev, categoria: e.target.value }))}
+                        className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm"
+                      >
+                        <option value="">Sin categoria</option>
+                        {CATEGORIAS.filter(Boolean).map((categoria) => (
+                          <option key={categoria} value={categoria}>
+                            {CATEGORIA_LABELS[categoria] ?? categoria}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-medium uppercase tracking-wide text-slate-500">Subcategoria</label>
+                      <input
+                        value={detailDraft.subcategoria}
+                        onChange={(e) => setDetailDraft((prev) => ({ ...prev, subcategoria: e.target.value }))}
+                        placeholder="Ej: integracion-whatsapp"
+                        className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-medium uppercase tracking-wide text-slate-500">Fecha limite</label>
+                      <input
+                        type="datetime-local"
+                        value={detailDraft.dueAt}
+                        onChange={(e) => setDetailDraft((prev) => ({ ...prev, dueAt: e.target.value }))}
+                        className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm"
+                      />
+                    </div>
+                </div>
+                <div className="flex justify-end gap-3 pt-1">
+                  <Button
+                    variant="secondary"
+                    onClick={() => setDetailModal({ open: false, solicitud: null })}
+                  >
+                    Cerrar
+                  </Button>
+                  <Button
+                    onClick={() => {
+                      if (!detailModal.solicitud) return;
+                      saveSolicitud.mutate({
+                        id: detailModal.solicitud.id,
+                        data: {
+                          estado: detailDraft.estado,
+                          prioridad: detailDraft.prioridad || null,
+                          agenteId: detailDraft.agenteId ? Number(detailDraft.agenteId) : null,
+                          categoria: detailDraft.categoria || null,
+                          subcategoria: detailDraft.subcategoria || null,
+                          dueAt: detailDraft.dueAt ? new Date(detailDraft.dueAt).toISOString() : null,
+                        },
+                      });
+                    }}
+                    disabled={saveSolicitud.isPending}
+                  >
+                    {saveSolicitud.isPending ? "Guardando..." : "Guardar cambios"}
+                  </Button>
+                </div>
+              </div>
+              <div className="flex justify-end gap-3 pt-2">
+                <Button variant="secondary" onClick={() => setDetailModal({ open: false, solicitud: null })}>
+                  Cerrar
+                </Button>
+                <Button onClick={() => setDetailTab("conversaciones")}>
+                  Ver conversaciones del cliente
+                </Button>
+              </div>
+            </TabsContent>
+
+            <TabsContent value="conversaciones" className="space-y-4">
+              {!detailClientKey ? (
+                <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 p-6 text-sm text-slate-500">
+                  Esta solicitud no tiene teléfono de cliente para buscar conversaciones del tenant.
+                </div>
+              ) : conversationsLoading ? (
+                <div className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-500">
+                  Cargando conversaciones del cliente...
+                </div>
+              ) : conversations.length === 0 ? (
+                <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 p-6 text-sm text-slate-500">
+                  No hay conversaciones registradas para este cliente en este tenant.
+                </div>
+              ) : (
+                <div className="space-y-3 max-h-[55vh] overflow-auto pr-1">
+                  {conversations.map((conversation) => {
+                    const isCurrentConversation = detailModal.solicitud?.conversation?.id === conversation.id;
+                    return (
+                      <div
+                        key={conversation.id}
+                        className={`rounded-xl border p-4 ${isCurrentConversation ? "border-blue-300 bg-blue-50/50" : "border-slate-200 bg-white"}`}
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <p className="font-medium text-slate-900">{conversation.flow?.nombre ?? "Flujo sin nombre"}</p>
+                              {isCurrentConversation && (
+                                <span className="rounded-full bg-blue-100 px-2 py-0.5 text-[11px] font-semibold text-blue-700">
+                                  Conversación actual
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-sm text-slate-500 mt-1">ID {conversation.id} · Estado {conversation.status}</p>
+                            <p className="text-sm text-slate-500">
+                              Inicio {formatDate(conversation.startedAt)}
+                              {conversation.endedAt ? ` · Fin ${formatDate(conversation.endedAt)}` : ""}
+                            </p>
+                          </div>
+                          <div className="text-right text-xs text-slate-500">
+                            <p>{conversation.solicitudes?.length ?? 0} solicitud(es) vinculada(s)</p>
+                            <p className="truncate max-w-[12rem]">{conversation.userKey}</p>
+                          </div>
+                        </div>
+                        {conversation.solicitudes?.length ? (
+                          <div className="mt-3 flex flex-wrap gap-2">
+                            {conversation.solicitudes.map((solicitud) => (
+                              <span
+                                key={solicitud.id}
+                                className="rounded-full bg-slate-100 px-2 py-1 text-[11px] font-medium text-slate-600"
+                              >
+                                Solicitud #{solicitud.id} · {ESTADO_LABELS[solicitud.estado] ?? solicitud.estado}
+                              </span>
+                            ))}
+                          </div>
+                        ) : null}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+              <div className="flex justify-end gap-3 pt-2">
+                <Button variant="secondary" onClick={() => setDetailModal({ open: false, solicitud: null })}>
+                  Cerrar
+                </Button>
+              </div>
+            </TabsContent>
+          </Tabs>
+        )}
       </Modal>
     </div>
   );

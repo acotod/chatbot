@@ -70,6 +70,10 @@ export type AgentSolicitud = {
   telefonoContacto: string | null;
   estado: string | null;
   prioridad: string | null;
+  categoria: string | null;
+  subcategoria: string | null;
+  dueAt: string | null;
+  firstResponseAt: string | null;
   createdAt: string;
   updatedAt: string;
   completedAt: string | null;
@@ -153,6 +157,16 @@ export const agentAuthApi = {
     agentApiClient.get<AgentKpisResponse>("/auth/agent/kpis"),
   solicitudes: (params?: { status?: "assigned" | "completed"; page?: number; limit?: number }) =>
     agentApiClient.get<AgentSolicitudesResponse>("/auth/agent/solicitudes", { params }),
+  updateSolicitud: (id: number, data: {
+    estado?: string;
+    prioridad?: string | null;
+    categoria?: string | null;
+    subcategoria?: string | null;
+    followUpDate?: string | null;
+    dueAt?: string | null;
+    resolutionNotes?: string | null;
+    customerNotes?: string | null;
+  }) => agentApiClient.patch<AgentSolicitud>(`/auth/agent/solicitudes/${id}`, data),
   agenda: (params?: { start?: string; end?: string; estado?: string }) =>
     agentApiClient.get<AgentAgendaResponse>("/auth/agent/agenda", { params }),
   contactos: (params?: { q?: string; page?: number; limit?: number }) =>
