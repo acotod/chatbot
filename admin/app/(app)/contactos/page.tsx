@@ -66,7 +66,25 @@ interface ContactDetail extends Contact {
   solicitudes: Array<{ id: number; estado: string; createdAt: string; agente?: { nombre: string } }>;
   deals: Array<{ id: number; titulo: string; etapa: string; valor: string | null; agente?: { nombre: string } }>;
   tasks: Array<{ id: number; titulo: string; tipo: string; estado: string; venceEn: string | null; agente?: { nombre: string } }>;
-  mensajes: Array<{ id: number; tipo: string; contenido: string; createdAt: string }>;
+  mensajes: Array<{ id: number; tipo: string; contenido: unknown; createdAt: string }>;
+}
+
+function getMessagePreview(contenido: unknown): string {
+  if (typeof contenido === "string") return contenido;
+  if (!contenido || typeof contenido !== "object") return "[mensaje no textual]";
+
+  const data = contenido as Record<string, unknown>;
+  if (typeof data.text === "string" && data.text.trim()) return data.text;
+
+  const interactive = data.interactive as Record<string, unknown> | undefined;
+  const reply = interactive?.reply as Record<string, unknown> | undefined;
+  if (typeof reply?.title === "string" && reply.title.trim()) return reply.title;
+
+  try {
+    return JSON.stringify(data);
+  } catch {
+    return "[mensaje no textual]";
+  }
 }
 
 const ETAPA_COLORS: Record<string, string> = {
@@ -404,7 +422,7 @@ export default function ContactosPage() {
                   <div className="space-y-2">
                     {detail.mensajes?.map(m => (
                       <div key={m.id} className={`p-3 rounded-lg text-sm ${m.tipo === "inbound" ? "bg-gray-50" : "bg-blue-50 ml-8"}`}>
-                        <p className="text-gray-700">{m.contenido}</p>
+                        <p className="text-gray-700 break-words whitespace-pre-wrap">{getMessagePreview(m.contenido)}</p>
                         <p className="text-xs text-gray-400 mt-1">{format(new Date(m.createdAt), "dd/MM HH:mm")}</p>
                       </div>
                     ))}
