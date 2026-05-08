@@ -48,7 +48,6 @@ const NAV_ITEMS: Array<{
   { icon: MessageCircle, label: "Conversaciones", href: "/conversaciones", permission: "VIEW_CONVERSACIONES" },
   { icon: ClipboardList, label: "Solicitudes", href: "/solicitudes", permission: "VIEW_SOLICITUDES" },
   { icon: BarChart3, label: "Reportes", href: "/reportes", permission: "VIEW_METRICS" },
-  { icon: Webhook, label: "Webhooks", href: "/webhooks", permission: "EDIT_SOLICITUDES" },
   { icon: CalendarDays, label: "Agenda", href: "/agenda", permission: "VIEW_AGENDA" },
   { icon: Users, label: "Agentes", href: "/agentes", permission: "VIEW_AGENTES" },
   { icon: UserCircle2, label: "Contactos", href: "/contactos", permission: "VIEW_CRM" },
@@ -60,6 +59,7 @@ const NAV_ITEMS: Array<{
   { icon: Plug, label: "Integraciones", href: "/integraciones", permission: "MANAGE_TENANTS" },
   { icon: Variable, label: "Variables", href: "/variables", permission: "EDIT_FLUJOS" },
   { icon: Webhook, label: "WABA Flujos", href: "/waba-flujos", permission: "VIEW_FLUJOS" },
+  { icon: Webhook, label: "Webhooks", href: "/webhooks", permission: "EDIT_SOLICITUDES" },
   { icon: TestTube2, label: "Sandbox", href: "/sandbox", permission: "VIEW_SANDBOX" },
 ];
 
