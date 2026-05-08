@@ -8,6 +8,8 @@ const prisma = new PrismaClient();
 async function requireAgentJwt(req, res, next) {
   const header = req.headers.authorization || '';
   const token = header.replace(/^Bearer\s+/i, '');
+  const requestTabId = (req.headers['x-tab-id'] || '').trim();
+  
   if (!token) return res.status(401).json({ error: 'Missing token' });
 
   const secret = process.env.JWT_SECRET;
@@ -18,6 +20,16 @@ async function requireAgentJwt(req, res, next) {
     payload = jwt.verify(token, secret);
   } catch {
     return res.status(401).json({ error: 'Invalid or expired token' });
+  }
+
+  // Validate tabId if present in JWT
+  if (payload.tabId) {
+    if (!requestTabId) {
+      return res.status(401).json({ error: 'Missing x-tab-id header' });
+    }
+    if (payload.tabId !== requestTabId) {
+      return res.status(401).json({ error: 'Invalid tab context' });
+    }
   }
 
   if (payload.jti) {
@@ -65,6 +77,7 @@ async function requireAgentJwt(req, res, next) {
       lastSeenAt: agente.lastSeenAt,
       _jti: payload.jti,
       _exp: payload.exp,
+      _tabId: payload.tabId,
     };
     return next();
   } catch (err) {

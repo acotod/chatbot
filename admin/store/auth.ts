@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { normalizePermissions, type Permission } from "@/lib/permissions";
+import { clearTabSession } from "@/lib/tabManager";
 
 // Module-level refresh timer handle
 let _proactiveRefreshTimer: ReturnType<typeof setTimeout> | null = null;
@@ -74,6 +75,7 @@ export function clearStoredAuth() {
   localStorage.removeItem(REFRESH_TOKEN_STORAGE_KEY);
   localStorage.removeItem(AUTH_STORAGE_KEY);
   syncAccessTokenCookie(null);
+  clearTabSession();
 }
 
 function parseJwtExpToUnixMs(token: string): number | null {

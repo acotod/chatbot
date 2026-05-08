@@ -50,11 +50,14 @@ async function issueRefreshToken(adminUserId) {
   return raw;
 }
 
-function signAccess(payload, secret) {
+function signAccess(payload, secret, tabId = null) {
   const jti = crypto.randomBytes(16).toString('hex');
+  const payloadWithTab = { ...payload, jti };
+  if (tabId) payloadWithTab.tabId = tabId;
   return {
-    token: jwt.sign({ ...payload, jti }, secret, { expiresIn: ACCESS_TTL }),
+    token: jwt.sign(payloadWithTab, secret, { expiresIn: ACCESS_TTL }),
     jti,
+    tabId,
   };
 }
 
@@ -237,6 +240,7 @@ const loginRateLimiter = rateLimit({
 router.post('/login', loginRateLimiter, async (req, res) => {
   const rawEmail = req.body?.email;
   const password = req.body?.password;
+  const tabId = (req.headers['x-tab-id'] || req.body?.tabId || '').trim();
   const email = normalizeEmail(rawEmail);
   const jwtSecret = process.env.JWT_SECRET;
   const ip        = req.ip;
@@ -244,6 +248,7 @@ router.post('/login', loginRateLimiter, async (req, res) => {
 
   if (!jwtSecret) return res.status(503).json({ error: 'JWT_SECRET not configured' });
   if (!email || !password) return res.status(400).json({ error: 'email and password are required' });
+  if (!tabId) return res.status(400).json({ error: 'tabId is required' });
 
   // 1. Env-var super admin (legacy) — bcrypt compare against cached hash
   const adminEmail = normalizeEmail(process.env.ADMIN_EMAIL);
@@ -252,9 +257,9 @@ router.post('/login', loginRateLimiter, async (req, res) => {
     const valid = await bcrypt.compare(password, adminPasswordHash);
     if (valid) {
       const envAdminEmail = process.env.ADMIN_EMAIL;
-      const { token } = signAccess({ sub: 'admin', email: envAdminEmail }, jwtSecret);
+      const { token } = signAccess({ sub: 'admin', email: envAdminEmail }, jwtSecret, tabId);
       const refreshToken = signLegacyRefresh(jwtSecret, envAdminEmail);
-      audit({ accion: 'LOGIN', entidad: 'admin', ip, userAgent, metadata: { email: envAdminEmail, via: 'env' } });
+      audit({ accion: 'LOGIN', entidad: 'admin', ip, userAgent, metadata: { email: envAdminEmail, via: 'env', tabId } });
       return res.json({ accessToken: token, refreshToken, expiresIn: ACCESS_TTL, superAdmin: true });
     }
   }
@@ -306,10 +311,11 @@ router.post('/login', loginRateLimiter, async (req, res) => {
     const { token: accessToken } = signAccess(
       { adminUserId: user.id, email: user.email, superAdmin: effectiveSuperAdmin, tenantId: user.tenantId ?? null },
       jwtSecret,
+      tabId,
     );
     const refreshToken = await issueRefreshToken(user.id);
 
-    audit({ adminUserId: user.id, tenantId: user.tenantId, accion: 'LOGIN', entidad: 'admin_user', entidadId: user.id, ip, userAgent });
+    audit({ adminUserId: user.id, tenantId: user.tenantId, accion: 'LOGIN', entidad: 'admin_user', entidadId: user.id, ip, userAgent, metadata: { tabId } });
     return res.json({ accessToken, refreshToken, expiresIn: ACCESS_TTL, superAdmin: effectiveSuperAdmin });
   } catch (err) {
     return res.status(500).json({ error: 'Auth error' });
@@ -486,6 +492,7 @@ router.post('/agent/login', loginRateLimiter, async (req, res) => {
   const tenantSlug = String(req.body?.tenantSlug ?? '').trim().toLowerCase();
   const password = req.body?.password;
   const email = normalizeEmail(req.body?.email);
+  const tabId = (req.headers['x-tab-id'] || req.body?.tabId || '').trim();
   const jwtSecret = process.env.JWT_SECRET;
   const ip = req.ip;
   const userAgent = req.headers['user-agent'] || '';
@@ -493,6 +500,9 @@ router.post('/agent/login', loginRateLimiter, async (req, res) => {
   if (!jwtSecret) return res.status(503).json({ error: 'JWT_SECRET not configured' });
   if (!tenantSlug || !email || !password) {
     return res.status(400).json({ error: 'tenantSlug, email and password are required' });
+  }
+  if (!tabId) {
+    return res.status(400).json({ error: 'tabId is required' });
   }
 
   try {
@@ -502,12 +512,12 @@ router.post('/agent/login', loginRateLimiter, async (req, res) => {
     const valid = await bcrypt.compare(password, passwordToCheck);
 
     if (!agent || !agent.passwordHash || !valid) {
-      audit({ accion: 'LOGIN_FAILED', entidad: 'agente', ip, userAgent, metadata: { tenantSlug, email } });
+      audit({ accion: 'LOGIN_FAILED', entidad: 'agente', ip, userAgent, metadata: { tenantSlug, email, tabId } });
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
     if (agent.estado !== 'activo') {
-      audit({ accion: 'LOGIN_BLOCKED', entidad: 'agente', entidadId: String(agent.id), ip, userAgent, metadata: { tenantSlug, email, reason: 'inactive' } });
+      audit({ accion: 'LOGIN_BLOCKED', entidad: 'agente', entidadId: String(agent.id), ip, userAgent, metadata: { tenantSlug, email, reason: 'inactive', tabId } });
       return res.status(403).json({ error: 'Agent account is inactive' });
     }
 
@@ -519,6 +529,7 @@ router.post('/agent/login', loginRateLimiter, async (req, res) => {
     const { token: accessToken } = signAccess(
       { sub: 'agent', agenteId: agent.id, tenantId: agent.tenantId, tenantSlug: agent.tenant.slug, email: agent.email },
       jwtSecret,
+      tabId,
     );
 
     audit({
@@ -528,7 +539,7 @@ router.post('/agent/login', loginRateLimiter, async (req, res) => {
       tenantId: agent.tenantId,
       ip,
       userAgent,
-      metadata: { tenantSlug: agent.tenant.slug, email: agent.email },
+      metadata: { tenantSlug: agent.tenant.slug, email: agent.email, tabId },
     });
 
     return res.json({

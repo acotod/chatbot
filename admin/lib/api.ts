@@ -7,6 +7,7 @@ import {
   scheduleProactiveRefresh,
   useAuthStore,
 } from "@/store/auth";
+import { getTabId } from "./tabManager";
 
 function isLocalHostname(hostname: string): boolean {
   return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "0.0.0.0";
@@ -64,6 +65,10 @@ apiClient.interceptors.request.use((config) => {
   if (typeof window !== "undefined") {
     const token = getStoredAccessToken() ?? useAuthStore.getState().token;
     if (token) config.headers.Authorization = `Bearer ${token}`;
+    
+    // Add tab ID to every request for tab-level access control
+    const tabId = getTabId();
+    if (tabId) config.headers["x-tab-id"] = tabId;
   }
   return config;
 });
@@ -203,11 +208,14 @@ apiClient.interceptors.response.use(
 
 // ── Auth ────────────────────────────────────────────────────────────────────
 export const authApi = {
-  login: (email: string, password: string) =>
-    apiClient.post<{ accessToken: string; refreshToken?: string; expiresIn: number; superAdmin: boolean }>("/auth/login", {
+  login: (email: string, password: string) => {
+    const tabId = getTabId();
+    return apiClient.post<{ accessToken: string; refreshToken?: string; expiresIn: number; superAdmin: boolean }>("/auth/login", {
       email,
       password,
-    }),
+      tabId,
+    });
+  },
   me: () =>
     apiClient.get<{
       adminUserId: number | null;

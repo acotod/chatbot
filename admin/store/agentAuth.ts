@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import { clearTabSession } from "@/lib/tabManager";
 
 const ACCESS_TOKEN_STORAGE_KEY = "agent_token";
 const AUTH_STORAGE_KEY = "agent-auth-storage";
@@ -53,6 +54,7 @@ export function clearStoredAgentAuth() {
   localStorage.removeItem(ACCESS_TOKEN_STORAGE_KEY);
   localStorage.removeItem(AUTH_STORAGE_KEY);
   syncAccessTokenCookie(null);
+  clearTabSession();
 }
 
 function parseJwtExpToUnixMs(token: string): number | null {

@@ -18,6 +18,8 @@ function isConfiguredEnvAdminEmail(email) {
 async function requireJwt(req, res, next) {
   const header = req.headers.authorization || '';
   const token = header.replace(/^Bearer\s+/i, '');
+  const requestTabId = (req.headers['x-tab-id'] || '').trim();
+  
   if (!token) return res.status(401).json({ error: 'Missing token' });
 
   const secret = process.env.JWT_SECRET;
@@ -28,6 +30,16 @@ async function requireJwt(req, res, next) {
     payload = jwt.verify(token, secret);
   } catch {
     return res.status(401).json({ error: 'Invalid or expired token' });
+  }
+
+  // Validate tabId if present in JWT
+  if (payload.tabId) {
+    if (!requestTabId) {
+      return res.status(401).json({ error: 'Missing x-tab-id header' });
+    }
+    if (payload.tabId !== requestTabId) {
+      return res.status(401).json({ error: 'Invalid tab context' });
+    }
   }
 
   // Check Redis blacklist (populated by POST /auth/logout)
@@ -43,7 +55,7 @@ async function requireJwt(req, res, next) {
 
   // Legacy env-var-based super admin token (sub === 'admin')
   if (payload.sub === 'admin' && !payload.adminUserId) {
-    req.admin = { superAdmin: true, permissions: [], email: process.env.ADMIN_EMAIL, _jti: payload.jti, _exp: payload.exp };
+    req.admin = { superAdmin: true, permissions: [], email: process.env.ADMIN_EMAIL, _jti: payload.jti, _exp: payload.exp, _tabId: payload.tabId };
     return next();
   }
 
@@ -84,6 +96,7 @@ async function requireJwt(req, res, next) {
         permissions,
         _jti: payload.jti,
         _exp: payload.exp,
+        _tabId: payload.tabId,
       };
       return next();
     } catch (err) {
