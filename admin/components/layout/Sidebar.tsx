@@ -165,7 +165,7 @@ export function Sidebar() {
   );
 
   const authorizedFallbackHref = useMemo(
-    () => resolveAuthorizedFallback(NAV_ITEMS, accessContext, "/login"),
+    () => resolveAuthorizedFallback(NAV_ITEMS, accessContext, "/dashboard"),
     [accessContext]
   );
 
@@ -177,7 +177,7 @@ export function Sidebar() {
       NAV_ITEMS,
       pathname,
       accessContext,
-      "/login"
+      "/dashboard"
     );
     if (!blockedRoute.blocked) return;
 
