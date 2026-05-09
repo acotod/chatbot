@@ -478,7 +478,7 @@ export default function SolicitudesPage() {
           className="max-w-4xl"
         >
           {detailModal.solicitud && (
-            <Tabs defaultValue={detailTab} className="space-y-4">
+            <Tabs value={detailTab} className="space-y-4">
               <TabsList className="w-full justify-start overflow-x-auto">
                 <TabsTrigger value="resumen" onClick={() => setDetailTab("resumen")}>Resumen</TabsTrigger>
                 <TabsTrigger value="conversaciones" onClick={() => setDetailTab("conversaciones")}>Conversaciones del cliente</TabsTrigger>
@@ -1116,7 +1116,7 @@ export default function SolicitudesPage() {
         className="max-w-4xl"
       >
         {detailModal.solicitud && (
-          <Tabs defaultValue={detailTab} className="space-y-4">
+          <Tabs value={detailTab} className="space-y-4">
             <TabsList className="w-full justify-start overflow-x-auto">
               <TabsTrigger value="resumen" onClick={() => setDetailTab("resumen")}>Resumen</TabsTrigger>
               <TabsTrigger value="conversaciones" onClick={() => setDetailTab("conversaciones")}>Conversaciones del cliente</TabsTrigger>
