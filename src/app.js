@@ -6,6 +6,7 @@ const cors = require('cors');
 const webhookRouter = require('./routes/webhook');
 const adminRouter = require('./routes/admin');
 const authRouter = require('./routes/auth');
+const deviceSessionsRouter = require('./routes/deviceSessions');
 const rbacRouter = require('./routes/rbac');
 const auditRouter = require('./routes/auditLogs');
 const whatsappRouter = require('./routes/whatsapp');
@@ -106,6 +107,9 @@ app.use('/uploads', express.static(path.join(process.cwd(), 'uploads'), {
 
 // Auth (no auth required)
 app.use('/auth', authRouter);
+
+// Device Sessions & MFA management (auth required)
+app.use('/device-sessions', deviceSessionsRouter);
 
 // Per-tenant rate limiter (applied only to the webhook)
 const tenantRateLimiter = createRateLimiter();
