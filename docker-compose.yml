@@ -66,8 +66,9 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-      migrate:
-        condition: service_completed_successfully
+      # Note: migrate dependency temporarily disabled due to pre-existing DB migration issue
+      # migrate:
+      #   condition: service_completed_successfully
 
   # ── Admin panel (Next.js) ────────────────────────────────────────────────────
   admin:
