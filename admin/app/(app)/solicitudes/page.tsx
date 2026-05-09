@@ -194,6 +194,8 @@ export default function SolicitudesPage() {
   const [messageInput, setMessageInput] = useState("");
   const [messageSearch, setMessageSearch] = useState("");
   const [messageDirection, setMessageDirection] = useState<"" | "entrada" | "salida">("");
+  const [messageStartDate, setMessageStartDate] = useState("");
+  const [messageEndDate, setMessageEndDate] = useState("");
   const [conversationDetailModal, setConversationDetailModal] = useState<{
     open: boolean;
     conversation: ConversationItem | null;
@@ -385,6 +387,8 @@ export default function SolicitudesPage() {
       isAgentSession ? "agent" : "admin",
       messageSearch,
       messageDirection,
+      messageStartDate,
+      messageEndDate,
     ],
     queryFn: () =>
       isAgentSession
@@ -394,6 +398,8 @@ export default function SolicitudesPage() {
               limit: 50,
               q: messageSearch.trim() || undefined,
               direccion: messageDirection || undefined,
+              start: messageStartDate || undefined,
+              end: messageEndDate || undefined,
             })
             .then((r) => r as any)
         : solicitudesApi
@@ -402,6 +408,8 @@ export default function SolicitudesPage() {
               limit: 50,
               q: messageSearch.trim() || undefined,
               direccion: messageDirection || undefined,
+              start: messageStartDate || undefined,
+              end: messageEndDate || undefined,
             })
             .then((r) => r as any),
     enabled: Boolean(detailModal.open && detailModal.solicitud?.id && detailTab === "mensajes"),
@@ -1190,14 +1198,28 @@ export default function SolicitudesPage() {
                       <option value="entrada">Recibidos</option>
                       <option value="salida">Enviados</option>
                     </select>
+                    <input
+                      type="date"
+                      value={messageStartDate}
+                      onChange={(e) => setMessageStartDate(e.target.value)}
+                      className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+                    />
+                    <input
+                      type="date"
+                      value={messageEndDate}
+                      onChange={(e) => setMessageEndDate(e.target.value)}
+                      className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+                    />
                     <Button
                       variant="secondary"
                       size="sm"
                       onClick={() => {
                         setMessageSearch("");
                         setMessageDirection("");
+                        setMessageStartDate("");
+                        setMessageEndDate("");
                       }}
-                      disabled={!messageSearch.trim() && !messageDirection}
+                      disabled={!messageSearch.trim() && !messageDirection && !messageStartDate && !messageEndDate}
                     >
                       Limpiar
                     </Button>

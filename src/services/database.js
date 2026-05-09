@@ -131,6 +131,19 @@ function extractMensajeSearchText(contenido) {
   return '';
 }
 
+function normalizeMensajeDateFilter(value, bound = 'start') {
+  const raw = String(value ?? '').trim();
+  if (!raw) return null;
+
+  // Accept YYYY-MM-DD by expanding to day boundaries.
+  const expanded = /^\d{4}-\d{2}-\d{2}$/.test(raw)
+    ? `${raw}${bound === 'end' ? 'T23:59:59.999' : 'T00:00:00.000'}`
+    : raw;
+
+  const parsed = new Date(expanded);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
 function getPrismaClient() {
   if (!prisma) {
     try {
@@ -1678,7 +1691,7 @@ async function getSolicitudMessagingContext(solicitudId, tenantId) {
   });
 }
 
-async function listMensajesBySolicitud({ solicitudId, tenantId, page = 1, limit = 50, q, direccion }) {
+async function listMensajesBySolicitud({ solicitudId, tenantId, page = 1, limit = 50, q, direccion, start, end }) {
   const client = getPrismaClient();
   if (!client) return null;
 
@@ -1692,6 +1705,8 @@ async function listMensajesBySolicitud({ solicitudId, tenantId, page = 1, limit 
   const normalizedDireccion = ['entrada', 'salida'].includes(String(direccion ?? '').trim().toLowerCase())
     ? String(direccion).trim().toLowerCase()
     : null;
+  const startDate = normalizeMensajeDateFilter(start, 'start');
+  const endDate = normalizeMensajeDateFilter(end, 'end');
 
   if (!solicitud.userId) {
     return {
@@ -1707,6 +1722,14 @@ async function listMensajesBySolicitud({ solicitudId, tenantId, page = 1, limit 
     tenantId,
     userId: solicitud.userId,
     ...(normalizedDireccion ? { direccion: normalizedDireccion } : {}),
+    ...((startDate || endDate)
+      ? {
+          createdAt: {
+            ...(startDate ? { gte: startDate } : {}),
+            ...(endDate ? { lte: endDate } : {}),
+          },
+        }
+      : {}),
   };
 
   if (!searchQuery) {

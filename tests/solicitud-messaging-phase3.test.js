@@ -55,6 +55,12 @@ describe('listMensajesBySolicitud – filter parameter contracts', () => {
     expect(src).toMatch(/listMensajesBySolicitud\(\{[^)]*\bdireccion\b[^)]*\}/);
   });
 
+  it('accepts start and end as named parameters', () => {
+    const src = readSrc('src', 'services', 'database.js');
+    expect(src).toMatch(/listMensajesBySolicitud\(\{[^)]*\bstart\b[^)]*\}/);
+    expect(src).toMatch(/listMensajesBySolicitud\(\{[^)]*\bend\b[^)]*\}/);
+  });
+
   it('normalizes direccion to only accepted values (entrada|salida)', () => {
     const src = readSrc('src', 'services', 'database.js');
     expect(src).toContain("['entrada', 'salida'].includes");
@@ -75,6 +81,19 @@ describe('listMensajesBySolicitud – filter parameter contracts', () => {
   it('caps limit at 200 to prevent oversized queries', () => {
     const src = readSrc('src', 'services', 'database.js');
     expect(src).toContain('Math.min(Math.max(Number(limit) || 50, 1), 200)');
+  });
+
+  it('normalizes start/end date filters safely', () => {
+    const src = readSrc('src', 'services', 'database.js');
+    expect(src).toContain('normalizeMensajeDateFilter(start');
+    expect(src).toContain('normalizeMensajeDateFilter(end');
+  });
+
+  it('applies createdAt range filter when start/end are provided', () => {
+    const src = readSrc('src', 'services', 'database.js');
+    expect(src).toContain('createdAt');
+    expect(src).toContain('gte: startDate');
+    expect(src).toContain('lte: endDate');
   });
 
   it('returns null when getPrismaClient() is not available', () => {
@@ -113,14 +132,22 @@ describe('Admin route – filter params forwarded to DB', () => {
     expect(src).toMatch(/req\.query\??\.direccion|const\s+\{[^}]*\bdireccion\b[^}]*\}\s*=\s*req\.query/);
   });
 
+  it('reads start and end from req.query in GET messages handler', () => {
+    const src = readSrc('src', 'routes', 'admin.js');
+    expect(src).toMatch(/req\.query\??\.start|\bstart:\s*req\.query\??\.start/);
+    expect(src).toMatch(/req\.query\??\.end|\bend:\s*req\.query\??\.end/);
+  });
+
   it('passes both filter params to listMensajesBySolicitud call', () => {
     const src = readSrc('src', 'routes', 'admin.js');
     expect(src).toContain('listMensajesBySolicitud');
     // Both q and direccion must appear near the call site
     const callIndex = src.indexOf('listMensajesBySolicitud');
-    const callContext = src.slice(callIndex - 50, callIndex + 300);
+    const callContext = src.slice(callIndex - 50, callIndex + 420);
     expect(callContext).toContain('q');
     expect(callContext).toContain('direccion');
+    expect(callContext).toContain('start');
+    expect(callContext).toContain('end');
   });
 
   it('emits SOLICITUD_MESSAGE_SENT socket event after admin send', () => {
@@ -141,6 +168,12 @@ describe('Auth route – agent filter params + socket emission', () => {
   it('reads direccion from req.query in GET agent messages handler', () => {
     const src = readSrc('src', 'routes', 'auth.js');
     expect(src).toMatch(/req\.query\??\.direccion|const\s+\{[^}]*\bdireccion\b[^}]*\}\s*=\s*req\.query/);
+  });
+
+  it('reads start and end from req.query in GET agent messages handler', () => {
+    const src = readSrc('src', 'routes', 'auth.js');
+    expect(src).toMatch(/req\.query\??\.start|\bstart:\s*req\.query\??\.start/);
+    expect(src).toMatch(/req\.query\??\.end|\bend:\s*req\.query\??\.end/);
   });
 
   it('imports socketService', () => {
@@ -251,12 +284,21 @@ describe('Frontend solicitudes page – real-time socket subscriptions', () => {
     expect(src).toContain('messageDirection');
   });
 
+  it('has date range filter state for messages', () => {
+    const src = readSrc('admin', 'app', '(app)', 'solicitudes', 'page.tsx');
+    expect(src).toContain('messageStartDate');
+    expect(src).toContain('messageEndDate');
+  });
+
   it('passes filter params to messages API call', () => {
     const src = readSrc('admin', 'app', '(app)', 'solicitudes', 'page.tsx');
     // q param forwarded
     expect(src).toMatch(/q:\s*messageSearch|q,\s*(?:\/\/[^\n]*)?\n?\s*direccion/);
     // direccion param forwarded
     expect(src).toContain('direccion');
+    // start/end params forwarded
+    expect(src).toContain('start: messageStartDate');
+    expect(src).toContain('end: messageEndDate');
   });
 });
 
@@ -294,16 +336,20 @@ describe('Frontend conversaciones page – solicitud cross-link', () => {
 // ─── 8. Frontend API clients – filter params ─────────────────────────────
 
 describe('Frontend API clients – filter param types', () => {
-  it('admin api.ts messages() accepts q and direccion params', () => {
+  it('admin api.ts messages() accepts q, direccion, start and end params', () => {
     const src = readSrc('admin', 'lib', 'api.ts');
     expect(src).toContain('q?:');
     expect(src).toContain('direccion?:');
+    expect(src).toContain('start?:');
+    expect(src).toContain('end?:');
   });
 
-  it('agentApi.ts solicitudMessages() accepts q and direccion params', () => {
+  it('agentApi.ts solicitudMessages() accepts q, direccion, start and end params', () => {
     const src = readSrc('admin', 'lib', 'agentApi.ts');
     expect(src).toContain('q?:');
     expect(src).toContain('direccion?:');
+    expect(src).toContain('start?:');
+    expect(src).toContain('end?:');
   });
 
   it('admin api sends q to backend query string', () => {
