@@ -91,6 +91,38 @@ export default function DashboardPage() {
   const canViewMetrics = superAdmin || permissionSet.has("VIEW_METRICS");
   const canViewSolicitudes = superAdmin || permissionSet.has("VIEW_SOLICITUDES");
 
+  const { data: metrics } = useQuery({
+    queryKey: ["metrics", tenantSlug],
+    queryFn: () => metricsApi.get(tenantSlug).then((r) => r.data),
+    enabled: !isAgentSession && !!tenantSlug && canViewMetrics,
+  });
+
+  const { data: tenantData } = useQuery({
+    queryKey: ["tenant", tenantSlug],
+    queryFn: () =>
+      import("@/lib/api").then(({ apiClient }) =>
+        apiClient.get(`/admin/tenants/${tenantSlug}`).then((r) => r.data)
+      ),
+    enabled: !isAgentSession && !!tenantSlug,
+    staleTime: Infinity,
+  });
+  const tenantId: string | null = tenantData?.id ?? null;
+
+  const { data: conversacionesData } = useQuery({
+    queryKey: ["conversaciones", tenantId],
+    queryFn: () => whatsappApi.listConversaciones(tenantId!).then((r) => r.data),
+    enabled: !isAgentSession && !!tenantId,
+    staleTime: 60_000,
+  });
+  const mensajesHoy = conversacionesData?.data?.length ?? 0;
+
+  const { data: solicitudesData } = useQuery({
+    queryKey: ["solicitudes", tenantSlug, { limit: 5 }],
+    queryFn: () =>
+      solicitudesApi.list(tenantSlug, { limit: 5, page: 1 }).then((r) => r.data),
+    enabled: !isAgentSession && !!tenantSlug && canViewSolicitudes,
+  });
+
   useEffect(() => {
     if (!isAgentSession) return;
 
@@ -205,38 +237,6 @@ export default function DashboardPage() {
       </div>
     );
   }
-
-  const { data: metrics } = useQuery({
-    queryKey: ["metrics", tenantSlug],
-    queryFn: () => metricsApi.get(tenantSlug).then((r) => r.data),
-    enabled: !!tenantSlug && canViewMetrics,
-  });
-
-  const { data: tenantData } = useQuery({
-    queryKey: ["tenant", tenantSlug],
-    queryFn: () =>
-      import("@/lib/api").then(({ apiClient }) =>
-        apiClient.get(`/admin/tenants/${tenantSlug}`).then((r) => r.data)
-      ),
-    enabled: !!tenantSlug,
-    staleTime: Infinity,
-  });
-  const tenantId: string | null = tenantData?.id ?? null;
-
-  const { data: conversacionesData } = useQuery({
-    queryKey: ["conversaciones", tenantId],
-    queryFn: () => whatsappApi.listConversaciones(tenantId!).then((r) => r.data),
-    enabled: !!tenantId,
-    staleTime: 60_000,
-  });
-  const mensajesHoy = conversacionesData?.data?.length ?? 0;
-
-  const { data: solicitudesData } = useQuery({
-    queryKey: ["solicitudes", tenantSlug, { limit: 5 }],
-    queryFn: () =>
-      solicitudesApi.list(tenantSlug, { limit: 5, page: 1 }).then((r) => r.data),
-    enabled: !!tenantSlug && canViewSolicitudes,
-  });
 
   const solicitudes = solicitudesData?.data ?? [];
   const porEstado = metrics?.solicitudesPorEstado ?? {};
