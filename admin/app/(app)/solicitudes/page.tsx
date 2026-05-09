@@ -474,73 +474,225 @@ export default function SolicitudesPage() {
         <Modal
           open={detailModal.open}
           onClose={() => setDetailModal({ open: false, solicitud: null })}
-          title="Conversaciones del cliente"
+          title="Detalle de solicitud"
           className="max-w-4xl"
         >
-          {!detailClientKey ? (
-            <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 p-6 text-sm text-slate-500">
-              Esta solicitud no tiene teléfono de cliente para buscar conversaciones del tenant.
-            </div>
-          ) : conversationsLoading ? (
-            <div className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-500">
-              Cargando conversaciones del cliente...
-            </div>
-          ) : conversations.length === 0 ? (
-            <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 p-6 text-sm text-slate-500">
-              No hay conversaciones registradas para este cliente en este tenant.
-            </div>
-          ) : (
-            <div className="space-y-3 max-h-[55vh] overflow-auto pr-1">
-              {conversations.map((conversation) => {
-                const isCurrentConversation = detailModal.solicitud?.conversation?.id === conversation.id;
-                return (
-                  <div
-                    key={conversation.id}
-                    className={`rounded-xl border p-4 ${isCurrentConversation ? "border-blue-300 bg-blue-50/50" : "border-slate-200 bg-white"}`}
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <p className="font-medium text-slate-900">{conversation.flow?.nombre ?? "Flujo sin nombre"}</p>
-                          {isCurrentConversation && (
-                            <span className="rounded-full bg-blue-100 px-2 py-0.5 text-[11px] font-semibold text-blue-700">
-                              Conversación actual
-                            </span>
-                          )}
-                        </div>
-                        <p className="text-sm text-slate-500 mt-1">ID {conversation.id} · Estado {conversation.status}</p>
-                        <p className="text-sm text-slate-500">
-                          Inicio {formatDate(conversation.startedAt)}
-                          {conversation.endedAt ? ` · Fin ${formatDate(conversation.endedAt)}` : ""}
-                        </p>
-                      </div>
-                      <div className="text-right text-xs text-slate-500">
-                        <p>{conversation.solicitudes?.length ?? 0} solicitud(es) vinculada(s)</p>
-                        <p className="truncate max-w-[12rem]">{conversation.userKey}</p>
-                      </div>
-                    </div>
-                    {conversation.solicitudes?.length ? (
-                      <div className="mt-3 flex flex-wrap gap-2">
-                        {conversation.solicitudes.map((solicitud) => (
-                          <span
-                            key={solicitud.id}
-                            className="rounded-full bg-slate-100 px-2 py-1 text-[11px] font-medium text-slate-600"
-                          >
-                            Solicitud #{solicitud.id} · {ESTADO_LABELS[solicitud.estado] ?? solicitud.estado}
-                          </span>
-                        ))}
-                      </div>
-                    ) : null}
+          {detailModal.solicitud && (
+            <Tabs defaultValue={detailTab} className="space-y-4">
+              <TabsList className="w-full justify-start overflow-x-auto">
+                <TabsTrigger value="resumen" onClick={() => setDetailTab("resumen")}>Resumen</TabsTrigger>
+                <TabsTrigger value="conversaciones" onClick={() => setDetailTab("conversaciones")}>Conversaciones del cliente</TabsTrigger>
+              </TabsList>
+
+              <TabsContent value="resumen" className="space-y-4">
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                    <p className="text-xs uppercase tracking-wide text-slate-500">Cliente</p>
+                    <p className="mt-1 font-medium text-slate-900">{detailModal.solicitud.nombre || "Sin nombre"}</p>
+                    <p className="text-sm text-slate-600">{detailModal.solicitud.telefonoContacto || "Sin teléfono"}</p>
                   </div>
-                );
-              })}
-            </div>
+                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                    <p className="text-xs uppercase tracking-wide text-slate-500">Estado</p>
+                    <div className="mt-1"><StatusBadge status={detailModal.solicitud.estado} /></div>
+                    <p className="text-sm text-slate-600 mt-2">Creada: {formatDate(detailModal.solicitud.createdAt)}</p>
+                  </div>
+                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                    <p className="text-xs uppercase tracking-wide text-slate-500">Agente</p>
+                    <p className="mt-1 text-sm text-slate-700">{detailModal.solicitud.agente?.nombre ?? "Sin asignar"}</p>
+                  </div>
+                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                    <p className="text-xs uppercase tracking-wide text-slate-500">Conexión</p>
+                    <p className="mt-1 text-sm text-slate-700">{detailClientKey || "Sin identificador de cliente"}</p>
+                  </div>
+                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                    <p className="text-xs uppercase tracking-wide text-slate-500">Vencimiento</p>
+                    <p className="mt-1 text-sm text-slate-700">{detailModal.solicitud.dueAt ? formatDate(detailModal.solicitud.dueAt) : "Sin fecha"}</p>
+                  </div>
+                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                    <p className="text-xs uppercase tracking-wide text-slate-500">Primera respuesta</p>
+                    <p className="mt-1 text-sm text-slate-700">{detailModal.solicitud.firstResponseAt ? formatDate(detailModal.solicitud.firstResponseAt) : "Pendiente"}</p>
+                  </div>
+                </div>
+                <div className="rounded-xl border border-slate-200 bg-white p-4 space-y-3">
+                  <p className="text-sm font-medium text-slate-900">Gestionar solicitud</p>
+                  <div className="grid gap-3 sm:grid-cols-3">
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-medium uppercase tracking-wide text-slate-500">Estado</label>
+                      <select
+                        value={detailDraft.estado}
+                        onChange={(e) => setDetailDraft((prev) => ({ ...prev, estado: e.target.value }))}
+                        className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm"
+                      >
+                        {ESTADOS.filter(Boolean).map((estado) => (
+                          <option key={estado} value={estado}>
+                            {ESTADO_LABELS[estado] ?? estado}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-medium uppercase tracking-wide text-slate-500">Prioridad</label>
+                      <select
+                        value={detailDraft.prioridad}
+                        onChange={(e) => setDetailDraft((prev) => ({ ...prev, prioridad: e.target.value }))}
+                        className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm"
+                      >
+                        {PRIORIDADES.filter(Boolean).map((prioridad) => (
+                          <option key={prioridad} value={prioridad}>
+                            {PRIORIDAD_LABELS[prioridad] ?? prioridad}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-medium uppercase tracking-wide text-slate-500">Agente</label>
+                      <select
+                        value={detailDraft.agenteId}
+                        disabled
+                        className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-500"
+                      >
+                        <option value="">{detailModal.solicitud.agente?.nombre ?? "Asignado automáticamente"}</option>
+                      </select>
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-medium uppercase tracking-wide text-slate-500">Categoria</label>
+                      <select
+                        value={detailDraft.categoria}
+                        onChange={(e) => setDetailDraft((prev) => ({ ...prev, categoria: e.target.value }))}
+                        className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm"
+                      >
+                        <option value="">Sin categoria</option>
+                        {CATEGORIAS.filter(Boolean).map((categoria) => (
+                          <option key={categoria} value={categoria}>
+                            {CATEGORIA_LABELS[categoria] ?? categoria}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-medium uppercase tracking-wide text-slate-500">Subcategoria</label>
+                      <input
+                        value={detailDraft.subcategoria}
+                        onChange={(e) => setDetailDraft((prev) => ({ ...prev, subcategoria: e.target.value }))}
+                        placeholder="Ej: integracion-whatsapp"
+                        className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-medium uppercase tracking-wide text-slate-500">Fecha limite</label>
+                      <input
+                        type="datetime-local"
+                        value={detailDraft.dueAt}
+                        onChange={(e) => setDetailDraft((prev) => ({ ...prev, dueAt: e.target.value }))}
+                        className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm"
+                      />
+                    </div>
+                  </div>
+                  <div className="flex justify-end gap-3 pt-1">
+                    <Button
+                      variant="secondary"
+                      onClick={() => setDetailModal({ open: false, solicitud: null })}
+                    >
+                      Cerrar
+                    </Button>
+                    <Button
+                      onClick={() => {
+                        if (!detailModal.solicitud) return;
+                        updateAgentSolicitud.mutate({
+                          id: detailModal.solicitud.id,
+                          data: {
+                            estado: detailDraft.estado,
+                            prioridad: detailDraft.prioridad || null,
+                            categoria: detailDraft.categoria || null,
+                            subcategoria: detailDraft.subcategoria || null,
+                            dueAt: detailDraft.dueAt ? new Date(detailDraft.dueAt).toISOString() : null,
+                          },
+                        });
+                      }}
+                      disabled={updateAgentSolicitud.isPending}
+                    >
+                      {updateAgentSolicitud.isPending ? "Guardando..." : "Guardar cambios"}
+                    </Button>
+                  </div>
+                </div>
+                <div className="flex justify-end gap-3 pt-2">
+                  <Button variant="secondary" onClick={() => setDetailModal({ open: false, solicitud: null })}>
+                    Cerrar
+                  </Button>
+                  <Button onClick={() => setDetailTab("conversaciones")}>
+                    Ver conversaciones del cliente
+                  </Button>
+                </div>
+              </TabsContent>
+
+              <TabsContent value="conversaciones" className="space-y-4">
+                {!detailClientKey ? (
+                  <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 p-6 text-sm text-slate-500">
+                    Esta solicitud no tiene teléfono de cliente para buscar conversaciones del tenant.
+                  </div>
+                ) : conversationsLoading ? (
+                  <div className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-500">
+                    Cargando conversaciones del cliente...
+                  </div>
+                ) : conversations.length === 0 ? (
+                  <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 p-6 text-sm text-slate-500">
+                    No hay conversaciones registradas para este cliente en este tenant.
+                  </div>
+                ) : (
+                  <div className="space-y-3 max-h-[55vh] overflow-auto pr-1">
+                    {conversations.map((conversation) => {
+                      const isCurrentConversation = detailModal.solicitud?.conversation?.id === conversation.id;
+                      return (
+                        <div
+                          key={conversation.id}
+                          className={`rounded-xl border p-4 ${isCurrentConversation ? "border-blue-300 bg-blue-50/50" : "border-slate-200 bg-white"}`}
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <div>
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <p className="font-medium text-slate-900">{conversation.flow?.nombre ?? "Flujo sin nombre"}</p>
+                                {isCurrentConversation && (
+                                  <span className="rounded-full bg-blue-100 px-2 py-0.5 text-[11px] font-semibold text-blue-700">
+                                    Conversación actual
+                                  </span>
+                                )}
+                              </div>
+                              <p className="text-sm text-slate-500 mt-1">ID {conversation.id} · Estado {conversation.status}</p>
+                              <p className="text-sm text-slate-500">
+                                Inicio {formatDate(conversation.startedAt)}
+                                {conversation.endedAt ? ` · Fin ${formatDate(conversation.endedAt)}` : ""}
+                              </p>
+                            </div>
+                            <div className="text-right text-xs text-slate-500">
+                              <p>{conversation.solicitudes?.length ?? 0} solicitud(es) vinculada(s)</p>
+                              <p className="truncate max-w-[12rem]">{conversation.userKey}</p>
+                            </div>
+                          </div>
+                          {conversation.solicitudes?.length ? (
+                            <div className="mt-3 flex flex-wrap gap-2">
+                              {conversation.solicitudes.map((solicitud) => (
+                                <span
+                                  key={solicitud.id}
+                                  className="rounded-full bg-slate-100 px-2 py-1 text-[11px] font-medium text-slate-600"
+                                >
+                                  Solicitud #{solicitud.id} · {ESTADO_LABELS[solicitud.estado] ?? solicitud.estado}
+                                </span>
+                              ))}
+                            </div>
+                          ) : null}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+                <div className="flex justify-end gap-3 pt-2">
+                  <Button variant="secondary" onClick={() => setDetailModal({ open: false, solicitud: null })}>
+                    Cerrar
+                  </Button>
+                </div>
+              </TabsContent>
+            </Tabs>
           )}
-          <div className="flex justify-end gap-3 pt-2">
-            <Button variant="secondary" onClick={() => setDetailModal({ open: false, solicitud: null })}>
-              Cerrar
-            </Button>
-          </div>
         </Modal>
       </div>
     );
