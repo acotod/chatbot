@@ -430,6 +430,34 @@ export default function SolicitudesPage() {
                               Completar
                             </button>
                           )}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setDetailModal({
+                                open: true,
+                                solicitud: {
+                                  id: s.id,
+                                  titulo: s.titulo,
+                                  nombre: s.nombre ?? undefined,
+                                  telefonoContacto: s.telefonoContacto ?? undefined,
+                                  estado: s.estado ?? "open",
+                                  prioridad: s.prioridad ?? undefined,
+                                  categoria: s.categoria ?? undefined,
+                                  subcategoria: s.subcategoria ?? undefined,
+                                  dueAt: s.dueAt,
+                                  firstResponseAt: s.firstResponseAt,
+                                  createdAt: s.createdAt,
+                                  conversation: s.conversation ? { id: s.conversation.id } : null,
+                                  user: s.user ? { phone: s.user.phone } : null,
+                                  agente: null,
+                                },
+                              });
+                              setDetailTab("conversaciones");
+                            }}
+                            className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs font-medium text-slate-700"
+                          >
+                            Conversaciones
+                          </button>
                         </div>
                       </td>
                     </tr>
@@ -439,6 +467,78 @@ export default function SolicitudesPage() {
             </div>
           )}
         </Card>
+
+        <Modal
+          open={detailModal.open}
+          onClose={() => setDetailModal({ open: false, solicitud: null })}
+          title="Conversaciones del cliente"
+          className="max-w-4xl"
+        >
+          {!detailClientKey ? (
+            <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 p-6 text-sm text-slate-500">
+              Esta solicitud no tiene teléfono de cliente para buscar conversaciones del tenant.
+            </div>
+          ) : conversationsLoading ? (
+            <div className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-500">
+              Cargando conversaciones del cliente...
+            </div>
+          ) : conversations.length === 0 ? (
+            <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 p-6 text-sm text-slate-500">
+              No hay conversaciones registradas para este cliente en este tenant.
+            </div>
+          ) : (
+            <div className="space-y-3 max-h-[55vh] overflow-auto pr-1">
+              {conversations.map((conversation) => {
+                const isCurrentConversation = detailModal.solicitud?.conversation?.id === conversation.id;
+                return (
+                  <div
+                    key={conversation.id}
+                    className={`rounded-xl border p-4 ${isCurrentConversation ? "border-blue-300 bg-blue-50/50" : "border-slate-200 bg-white"}`}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <p className="font-medium text-slate-900">{conversation.flow?.nombre ?? "Flujo sin nombre"}</p>
+                          {isCurrentConversation && (
+                            <span className="rounded-full bg-blue-100 px-2 py-0.5 text-[11px] font-semibold text-blue-700">
+                              Conversación actual
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-sm text-slate-500 mt-1">ID {conversation.id} · Estado {conversation.status}</p>
+                        <p className="text-sm text-slate-500">
+                          Inicio {formatDate(conversation.startedAt)}
+                          {conversation.endedAt ? ` · Fin ${formatDate(conversation.endedAt)}` : ""}
+                        </p>
+                      </div>
+                      <div className="text-right text-xs text-slate-500">
+                        <p>{conversation.solicitudes?.length ?? 0} solicitud(es) vinculada(s)</p>
+                        <p className="truncate max-w-[12rem]">{conversation.userKey}</p>
+                      </div>
+                    </div>
+                    {conversation.solicitudes?.length ? (
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {conversation.solicitudes.map((solicitud) => (
+                          <span
+                            key={solicitud.id}
+                            className="rounded-full bg-slate-100 px-2 py-1 text-[11px] font-medium text-slate-600"
+                          >
+                            Solicitud #{solicitud.id} · {ESTADO_LABELS[solicitud.estado] ?? solicitud.estado}
+                          </span>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+          <div className="flex justify-end gap-3 pt-2">
+            <Button variant="secondary" onClick={() => setDetailModal({ open: false, solicitud: null })}>
+              Cerrar
+            </Button>
+          </div>
+        </Modal>
       </div>
     );
   }
