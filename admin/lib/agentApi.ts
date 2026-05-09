@@ -68,12 +68,18 @@ agentApiClient.interceptors.response.use(
         requestUrl.includes("/auth/agent/reset-password");
 
       if (!isAuthEndpoint && typeof window !== "undefined") {
-        // Clear agent auth and redirect to agent login with session-expired reason
-        (async () => {
-          const { clearStoredAgentAuth } = await import("@/store/agentAuth");
-          clearStoredAgentAuth();
-          window.location.href = "/agente/login?reason=expired";
-        })();
+        // Don't redirect if we're already on the login page
+        const alreadyOnLogin = window.location.pathname.startsWith("/agente/login");
+        if (!alreadyOnLogin) {
+          // Clear agent auth and redirect — return a never-resolving promise
+          // to suppress the console 401 error that would flash before the redirect
+          (async () => {
+            const { clearStoredAgentAuth } = await import("@/store/agentAuth");
+            clearStoredAgentAuth();
+            window.location.href = "/agente/login?reason=expired";
+          })();
+          return new Promise(() => {});
+        }
       }
     }
     return Promise.reject(error);
