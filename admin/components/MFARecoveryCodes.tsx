@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { api } from '@/lib/api';
+import { deviceSessionsApi } from '@/lib/api';
 
 interface MFARecoveryCodesProps {
   title?: string;
@@ -31,7 +31,7 @@ export default function MFARecoveryCodes({
     try {
       setLoading(true);
       setError(null);
-      const response = await api.get('/device-sessions/mfa/recovery-codes-count');
+      const response = await deviceSessionsApi.getRecoveryCodesCount();
       setUnusedCount(response.data.unusedCodeCount || 0);
     } catch (err: any) {
       console.error('Error fetching recovery codes count:', err);
@@ -49,7 +49,7 @@ export default function MFARecoveryCodes({
     try {
       setGenerating(true);
       setError(null);
-      const response = await api.post('/device-sessions/mfa/generate-recovery-codes');
+      const response = await deviceSessionsApi.generateRecoveryCodes();
       setGeneratedCodes(response.data.codes || []);
       setUnusedCount(response.data.codes?.length || 0);
     } catch (err: any) {

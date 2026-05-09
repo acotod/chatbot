@@ -702,3 +702,22 @@ export const sandboxApi = {
   checkCompliance: (id: string, data?: { tenantSlug?: string; tenantId?: string }) =>
     apiClient.post(`/sandbox/runs/${id}/compliance`, data),
 };
+
+// ── Device Sessions & MFA (Phase 2: Enterprise Security) ─────────────────────
+export const deviceSessionsApi = {
+  // Admin device sessions
+  listAdminDevices: () => apiClient.get('/device-sessions/admin'),
+  revokeAdminDevice: (sessionId: string) =>
+    apiClient.post(`/device-sessions/admin/${sessionId}/revoke`),
+  
+  // Agent device sessions
+  listAgentDevices: () => apiClient.get('/device-sessions/agent'),
+  revokeAgentDevice: (sessionId: string) =>
+    apiClient.post(`/device-sessions/agent/${sessionId}/revoke`),
+  
+  // MFA recovery codes
+  generateRecoveryCodes: () =>
+    apiClient.post('/device-sessions/mfa/generate-recovery-codes'),
+  getRecoveryCodesCount: () =>
+    apiClient.get('/device-sessions/mfa/recovery-codes-count'),
+};

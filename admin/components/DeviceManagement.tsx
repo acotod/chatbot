@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { api } from '@/lib/api';
+import { deviceSessionsApi } from '@/lib/api';
 
 interface DeviceSession {
   id: string;
@@ -38,7 +38,7 @@ export default function DeviceManagement({
     try {
       setLoading(true);
       setError(null);
-      const response = await api.get('/device-sessions/admin');
+      const response = await deviceSessionsApi.listAdminDevices();
       setDevices(response.data.sessions || []);
     } catch (err: any) {
       console.error('Error fetching devices:', err);
@@ -55,7 +55,7 @@ export default function DeviceManagement({
 
     try {
       setRevoking(deviceId);
-      await api.post(`/device-sessions/admin/${deviceId}/revoke`);
+      await deviceSessionsApi.revokeAdminDevice(deviceId);
       setDevices(devices.filter(d => d.id !== deviceId));
       alert('Device session revoked successfully');
     } catch (err: any) {

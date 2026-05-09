@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { api } from '@/lib/api';
+import { deviceSessionsApi } from '@/lib/api';
 
 interface DeviceSession {
   id: string;
@@ -32,7 +32,7 @@ export default function AgentSecuritySettingsPage() {
     try {
       setLoading(true);
       setError(null);
-      const response = await api.get('/device-sessions/agent');
+      const response = await deviceSessionsApi.listAgentDevices();
       setDevices(response.data.sessions || []);
     } catch (err: any) {
       console.error('Error fetching devices:', err);
@@ -49,7 +49,7 @@ export default function AgentSecuritySettingsPage() {
 
     try {
       setRevoking(deviceId);
-      await api.post(`/device-sessions/agent/${deviceId}/revoke`);
+      await deviceSessionsApi.revokeAgentDevice(deviceId);
       setDevices(devices.filter(d => d.id !== deviceId));
       alert('Device session revoked successfully');
     } catch (err: any) {
