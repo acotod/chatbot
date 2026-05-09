@@ -455,7 +455,7 @@ export default function SolicitudesPage() {
                                   agente: null,
                                 },
                               });
-                              setDetailTab("conversaciones");
+                              setDetailTab("resumen");
                             }}
                             className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs font-medium text-slate-700"
                           >
