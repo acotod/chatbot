@@ -316,4 +316,3 @@ function AgentLoginScreen({ reason, nextPath }: AgentLoginScreenProps) {
     </div>
   );
 }
-}
