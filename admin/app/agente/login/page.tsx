@@ -68,6 +68,7 @@ function AgentLoginScreen({ reason, nextPath }: AgentLoginScreenProps) {
   const router = useRouter();
   const { setToken } = useAgentAuthStore();
   const { logout } = useAuthStore();
+  const [tenantSlug, setTenantSlug] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -85,15 +86,12 @@ function AgentLoginScreen({ reason, nextPath }: AgentLoginScreenProps) {
     setDeliveryChannels([]);
     setLoading(true);
     try {
-      const res = await agentAuthApi.loginNoTenant(email.trim().toLowerCase(), password);
+      const res = await agentAuthApi.loginWithTenant(
+        tenantSlug.trim().toLowerCase(),
+        email.trim().toLowerCase(),
+        password
+      );
       
-      // If multiple tenants, show selector
-      if (res.data.requiresTenantSelection && res.data.tenants && res.data.tenants.length > 1) {
-        setTenantOptions(res.data.tenants);
-        return;
-      }
-
-      // If single tenant or direct login succeeded
       logout(); // Clear any stray admin token
       setToken(res.data.accessToken);
       router.replace(nextPath);
@@ -184,6 +182,7 @@ function AgentLoginScreen({ reason, nextPath }: AgentLoginScreenProps) {
           <button
             onClick={() => {
               setTenantOptions(null);
+              setTenantSlug("");
               setEmail("");
               setPassword("");
               setError("");
