@@ -572,7 +572,7 @@ model AuditLog {
 
 model AdminDeviceSession {
   id               String    @id @default(cuid())
-  adminUserId      String    @db.Uuid @map("admin_user_id")
+  adminUserId      Int       @map("admin_user_id")
   deviceFingerprint String   @map("device_fingerprint")
   deviceName       String?   @map("device_name")
   userAgent        String?   @map("user_agent") @db.VarChar(500)
@@ -590,7 +590,7 @@ model AdminDeviceSession {
 
 model AdminMfaRecoveryCode {
   id         String    @id @default(cuid())
-  adminUserId String   @db.Uuid @map("admin_user_id")
+  adminUserId Int      @map("admin_user_id")
   code       String    @unique
   used       Boolean   @default(false)
   usedAt     DateTime? @map("used_at")
@@ -621,7 +621,7 @@ model AgentDeviceSession {
 
 model SuspiciousActivity {
   id               String    @id @default(cuid())
-  adminUserId      String?   @db.Uuid @map("admin_user_id")
+  adminUserId      Int?      @map("admin_user_id")
   agenteId         Int?      @map("agente_id")
   activityType     String    @map("activity_type")
   severity         String    @default("medium")
