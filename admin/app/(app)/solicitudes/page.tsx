@@ -154,8 +154,6 @@ export default function SolicitudesPage() {
     dueAt: "",
   });
   const [selectedAgente, setSelectedAgente] = useState("");
-  const [configOpen, setConfigOpen] = useState(false);
-  const [configDraft, setConfigDraft] = useState<SolicitudesTenantConfig>(DEFAULT_SOLICITUDES_CONFIG);
 
   const { data: configData } = useQuery({
     queryKey: ["solicitudes-config", tenantSlug],
@@ -164,21 +162,6 @@ export default function SolicitudesPage() {
   });
 
   const tenantConfig = { ...DEFAULT_SOLICITUDES_CONFIG, ...(configData || {}) };
-
-  useEffect(() => {
-    setConfigDraft(tenantConfig);
-  }, [
-    tenantConfig.enterpriseEnabled,
-    tenantConfig.advancedSearchEnabled,
-    tenantConfig.slaEnabled,
-    tenantConfig.warningThresholdMinutes,
-    tenantConfig.manualEscalationEnabled,
-    tenantConfig.autoEscalationEnabled,
-    tenantConfig.escalationIntervalMinutes,
-    tenantConfig.assignmentRulesEnabled,
-    tenantConfig.customerPortalEnabled,
-    tenantConfig.webhooksEnabled,
-  ]);
 
   const usingAdvancedSearch = Boolean((q || prioridadFilter || slaFilter) && tenantConfig.advancedSearchEnabled);
 
@@ -254,16 +237,6 @@ export default function SolicitudesPage() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["solicitudes"] });
       qc.invalidateQueries({ queryKey: ["solicitudes-stats"] });
-    },
-  });
-
-  const updateConfig = useMutation({
-    mutationFn: (payload: SolicitudesTenantConfig) => solicitudesApi.updateConfig(tenantSlug, payload),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["solicitudes-config", tenantSlug] });
-      qc.invalidateQueries({ queryKey: ["solicitudes"] });
-      qc.invalidateQueries({ queryKey: ["solicitudes-stats"] });
-      setConfigOpen(false);
     },
   });
 
@@ -817,9 +790,6 @@ export default function SolicitudesPage() {
         <span className="text-sm text-slate-500 ml-auto">
           {total} solicitudes
         </span>
-        <Button variant="secondary" size="sm" onClick={() => setConfigOpen(true)}>
-          Configurar empresa
-        </Button>
       </div>
 
       <Card>
@@ -1028,82 +998,6 @@ export default function SolicitudesPage() {
               disabled={!selectedAgente || assignAgente.isPending}
             >
               {assignAgente.isPending ? "Asignando..." : "Asignar"}
-            </Button>
-          </div>
-        </div>
-      </Modal>
-
-      <Modal
-        open={configOpen}
-        onClose={() => setConfigOpen(false)}
-        title="Configuración enterprise por empresa"
-      >
-        <div className="space-y-3">
-          <label className="flex items-center gap-2 text-sm text-slate-700">
-            <input
-              type="checkbox"
-              checked={configDraft.advancedSearchEnabled}
-              onChange={(e) => setConfigDraft((prev) => ({ ...prev, advancedSearchEnabled: e.target.checked }))}
-            />
-            Búsqueda avanzada
-          </label>
-          <label className="flex items-center gap-2 text-sm text-slate-700">
-            <input
-              type="checkbox"
-              checked={configDraft.slaEnabled}
-              onChange={(e) => setConfigDraft((prev) => ({ ...prev, slaEnabled: e.target.checked }))}
-            />
-            SLA habilitado
-          </label>
-          <label className="flex items-center gap-2 text-sm text-slate-700">
-            <input
-              type="checkbox"
-              checked={configDraft.manualEscalationEnabled}
-              onChange={(e) => setConfigDraft((prev) => ({ ...prev, manualEscalationEnabled: e.target.checked }))}
-            />
-            Escalación manual
-          </label>
-          <label className="flex items-center gap-2 text-sm text-slate-700">
-            <input
-              type="checkbox"
-              checked={configDraft.assignmentRulesEnabled}
-              onChange={(e) => setConfigDraft((prev) => ({ ...prev, assignmentRulesEnabled: e.target.checked }))}
-            />
-            Reglas de asignación
-          </label>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div className="space-y-1">
-              <label className="text-xs text-slate-500 uppercase tracking-wide">Umbral warning SLA (min)</label>
-              <input
-                type="number"
-                min={5}
-                max={1440}
-                value={configDraft.warningThresholdMinutes}
-                onChange={(e) => setConfigDraft((prev) => ({ ...prev, warningThresholdMinutes: Number(e.target.value || 60) }))}
-                className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm"
-              />
-            </div>
-            <div className="space-y-1">
-              <label className="text-xs text-slate-500 uppercase tracking-wide">Intervalo auto-escalación (min)</label>
-              <input
-                type="number"
-                min={5}
-                max={1440}
-                value={configDraft.escalationIntervalMinutes}
-                onChange={(e) => setConfigDraft((prev) => ({ ...prev, escalationIntervalMinutes: Number(e.target.value || 30) }))}
-                className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm"
-              />
-            </div>
-          </div>
-          <div className="flex justify-end gap-3 pt-2">
-            <Button variant="secondary" onClick={() => setConfigOpen(false)}>
-              Cancelar
-            </Button>
-            <Button
-              onClick={() => updateConfig.mutate(configDraft)}
-              disabled={updateConfig.isPending}
-            >
-              {updateConfig.isPending ? "Guardando..." : "Guardar configuración"}
             </Button>
           </div>
         </div>

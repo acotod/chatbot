@@ -1,6 +1,6 @@
 "use client";
 
-import { agentePuestosApi, agendaApi, apiClient, configApi } from "@/lib/api";
+import { agentePuestosApi, agendaApi, apiClient, configApi, solicitudesApi } from "@/lib/api";
 import { useAuthStore } from "@/store/auth";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
@@ -58,6 +58,32 @@ interface AgentePuesto {
   id: number;
   nombre: string;
 }
+
+interface SolicitudesTenantConfig {
+  enterpriseEnabled: boolean;
+  advancedSearchEnabled: boolean;
+  slaEnabled: boolean;
+  warningThresholdMinutes: number;
+  manualEscalationEnabled: boolean;
+  autoEscalationEnabled: boolean;
+  escalationIntervalMinutes: number;
+  assignmentRulesEnabled: boolean;
+  customerPortalEnabled: boolean;
+  webhooksEnabled: boolean;
+}
+
+const DEFAULT_SOLICITUDES_CONFIG: SolicitudesTenantConfig = {
+  enterpriseEnabled: true,
+  advancedSearchEnabled: true,
+  slaEnabled: true,
+  warningThresholdMinutes: 60,
+  manualEscalationEnabled: true,
+  autoEscalationEnabled: false,
+  escalationIntervalMinutes: 30,
+  assignmentRulesEnabled: true,
+  customerPortalEnabled: false,
+  webhooksEnabled: false,
+};
 
 export default function ConfiguracionPage() {
   const { tenantSlug } = useAuthStore();
@@ -120,6 +146,8 @@ export default function ConfiguracionPage() {
     lockoutMinutes: 15,
   });
   const [lockoutSaved, setLockoutSaved] = useState(false);
+  const [enterpriseConfigDraft, setEnterpriseConfigDraft] =
+    useState<SolicitudesTenantConfig>(DEFAULT_SOLICITUDES_CONFIG);
 
   const { data: waCredsData } = useQuery({
     queryKey: ["config", tenantSlug, "wa_credentials"],
@@ -302,6 +330,15 @@ export default function ConfiguracionPage() {
     enabled: !!tenantSlug,
   });
 
+  const { data: solicitudesConfigData } = useQuery({
+    queryKey: ["solicitudes-config", tenantSlug],
+    queryFn: () =>
+      solicitudesApi
+        .getConfig(tenantSlug)
+        .then((r) => r.data as SolicitudesTenantConfig),
+    enabled: !!tenantSlug,
+  });
+
   const { data: lockoutPolicyData } = useQuery({
     queryKey: ["lockout-policy", tenantSlug],
     queryFn: () =>
@@ -345,7 +382,37 @@ export default function ConfiguracionPage() {
     },
   });
 
+  const saveSolicitudesEnterpriseConfigMutation = useMutation({
+    mutationFn: (payload: SolicitudesTenantConfig) =>
+      solicitudesApi.updateConfig(tenantSlug, payload),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["solicitudes-config", tenantSlug] });
+      qc.invalidateQueries({ queryKey: ["solicitudes"] });
+      qc.invalidateQueries({ queryKey: ["solicitudes-stats"] });
+    },
+  });
+
   void configData;
+  const tenantSolicitudesConfig = {
+    ...DEFAULT_SOLICITUDES_CONFIG,
+    ...(solicitudesConfigData || {}),
+  };
+
+  useEffect(() => {
+    setEnterpriseConfigDraft(tenantSolicitudesConfig);
+  }, [
+    tenantSolicitudesConfig.enterpriseEnabled,
+    tenantSolicitudesConfig.advancedSearchEnabled,
+    tenantSolicitudesConfig.slaEnabled,
+    tenantSolicitudesConfig.warningThresholdMinutes,
+    tenantSolicitudesConfig.manualEscalationEnabled,
+    tenantSolicitudesConfig.autoEscalationEnabled,
+    tenantSolicitudesConfig.escalationIntervalMinutes,
+    tenantSolicitudesConfig.assignmentRulesEnabled,
+    tenantSolicitudesConfig.customerPortalEnabled,
+    tenantSolicitudesConfig.webhooksEnabled,
+  ]);
+
   const puestos: AgentePuesto[] = puestosData?.data ?? puestosData ?? [];
 
   function handleCreatePuesto() {
@@ -808,6 +875,118 @@ export default function ConfiguracionPage() {
               }`}
             />
           </button>
+        </div>
+      </ConfigSection>
+
+      <ConfigSection
+        title="Solicitudes enterprise"
+        description="Configurá el comportamiento avanzado del módulo de solicitudes por empresa"
+      >
+        <div className="space-y-3">
+          <label className="flex items-center gap-2 text-sm text-slate-700">
+            <input
+              type="checkbox"
+              checked={enterpriseConfigDraft.advancedSearchEnabled}
+              onChange={(e) =>
+                setEnterpriseConfigDraft((prev) => ({
+                  ...prev,
+                  advancedSearchEnabled: e.target.checked,
+                }))
+              }
+            />
+            Búsqueda avanzada
+          </label>
+          <label className="flex items-center gap-2 text-sm text-slate-700">
+            <input
+              type="checkbox"
+              checked={enterpriseConfigDraft.slaEnabled}
+              onChange={(e) =>
+                setEnterpriseConfigDraft((prev) => ({
+                  ...prev,
+                  slaEnabled: e.target.checked,
+                }))
+              }
+            />
+            SLA habilitado
+          </label>
+          <label className="flex items-center gap-2 text-sm text-slate-700">
+            <input
+              type="checkbox"
+              checked={enterpriseConfigDraft.manualEscalationEnabled}
+              onChange={(e) =>
+                setEnterpriseConfigDraft((prev) => ({
+                  ...prev,
+                  manualEscalationEnabled: e.target.checked,
+                }))
+              }
+            />
+            Escalación manual
+          </label>
+          <label className="flex items-center gap-2 text-sm text-slate-700">
+            <input
+              type="checkbox"
+              checked={enterpriseConfigDraft.assignmentRulesEnabled}
+              onChange={(e) =>
+                setEnterpriseConfigDraft((prev) => ({
+                  ...prev,
+                  assignmentRulesEnabled: e.target.checked,
+                }))
+              }
+            />
+            Reglas de asignación
+          </label>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="space-y-1">
+              <label className="text-xs text-slate-500 uppercase tracking-wide">
+                Umbral warning SLA (min)
+              </label>
+              <input
+                type="number"
+                min={5}
+                max={1440}
+                value={enterpriseConfigDraft.warningThresholdMinutes}
+                onChange={(e) =>
+                  setEnterpriseConfigDraft((prev) => ({
+                    ...prev,
+                    warningThresholdMinutes: Number(e.target.value || 60),
+                  }))
+                }
+                className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm"
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs text-slate-500 uppercase tracking-wide">
+                Intervalo auto-escalación (min)
+              </label>
+              <input
+                type="number"
+                min={5}
+                max={1440}
+                value={enterpriseConfigDraft.escalationIntervalMinutes}
+                onChange={(e) =>
+                  setEnterpriseConfigDraft((prev) => ({
+                    ...prev,
+                    escalationIntervalMinutes: Number(e.target.value || 30),
+                  }))
+                }
+                className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm"
+              />
+            </div>
+          </div>
+          <div className="flex justify-end pt-2">
+            <Button
+              onClick={() =>
+                saveSolicitudesEnterpriseConfigMutation.mutate(
+                  enterpriseConfigDraft
+                )
+              }
+              disabled={saveSolicitudesEnterpriseConfigMutation.isPending}
+            >
+              {saveSolicitudesEnterpriseConfigMutation.isPending
+                ? "Guardando..."
+                : "Guardar configuración"}
+            </Button>
+          </div>
         </div>
       </ConfigSection>
 
