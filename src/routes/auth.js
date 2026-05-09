@@ -17,6 +17,8 @@ const requireAgentJwt = require('../middleware/requireAgentJwt');
 const lockoutPolicy = require('../services/lockoutPolicy');
 const { generateDeviceFingerprint, parseDeviceNameFromUserAgent } = require('../services/deviceFingerprint');
 const { logSuspiciousActivity, detectNewDevice, ACTIVITY_TYPES, SEVERITY_LEVELS } = require('../services/suspiciousActivityDetection');
+const { storeAdminDeviceSession } = require('../services/adminDeviceSession');
+const { storeAgentDeviceSession } = require('../services/agentDeviceSession');
 
 const prisma = new PrismaClient();
 const router = express.Router();
@@ -308,6 +310,17 @@ router.post('/login', loginRateLimiter, async (req, res) => {
       data: { failedAttempts: 0, lockedUntil: null },
     });
 
+    // Generate device fingerprint and track device session (Phase 2 enhancement)
+    const deviceFingerprint = generateDeviceFingerprint(userAgent, ip);
+    const deviceName = parseDeviceNameFromUserAgent(userAgent);
+
+    try {
+      await storeAdminDeviceSession(user.id, deviceFingerprint, deviceName, userAgent, ip);
+    } catch (deviceError) {
+      // Don't block login if device tracking fails
+      console.error('[AdminAuth] Device tracking error:', deviceError);
+    }
+
     const effectiveSuperAdmin = Boolean(user.superAdmin || isConfiguredEnvAdminEmail(user.email));
 
     const { token: accessToken } = signAccess(
@@ -531,34 +544,17 @@ router.post('/agent/login', loginRateLimiter, async (req, res) => {
     // Generate device fingerprint and track device session (Phase 2 enhancement)
     const deviceFingerprint = generateDeviceFingerprint(userAgent, ip);
     const deviceName = parseDeviceNameFromUserAgent(userAgent);
-    
-    // Record or update device session
+
     try {
+      // Check if this is a new device before storing
       const existingSession = await prisma.agentDeviceSession.findFirst({
         where: { agenteId: agent.id, deviceFingerprint },
       });
 
-      if (existingSession) {
-        // Update last seen
-        await prisma.agentDeviceSession.update({
-          where: { id: existingSession.id },
-          data: { lastSeenAt: new Date(), ipAddress: ip },
-        });
-      } else {
-        // New device login - log suspicious activity
-        await prisma.agentDeviceSession.create({
-          data: {
-            agenteId: agent.id,
-            deviceFingerprint,
-            deviceName,
-            userAgent,
-            ipAddress: ip,
-            isActive: true,
-            lastSeenAt: new Date(),
-          },
-        });
+      await storeAgentDeviceSession(agent.id, deviceFingerprint, deviceName, userAgent, ip);
 
-        // Log as suspicious activity (new device)
+      // Log as suspicious activity if new device
+      if (!existingSession) {
         await logSuspiciousActivity({
           agenteId: agent.id,
           activityType: ACTIVITY_TYPES.NEW_DEVICE_LOGIN,
