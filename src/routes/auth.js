@@ -140,6 +140,19 @@ async function findAgentByTenantAndEmailCaseInsensitive(tenantSlug, email) {
   });
 }
 
+async function findAgentsByEmailCaseInsensitive(email) {
+  return prisma.agente.findMany({
+    where: {
+      email: { equals: email, mode: 'insensitive' },
+      estado: 'activo',
+    },
+    include: {
+      tenant: { select: { id: true, slug: true, nombre: true } },
+      puesto: { select: { id: true, nombre: true } },
+    },
+  });
+}
+
 async function createAgentPasswordReset(agent) {
   const rawToken = crypto.randomBytes(32).toString('hex');
   const tokenHash = hashToken(rawToken);
@@ -504,7 +517,145 @@ router.post('/google', loginRateLimiter, async (req, res) => {
 });
 
 // ── POST /auth/agent/login ───────────────────────────────────────────────────
+// Login with email + password only. If multiple accounts exist, returns tenant options.
 router.post('/agent/login', loginRateLimiter, async (req, res) => {
+  const password = req.body?.password;
+  const email = normalizeEmail(req.body?.email);
+  const tabId = (req.headers['x-tab-id'] || req.body?.tabId || '').trim();
+  const jwtSecret = process.env.JWT_SECRET;
+  const ip = req.ip;
+  const userAgent = req.headers['user-agent'] || '';
+
+  if (!jwtSecret) return res.status(503).json({ error: 'JWT_SECRET not configured' });
+  if (!email || !password) {
+    return res.status(400).json({ error: 'email and password are required' });
+  }
+  if (!tabId) {
+    return res.status(400).json({ error: 'tabId is required' });
+  }
+
+  try {
+    // Find all agents with this email across all active tenants
+    const agents = await findAgentsByEmailCaseInsensitive(email);
+    
+    if (agents.length === 0) {
+      audit({ accion: 'LOGIN_FAILED', entidad: 'agente', ip, userAgent, metadata: { email, tabId, reason: 'no_agents' } });
+      return res.status(401).json({ error: 'Invalid credentials' });
+    }
+
+    // Verify password against all agent accounts
+    const dummyHash = '$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy';
+    let validAgent = null;
+
+    for (const agent of agents) {
+      const passwordToCheck = agent.passwordHash || dummyHash;
+      const valid = await bcrypt.compare(password, passwordToCheck);
+      if (agent.passwordHash && valid) {
+        validAgent = agent;
+        break;
+      }
+    }
+
+    if (!validAgent) {
+      audit({ accion: 'LOGIN_FAILED', entidad: 'agente', ip, userAgent, metadata: { email, tabId, reason: 'invalid_password' } });
+      return res.status(401).json({ error: 'Invalid credentials' });
+    }
+
+    // If only one account, complete login immediately
+    if (agents.length === 1) {
+      await prisma.agente.update({
+        where: { id: validAgent.id },
+        data: { lastSeenAt: new Date() },
+      });
+
+      try {
+        const deviceFingerprint = generateDeviceFingerprint(userAgent, ip);
+        const deviceName = parseDeviceNameFromUserAgent(userAgent);
+        const existingSession = await prisma.agentDeviceSession.findFirst({
+          where: { agenteId: validAgent.id, deviceFingerprint },
+        });
+        await storeAgentDeviceSession(validAgent.id, deviceFingerprint, deviceName, userAgent, ip);
+        if (!existingSession) {
+          await logSuspiciousActivity({
+            agenteId: validAgent.id,
+            activityType: ACTIVITY_TYPES.NEW_DEVICE_LOGIN,
+            severity: SEVERITY_LEVELS.LOW,
+            description: `Agent logged in from new device: ${deviceName}`,
+            deviceFingerprint,
+            ipAddress: ip,
+            userAgent,
+            metadata: { email, deviceName },
+          });
+        }
+      } catch (deviceError) {
+        console.error('[AgentAuth] Device tracking error:', deviceError);
+      }
+
+      const { token: accessToken } = signAccess(
+        { sub: 'agent', agenteId: validAgent.id, tenantId: validAgent.tenantId, tenantSlug: validAgent.tenant.slug, email: validAgent.email },
+        jwtSecret,
+        tabId,
+      );
+
+      audit({
+        accion: 'LOGIN',
+        entidad: 'agente',
+        entidadId: String(validAgent.id),
+        tenantId: validAgent.tenantId,
+        ip,
+        userAgent,
+        metadata: { tenantSlug: validAgent.tenant.slug, email: validAgent.email, tabId },
+      });
+
+      return res.json({
+        accessToken,
+        expiresIn: ACCESS_TTL,
+        profile: {
+          agenteId: validAgent.id,
+          tenantId: validAgent.tenantId,
+          tenantSlug: validAgent.tenant.slug,
+          tenantNombre: validAgent.tenant.nombre,
+          nombre: validAgent.nombre,
+          email: validAgent.email,
+          whatsapp: validAgent.whatsapp,
+          estado: validAgent.estado,
+          puesto: validAgent.puesto,
+          calendarLink: validAgent.calendarLink,
+          lastSeenAt: new Date().toISOString(),
+        },
+      });
+    }
+
+    // If multiple accounts, return tenant selection options
+    const tenants = agents.map((agent) => ({
+      tenantId: agent.tenantId,
+      tenantSlug: agent.tenant.slug,
+      tenantNombre: agent.tenant.nombre,
+      agenteId: agent.id,
+    }));
+
+    audit({
+      accion: 'LOGIN_TENANT_SELECTION',
+      entidad: 'agente',
+      ip,
+      userAgent,
+      metadata: { email, tabId, tenantsCount: tenants.length },
+    });
+
+    return res.status(200).json({
+      requiresTenantSelection: true,
+      email: email,
+      tenants,
+    });
+  } catch (err) {
+    console.error('[AgentAuth] Error:', err);
+    return res.status(500).json({ error: 'Agent auth error' });
+  }
+});
+
+// ── POST /auth/agent/login/with-tenant ───────────────────────────────────────
+// Complete login after tenant selection (called when user picks from multi-tenant options)
+router.post('/agent/login/with-tenant', loginRateLimiter, async (req, res) => {
   const tenantSlug = String(req.body?.tenantSlug ?? '').trim().toLowerCase();
   const password = req.body?.password;
   const email = normalizeEmail(req.body?.email);
@@ -522,6 +673,7 @@ router.post('/agent/login', loginRateLimiter, async (req, res) => {
   }
 
   try {
+    // Find agent in specific tenant
     const agent = await findAgentByTenantAndEmailCaseInsensitive(tenantSlug, email);
     const dummyHash = '$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy';
     const passwordToCheck = agent?.passwordHash || dummyHash;
@@ -542,19 +694,13 @@ router.post('/agent/login', loginRateLimiter, async (req, res) => {
       data: { lastSeenAt: new Date() },
     });
 
-    // Generate device fingerprint and track device session (Phase 2 enhancement)
-    const deviceFingerprint = generateDeviceFingerprint(userAgent, ip);
-    const deviceName = parseDeviceNameFromUserAgent(userAgent);
-
     try {
-      // Check if this is a new device before storing
+      const deviceFingerprint = generateDeviceFingerprint(userAgent, ip);
+      const deviceName = parseDeviceNameFromUserAgent(userAgent);
       const existingSession = await prisma.agentDeviceSession.findFirst({
         where: { agenteId: agent.id, deviceFingerprint },
       });
-
       await storeAgentDeviceSession(agent.id, deviceFingerprint, deviceName, userAgent, ip);
-
-      // Log as suspicious activity if new device
       if (!existingSession) {
         await logSuspiciousActivity({
           agenteId: agent.id,
@@ -568,7 +714,6 @@ router.post('/agent/login', loginRateLimiter, async (req, res) => {
         });
       }
     } catch (deviceError) {
-      // Don't block login if device tracking fails
       console.error('[AgentAuth] Device tracking error:', deviceError);
     }
 
@@ -605,7 +750,8 @@ router.post('/agent/login', loginRateLimiter, async (req, res) => {
         lastSeenAt: new Date().toISOString(),
       },
     });
-  } catch {
+  } catch (err) {
+    console.error('[AgentAuth] Error:', err);
     return res.status(500).json({ error: 'Agent auth error' });
   }
 });

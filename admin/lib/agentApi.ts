@@ -217,6 +217,42 @@ export const agentAuthApi = {
       }
     );
   },
+  loginNoTenant: (email: string, password: string) => {
+    const tabId = getRequestTabId();
+    return agentApiClient.post<
+      | AgentLoginResponse
+      | {
+          requiresTenantSelection: boolean;
+          email: string;
+          tenants: Array<{ tenantId: string; tenantSlug: string; tenantNombre: string; agenteId: number }>;
+        }
+    >(
+      "/auth/agent/login",
+      {
+        email,
+        password,
+        tabId,
+      },
+      {
+        headers: { "x-tab-id": tabId },
+      }
+    );
+  },
+  loginWithTenant: (tenantSlug: string, email: string, password: string) => {
+    const tabId = getRequestTabId();
+    return agentApiClient.post<AgentLoginResponse>(
+      "/auth/agent/login/with-tenant",
+      {
+        tenantSlug,
+        email,
+        password,
+        tabId,
+      },
+      {
+        headers: { "x-tab-id": tabId },
+      }
+    );
+  },
   forgotPassword: (tenantSlug: string, email: string) =>
     agentApiClient.post<{ message: string; deliveryChannels?: string[]; resetToken?: string; resetUrl?: string; expiresAt?: string }>("/auth/agent/forgot-password", {
       tenantSlug,

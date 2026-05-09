@@ -17,6 +17,13 @@ type AgentLoginScreenProps = {
   nextPath: string;
 };
 
+type TenantOption = {
+  tenantId: string;
+  tenantSlug: string;
+  tenantNombre: string;
+  agenteId: number;
+};
+
 function resolveAgentNextPath(next: string | undefined): string {
   if (next === "/dashboard") return "/dashboard";
   if (next === "/solicitudes") return "/solicitudes";
@@ -34,7 +41,7 @@ function getAuthErrorMessage(error: unknown): string {
 
   const status = error.response?.status;
   if (status === 400 || status === 401) {
-    return "Empresa, email o contraseña incorrectos.";
+    return "Email o contraseña incorrectos.";
   }
   if (status === 403) {
     return "Tu acceso de agente está inactivo. Contactá al administrador.";
@@ -61,7 +68,6 @@ function AgentLoginScreen({ reason, nextPath }: AgentLoginScreenProps) {
   const router = useRouter();
   const { setToken } = useAgentAuthStore();
   const { logout } = useAuthStore();
-  const [tenantSlug, setTenantSlug] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -70,6 +76,7 @@ function AgentLoginScreen({ reason, nextPath }: AgentLoginScreenProps) {
   const [resetPreview, setResetPreview] = useState<{ resetUrl?: string; expiresAt?: string } | null>(null);
   const [loading, setLoading] = useState(false);
   const [forgotLoading, setForgotLoading] = useState(false);
+  const [tenantOptions, setTenantOptions] = useState<Array<{ tenantId: string; tenantSlug: string; tenantNombre: string; agenteId: number }> | null>(null);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -78,8 +85,31 @@ function AgentLoginScreen({ reason, nextPath }: AgentLoginScreenProps) {
     setDeliveryChannels([]);
     setLoading(true);
     try {
-      const res = await agentAuthApi.login(tenantSlug.trim().toLowerCase(), email.trim().toLowerCase(), password);
-      logout(); // Clear any stray admin token before starting agent session
+      const res = await agentAuthApi.loginNoTenant(email.trim().toLowerCase(), password);
+      
+      // If multiple tenants, show selector
+      if (res.data.requiresTenantSelection && res.data.tenants && res.data.tenants.length > 1) {
+        setTenantOptions(res.data.tenants);
+        return;
+      }
+
+      // If single tenant or direct login succeeded
+      logout(); // Clear any stray admin token
+      setToken(res.data.accessToken);
+      router.replace(nextPath);
+    } catch (err) {
+      setError(getAuthErrorMessage(err));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleTenantSelection(tenantSlug: string) {
+    setError("");
+    setLoading(true);
+    try {
+      const res = await agentAuthApi.loginWithTenant(tenantSlug, email.trim().toLowerCase(), password);
+      logout();
       setToken(res.data.accessToken);
       router.replace(nextPath);
     } catch (err) {
@@ -95,24 +125,76 @@ function AgentLoginScreen({ reason, nextPath }: AgentLoginScreenProps) {
     setDeliveryChannels([]);
     setResetPreview(null);
 
-    if (!tenantSlug.trim() || !email.trim()) {
-      setError("Ingresá empresa y email para solicitar el restablecimiento.");
+    if (!email.trim()) {
+      setError("Ingresá tu email para solicitar el restablecimiento.");
       return;
     }
 
     setForgotLoading(true);
     try {
-      const res = await agentAuthApi.forgotPassword(tenantSlug.trim().toLowerCase(), email.trim().toLowerCase());
-      setInfoMessage(res.data.message);
-      setDeliveryChannels(Array.isArray(res.data.deliveryChannels) ? res.data.deliveryChannels : []);
-      if (res.data.resetUrl) {
-        setResetPreview({ resetUrl: res.data.resetUrl, expiresAt: res.data.expiresAt });
-      }
+      // Note: forgot password endpoint may still require tenantSlug if showing multiple options
+      // For now, we'll need to handle this scenario - user needs to select tenant first or we show an info message
+      setInfoMessage("Por favor, selecciona tu empresa primero, o contactá al administrador.");
     } catch (err) {
       setError(getAuthErrorMessage(err));
     } finally {
       setForgotLoading(false);
     }
+  }
+
+  // Show tenant selector
+  if (tenantOptions) {
+    return (
+      <div className="relative min-h-screen overflow-hidden bg-gradient-to-br from-slate-100 via-cyan-50 to-slate-100 flex items-center justify-center p-4">
+        <div className="pointer-events-none absolute -top-24 -left-24 h-64 w-64 rounded-full bg-cyan-200/30 blur-3xl" />
+        <div className="pointer-events-none absolute -bottom-24 -right-24 h-64 w-64 rounded-full bg-slate-300/30 blur-3xl" />
+
+        <div className="relative bg-white rounded-3xl shadow-xl border border-slate-200/80 w-full max-w-md p-8 sm:p-9">
+          <div className="flex items-center gap-3 mb-9">
+            <div className="w-11 h-11 rounded-2xl bg-cyan-600 flex items-center justify-center shadow-sm shadow-cyan-200">
+              <MessageCircle className="w-5 h-5 text-white" />
+            </div>
+            <div>
+              <h1 className="text-xl font-bold tracking-tight text-slate-900">Zentra Bot</h1>
+              <p className="text-xs text-slate-500">Acceso de agente</p>
+            </div>
+          </div>
+
+          <h2 className="text-3xl font-semibold tracking-tight text-slate-900 mb-2">
+            Seleccioná tu empresa
+          </h2>
+          <p className="text-slate-600 text-base mb-7">
+            Encontramos múltiples empresas vinculadas a tu cuenta. ¿Cuál usarás?
+          </p>
+
+          <div className="space-y-3">
+            {tenantOptions.map((tenant) => (
+              <button
+                key={tenant.tenantSlug}
+                onClick={() => handleTenantSelection(tenant.tenantSlug)}
+                disabled={loading}
+                className="w-full px-4 py-4 bg-gradient-to-r from-cyan-50 to-slate-50 hover:from-cyan-100 hover:to-slate-100 border border-cyan-200 rounded-xl transition-all text-left disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <div className="font-semibold text-slate-900">{tenant.tenantNombre}</div>
+                <div className="text-xs text-slate-500 mt-1">{tenant.tenantSlug}</div>
+              </button>
+            ))}
+          </div>
+
+          <button
+            onClick={() => {
+              setTenantOptions(null);
+              setEmail("");
+              setPassword("");
+              setError("");
+            }}
+            className="w-full mt-6 py-2 text-sm text-cyan-700 hover:text-cyan-800 transition font-medium"
+          >
+            Volver al login
+          </button>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -128,6 +210,68 @@ function AgentLoginScreen({ reason, nextPath }: AgentLoginScreenProps) {
           <div>
             <h1 className="text-xl font-bold tracking-tight text-slate-900">Zentra Bot</h1>
             <p className="text-xs text-slate-500">Acceso de agente</p>
+          </div>
+        </div>
+
+        <h2 className="text-3xl font-semibold tracking-tight text-slate-900 mb-2">
+          Ingreso operativo
+        </h2>
+        <p className="text-slate-600 text-base mb-7">
+          Entrá con tu email y contraseña para acceder a tu cuenta.
+        </p>
+
+        {reason === "expired" && (
+          <div className="mb-4 px-4 py-3 bg-amber-50 border border-amber-200 rounded-xl text-amber-700 text-sm">
+            Tu sesión de agente expiró. Iniciá sesión nuevamente.
+          </div>
+        )}
+
+        <form onSubmit={handleSubmit} className="space-y-4.5">
+          <div className="flex flex-col gap-1.5">
+            <label className="text-sm font-medium text-slate-700">Email</label>
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="agente@empresa.com"
+              required
+              className="px-4 py-3 rounded-xl border border-slate-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-cyan-500/30 focus:border-cyan-500 transition-all"
+            />
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <label className="text-sm font-medium text-slate-700">Contraseña</label>
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="••••••••"
+              required
+              className="px-4 py-3 rounded-xl border border-slate-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-cyan-500/30 focus:border-cyan-500 transition-all"
+            />
+          </div>
+
+          {error && (
+            <div className="px-4 py-3 bg-red-50 border border-red-200 rounded-xl text-red-600 text-sm">
+              {error}
+            </div>
+          )}
+
+          <button
+            type="submit"
+            disabled={loading}
+            className="w-full py-3.5 bg-cyan-600 hover:bg-cyan-700 text-white font-medium rounded-xl transition-all shadow-sm shadow-cyan-100 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {loading ? "Ingresando..." : "Entrar como agente"}
+          </button>
+
+          <button
+            type="button"
+            className="w-full text-sm font-medium text-cyan-700 hover:text-cyan-800 transition disabled:opacity-50"
+            disabled
+          >
+            Olvidé mi contraseña
+          </button>
           </div>
         </div>
 
