@@ -680,7 +680,10 @@ export default function SolicitudesPage() {
                   </div>
                 ) : (
                   conversationBubbles.map((bubble) => (
-                    <div key={bubble.id} className={cn("flex", bubble.isOutbound ? "justify-end" : "justify-start")}>
+                    <div key={bubble.id} className={cn("flex flex-col gap-0.5", bubble.isOutbound ? "items-end" : "items-start")}>
+                      <span className={cn("text-[10px] font-medium px-1", bubble.isOutbound ? "text-blue-500" : "text-slate-400")}>
+                        {bubble.isOutbound ? "Bot" : "Cliente"}
+                      </span>
                       <div
                         className={cn(
                           "max-w-xs lg:max-w-md px-4 py-2.5 rounded-2xl text-sm shadow-sm",
