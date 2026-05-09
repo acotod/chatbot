@@ -16,35 +16,41 @@ function SessionSecurityGuard() {
   const { token, refreshToken, tokenExpiresAt, logout } = useAuthStore();
   const agentLogout = useAgentAuthStore((state) => state.logout);
   const lastActivityAtRef = useRef<number>(0);
+  const handledReloadGuardRef = useRef(false);
   const hasAccessToken = Boolean(token || getStoredAccessToken());
   const hasAgentAccessToken = Boolean(getStoredAgentAccessToken());
   const isAgentOnSharedRoute = ["/dashboard", "/solicitudes", "/agenda", "/contactos"].includes(pathname) && hasAgentAccessToken;
   const effectiveRefreshToken = refreshToken ?? getStoredRefreshToken();
 
   useEffect(() => {
+    if (handledReloadGuardRef.current) return;
+    handledReloadGuardRef.current = true;
+
     if (typeof window === "undefined") return;
 
     const navEntries = window.performance.getEntriesByType("navigation");
     const navType = (navEntries[0] as PerformanceNavigationTiming | undefined)?.type;
     if (navType !== "reload") return;
 
+    const currentPathname = window.location.pathname;
+
     // Explicit security behavior requested: hard refresh forces a fresh login.
     logout();
     agentLogout();
 
-    if (pathname.startsWith("/portal")) return;
+    if (currentPathname.startsWith("/portal")) return;
 
-    if (pathname.startsWith("/agente")) {
-      if (!pathname.startsWith("/agente/login")) {
+    if (currentPathname.startsWith("/agente")) {
+      if (!currentPathname.startsWith("/agente/login")) {
         router.replace("/agente/login?reason=reload");
       }
       return;
     }
 
-    if (!pathname.startsWith("/login")) {
+    if (!currentPathname.startsWith("/login")) {
       router.replace("/login?reason=reload");
     }
-  }, [agentLogout, logout, pathname, router]);
+  }, [agentLogout, logout, router]);
 
   useEffect(() => {
     if (pathname.startsWith("/login") || pathname.startsWith("/portal") || pathname.startsWith("/agente")) return;
