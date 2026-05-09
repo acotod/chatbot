@@ -443,6 +443,53 @@ export default function SolicitudesPage() {
     return null;
   }
 
+  function extractNestedReadableText(value: unknown, depth = 0): string | null {
+    if (depth > 4 || value == null) return null;
+
+    const primitive = asReadableText(value);
+    if (primitive) return primitive;
+
+    if (Array.isArray(value)) {
+      for (const item of value) {
+        const nested = extractNestedReadableText(item, depth + 1);
+        if (nested) return nested;
+      }
+      return null;
+    }
+
+    if (typeof value === "object") {
+      const record = value as Record<string, unknown>;
+      const prioritizedKeys = [
+        "text",
+        "body",
+        "caption",
+        "message",
+        "title",
+        "content",
+        "raw_input",
+        "value",
+        "input",
+        "selected_id",
+        "id",
+      ];
+
+      for (const key of prioritizedKeys) {
+        if (!(key in record)) continue;
+        const nested = extractNestedReadableText(record[key], depth + 1);
+        if (nested) return nested;
+      }
+
+      const nestedKeys = ["contenido", "content", "interactive", "reply", "output", "payload", "raw"];
+      for (const key of nestedKeys) {
+        if (!(key in record)) continue;
+        const nested = extractNestedReadableText(record[key], depth + 1);
+        if (nested) return nested;
+      }
+    }
+
+    return null;
+  }
+
   function resolveMenuSelectionLabel(
     eventItem: ConversationEventItem,
     events: ConversationEventItem[],
@@ -482,7 +529,10 @@ export default function SolicitudesPage() {
         asReadableText(data.raw_input) ??
         asReadableText(data.value) ??
         asReadableText(data.input) ??
-        asReadableText(data.text);
+        asReadableText(data.text) ??
+        extractNestedReadableText(data.raw_input) ??
+        extractNestedReadableText(data.value) ??
+        extractNestedReadableText(data.input);
       if (inboundText) return inboundText;
     }
 
@@ -499,6 +549,16 @@ export default function SolicitudesPage() {
         asReadableText(data.selected_label) ??
         asReadableText(data.input);
       if (selectedText) return selectedText;
+    }
+
+    if (eventItem.eventType === "message_received") {
+      const receivedText =
+        asReadableText(data.text) ??
+        extractNestedReadableText(data.contenido) ??
+        extractNestedReadableText(data.content) ??
+        extractNestedReadableText(data.payload) ??
+        extractNestedReadableText(data.raw);
+      if (receivedText) return receivedText;
     }
 
     const directCandidates = [
@@ -536,6 +596,9 @@ export default function SolicitudesPage() {
       }
     }
 
+    const nestedFallback = extractNestedReadableText(data);
+    if (nestedFallback) return nestedFallback;
+
     return null;
   }
 
@@ -543,7 +606,11 @@ export default function SolicitudesPage() {
     .map((eventItem, index) => {
       const text = extractEventText(eventItem, conversationEvents, index);
       if (!text) return null;
-      const isOutbound = eventItem.eventType === "message_sent" || eventItem.eventType === "conversation_started";
+      const eventType = (eventItem.eventType || "").toLowerCase();
+      const isOutbound =
+        eventType === "message_sent" ||
+        eventType === "conversation_started" ||
+        eventType === "flow_start";
       return {
         id: eventItem.id,
         text,
