@@ -182,7 +182,7 @@ export default function SolicitudesPage() {
     open: boolean;
     solicitud: Solicitud | null;
   }>({ open: false, solicitud: null });
-  const [detailTab, setDetailTab] = useState<"resumen" | "conversaciones">("resumen");
+  const [detailTab, setDetailTab] = useState<"resumen" | "conversaciones" | "mensajes">("resumen");
   const [detailDraft, setDetailDraft] = useState({
     estado: "",
     prioridad: "",
@@ -191,6 +191,7 @@ export default function SolicitudesPage() {
     subcategoria: "",
     dueAt: "",
   });
+  const [messageInput, setMessageInput] = useState("");
   const [conversationDetailModal, setConversationDetailModal] = useState<{
     open: boolean;
     conversation: ConversationItem | null;
@@ -365,6 +366,31 @@ export default function SolicitudesPage() {
   });
   const conversationEvents: ConversationEventItem[] =
     (conversationDetailData?.events as ConversationEventItem[] | undefined) ?? [];
+
+  const { data: messagesData, isLoading: messagesLoading, refetch: refetchMessages } = useQuery({
+    queryKey: ["solicitud-messages", tenantSlug, detailModal.solicitud?.id, isAgentSession ? "agent" : "admin"],
+    queryFn: () =>
+      isAgentSession
+        ? agentAuthApi
+            .solicitudMessages(detailModal.solicitud?.id || 0, { page: 1, limit: 50 })
+            .then((r) => r as any)
+        : solicitudesApi
+            .messages(tenantSlug || "", detailModal.solicitud?.id || 0, { page: 1, limit: 50 })
+            .then((r) => r as any),
+    enabled: Boolean(detailModal.open && detailModal.solicitud?.id && detailTab === "mensajes"),
+    staleTime: 0,
+  });
+
+  const sendMessageMutation = useMutation({
+    mutationFn: ({ text }: { text: string }) =>
+      isAgentSession
+        ? agentAuthApi.sendSolicitudMessage(detailModal.solicitud?.id || 0, text)
+        : solicitudesApi.sendMessage(tenantSlug || "", detailModal.solicitud?.id || 0, text),
+    onSuccess: () => {
+      setMessageInput("");
+      refetchMessages();
+    },
+  });
 
   function formatEventPayload(payload: unknown): string {
     if (payload == null) return "Sin payload";
@@ -900,6 +926,7 @@ export default function SolicitudesPage() {
               <TabsList className="w-full justify-start overflow-x-auto">
                 <TabsTrigger value="resumen" onClick={() => setDetailTab("resumen")}>Resumen</TabsTrigger>
                 <TabsTrigger value="conversaciones" onClick={() => setDetailTab("conversaciones")}>Conversaciones del cliente</TabsTrigger>
+                <TabsTrigger value="mensajes" onClick={() => setDetailTab("mensajes")}>Mensajes WhatsApp</TabsTrigger>
               </TabsList>
 
               <TabsContent value="resumen" className="space-y-4">
@@ -1114,6 +1141,78 @@ export default function SolicitudesPage() {
                   <Button variant="secondary" onClick={() => setDetailModal({ open: false, solicitud: null })}>
                     Cerrar
                   </Button>
+                </div>
+              </TabsContent>
+
+              <TabsContent value="mensajes" className="space-y-4">
+                {messagesLoading ? (
+                  <div className="flex items-center justify-center py-8">
+                    <div className="text-slate-500">Cargando mensajes...</div>
+                  </div>
+                ) : (messagesData?.data || []).length === 0 ? (
+                  <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50 px-4 py-8 text-center">
+                    <MessageCircleMore className="mx-auto mb-2 h-6 w-6 text-slate-400" />
+                    <p className="text-sm text-slate-600">No hay mensajes aún</p>
+                  </div>
+                ) : (
+                  <div className="space-y-3 max-h-96 overflow-y-auto">
+                    {(messagesData?.data || []).map((msg: any) => (
+                      <div
+                        key={msg.id}
+                        className={cn(
+                          "rounded-lg p-3 max-w-xs",
+                          msg.direccion === "salida"
+                            ? "ml-auto bg-blue-100 text-blue-900"
+                            : "mr-auto bg-slate-100 text-slate-900"
+                        )}
+                      >
+                        <div className="text-xs font-medium mb-1">
+                          {msg.direccion === "salida" ? "🔴 Enviado" : "🟢 Recibido"}
+                        </div>
+                        <p className="text-sm break-words">
+                          {typeof msg.contenido === "string"
+                            ? msg.contenido
+                            : msg.contenido?.text || JSON.stringify(msg.contenido)}
+                        </p>
+                        <div className="text-xs opacity-70 mt-1">
+                          {formatDate(msg.createdAt)}
+                          {msg.leido && msg.direccion === "salida" && " ✓✓"}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                <div className="border-t border-slate-200 pt-4 space-y-2">
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={messageInput}
+                      onChange={(e) => setMessageInput(e.target.value)}
+                      placeholder="Escribe un mensaje..."
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" && !e.shiftKey && messageInput.trim()) {
+                          sendMessageMutation.mutate({ text: messageInput });
+                        }
+                      }}
+                      className="flex-1 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm placeholder-slate-500 focus:border-blue-500 focus:outline-none"
+                      disabled={sendMessageMutation.isPending}
+                    />
+                    <Button
+                      onClick={() => {
+                        if (messageInput.trim()) {
+                          sendMessageMutation.mutate({ text: messageInput });
+                        }
+                      }}
+                      disabled={sendMessageMutation.isPending || !messageInput.trim()}
+                      size="sm"
+                    >
+                      {sendMessageMutation.isPending ? "Enviando..." : "Enviar"}
+                    </Button>
+                  </div>
+                  {sendMessageMutation.isError && (
+                    <p className="text-xs text-red-600">Error al enviar mensaje</p>
+                  )}
                 </div>
               </TabsContent>
             </Tabs>
