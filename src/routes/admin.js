@@ -1536,6 +1536,7 @@ router.post('/tenants/:slug/solicitudes/:id/messages', requirePermiso('EDIT_SOLI
 
         const text = String(req.body?.text ?? '').trim();
         if (!text) return res.status(400).json({ error: 'text is required' });
+        const replyToMensajeId = Number(req.body?.replyToMensajeId);
 
         const solicitud = await db.getSolicitudMessagingContext(solicitudId, tenant.id);
         if (!solicitud) return res.status(404).json({ error: 'Solicitud not found' });
@@ -1553,7 +1554,9 @@ router.post('/tenants/:slug/solicitudes/:id/messages', requirePermiso('EDIT_SOLI
         const mensaje = await db.saveMensaje({
             tenantId: tenant.id,
             userId: solicitud.userId,
+            agenteId: solicitud.agenteId ?? null,
             waMsgId: waResp?.messages?.[0]?.id ?? null,
+            status: 'sent',
             direccion: 'salida',
             tipo: 'text',
             contenido: {
@@ -1567,6 +1570,7 @@ router.post('/tenants/:slug/solicitudes/:id/messages', requirePermiso('EDIT_SOLI
                 },
             },
             conversationId: solicitud.conversationId || undefined,
+            replyToMensajeId: Number.isInteger(replyToMensajeId) && replyToMensajeId > 0 ? replyToMensajeId : null,
         });
 
         audit({

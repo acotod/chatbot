@@ -400,6 +400,8 @@ model Agente {
   crmTasks          CrmTask[]
   calendars         Calendar[]
   assignmentRules   SolicitudAssignmentRule[]
+  mensajes          Mensaje[]
+  assignedConversations Conversation[] @relation("ConversationAssignedAgente")
   passwordResets    AgentPasswordReset[]
   deviceSessions    AgentDeviceSession[]
   suspiciousActivities SuspiciousActivity[]
@@ -785,8 +787,12 @@ model Mensaje {
   id             Int          @id @default(autoincrement())
   tenantId       String       @map("tenant_id") @db.Uuid
   userId         Int?         @map("user_id")
+  agenteId       Int?         @map("agente_id")
   conversationId String?      @map("conversation_id") @db.Uuid
+  replyToMensajeId Int?       @map("reply_to_mensaje_id")
   waMsgId        String?      @unique @map("wa_msg_id") @db.VarChar(100)
+  status         String       @default("pending") @db.VarChar(20)
+  errorReason    String?      @map("error_reason") @db.Text
   /// "entrada" | "salida"
   direccion      String       @db.VarChar(10)
   /// "text" | "interactive" | "image" | "audio" | "document" | "template"
@@ -796,11 +802,17 @@ model Mensaje {
   createdAt      DateTime     @default(now()) @map("created_at")
   tenant         Tenant       @relation(fields: [tenantId], references: [id])
   user           User?        @relation(fields: [userId], references: [id])
+  agente         Agente?      @relation(fields: [agenteId], references: [id], onDelete: SetNull)
   conversation   Conversation? @relation(fields: [conversationId], references: [id], onDelete: SetNull)
+  replyToMensaje Mensaje?     @relation("MensajeReplyChain", fields: [replyToMensajeId], references: [id], onDelete: SetNull)
+  replies        Mensaje[]    @relation("MensajeReplyChain")
 
   @@index([tenantId, userId])
   @@index([tenantId, createdAt])
+  @@index([tenantId, status, createdAt])
+  @@index([tenantId, agenteId, createdAt])
   @@index([conversationId])
+  @@index([replyToMensajeId])
   @@map("mensajes")
 }
 
@@ -1016,6 +1028,8 @@ model Conversation {
   userKey         String    @map("user_key") @db.VarChar(120)
   flowId          Int       @map("flow_id")
   flowVersionId   Int?      @map("flow_version_id")
+  assignedAgenteId Int?     @map("assigned_agente_id")
+  assignedAt      DateTime? @map("assigned_at")
   /// "active" | "completed" | "abandoned" | "error"
   status          String    @default("active") @db.VarChar(20)
   /// JSONB snapshot: { current_node: "node_5", variables: { name: "Juan" } }
@@ -1025,6 +1039,7 @@ model Conversation {
   tenant          Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   flow            Flow      @relation(fields: [flowId], references: [id], onDelete: Cascade)
   flowVersion     FlowVersion? @relation(fields: [flowVersionId], references: [id], onDelete: SetNull)
+  assignedAgente  Agente?   @relation("ConversationAssignedAgente", fields: [assignedAgenteId], references: [id], onDelete: SetNull)
   events          ConversationEvent[]
   appointments    Appointment[]
   solicitudes     Solicitud[]
@@ -1032,6 +1047,7 @@ model Conversation {
 
   @@unique([tenantId, userKey, flowId, startedAt])
   @@index([tenantId, status, startedAt])
+  @@index([tenantId, assignedAgenteId, status])
   @@index([tenantId, userKey])
   @@index([flowId, status])
   @@map("conversations")

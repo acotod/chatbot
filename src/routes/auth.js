@@ -1319,6 +1319,7 @@ router.post('/agent/solicitudes/:id/messages', requireAgentJwt, async (req, res,
 
     const text = String(req.body?.text ?? '').trim();
     if (!text) return res.status(400).json({ error: 'text is required' });
+    const replyToMensajeId = Number(req.body?.replyToMensajeId);
 
     const solicitud = await db.getSolicitudMessagingContext(solicitudId, tenantId);
     if (!solicitud) return res.status(404).json({ error: 'Solicitud not found' });
@@ -1338,7 +1339,9 @@ router.post('/agent/solicitudes/:id/messages', requireAgentJwt, async (req, res,
     const mensaje = await db.saveMensaje({
       tenantId,
       userId: solicitud.userId,
+      agenteId,
       waMsgId: waResp?.messages?.[0]?.id ?? null,
+      status: 'sent',
       direccion: 'salida',
       tipo: 'text',
       contenido: {
@@ -1353,6 +1356,7 @@ router.post('/agent/solicitudes/:id/messages', requireAgentJwt, async (req, res,
         },
       },
       conversationId: solicitud.conversationId || undefined,
+      replyToMensajeId: Number.isInteger(replyToMensajeId) && replyToMensajeId > 0 ? replyToMensajeId : null,
     });
 
     audit({

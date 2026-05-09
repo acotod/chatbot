@@ -144,6 +144,25 @@ function normalizeMensajeDateFilter(value, bound = 'start') {
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
+function normalizeMensajeStatus(value, fallback = 'pending') {
+  const raw = String(value ?? '').trim().toLowerCase();
+  if (!raw) return fallback;
+
+  const allowed = new Set(['pending', 'sent', 'delivered', 'read', 'failed']);
+  if (allowed.has(raw)) return raw;
+
+  const aliasMap = {
+    accepted: 'sent',
+    success: 'sent',
+    submitted: 'sent',
+    queued: 'pending',
+    warning: 'failed',
+    error: 'failed',
+  };
+
+  return aliasMap[raw] ?? fallback;
+}
+
 function getPrismaClient() {
   if (!prisma) {
     try {
@@ -678,6 +697,16 @@ async function assignAgenteToSolicitud(id, tenantId, agenteId) {
   if (!client) return null;
   const current = await client.solicitud.findFirst({ where: { id, tenantId } });
   const result = await client.solicitud.updateMany({ where: { id, tenantId }, data: { agenteId } });
+
+  if (result.count > 0 && current?.conversationId) {
+    await client.conversation.updateMany({
+      where: { id: current.conversationId, tenantId },
+      data: {
+        assignedAgenteId: agenteId ?? null,
+        assignedAt: agenteId ? new Date() : null,
+      },
+    }).catch(() => {});
+  }
 
   if (result.count > 0 && current && Number(current.agenteId ?? 0) !== Number(agenteId ?? 0)) {
     await client.solicitudHistory.create({
@@ -1643,14 +1672,33 @@ async function findTenantByWaPhoneNumberId(phoneNumberId) {
 /**
  * Persist a WhatsApp message (inbound or outbound).
  */
-async function saveMensaje({ tenantId, userId, waMsgId, direccion, tipo, contenido, conversationId }) {
+async function saveMensaje({
+  tenantId,
+  userId,
+  agenteId,
+  waMsgId,
+  direccion,
+  tipo,
+  contenido,
+  conversationId,
+  status,
+  errorReason,
+  replyToMensajeId,
+}) {
   const client = getPrismaClient();
   if (!client) return null;
+  const fallbackStatus = String(direccion ?? '').trim().toLowerCase() === 'entrada' ? 'read' : 'sent';
   return client.mensaje.create({
     data: {
       tenantId,
       userId:         userId ?? null,
+      agenteId:       agenteId ?? null,
       waMsgId:        waMsgId ?? null,
+      status:         normalizeMensajeStatus(status, fallbackStatus),
+      errorReason:    normalizeOptionalText(errorReason),
+      replyToMensajeId: Number.isInteger(Number(replyToMensajeId)) && Number(replyToMensajeId) > 0
+        ? Number(replyToMensajeId)
+        : null,
       direccion,
       tipo,
       contenido,
@@ -1801,19 +1849,21 @@ async function updateMensajeDeliveryStatusByWaMsgId(waMsgId, status) {
   const client = getPrismaClient();
   if (!client || !waMsgId || !status) return null;
 
-  const normalized = String(status).toLowerCase();
-  const isRead = normalized === 'read';
-
-  if (!isRead) {
+  const normalized = normalizeMensajeStatus(status, null);
+  if (!normalized) {
     const existing = await client.mensaje.findUnique({ where: { waMsgId } });
     return existing ? { count: 1, updated: false } : { count: 0, updated: false };
   }
 
   const result = await client.mensaje.updateMany({
     where: { waMsgId },
-    data: { leido: true },
+    data: {
+      status: normalized,
+      ...(normalized === 'read' ? { leido: true } : {}),
+      ...(normalized !== 'failed' ? { errorReason: null } : {}),
+    },
   });
-  return { count: result.count, updated: result.count > 0 };
+  return { count: result.count, updated: result.count > 0, status: normalized };
 }
 
 /**
