@@ -26,6 +26,17 @@ agentApiClient.interceptors.request.use((config) => {
   const token = getStoredAgentAccessToken();
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
+  } else {
+    // Abort silently when no agent token is available to prevent 401 floods
+    // caused by the race between useQuery/useEffect evaluated before the
+    // session is cleared by providers.tsx on hard reload.
+    const url = config.url ?? "";
+    const isAuthEndpoint = url.includes("/auth/agent/");
+    if (!isAuthEndpoint) {
+      const controller = new AbortController();
+      controller.abort();
+      config.signal = controller.signal;
+    }
   }
 
   // Add tab ID to every request for tab-level access control
@@ -44,6 +55,11 @@ agentApiClient.interceptors.request.use((config) => {
 agentApiClient.interceptors.response.use(
   (response) => response,
   (error) => {
+    // Silently drop aborted requests (no token race condition)
+    if (error.code === "ERR_CANCELED") {
+      return Promise.reject(error);
+    }
+
     if (error.response?.status === 401) {
       const requestUrl: string = error.config?.url ?? "";
       const isAuthEndpoint =

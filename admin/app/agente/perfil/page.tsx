@@ -35,7 +35,16 @@ export default function AgentProfilePage() {
         if (!cancelled) {
           setProfile(res.data);
         }
-      } catch {
+      } catch (err: unknown) {
+        // Ignore aborted requests (no-token race on hard reload)
+        if (
+          err &&
+          typeof err === "object" &&
+          "code" in err &&
+          (err as { code: string }).code === "ERR_CANCELED"
+        ) {
+          return;
+        }
         if (!cancelled) {
           setError("No se pudo cargar el perfil del agente.");
           logout();
