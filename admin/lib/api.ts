@@ -73,11 +73,24 @@ export const apiClient = axios.create({
   timeout: 10000,
 });
 
-// Attach the per-tab JWT token on every request
+// Attach the per-tab JWT token on every request.
+// If no token is found and this is not an auth endpoint, abort the request silently
+// to avoid 401s caused by the race between useQuery's enabled guard (evaluated at
+// render time when the token exists) and providers.tsx clearing the session on reload.
 apiClient.interceptors.request.use((config) => {
   if (typeof window !== "undefined") {
     const token = getStoredAccessToken() ?? useAuthStore.getState().token;
-    if (token) config.headers.Authorization = `Bearer ${token}`;
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    } else {
+      const url = config.url ?? "";
+      const isAuthEndpoint = url.includes("/auth/");
+      if (!isAuthEndpoint) {
+        const controller = new AbortController();
+        controller.abort();
+        config.signal = controller.signal;
+      }
+    }
 
     // Add tab ID to every request for tab-level access control
     const tabId = getRequestTabId();
