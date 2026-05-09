@@ -2,7 +2,47 @@
 import { io, Socket } from 'socket.io-client';
 import { getStoredAccessToken } from '@/store/auth';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://127.0.0.1:3200';
+function isLocalHostname(hostname: string): boolean {
+  return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '0.0.0.0';
+}
+
+function parseHostname(rawUrl: string): string | null {
+  try {
+    return new URL(rawUrl).hostname;
+  } catch {
+    return null;
+  }
+}
+
+function resolveSocketBase(): string {
+  const envBase = process.env.NEXT_PUBLIC_API_URL?.trim();
+  if (envBase) {
+    if (typeof window !== 'undefined') {
+      const currentHost = window.location.hostname;
+      const envHost = parseHostname(envBase);
+      if (!(envHost && isLocalHostname(envHost) && !isLocalHostname(currentHost))) {
+        return envBase.replace(/\/+$/, '');
+      }
+    } else {
+      return envBase.replace(/\/+$/, '');
+    }
+  }
+
+  if (typeof window !== 'undefined') {
+    const { protocol, hostname } = window.location;
+    if (isLocalHostname(hostname)) {
+      return 'http://127.0.0.1:3200';
+    }
+    if (hostname.startsWith('admin.')) {
+      return `${protocol}//api.${hostname.slice('admin.'.length)}`;
+    }
+    return `${protocol}//${hostname}`;
+  }
+
+  return 'http://127.0.0.1:3200';
+}
+
+const API_URL = resolveSocketBase();
 
 let socket: Socket | null = null;
 let activeTenantId: string | null = null;

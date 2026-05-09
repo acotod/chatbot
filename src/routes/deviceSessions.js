@@ -10,6 +10,10 @@ const { audit } = require('../services/audit');
 
 const router = express.Router();
 
+function getAdminUserId(req) {
+  return req.admin?.adminUserId ?? req.user?.adminUserId ?? req.user?.id ?? null;
+}
+
 // ── Admin Device Management ──────────────────────────────────────────────────
 
 /**
@@ -18,7 +22,10 @@ const router = express.Router();
  */
 router.get('/admin', requireJwt, async (req, res) => {
   try {
-    const { adminUserId } = req.admin;
+    const adminUserId = getAdminUserId(req);
+    if (!adminUserId) {
+      return res.status(401).json({ error: 'Invalid token payload' });
+    }
     const sessions = await getAdminDeviceSessions(adminUserId);
 
     return res.json({
@@ -45,7 +52,10 @@ router.get('/admin', requireJwt, async (req, res) => {
  */
 router.post('/admin/:sessionId/revoke', requireJwt, async (req, res) => {
   try {
-    const { adminUserId } = req.admin;
+    const adminUserId = getAdminUserId(req);
+    if (!adminUserId) {
+      return res.status(401).json({ error: 'Invalid token payload' });
+    }
     const { sessionId } = req.params;
 
     // Verify the session belongs to the current admin
@@ -89,7 +99,7 @@ router.post('/admin/:sessionId/revoke', requireJwt, async (req, res) => {
  */
 router.get('/agent', requireAgentJwt, async (req, res) => {
   try {
-    const { agenteId } = req.agent;
+    const { agenteId } = req.user;
     const sessions = await getAgentDeviceSessions(agenteId);
 
     return res.json({
@@ -116,7 +126,7 @@ router.get('/agent', requireAgentJwt, async (req, res) => {
  */
 router.post('/agent/:sessionId/revoke', requireAgentJwt, async (req, res) => {
   try {
-    const { agenteId } = req.agent;
+    const { agenteId } = req.user;
     const { sessionId } = req.params;
 
     // Verify the session belongs to the current agent
@@ -158,7 +168,10 @@ router.post('/agent/:sessionId/revoke', requireAgentJwt, async (req, res) => {
  */
 router.post('/mfa/generate-recovery-codes', requireJwt, async (req, res) => {
   try {
-    const { adminUserId } = req.admin;
+    const adminUserId = getAdminUserId(req);
+    if (!adminUserId) {
+      return res.status(401).json({ error: 'Invalid token payload' });
+    }
 
     // Generate new recovery codes
     const codes = generateRecoveryCodes(8);
@@ -190,7 +203,10 @@ router.post('/mfa/generate-recovery-codes', requireJwt, async (req, res) => {
  */
 router.get('/mfa/recovery-codes-count', requireJwt, async (req, res) => {
   try {
-    const { adminUserId } = req.admin;
+    const adminUserId = getAdminUserId(req);
+    if (!adminUserId) {
+      return res.status(401).json({ error: 'Invalid token payload' });
+    }
     const count = await getUnusedCodeCount(adminUserId);
 
     return res.json({
