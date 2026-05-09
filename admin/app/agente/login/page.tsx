@@ -1,6 +1,6 @@
 "use client";
 
-import { agentAuthApi } from "@/lib/agentApi";
+import { agentAuthApi, type AgentLoginResponse } from "@/lib/agentApi";
 import { useAgentAuthStore } from "@/store/agentAuth";
 import { useAuthStore } from "@/store/auth";
 import axios from "axios";
@@ -23,6 +23,18 @@ type TenantOption = {
   tenantNombre: string;
   agenteId: number;
 };
+
+type AgentLoginDiscoveryResponse = {
+  requiresTenantSelection: true;
+  email: string;
+  tenants: TenantOption[];
+};
+
+function isLoginDiscoveryResponse(
+  payload: AgentLoginResponse | AgentLoginDiscoveryResponse
+): payload is AgentLoginDiscoveryResponse {
+  return "requiresTenantSelection" in payload;
+}
 
 function resolveAgentNextPath(next: string | undefined): string {
   if (next === "/dashboard") return "/dashboard";
@@ -68,7 +80,6 @@ function AgentLoginScreen({ reason, nextPath }: AgentLoginScreenProps) {
   const router = useRouter();
   const { setToken } = useAgentAuthStore();
   const { logout } = useAuthStore();
-  const [tenantSlug, setTenantSlug] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -86,14 +97,16 @@ function AgentLoginScreen({ reason, nextPath }: AgentLoginScreenProps) {
     setDeliveryChannels([]);
     setLoading(true);
     try {
-      const res = await agentAuthApi.loginWithTenant(
-        tenantSlug.trim().toLowerCase(),
-        email.trim().toLowerCase(),
-        password
-      );
-      
+      const res = await agentAuthApi.loginNoTenant(email.trim().toLowerCase(), password);
+      const payload = res.data as AgentLoginResponse | AgentLoginDiscoveryResponse;
+
+      if (isLoginDiscoveryResponse(payload)) {
+        setTenantOptions(payload.tenants || []);
+        return;
+      }
+
       logout(); // Clear any stray admin token
-      setToken(res.data.accessToken);
+      setToken(payload.accessToken);
       router.replace(nextPath);
     } catch (err) {
       setError(getAuthErrorMessage(err));
@@ -182,7 +195,6 @@ function AgentLoginScreen({ reason, nextPath }: AgentLoginScreenProps) {
           <button
             onClick={() => {
               setTenantOptions(null);
-              setTenantSlug("");
               setEmail("");
               setPassword("");
               setError("");
@@ -216,7 +228,7 @@ function AgentLoginScreen({ reason, nextPath }: AgentLoginScreenProps) {
           Ingreso operativo
         </h2>
         <p className="text-slate-600 text-base mb-7">
-          Entrá con tu empresa, email y contraseña para ver tu perfil único.
+          Entrá con tu email y contraseña para ver tu perfil.
         </p>
 
         {reason === "expired" && (
@@ -226,18 +238,6 @@ function AgentLoginScreen({ reason, nextPath }: AgentLoginScreenProps) {
         )}
 
         <form onSubmit={handleSubmit} className="space-y-4.5">
-          <div className="flex flex-col gap-1.5">
-            <label className="text-sm font-medium text-slate-700">Empresa</label>
-            <input
-              type="text"
-              value={tenantSlug}
-              onChange={(e) => setTenantSlug(e.target.value)}
-              placeholder="global-med"
-              required
-              className="px-4 py-3 rounded-xl border border-slate-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-cyan-500/30 focus:border-cyan-500 transition-all"
-            />
-          </div>
-
           <div className="flex flex-col gap-1.5">
             <label className="text-sm font-medium text-slate-700">Email</label>
             <input
