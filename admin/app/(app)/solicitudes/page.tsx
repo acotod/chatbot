@@ -389,17 +389,56 @@ export default function SolicitudesPage() {
 
   function extractEventText(eventItem: ConversationEventItem): string | null {
     const payload = eventItem.payload;
-    if (!payload || typeof payload !== "object" || Array.isArray(payload)) return null;
-    const data = payload as Record<string, unknown>;
+    let data: Record<string, unknown> | null = null;
+
+    if (payload && typeof payload === "object" && !Array.isArray(payload)) {
+      data = payload as Record<string, unknown>;
+    } else if (typeof payload === "string") {
+      try {
+        const parsed = JSON.parse(payload) as unknown;
+        if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+          data = parsed as Record<string, unknown>;
+        }
+      } catch {
+        // Ignore non-JSON strings and continue with event-specific fallback.
+      }
+
+      if (!data) {
+        return asReadableText(payload);
+      }
+    }
+
+    if (!data) return null;
+
+    if (eventItem.eventType === "user_input") {
+      const inboundText =
+        asReadableText(data.raw_input) ??
+        asReadableText(data.value) ??
+        asReadableText(data.input) ??
+        asReadableText(data.text);
+      if (inboundText) return inboundText;
+    }
+
+    if (eventItem.eventType === "menu_selection") {
+      const selectedText =
+        asReadableText(data.selected_id) ??
+        asReadableText(data.selected_title) ??
+        asReadableText(data.selected_label) ??
+        asReadableText(data.input);
+      if (selectedText) return selectedText;
+    }
 
     const directCandidates = [
       data.text,
       data.content,
+      data.raw_input,
+      data.value,
       data.input,
       data.message,
       data.prompt,
       data.caption,
       data.title,
+      data.selected_id,
     ];
     for (const candidate of directCandidates) {
       const text = asReadableText(candidate);
