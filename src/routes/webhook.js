@@ -10,6 +10,19 @@ const crmSync = require('../services/crmSync');
 
 const router = express.Router();
 
+function getSubmittedContactName(data) {
+  if (!data || typeof data !== 'object') return null;
+  const candidate =
+    data.nombre ??
+    data.name ??
+    data.fullName ??
+    data.full_name ??
+    data.customerName ??
+    data.customer_name;
+  const normalized = String(candidate ?? '').trim();
+  return normalized || null;
+}
+
 // ── Meta HMAC-SHA256 signature verification (same pattern as /whatsapp) ──────────
 function verifyFlowsSignature(req, res, next) {
   const appSecret = process.env.WA_APP_SECRET;
@@ -72,7 +85,13 @@ router.post('/', verifyFlowsSignature, webhookValidationRules, validate, async (
 
     // ── CRM auto-sync (best-effort) ───────────────────────────────────
     if (userId !== null) {
-      crmSync.touch({ userId, prisma: db.getPrismaClient(), canal: 'flows' }).catch(() => {});
+      const submittedName = getSubmittedContactName(data);
+      crmSync.touch({
+        userId,
+        prisma: db.getPrismaClient(),
+        canal: 'flows',
+        nombre: submittedName,
+      }).catch(() => {});
     }
 
     // Dual-write to the UEG canonical event log (best-effort)

@@ -116,10 +116,20 @@ async function executeMenu({ node, input, variables }) {
 async function executeInput({ node, input, variables, llmService, tenantId }) {
   const cfg = resolveConfig(node.config, variables);
   const updatedVars = {};
+  const crmTouch = {};
 
   // Store captured value in named variable
   if (cfg.variable && input != null) {
     updatedVars[cfg.variable] = input;
+  }
+
+  // Optional mapping from captured input to CRM contact fields.
+  if (input != null && typeof cfg.crmField === 'string') {
+    const field = cfg.crmField.trim().toLowerCase();
+    if (field === 'nombre') {
+      const normalized = String(input).trim();
+      if (normalized) crmTouch.nombre = normalized;
+    }
   }
 
   // LLM classification for free-text routing
@@ -146,6 +156,7 @@ async function executeInput({ node, input, variables, llmService, tenantId }) {
     output     : cfg.prompt ? { type: 'text', text: cfg.prompt } : null,
     nextNodeId,
     updatedVars,
+    crmTouch,
     terminal   : false,
     fallback   : false,
   };

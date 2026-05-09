@@ -37,6 +37,7 @@ const integrationRunner       = require('../engine/integrationRunner');
 const convLogger              = require('../engine/conversationLogger');
 const { getCatalog }          = require('./endpointCatalog');
 const db                      = require('./database');
+const crmSync                 = require('./crmSync');
 const logger                  = require('../utils/logger');
 
 const prisma = new PrismaClient();
@@ -172,6 +173,16 @@ async function executeStep({ tenantId, currentNodeId, input, userId, sessionKey,
 
   // ── Merge updated variables ───────────────────────────────────────────────
   const updatedVars = { ...variables, ...(execResult.updatedVars ?? {}) };
+
+  // Best-effort CRM enrichment from flow-captured values (e.g. input crmField=nombre).
+  if (userId != null && execResult.crmTouch?.nombre) {
+    crmSync.touch({
+      userId,
+      prisma: db.getPrismaClient(),
+      canal: 'chatbot',
+      nombre: execResult.crmTouch.nombre,
+    }).catch(() => {});
+  }
 
   // ── Persist state ─────────────────────────────────────────────────────────
   if (userId != null) {
