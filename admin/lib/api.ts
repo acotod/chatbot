@@ -338,7 +338,7 @@ export const solicitudesApi = {
     apiClient.post(`/admin/tenants/${slug}/solicitudes/${id}/comments`, data),
   history: (slug: string, id: number) =>
     apiClient.get(`/admin/tenants/${slug}/solicitudes/${id}/history`),
-  messages: (slug: string, id: number, params?: { page?: number; limit?: number; q?: string; direccion?: "entrada" | "salida"; start?: string; end?: string }) =>
+  messages: (slug: string, id: number, params?: { page?: number; limit?: number; q?: string; direccion?: "entrada" | "salida"; start?: string; end?: string; lectura?: "leido" | "no_leido" }) =>
     apiClient.get(`/admin/tenants/${slug}/solicitudes/${id}/messages`, { params }),
   sendMessage: (slug: string, id: number, text: string) =>
     apiClient.post(`/admin/tenants/${slug}/solicitudes/${id}/messages`, { text }),

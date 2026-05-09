@@ -196,6 +196,7 @@ export default function SolicitudesPage() {
   const [messageDirection, setMessageDirection] = useState<"" | "entrada" | "salida">("");
   const [messageStartDate, setMessageStartDate] = useState("");
   const [messageEndDate, setMessageEndDate] = useState("");
+  const [messageReadStatus, setMessageReadStatus] = useState<"" | "leido" | "no_leido">("");
   const [conversationDetailModal, setConversationDetailModal] = useState<{
     open: boolean;
     conversation: ConversationItem | null;
@@ -389,6 +390,7 @@ export default function SolicitudesPage() {
       messageDirection,
       messageStartDate,
       messageEndDate,
+      messageReadStatus,
     ],
     queryFn: () =>
       isAgentSession
@@ -400,6 +402,7 @@ export default function SolicitudesPage() {
               direccion: messageDirection || undefined,
               start: messageStartDate || undefined,
               end: messageEndDate || undefined,
+              lectura: messageReadStatus || undefined,
             })
             .then((r) => r as any)
         : solicitudesApi
@@ -410,6 +413,7 @@ export default function SolicitudesPage() {
               direccion: messageDirection || undefined,
               start: messageStartDate || undefined,
               end: messageEndDate || undefined,
+              lectura: messageReadStatus || undefined,
             })
             .then((r) => r as any),
     enabled: Boolean(detailModal.open && detailModal.solicitud?.id && detailTab === "mensajes"),
@@ -1198,6 +1202,15 @@ export default function SolicitudesPage() {
                       <option value="entrada">Recibidos</option>
                       <option value="salida">Enviados</option>
                     </select>
+                    <select
+                      value={messageReadStatus}
+                      onChange={(e) => setMessageReadStatus((e.target.value as "" | "leido" | "no_leido") || "")}
+                      className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+                    >
+                      <option value="">Todos los estados</option>
+                      <option value="leido">Leidos</option>
+                      <option value="no_leido">No leidos</option>
+                    </select>
                     <input
                       type="date"
                       value={messageStartDate}
@@ -1218,8 +1231,9 @@ export default function SolicitudesPage() {
                         setMessageDirection("");
                         setMessageStartDate("");
                         setMessageEndDate("");
+                        setMessageReadStatus("");
                       }}
-                      disabled={!messageSearch.trim() && !messageDirection && !messageStartDate && !messageEndDate}
+                      disabled={!messageSearch.trim() && !messageDirection && !messageStartDate && !messageEndDate && !messageReadStatus}
                     >
                       Limpiar
                     </Button>

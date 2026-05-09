@@ -297,7 +297,7 @@ export const agentAuthApi = {
     resolutionNotes?: string | null;
     customerNotes?: string | null;
   }) => agentApiClient.patch<AgentSolicitud>(`/auth/agent/solicitudes/${id}`, data),
-  solicitudMessages: (id: number, params?: { page?: number; limit?: number; q?: string; direccion?: "entrada" | "salida"; start?: string; end?: string }) =>
+  solicitudMessages: (id: number, params?: { page?: number; limit?: number; q?: string; direccion?: "entrada" | "salida"; start?: string; end?: string; lectura?: "leido" | "no_leido" }) =>
     agentApiClient.get<AgentSolicitudMessagesResponse>(`/auth/agent/solicitudes/${id}/messages`, { params }),
   sendSolicitudMessage: (id: number, text: string) =>
     agentApiClient.post<{ ok: boolean; solicitudId: number; mensaje: AgentSolicitudMessage; waResponse: unknown }>(

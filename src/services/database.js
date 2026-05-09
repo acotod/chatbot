@@ -1691,7 +1691,7 @@ async function getSolicitudMessagingContext(solicitudId, tenantId) {
   });
 }
 
-async function listMensajesBySolicitud({ solicitudId, tenantId, page = 1, limit = 50, q, direccion, start, end }) {
+async function listMensajesBySolicitud({ solicitudId, tenantId, page = 1, limit = 50, q, direccion, start, end, lectura }) {
   const client = getPrismaClient();
   if (!client) return null;
 
@@ -1704,6 +1704,9 @@ async function listMensajesBySolicitud({ solicitudId, tenantId, page = 1, limit 
   const searchQuery = String(q ?? '').trim().toLowerCase();
   const normalizedDireccion = ['entrada', 'salida'].includes(String(direccion ?? '').trim().toLowerCase())
     ? String(direccion).trim().toLowerCase()
+    : null;
+  const normalizedLectura = ['leido', 'no_leido'].includes(String(lectura ?? '').trim().toLowerCase())
+    ? String(lectura).trim().toLowerCase()
     : null;
   const startDate = normalizeMensajeDateFilter(start, 'start');
   const endDate = normalizeMensajeDateFilter(end, 'end');
@@ -1722,6 +1725,7 @@ async function listMensajesBySolicitud({ solicitudId, tenantId, page = 1, limit 
     tenantId,
     userId: solicitud.userId,
     ...(normalizedDireccion ? { direccion: normalizedDireccion } : {}),
+    ...(normalizedLectura ? { leido: normalizedLectura === 'leido' } : {}),
     ...((startDate || endDate)
       ? {
           createdAt: {

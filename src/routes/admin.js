@@ -1512,6 +1512,7 @@ router.get('/tenants/:slug/solicitudes/:id/messages', requirePermiso('VIEW_SOLIC
             direccion: req.query?.direccion,
             start: req.query?.start,
             end: req.query?.end,
+            lectura: req.query?.lectura,
         });
         if (!result) return res.status(404).json({ error: 'Solicitud not found' });
 

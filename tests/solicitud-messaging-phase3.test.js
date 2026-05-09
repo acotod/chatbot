@@ -61,10 +61,21 @@ describe('listMensajesBySolicitud – filter parameter contracts', () => {
     expect(src).toMatch(/listMensajesBySolicitud\(\{[^)]*\bend\b[^)]*\}/);
   });
 
+  it('accepts lectura as named parameter', () => {
+    const src = readSrc('src', 'services', 'database.js');
+    expect(src).toMatch(/listMensajesBySolicitud\(\{[^)]*\blectura\b[^)]*\}/);
+  });
+
   it('normalizes direccion to only accepted values (entrada|salida)', () => {
     const src = readSrc('src', 'services', 'database.js');
     expect(src).toContain("['entrada', 'salida'].includes");
     expect(src).toContain('normalizedDireccion');
+  });
+
+  it('normalizes lectura to only accepted values (leido|no_leido)', () => {
+    const src = readSrc('src', 'services', 'database.js');
+    expect(src).toContain("['leido', 'no_leido'].includes");
+    expect(src).toContain('normalizedLectura');
   });
 
   it('trims and lowercases q before searching', () => {
@@ -138,6 +149,11 @@ describe('Admin route – filter params forwarded to DB', () => {
     expect(src).toMatch(/req\.query\??\.end|\bend:\s*req\.query\??\.end/);
   });
 
+  it('reads lectura from req.query in GET messages handler', () => {
+    const src = readSrc('src', 'routes', 'admin.js');
+    expect(src).toMatch(/req\.query\??\.lectura|\blectura:\s*req\.query\??\.lectura/);
+  });
+
   it('passes both filter params to listMensajesBySolicitud call', () => {
     const src = readSrc('src', 'routes', 'admin.js');
     expect(src).toContain('listMensajesBySolicitud');
@@ -148,6 +164,7 @@ describe('Admin route – filter params forwarded to DB', () => {
     expect(callContext).toContain('direccion');
     expect(callContext).toContain('start');
     expect(callContext).toContain('end');
+    expect(callContext).toContain('lectura');
   });
 
   it('emits SOLICITUD_MESSAGE_SENT socket event after admin send', () => {
@@ -174,6 +191,11 @@ describe('Auth route – agent filter params + socket emission', () => {
     const src = readSrc('src', 'routes', 'auth.js');
     expect(src).toMatch(/req\.query\??\.start|\bstart:\s*req\.query\??\.start/);
     expect(src).toMatch(/req\.query\??\.end|\bend:\s*req\.query\??\.end/);
+  });
+
+  it('reads lectura from req.query in GET agent messages handler', () => {
+    const src = readSrc('src', 'routes', 'auth.js');
+    expect(src).toMatch(/req\.query\??\.lectura|\blectura:\s*req\.query\??\.lectura/);
   });
 
   it('imports socketService', () => {
@@ -290,6 +312,11 @@ describe('Frontend solicitudes page – real-time socket subscriptions', () => {
     expect(src).toContain('messageEndDate');
   });
 
+  it('has read-status filter state for messages', () => {
+    const src = readSrc('admin', 'app', '(app)', 'solicitudes', 'page.tsx');
+    expect(src).toContain('messageReadStatus');
+  });
+
   it('passes filter params to messages API call', () => {
     const src = readSrc('admin', 'app', '(app)', 'solicitudes', 'page.tsx');
     // q param forwarded
@@ -299,6 +326,8 @@ describe('Frontend solicitudes page – real-time socket subscriptions', () => {
     // start/end params forwarded
     expect(src).toContain('start: messageStartDate');
     expect(src).toContain('end: messageEndDate');
+    // lectura param forwarded
+    expect(src).toContain('lectura: messageReadStatus');
   });
 });
 
@@ -336,20 +365,22 @@ describe('Frontend conversaciones page – solicitud cross-link', () => {
 // ─── 8. Frontend API clients – filter params ─────────────────────────────
 
 describe('Frontend API clients – filter param types', () => {
-  it('admin api.ts messages() accepts q, direccion, start and end params', () => {
+  it('admin api.ts messages() accepts q, direccion, start, end and lectura params', () => {
     const src = readSrc('admin', 'lib', 'api.ts');
     expect(src).toContain('q?:');
     expect(src).toContain('direccion?:');
     expect(src).toContain('start?:');
     expect(src).toContain('end?:');
+    expect(src).toContain('lectura?:');
   });
 
-  it('agentApi.ts solicitudMessages() accepts q, direccion, start and end params', () => {
+  it('agentApi.ts solicitudMessages() accepts q, direccion, start, end and lectura params', () => {
     const src = readSrc('admin', 'lib', 'agentApi.ts');
     expect(src).toContain('q?:');
     expect(src).toContain('direccion?:');
     expect(src).toContain('start?:');
     expect(src).toContain('end?:');
+    expect(src).toContain('lectura?:');
   });
 
   it('admin api sends q to backend query string', () => {
