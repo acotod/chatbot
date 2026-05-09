@@ -89,6 +89,23 @@ export type AgentSolicitudesResponse = {
   data: AgentSolicitud[];
 };
 
+export type AgentConversation = {
+  id: string;
+  userKey: string;
+  status: string;
+  startedAt: string;
+  endedAt: string | null;
+  flow?: { id: number; nombre: string } | null;
+  solicitudes?: Array<{ id: number; estado: string; createdAt: string }>;
+};
+
+export type AgentConversationsResponse = {
+  data: AgentConversation[];
+  total: number;
+  page: number;
+  limit: number;
+};
+
 export type AgentAgendaEvent = {
   id: number;
   titulo: string;
@@ -159,6 +176,8 @@ export const agentAuthApi = {
     agentApiClient.get<AgentKpisResponse>("/auth/agent/kpis"),
   solicitudes: (params?: { status?: "assigned" | "completed"; page?: number; limit?: number }) =>
     agentApiClient.get<AgentSolicitudesResponse>("/auth/agent/solicitudes", { params }),
+  conversations: (params: { userKey: string; page?: number; limit?: number }) =>
+    agentApiClient.get<AgentConversationsResponse>("/auth/agent/conversations", { params }),
   updateSolicitud: (id: number, data: {
     estado?: string;
     prioridad?: string | null;

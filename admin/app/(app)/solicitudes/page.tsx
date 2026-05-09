@@ -329,8 +329,11 @@ export default function SolicitudesPage() {
 
   const detailClientKey = detailModal.solicitud?.user?.phone ?? detailModal.solicitud?.telefonoContacto ?? "";
   const { data: conversationData, isLoading: conversationsLoading } = useQuery({
-    queryKey: ["solicitud-conversations", tenantSlug, detailClientKey],
-    queryFn: () => conversationsApi.list({ userKey: detailClientKey, limit: 50 }).then((r) => r.data),
+    queryKey: ["solicitud-conversations", isAgentSession ? "agent" : tenantSlug, detailClientKey],
+    queryFn: () =>
+      isAgentSession
+        ? agentAuthApi.conversations({ userKey: detailClientKey, limit: 50 }).then((r) => r.data)
+        : conversationsApi.list({ userKey: detailClientKey, limit: 50 }).then((r) => r.data),
     enabled: Boolean(detailModal.open && detailModal.solicitud && detailClientKey && detailTab === "conversaciones"),
     staleTime: 30_000,
   });

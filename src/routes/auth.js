@@ -929,6 +929,71 @@ router.get('/agent/solicitudes', requireAgentJwt, async (req, res, next) => {
   }
 });
 
+// ── GET /auth/agent/conversations ───────────────────────────────────────────
+router.get('/agent/conversations', requireAgentJwt, async (req, res, next) => {
+  try {
+    const tenantId = req.agent?.tenantId;
+    if (!tenantId) {
+      return res.status(400).json({ error: 'Invalid agent context' });
+    }
+
+    const userKey = String(req.query.userKey || '').trim();
+    if (!userKey) {
+      return res.status(400).json({ error: 'userKey is required' });
+    }
+
+    const page = Math.max(1, Number.parseInt(String(req.query.page || '1'), 10) || 1);
+    const limit = Math.min(100, Math.max(1, Number.parseInt(String(req.query.limit || '20'), 10) || 20));
+    const skip = (page - 1) * limit;
+
+    const where = { tenantId, userKey };
+
+    const [conversations, total] = await Promise.all([
+      prisma.conversation.findMany({
+        where,
+        skip,
+        take: limit,
+        orderBy: { startedAt: 'desc' },
+        include: {
+          flow: { select: { id: true, nombre: true } },
+          _count: { select: { events: true } },
+          solicitudes: {
+            select: {
+              id: true,
+              titulo: true,
+              estado: true,
+              prioridad: true,
+              origin: true,
+              createdAt: true,
+            },
+            orderBy: { createdAt: 'desc' },
+          },
+        },
+      }),
+      prisma.conversation.count({ where }),
+    ]);
+
+    const data = conversations.map((c) => ({
+      id: c.id,
+      userKey: c.userKey,
+      flow: c.flow ? { id: c.flow.id, nombre: c.flow.nombre } : null,
+      flowVersionId: c.flowVersionId,
+      status: c.status,
+      startedAt: c.startedAt,
+      endedAt: c.endedAt,
+      durationSec: c.endedAt
+        ? Math.round((c.endedAt.getTime() - c.startedAt.getTime()) / 1000)
+        : null,
+      eventCount: c._count.events,
+      solicitudes: c.solicitudes,
+    }));
+
+    return res.json({ data, total, page, limit });
+  } catch (err) {
+    return next(err);
+  }
+});
+
 // ── PATCH /auth/agent/solicitudes/:id ──────────────────────────────────────
 router.patch('/agent/solicitudes/:id', requireAgentJwt, async (req, res, next) => {
   try {
