@@ -217,68 +217,6 @@ function AgentLoginScreen({ reason, nextPath }: AgentLoginScreenProps) {
           Ingreso operativo
         </h2>
         <p className="text-slate-600 text-base mb-7">
-          Entrá con tu email y contraseña para acceder a tu cuenta.
-        </p>
-
-        {reason === "expired" && (
-          <div className="mb-4 px-4 py-3 bg-amber-50 border border-amber-200 rounded-xl text-amber-700 text-sm">
-            Tu sesión de agente expiró. Iniciá sesión nuevamente.
-          </div>
-        )}
-
-        <form onSubmit={handleSubmit} className="space-y-4.5">
-          <div className="flex flex-col gap-1.5">
-            <label className="text-sm font-medium text-slate-700">Email</label>
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="agente@empresa.com"
-              required
-              className="px-4 py-3 rounded-xl border border-slate-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-cyan-500/30 focus:border-cyan-500 transition-all"
-            />
-          </div>
-
-          <div className="flex flex-col gap-1.5">
-            <label className="text-sm font-medium text-slate-700">Contraseña</label>
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="••••••••"
-              required
-              className="px-4 py-3 rounded-xl border border-slate-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-cyan-500/30 focus:border-cyan-500 transition-all"
-            />
-          </div>
-
-          {error && (
-            <div className="px-4 py-3 bg-red-50 border border-red-200 rounded-xl text-red-600 text-sm">
-              {error}
-            </div>
-          )}
-
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full py-3.5 bg-cyan-600 hover:bg-cyan-700 text-white font-medium rounded-xl transition-all shadow-sm shadow-cyan-100 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {loading ? "Ingresando..." : "Entrar como agente"}
-          </button>
-
-          <button
-            type="button"
-            className="w-full text-sm font-medium text-cyan-700 hover:text-cyan-800 transition disabled:opacity-50"
-            disabled
-          >
-            Olvidé mi contraseña
-          </button>
-          </div>
-        </div>
-
-        <h2 className="text-3xl font-semibold tracking-tight text-slate-900 mb-2">
-          Ingreso operativo
-        </h2>
-        <p className="text-slate-600 text-base mb-7">
           Entrá con tu empresa, email y contraseña para ver tu perfil único.
         </p>
 
