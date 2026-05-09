@@ -1,7 +1,7 @@
 "use client";
 
 import { authApi } from "@/lib/api";
-import { getStoredAgentAccessToken } from "@/store/agentAuth";
+import { getStoredAgentAccessToken, useAgentAuthStore } from "@/store/agentAuth";
 import { getStoredAccessToken, getStoredRefreshToken, useAuthStore } from "@/store/auth";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { usePathname, useRouter } from "next/navigation";
@@ -14,11 +14,37 @@ function SessionSecurityGuard() {
   const pathname = usePathname();
   const router = useRouter();
   const { token, refreshToken, tokenExpiresAt, logout } = useAuthStore();
+  const agentLogout = useAgentAuthStore((state) => state.logout);
   const lastActivityAtRef = useRef<number>(0);
   const hasAccessToken = Boolean(token || getStoredAccessToken());
   const hasAgentAccessToken = Boolean(getStoredAgentAccessToken());
   const isAgentOnSharedRoute = ["/dashboard", "/solicitudes", "/agenda", "/contactos"].includes(pathname) && hasAgentAccessToken;
   const effectiveRefreshToken = refreshToken ?? getStoredRefreshToken();
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const navEntries = window.performance.getEntriesByType("navigation");
+    const navType = (navEntries[0] as PerformanceNavigationTiming | undefined)?.type;
+    if (navType !== "reload") return;
+
+    // Explicit security behavior requested: hard refresh forces a fresh login.
+    logout();
+    agentLogout();
+
+    if (pathname.startsWith("/portal")) return;
+
+    if (pathname.startsWith("/agente")) {
+      if (!pathname.startsWith("/agente/login")) {
+        router.replace("/agente/login?reason=reload");
+      }
+      return;
+    }
+
+    if (!pathname.startsWith("/login")) {
+      router.replace("/login?reason=reload");
+    }
+  }, [agentLogout, logout, pathname, router]);
 
   useEffect(() => {
     if (pathname.startsWith("/login") || pathname.startsWith("/portal") || pathname.startsWith("/agente")) return;
