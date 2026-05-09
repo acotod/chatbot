@@ -2,6 +2,7 @@
 
 import { agentAuthApi } from "@/lib/agentApi";
 import { useAgentAuthStore } from "@/store/agentAuth";
+import { useAuthStore } from "@/store/auth";
 import axios from "axios";
 import { MessageCircle } from "lucide-react";
 import { useRouter } from "next/navigation";
@@ -59,6 +60,7 @@ export default async function AgentLoginPage({ searchParams }: AgentLoginPagePro
 function AgentLoginScreen({ reason, nextPath }: AgentLoginScreenProps) {
   const router = useRouter();
   const { setToken } = useAgentAuthStore();
+  const { logout } = useAuthStore();
   const [tenantSlug, setTenantSlug] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -77,6 +79,7 @@ function AgentLoginScreen({ reason, nextPath }: AgentLoginScreenProps) {
     setLoading(true);
     try {
       const res = await agentAuthApi.login(tenantSlug.trim().toLowerCase(), email.trim().toLowerCase(), password);
+      logout(); // Clear any stray admin token before starting agent session
       setToken(res.data.accessToken);
       router.replace(nextPath);
     } catch (err) {

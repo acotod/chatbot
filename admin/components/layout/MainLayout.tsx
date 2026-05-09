@@ -38,9 +38,17 @@ export default function MainLayout({
   const allowAgentSharedRoute = ["/dashboard", "/solicitudes", "/agenda", "/contactos"].includes(pathname) && hasAgentAccessToken;
 
   useEffect(() => {
-    if (!isClient || hasAccessToken || allowAgentSharedRoute) return;
+    if (!isClient) return;
+    // Allow access if admin token OR agent on shared route
+    if (hasAccessToken || allowAgentSharedRoute) return;
+    // If agent token exists but can't access this route, redirect to agent login
+    if (hasAgentAccessToken) {
+      router.replace("/agente/login");
+      return;
+    }
+    // Otherwise redirect to admin login
     router.replace("/login");
-  }, [hasAccessToken, isClient, allowAgentSharedRoute, router]);
+  }, [hasAccessToken, hasAgentAccessToken, isClient, allowAgentSharedRoute, router]);
 
   if (!isClient || (!hasAccessToken && !allowAgentSharedRoute)) {
     return <div className="min-h-screen bg-slate-50" />;

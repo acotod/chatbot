@@ -37,6 +37,24 @@ agentApiClient.interceptors.request.use((config) => {
   return config;
 });
 
+// Add 401 response interceptor for agent session expiry
+agentApiClient.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response?.status === 401) {
+      if (typeof window !== "undefined") {
+        // Clear agent auth and redirect to agent login
+        (async () => {
+          const { clearStoredAgentAuth } = await import("@/store/agentAuth");
+          clearStoredAgentAuth();
+          window.location.href = "/agente/login?reason=expired";
+        })();
+      }
+    }
+    return Promise.reject(error);
+  }
+);
+
 export type AgentLoginResponse = {
   accessToken: string;
   expiresIn: number;
