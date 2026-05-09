@@ -37,13 +37,22 @@ agentApiClient.interceptors.request.use((config) => {
   return config;
 });
 
-// Add 401 response interceptor for agent session expiry
+// Add 401 response interceptor for agent session expiry.
+// Auth endpoints (login, forgot-password, reset-password) return 401 for bad
+// credentials — don't treat those as expired sessions or we'd loop back to the
+// login page with the misleading amber "session expired" banner.
 agentApiClient.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response?.status === 401) {
-      if (typeof window !== "undefined") {
-        // Clear agent auth and redirect to agent login
+      const requestUrl: string = error.config?.url ?? "";
+      const isAuthEndpoint =
+        requestUrl.includes("/auth/agent/login") ||
+        requestUrl.includes("/auth/agent/forgot-password") ||
+        requestUrl.includes("/auth/agent/reset-password");
+
+      if (!isAuthEndpoint && typeof window !== "undefined") {
+        // Clear agent auth and redirect to agent login with session-expired reason
         (async () => {
           const { clearStoredAgentAuth } = await import("@/store/agentAuth");
           clearStoredAgentAuth();
