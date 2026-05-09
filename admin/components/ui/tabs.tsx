@@ -20,12 +20,21 @@ interface TabsContextValue {
 const TabsContext = createContext<TabsContextValue | null>(null);
 
 interface TabsProps extends HTMLAttributes<HTMLDivElement> {
-  defaultValue: string;
+  defaultValue?: string;
+  value?: string;
+  onValueChange?: (value: string) => void;
   children: ReactNode;
 }
 
-export function Tabs({ defaultValue, children, ...props }: TabsProps) {
-  const [value, setValue] = useState(defaultValue);
+export function Tabs({ defaultValue, value: controlledValue, onValueChange, children, ...props }: TabsProps) {
+  const [internalValue, setInternalValue] = useState(defaultValue ?? controlledValue ?? "");
+  const value = controlledValue ?? internalValue;
+  const setValue = (nextValue: string) => {
+    if (controlledValue === undefined) {
+      setInternalValue(nextValue);
+    }
+    onValueChange?.(nextValue);
+  };
   const ctx = useMemo(() => ({ value, setValue }), [value]);
   return (
     <TabsContext.Provider value={ctx}>
