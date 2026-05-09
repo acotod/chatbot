@@ -669,10 +669,10 @@ export const conversationsApi = {
   list: (params: { tenantSlug?: string; status?: string; flowId?: number; userKey?: string; from?: string; to?: string; page?: number; limit?: number }) =>
     apiClient.get('/conversations', { params }),
   /** Full conversation detail with event timeline */
-  getById: (id: string) =>
-    apiClient.get(`/conversations/${id}`),
+  getById: (id: string, params?: { tenantSlug?: string }) =>
+    apiClient.get(`/conversations/${id}`, { params }),
   /** Lazy-load events for a conversation (supports cursor-based pagination) */
-  getEvents: (id: string, params?: { eventType?: string; after?: string; limit?: number }) =>
+  getEvents: (id: string, params?: { tenantSlug?: string; eventType?: string; after?: string; limit?: number }) =>
     apiClient.get(`/conversations/${id}/events`, { params }),
   /** Admin force-close a conversation */
   updateStatus: (id: string, status: 'completed' | 'abandoned' | 'error') =>

@@ -83,6 +83,24 @@ interface ConversationItem {
   solicitudes?: Array<{ id: number; estado: string; createdAt: string }>;
 }
 
+interface ConversationEventItem {
+  id: string;
+  nodeRef: string | null;
+  eventType: string;
+  payload: unknown;
+  createdAt: string;
+}
+
+interface ConversationDetail {
+  id: string;
+  userKey: string;
+  status: string;
+  startedAt: string;
+  endedAt: string | null;
+  flow?: { id: number; nombre: string } | null;
+  events?: ConversationEventItem[];
+}
+
 interface Agente {
   id: number;
   nombre: string;
@@ -153,6 +171,10 @@ export default function SolicitudesPage() {
     subcategoria: "",
     dueAt: "",
   });
+  const [conversationDetailModal, setConversationDetailModal] = useState<{
+    open: boolean;
+    conversation: ConversationItem | null;
+  }>({ open: false, conversation: null });
   const [selectedAgente, setSelectedAgente] = useState("");
 
   const { data: configData } = useQuery({
@@ -311,6 +333,28 @@ export default function SolicitudesPage() {
     staleTime: 30_000,
   });
   const conversations: ConversationItem[] = (conversationData as { data?: ConversationItem[] })?.data ?? (Array.isArray(conversationData) ? conversationData : []);
+  const selectedConversationId = conversationDetailModal.conversation?.id ?? "";
+  const { data: conversationDetailData, isLoading: conversationDetailLoading } = useQuery({
+    queryKey: ["solicitud-conversation-detail", tenantSlug, selectedConversationId],
+    queryFn: () =>
+      conversationsApi
+        .getById(selectedConversationId, { tenantSlug: tenantSlug || undefined })
+        .then((r) => r.data as ConversationDetail),
+    enabled: Boolean(conversationDetailModal.open && selectedConversationId && !isAgentSession),
+    staleTime: 30_000,
+  });
+  const conversationEvents: ConversationEventItem[] =
+    (conversationDetailData?.events as ConversationEventItem[] | undefined) ?? [];
+
+  function formatEventPayload(payload: unknown): string {
+    if (payload == null) return "Sin payload";
+    if (typeof payload === "string") return payload;
+    try {
+      return JSON.stringify(payload, null, 2);
+    } catch {
+      return "Payload no serializable";
+    }
+  }
 
   const solicitudes: Solicitud[] = data?.data ?? [];
   const total: number = data?.total ?? 0;
@@ -616,9 +660,16 @@ export default function SolicitudesPage() {
                     {conversations.map((conversation) => {
                       const isCurrentConversation = detailModal.solicitud?.conversation?.id === conversation.id;
                       return (
-                        <div
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setConversationDetailModal({
+                              open: true,
+                              conversation,
+                            })
+                          }
                           key={conversation.id}
-                          className={`rounded-xl border p-4 ${isCurrentConversation ? "border-blue-300 bg-blue-50/50" : "border-slate-200 bg-white"}`}
+                          className={`w-full text-left rounded-xl border p-4 transition hover:shadow-sm ${isCurrentConversation ? "border-blue-300 bg-blue-50/50" : "border-slate-200 bg-white"}`}
                         >
                           <div className="flex items-start justify-between gap-3">
                             <div>
@@ -653,7 +704,7 @@ export default function SolicitudesPage() {
                               ))}
                             </div>
                           ) : null}
-                        </div>
+                        </button>
                       );
                     })}
                   </div>
@@ -665,6 +716,84 @@ export default function SolicitudesPage() {
                 </div>
               </TabsContent>
             </Tabs>
+          )}
+        </Modal>
+
+        <Modal
+          open={conversationDetailModal.open}
+          onClose={() => setConversationDetailModal({ open: false, conversation: null })}
+          title="Detalle de conversación"
+          className="max-w-3xl"
+        >
+          {conversationDetailModal.conversation && (
+            <div className="space-y-4">
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                  <p className="text-xs uppercase tracking-wide text-slate-500">Flujo</p>
+                  <p className="mt-1 font-medium text-slate-900">
+                    {conversationDetailModal.conversation.flow?.nombre ?? "Flujo sin nombre"}
+                  </p>
+                </div>
+                <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                  <p className="text-xs uppercase tracking-wide text-slate-500">Estado</p>
+                  <p className="mt-1 text-sm text-slate-700">{conversationDetailModal.conversation.status}</p>
+                </div>
+                <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 sm:col-span-2">
+                  <p className="text-xs uppercase tracking-wide text-slate-500">Identificador</p>
+                  <p className="mt-1 text-sm text-slate-700 break-all">{conversationDetailModal.conversation.id}</p>
+                  <p className="mt-1 text-sm text-slate-600">Cliente {conversationDetailModal.conversation.userKey}</p>
+                </div>
+                <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                  <p className="text-xs uppercase tracking-wide text-slate-500">Inicio</p>
+                  <p className="mt-1 text-sm text-slate-700">{formatDate(conversationDetailModal.conversation.startedAt)}</p>
+                </div>
+                <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                  <p className="text-xs uppercase tracking-wide text-slate-500">Fin</p>
+                  <p className="mt-1 text-sm text-slate-700">
+                    {conversationDetailModal.conversation.endedAt
+                      ? formatDate(conversationDetailModal.conversation.endedAt)
+                      : "Activa / sin cierre"}
+                  </p>
+                </div>
+              </div>
+
+              {isAgentSession ? (
+                <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 p-4 text-sm text-slate-500">
+                  En sesión de agente solo se muestra el resumen. El detalle técnico de eventos está disponible en sesión de administrador.
+                </div>
+              ) : conversationDetailLoading ? (
+                <div className="rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-500">
+                  Cargando eventos de la conversación...
+                </div>
+              ) : conversationEvents.length === 0 ? (
+                <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 p-4 text-sm text-slate-500">
+                  Esta conversación no tiene eventos registrados.
+                </div>
+              ) : (
+                <div className="space-y-2 max-h-[45vh] overflow-auto pr-1">
+                  {conversationEvents.map((eventItem) => (
+                    <div key={eventItem.id} className="rounded-xl border border-slate-200 bg-white p-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <p className="text-sm font-medium text-slate-900">{eventItem.eventType}</p>
+                        <p className="text-xs text-slate-500">{formatDate(eventItem.createdAt)}</p>
+                      </div>
+                      {eventItem.nodeRef ? (
+                        <p className="mt-1 text-xs text-slate-500">Nodo: {eventItem.nodeRef}</p>
+                      ) : null}
+                      <pre className="mt-2 overflow-auto rounded-lg bg-slate-950/95 p-3 text-xs text-slate-100">
+                        {formatEventPayload(eventItem.payload)}
+                      </pre>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <div className="flex justify-end">
+                <Button variant="secondary" onClick={() => setConversationDetailModal({ open: false, conversation: null })}>
+                  Cerrar
+                </Button>
+              </div>
+            </div>
           )}
         </Modal>
       </div>
@@ -1183,9 +1312,16 @@ export default function SolicitudesPage() {
                   {conversations.map((conversation) => {
                     const isCurrentConversation = detailModal.solicitud?.conversation?.id === conversation.id;
                     return (
-                      <div
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setConversationDetailModal({
+                            open: true,
+                            conversation,
+                          })
+                        }
                         key={conversation.id}
-                        className={`rounded-xl border p-4 ${isCurrentConversation ? "border-blue-300 bg-blue-50/50" : "border-slate-200 bg-white"}`}
+                        className={`w-full text-left rounded-xl border p-4 transition hover:shadow-sm ${isCurrentConversation ? "border-blue-300 bg-blue-50/50" : "border-slate-200 bg-white"}`}
                       >
                         <div className="flex items-start justify-between gap-3">
                           <div>
@@ -1220,7 +1356,7 @@ export default function SolicitudesPage() {
                             ))}
                           </div>
                         ) : null}
-                      </div>
+                      </button>
                     );
                   })}
                 </div>
@@ -1232,6 +1368,84 @@ export default function SolicitudesPage() {
               </div>
             </TabsContent>
           </Tabs>
+        )}
+      </Modal>
+
+      <Modal
+        open={conversationDetailModal.open}
+        onClose={() => setConversationDetailModal({ open: false, conversation: null })}
+        title="Detalle de conversación"
+        className="max-w-3xl"
+      >
+        {conversationDetailModal.conversation && (
+          <div className="space-y-4">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                <p className="text-xs uppercase tracking-wide text-slate-500">Flujo</p>
+                <p className="mt-1 font-medium text-slate-900">
+                  {conversationDetailModal.conversation.flow?.nombre ?? "Flujo sin nombre"}
+                </p>
+              </div>
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                <p className="text-xs uppercase tracking-wide text-slate-500">Estado</p>
+                <p className="mt-1 text-sm text-slate-700">{conversationDetailModal.conversation.status}</p>
+              </div>
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 sm:col-span-2">
+                <p className="text-xs uppercase tracking-wide text-slate-500">Identificador</p>
+                <p className="mt-1 text-sm text-slate-700 break-all">{conversationDetailModal.conversation.id}</p>
+                <p className="mt-1 text-sm text-slate-600">Cliente {conversationDetailModal.conversation.userKey}</p>
+              </div>
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                <p className="text-xs uppercase tracking-wide text-slate-500">Inicio</p>
+                <p className="mt-1 text-sm text-slate-700">{formatDate(conversationDetailModal.conversation.startedAt)}</p>
+              </div>
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                <p className="text-xs uppercase tracking-wide text-slate-500">Fin</p>
+                <p className="mt-1 text-sm text-slate-700">
+                  {conversationDetailModal.conversation.endedAt
+                    ? formatDate(conversationDetailModal.conversation.endedAt)
+                    : "Activa / sin cierre"}
+                </p>
+              </div>
+            </div>
+
+            {isAgentSession ? (
+              <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 p-4 text-sm text-slate-500">
+                En sesión de agente solo se muestra el resumen. El detalle técnico de eventos está disponible en sesión de administrador.
+              </div>
+            ) : conversationDetailLoading ? (
+              <div className="rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-500">
+                Cargando eventos de la conversación...
+              </div>
+            ) : conversationEvents.length === 0 ? (
+              <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 p-4 text-sm text-slate-500">
+                Esta conversación no tiene eventos registrados.
+              </div>
+            ) : (
+              <div className="space-y-2 max-h-[45vh] overflow-auto pr-1">
+                {conversationEvents.map((eventItem) => (
+                  <div key={eventItem.id} className="rounded-xl border border-slate-200 bg-white p-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="text-sm font-medium text-slate-900">{eventItem.eventType}</p>
+                      <p className="text-xs text-slate-500">{formatDate(eventItem.createdAt)}</p>
+                    </div>
+                    {eventItem.nodeRef ? (
+                      <p className="mt-1 text-xs text-slate-500">Nodo: {eventItem.nodeRef}</p>
+                    ) : null}
+                    <pre className="mt-2 overflow-auto rounded-lg bg-slate-950/95 p-3 text-xs text-slate-100">
+                      {formatEventPayload(eventItem.payload)}
+                    </pre>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div className="flex justify-end">
+              <Button variant="secondary" onClick={() => setConversationDetailModal({ open: false, conversation: null })}>
+                Cerrar
+              </Button>
+            </div>
+          </div>
         )}
       </Modal>
     </div>
