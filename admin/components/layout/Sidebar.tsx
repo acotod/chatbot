@@ -63,6 +63,7 @@ const NAV_ITEMS: Array<{
   { icon: CalendarDays, label: "Agenda", href: "/agenda", permission: "VIEW_AGENDA" },
   { icon: Users, label: "Agentes", href: "/agentes", permission: "VIEW_AGENTES" },
   { icon: UserCircle2, label: "Contactos", href: "/contactos", permission: "VIEW_CRM" },
+  { icon: ShieldCheck, label: "Seguridad", href: "/security" },
   { icon: Settings, label: "Configuración", href: "/configuracion", permission: "MANAGE_TENANTS" },
   { icon: CreditCard, label: "Facturación", href: "/facturacion", superAdminOnly: true },
   { icon: ScrollText, label: "Auditoría", href: "/auditoria", permission: "VIEW_AUDITORIA" },
@@ -84,6 +85,7 @@ const AGENT_NAV_ITEMS: Array<{
   { icon: ClipboardList, label: "Solicitudes", href: "/solicitudes" },
   { icon: CalendarDays, label: "Agenda", href: "/agenda" },
   { icon: UserCircle2, label: "Contactos", href: "/contactos" },
+  { icon: ShieldCheck, label: "Seguridad", href: "/agente/security" },
   { icon: UserCircle2, label: "Perfil", href: "/agente/perfil" },
 ];
 
