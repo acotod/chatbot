@@ -110,6 +110,27 @@ function normalizeOptionalDate(value) {
   return parsed;
 }
 
+function extractMensajeSearchText(contenido) {
+  if (contenido == null) return '';
+  if (typeof contenido === 'string') return contenido;
+  if (typeof contenido === 'number' || typeof contenido === 'boolean') return String(contenido);
+  if (typeof contenido === 'object') {
+    const candidateKeys = ['text', 'body', 'message', 'caption'];
+    for (const key of candidateKeys) {
+      const value = contenido[key];
+      if (typeof value === 'string' && value.trim()) return value;
+    }
+
+    try {
+      return JSON.stringify(contenido);
+    } catch (_err) {
+      return '';
+    }
+  }
+
+  return '';
+}
+
 function getPrismaClient() {
   if (!prisma) {
     try {
@@ -1657,7 +1678,7 @@ async function getSolicitudMessagingContext(solicitudId, tenantId) {
   });
 }
 
-async function listMensajesBySolicitud({ solicitudId, tenantId, page = 1, limit = 50 }) {
+async function listMensajesBySolicitud({ solicitudId, tenantId, page = 1, limit = 50, q, direccion }) {
   const client = getPrismaClient();
   if (!client) return null;
 
@@ -1667,6 +1688,10 @@ async function listMensajesBySolicitud({ solicitudId, tenantId, page = 1, limit 
   const currentPage = Math.max(Number(page) || 1, 1);
   const currentLimit = Math.min(Math.max(Number(limit) || 50, 1), 200);
   const skip = (currentPage - 1) * currentLimit;
+  const searchQuery = String(q ?? '').trim().toLowerCase();
+  const normalizedDireccion = ['entrada', 'salida'].includes(String(direccion ?? '').trim().toLowerCase())
+    ? String(direccion).trim().toLowerCase()
+    : null;
 
   if (!solicitud.userId) {
     return {
@@ -1681,26 +1706,60 @@ async function listMensajesBySolicitud({ solicitudId, tenantId, page = 1, limit 
   const where = {
     tenantId,
     userId: solicitud.userId,
+    ...(normalizedDireccion ? { direccion: normalizedDireccion } : {}),
   };
 
-  const [total, data] = await Promise.all([
-    client.mensaje.count({ where }),
-    client.mensaje.findMany({
-      where,
-      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-      skip,
-      take: currentLimit,
-      include: {
-        user: {
-          select: {
-            id: true,
-            phone: true,
-            nombre: true,
+  if (!searchQuery) {
+    const [total, data] = await Promise.all([
+      client.mensaje.count({ where }),
+      client.mensaje.findMany({
+        where,
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        skip,
+        take: currentLimit,
+        include: {
+          user: {
+            select: {
+              id: true,
+              phone: true,
+              nombre: true,
+            },
           },
         },
+      }),
+    ]);
+
+    return {
+      solicitud,
+      data,
+      total,
+      page: currentPage,
+      limit: currentLimit,
+    };
+  }
+
+  // Text search is applied in-memory because contenido can be heterogeneous JSON.
+  const allRows = await client.mensaje.findMany({
+    where,
+    orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+    include: {
+      user: {
+        select: {
+          id: true,
+          phone: true,
+          nombre: true,
+        },
       },
-    }),
-  ]);
+    },
+  });
+
+  const filteredRows = allRows.filter((row) => {
+    const searchableText = extractMensajeSearchText(row.contenido).toLowerCase();
+    return searchableText.includes(searchQuery);
+  });
+
+  const total = filteredRows.length;
+  const data = filteredRows.slice(skip, skip + currentLimit);
 
   return {
     solicitud,

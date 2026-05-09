@@ -1508,6 +1508,8 @@ router.get('/tenants/:slug/solicitudes/:id/messages', requirePermiso('VIEW_SOLIC
             tenantId: tenant.id,
             page: req.query?.page,
             limit: req.query?.limit,
+            q: req.query?.q,
+            direccion: req.query?.direccion,
         });
         if (!result) return res.status(404).json({ error: 'Solicitud not found' });
 

@@ -192,6 +192,8 @@ export default function SolicitudesPage() {
     dueAt: "",
   });
   const [messageInput, setMessageInput] = useState("");
+  const [messageSearch, setMessageSearch] = useState("");
+  const [messageDirection, setMessageDirection] = useState<"" | "entrada" | "salida">("");
   const [conversationDetailModal, setConversationDetailModal] = useState<{
     open: boolean;
     conversation: ConversationItem | null;
@@ -368,14 +370,31 @@ export default function SolicitudesPage() {
     (conversationDetailData?.events as ConversationEventItem[] | undefined) ?? [];
 
   const { data: messagesData, isLoading: messagesLoading, refetch: refetchMessages } = useQuery({
-    queryKey: ["solicitud-messages", tenantSlug, detailModal.solicitud?.id, isAgentSession ? "agent" : "admin"],
+    queryKey: [
+      "solicitud-messages",
+      tenantSlug,
+      detailModal.solicitud?.id,
+      isAgentSession ? "agent" : "admin",
+      messageSearch,
+      messageDirection,
+    ],
     queryFn: () =>
       isAgentSession
         ? agentAuthApi
-            .solicitudMessages(detailModal.solicitud?.id || 0, { page: 1, limit: 50 })
+            .solicitudMessages(detailModal.solicitud?.id || 0, {
+              page: 1,
+              limit: 50,
+              q: messageSearch.trim() || undefined,
+              direccion: messageDirection || undefined,
+            })
             .then((r) => r as any)
         : solicitudesApi
-            .messages(tenantSlug || "", detailModal.solicitud?.id || 0, { page: 1, limit: 50 })
+            .messages(tenantSlug || "", detailModal.solicitud?.id || 0, {
+              page: 1,
+              limit: 50,
+              q: messageSearch.trim() || undefined,
+              direccion: messageDirection || undefined,
+            })
             .then((r) => r as any),
     enabled: Boolean(detailModal.open && detailModal.solicitud?.id && detailTab === "mensajes"),
     staleTime: 0,
@@ -1145,6 +1164,38 @@ export default function SolicitudesPage() {
               </TabsContent>
 
               <TabsContent value="mensajes" className="space-y-4">
+                <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                  <div className="flex flex-col gap-2 sm:flex-row">
+                    <input
+                      type="text"
+                      value={messageSearch}
+                      onChange={(e) => setMessageSearch(e.target.value)}
+                      placeholder="Filtrar por texto..."
+                      className="flex-1 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm placeholder-slate-500 focus:border-blue-500 focus:outline-none"
+                    />
+                    <select
+                      value={messageDirection}
+                      onChange={(e) => setMessageDirection((e.target.value as "" | "entrada" | "salida") || "")}
+                      className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+                    >
+                      <option value="">Todas las direcciones</option>
+                      <option value="entrada">Recibidos</option>
+                      <option value="salida">Enviados</option>
+                    </select>
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => {
+                        setMessageSearch("");
+                        setMessageDirection("");
+                      }}
+                      disabled={!messageSearch.trim() && !messageDirection}
+                    >
+                      Limpiar
+                    </Button>
+                  </div>
+                </div>
+
                 {messagesLoading ? (
                   <div className="flex items-center justify-center py-8">
                     <div className="text-slate-500">Cargando mensajes...</div>

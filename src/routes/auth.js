@@ -1143,6 +1143,8 @@ router.get('/agent/solicitudes/:id/messages', requireAgentJwt, async (req, res, 
       tenantId,
       page: req.query?.page,
       limit: req.query?.limit,
+      q: req.query?.q,
+      direccion: req.query?.direccion,
     });
     if (!result) return res.status(404).json({ error: 'Solicitud not found' });
 
