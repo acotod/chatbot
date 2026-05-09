@@ -325,6 +325,10 @@ export const solicitudesApi = {
     apiClient.post(`/admin/tenants/${slug}/solicitudes/${id}/comments`, data),
   history: (slug: string, id: number) =>
     apiClient.get(`/admin/tenants/${slug}/solicitudes/${id}/history`),
+  messages: (slug: string, id: number, params?: { page?: number; limit?: number }) =>
+    apiClient.get(`/admin/tenants/${slug}/solicitudes/${id}/messages`, { params }),
+  sendMessage: (slug: string, id: number, text: string) =>
+    apiClient.post(`/admin/tenants/${slug}/solicitudes/${id}/messages`, { text }),
   update: (slug: string, id: number, data: Record<string, unknown>) =>
     apiClient.patch(`/admin/tenants/${slug}/solicitudes/${id}`, data),
   bulkUpdate: (slug: string, ids: number[], updates: Record<string, unknown>) =>

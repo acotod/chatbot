@@ -1491,6 +1491,106 @@ router.get('/tenants/:slug/solicitudes/:id/history', requirePermiso('VIEW_SOLICI
     }
 });
 
+// GET /admin/tenants/:slug/solicitudes/:id/messages
+router.get('/tenants/:slug/solicitudes/:id/messages', requirePermiso('VIEW_SOLICITUDES'), async (req, res, next) => {
+    try {
+        const tenant = await db.findTenantBySlug(req.params.slug);
+        if (!tenant) return res.status(404).json({ error: 'Tenant not found' });
+        if (denyIfWrongTenant(req, res, tenant.id)) return;
+
+        const solicitudId = Number(req.params.id);
+        if (!Number.isInteger(solicitudId) || solicitudId <= 0) {
+            return res.status(400).json({ error: 'invalid solicitud id' });
+        }
+
+        const result = await db.listMensajesBySolicitud({
+            solicitudId,
+            tenantId: tenant.id,
+            page: req.query?.page,
+            limit: req.query?.limit,
+        });
+        if (!result) return res.status(404).json({ error: 'Solicitud not found' });
+
+        return res.json(result);
+    } catch (err) {
+        next(err);
+    }
+});
+
+// POST /admin/tenants/:slug/solicitudes/:id/messages
+router.post('/tenants/:slug/solicitudes/:id/messages', requirePermiso('EDIT_SOLICITUDES'), async (req, res, next) => {
+    try {
+        const tenant = await db.findTenantBySlug(req.params.slug);
+        if (!tenant) return res.status(404).json({ error: 'Tenant not found' });
+        if (denyIfWrongTenant(req, res, tenant.id)) return;
+
+        const solicitudId = Number(req.params.id);
+        if (!Number.isInteger(solicitudId) || solicitudId <= 0) {
+            return res.status(400).json({ error: 'invalid solicitud id' });
+        }
+
+        const text = String(req.body?.text ?? '').trim();
+        if (!text) return res.status(400).json({ error: 'text is required' });
+
+        const solicitud = await db.getSolicitudMessagingContext(solicitudId, tenant.id);
+        if (!solicitud) return res.status(404).json({ error: 'Solicitud not found' });
+        if (!solicitud.user?.phone) {
+            return res.status(400).json({ error: 'Solicitud has no WhatsApp contact' });
+        }
+
+        const { phoneNumberId, accessToken } = await db.getWaCredentials(tenant.id);
+        if (!phoneNumberId || !accessToken) {
+            return res.status(422).json({ error: 'WhatsApp credentials not configured for this tenant' });
+        }
+
+        const waResp = await wa.sendTextMessage(phoneNumberId, solicitud.user.phone, text, accessToken);
+
+        const mensaje = await db.saveMensaje({
+            tenantId: tenant.id,
+            userId: solicitud.userId,
+            waMsgId: waResp?.messages?.[0]?.id ?? null,
+            direccion: 'salida',
+            tipo: 'text',
+            contenido: {
+                text,
+                source: 'admin_solicitud',
+                solicitudId,
+                actor: {
+                    type: 'admin',
+                    adminUserId: req.admin?.adminUserId ?? null,
+                    email: req.admin?.email ?? null,
+                },
+            },
+            conversationId: solicitud.conversationId || undefined,
+        });
+
+        audit({
+            adminUserId: req.admin?.adminUserId,
+            tenantId: tenant.id,
+            accion: 'SEND_SOLICITUD_MESSAGE',
+            entidad: 'solicitud',
+            entidadId: String(solicitudId),
+            ip: req.ip,
+            userAgent: req.headers['user-agent'],
+            metadata: { mensajeId: mensaje?.id ?? null, waMsgId: mensaje?.waMsgId ?? null },
+        });
+
+        socketService.emit(tenant.id, 'SOLICITUD_MESSAGE_SENT', {
+            solicitudId,
+            mensaje,
+        });
+
+        return res.status(201).json({
+            ok: true,
+            solicitudId,
+            mensaje,
+            waResponse: waResp,
+        });
+    } catch (err) {
+        next(err);
+    }
+});
+
 // PATCH /admin/tenants/:slug/solicitudes/:id
 router.patch('/tenants/:slug/solicitudes/:id', requirePermiso('EDIT_SOLICITUDES'), async (req, res, next) => {
     try {

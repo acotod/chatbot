@@ -1119,6 +1119,112 @@ router.patch('/agent/solicitudes/:id', requireAgentJwt, async (req, res, next) =
   }
 });
 
+// ── GET /auth/agent/solicitudes/:id/messages ──────────────────────────────
+router.get('/agent/solicitudes/:id/messages', requireAgentJwt, async (req, res, next) => {
+  try {
+    const tenantId = req.agent?.tenantId;
+    const agenteId = Number(req.agent?.agenteId);
+    const solicitudId = Number(req.params.id);
+    if (!tenantId || !Number.isInteger(agenteId) || agenteId <= 0) {
+      return res.status(400).json({ error: 'Invalid agent context' });
+    }
+    if (!Number.isInteger(solicitudId) || solicitudId <= 0) {
+      return res.status(400).json({ error: 'Invalid solicitud id' });
+    }
+
+    const solicitud = await db.getSolicitudMessagingContext(solicitudId, tenantId);
+    if (!solicitud) return res.status(404).json({ error: 'Solicitud not found' });
+    if (Number(solicitud.agenteId || 0) !== agenteId) {
+      return res.status(403).json({ error: 'Solicitud is not assigned to this agent' });
+    }
+
+    const result = await db.listMensajesBySolicitud({
+      solicitudId,
+      tenantId,
+      page: req.query?.page,
+      limit: req.query?.limit,
+    });
+    if (!result) return res.status(404).json({ error: 'Solicitud not found' });
+
+    return res.json(result);
+  } catch (err) {
+    return next(err);
+  }
+});
+
+// ── POST /auth/agent/solicitudes/:id/messages ─────────────────────────────
+router.post('/agent/solicitudes/:id/messages', requireAgentJwt, async (req, res, next) => {
+  try {
+    const tenantId = req.agent?.tenantId;
+    const agenteId = Number(req.agent?.agenteId);
+    const solicitudId = Number(req.params.id);
+    if (!tenantId || !Number.isInteger(agenteId) || agenteId <= 0) {
+      return res.status(400).json({ error: 'Invalid agent context' });
+    }
+    if (!Number.isInteger(solicitudId) || solicitudId <= 0) {
+      return res.status(400).json({ error: 'Invalid solicitud id' });
+    }
+
+    const text = String(req.body?.text ?? '').trim();
+    if (!text) return res.status(400).json({ error: 'text is required' });
+
+    const solicitud = await db.getSolicitudMessagingContext(solicitudId, tenantId);
+    if (!solicitud) return res.status(404).json({ error: 'Solicitud not found' });
+    if (Number(solicitud.agenteId || 0) !== agenteId) {
+      return res.status(403).json({ error: 'Solicitud is not assigned to this agent' });
+    }
+    if (!solicitud.user?.phone) {
+      return res.status(400).json({ error: 'Solicitud has no WhatsApp contact' });
+    }
+
+    const { phoneNumberId, accessToken } = await db.getWaCredentials(tenantId);
+    if (!phoneNumberId || !accessToken) {
+      return res.status(422).json({ error: 'WhatsApp credentials not configured for this tenant' });
+    }
+
+    const waResp = await wa.sendTextMessage(phoneNumberId, solicitud.user.phone, text, accessToken);
+    const mensaje = await db.saveMensaje({
+      tenantId,
+      userId: solicitud.userId,
+      waMsgId: waResp?.messages?.[0]?.id ?? null,
+      direccion: 'salida',
+      tipo: 'text',
+      contenido: {
+        text,
+        source: 'agent_solicitud',
+        solicitudId,
+        actor: {
+          type: 'agente',
+          agenteId,
+          nombre: req.agent?.nombre ?? null,
+          email: req.agent?.email ?? null,
+        },
+      },
+      conversationId: solicitud.conversationId || undefined,
+    });
+
+    audit({
+      adminUserId: null,
+      tenantId,
+      accion: 'AGENT_SEND_SOLICITUD_MESSAGE',
+      entidad: 'solicitud',
+      entidadId: String(solicitudId),
+      ip: req.ip,
+      userAgent: req.headers['user-agent'],
+      metadata: { agenteId, mensajeId: mensaje?.id ?? null, waMsgId: mensaje?.waMsgId ?? null },
+    });
+
+    return res.status(201).json({
+      ok: true,
+      solicitudId,
+      mensaje,
+      waResponse: waResp,
+    });
+  } catch (err) {
+    return next(err);
+  }
+});
+
 // ── GET /auth/agent/agenda ──────────────────────────────────────────────────
 router.get('/agent/agenda', requireAgentJwt, async (req, res, next) => {
   try {

@@ -134,6 +134,8 @@ router.post('/', verifyMetaSignature, async (req, res) => {
             status: status.status,
           });
 
+          await db.updateMensajeDeliveryStatusByWaMsgId(status.id, status.status).catch(() => null);
+
           await _ingestUegBestEffort({
             tenantId: tenant.id,
             correlationId: req.correlationId,
@@ -157,6 +159,12 @@ router.post('/', verifyMetaSignature, async (req, res) => {
           });
 
           socketService.emit(tenant.id, 'wa_status', {
+            waMsgId: status.id,
+            status: status.status,
+            timestamp: status.timestamp,
+          });
+
+          socketService.emit(tenant.id, 'SOLICITUD_MESSAGE_STATUS', {
             waMsgId: status.id,
             status: status.status,
             timestamp: status.timestamp,

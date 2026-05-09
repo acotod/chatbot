@@ -1625,6 +1625,111 @@ async function saveMensaje({ tenantId, userId, waMsgId, direccion, tipo, conteni
   });
 }
 
+async function getSolicitudMessagingContext(solicitudId, tenantId) {
+  const client = getPrismaClient();
+  if (!client) return null;
+  return client.solicitud.findFirst({
+    where: {
+      id: Number(solicitudId),
+      tenantId,
+    },
+    select: {
+      id: true,
+      tenantId: true,
+      userId: true,
+      agenteId: true,
+      conversationId: true,
+      estado: true,
+      user: {
+        select: {
+          id: true,
+          phone: true,
+          nombre: true,
+        },
+      },
+      conversation: {
+        select: {
+          id: true,
+          status: true,
+        },
+      },
+    },
+  });
+}
+
+async function listMensajesBySolicitud({ solicitudId, tenantId, page = 1, limit = 50 }) {
+  const client = getPrismaClient();
+  if (!client) return null;
+
+  const solicitud = await getSolicitudMessagingContext(Number(solicitudId), tenantId);
+  if (!solicitud) return null;
+
+  const currentPage = Math.max(Number(page) || 1, 1);
+  const currentLimit = Math.min(Math.max(Number(limit) || 50, 1), 200);
+  const skip = (currentPage - 1) * currentLimit;
+
+  if (!solicitud.userId) {
+    return {
+      solicitud,
+      data: [],
+      total: 0,
+      page: currentPage,
+      limit: currentLimit,
+    };
+  }
+
+  const where = {
+    tenantId,
+    userId: solicitud.userId,
+  };
+
+  const [total, data] = await Promise.all([
+    client.mensaje.count({ where }),
+    client.mensaje.findMany({
+      where,
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      skip,
+      take: currentLimit,
+      include: {
+        user: {
+          select: {
+            id: true,
+            phone: true,
+            nombre: true,
+          },
+        },
+      },
+    }),
+  ]);
+
+  return {
+    solicitud,
+    data,
+    total,
+    page: currentPage,
+    limit: currentLimit,
+  };
+}
+
+async function updateMensajeDeliveryStatusByWaMsgId(waMsgId, status) {
+  const client = getPrismaClient();
+  if (!client || !waMsgId || !status) return null;
+
+  const normalized = String(status).toLowerCase();
+  const isRead = normalized === 'read';
+
+  if (!isRead) {
+    const existing = await client.mensaje.findUnique({ where: { waMsgId } });
+    return existing ? { count: 1, updated: false } : { count: 0, updated: false };
+  }
+
+  const result = await client.mensaje.updateMany({
+    where: { waMsgId },
+    data: { leido: true },
+  });
+  return { count: result.count, updated: result.count > 0 };
+}
+
 /**
  * List messages for a tenant/user conversation (latest-first).
  */
@@ -1940,6 +2045,9 @@ module.exports = {
   findTenantByFlowToken,
   findMensajeByWaMsgId,
   saveMensaje,
+  getSolicitudMessagingContext,
+  listMensajesBySolicitud,
+  updateMensajeDeliveryStatusByWaMsgId,
   listMensajes,
   listConversaciones,
   // ueg

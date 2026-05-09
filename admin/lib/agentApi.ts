@@ -107,6 +107,36 @@ export type AgentSolicitudesResponse = {
   data: AgentSolicitud[];
 };
 
+export type AgentSolicitudMessage = {
+  id: number;
+  tenantId: string;
+  userId: number | null;
+  conversationId: string | null;
+  waMsgId: string | null;
+  direccion: string;
+  tipo: string;
+  contenido: unknown;
+  leido: boolean;
+  createdAt: string;
+};
+
+export type AgentSolicitudMessagesResponse = {
+  solicitud: {
+    id: number;
+    tenantId: string;
+    userId: number | null;
+    agenteId: number | null;
+    conversationId: string | null;
+    estado: string;
+    user: { id: number; phone: string | null; nombre: string | null } | null;
+    conversation: { id: string; status: string } | null;
+  };
+  data: AgentSolicitudMessage[];
+  total: number;
+  page: number;
+  limit: number;
+};
+
 export type AgentConversation = {
   id: string;
   userKey: string;
@@ -206,6 +236,13 @@ export const agentAuthApi = {
     resolutionNotes?: string | null;
     customerNotes?: string | null;
   }) => agentApiClient.patch<AgentSolicitud>(`/auth/agent/solicitudes/${id}`, data),
+  solicitudMessages: (id: number, params?: { page?: number; limit?: number }) =>
+    agentApiClient.get<AgentSolicitudMessagesResponse>(`/auth/agent/solicitudes/${id}/messages`, { params }),
+  sendSolicitudMessage: (id: number, text: string) =>
+    agentApiClient.post<{ ok: boolean; solicitudId: number; mensaje: AgentSolicitudMessage; waResponse: unknown }>(
+      `/auth/agent/solicitudes/${id}/messages`,
+      { text },
+    ),
   agenda: (params?: { start?: string; end?: string; estado?: string }) =>
     agentApiClient.get<AgentAgendaResponse>("/auth/agent/agenda", { params }),
   contactos: (params?: { q?: string; page?: number; limit?: number }) =>
