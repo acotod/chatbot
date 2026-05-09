@@ -387,8 +387,7 @@ export default function SolicitudesPage() {
     return null;
   }
 
-  function extractEventText(eventItem: ConversationEventItem): string | null {
-    const payload = eventItem.payload;
+  function toPayloadRecord(payload: unknown): Record<string, unknown> | null {
     let data: Record<string, unknown> | null = null;
 
     if (payload && typeof payload === "object" && !Array.isArray(payload)) {
@@ -404,11 +403,79 @@ export default function SolicitudesPage() {
       }
 
       if (!data) {
-        return asReadableText(payload);
+        return null;
       }
     }
 
-    if (!data) return null;
+    return data;
+  }
+
+  function findMenuOptionTitle(options: unknown, selectedId: string): string | null {
+    if (!Array.isArray(options)) return null;
+
+    for (const option of options) {
+      if (!option || typeof option !== "object") continue;
+      const optionRecord = option as Record<string, unknown>;
+
+      const directId = asReadableText(optionRecord.id);
+      if (directId === selectedId) {
+        return (
+          asReadableText(optionRecord.title) ??
+          asReadableText(optionRecord.label) ??
+          asReadableText(optionRecord.text) ??
+          directId
+        );
+      }
+
+      const rows = optionRecord.rows;
+      if (Array.isArray(rows)) {
+        for (const row of rows) {
+          if (!row || typeof row !== "object") continue;
+          const rowRecord = row as Record<string, unknown>;
+          const rowId = asReadableText(rowRecord.id);
+          if (rowId === selectedId) {
+            return asReadableText(rowRecord.title) ?? asReadableText(rowRecord.label) ?? rowId;
+          }
+        }
+      }
+    }
+
+    return null;
+  }
+
+  function resolveMenuSelectionLabel(
+    eventItem: ConversationEventItem,
+    events: ConversationEventItem[],
+    currentIndex: number,
+    selectedId: string,
+  ): string | null {
+    for (let i = currentIndex - 1; i >= 0; i -= 1) {
+      const previous = events[i];
+      if (previous.eventType !== "message_sent") continue;
+      if (previous.nodeRef && eventItem.nodeRef && previous.nodeRef !== eventItem.nodeRef) continue;
+
+      const previousPayload = toPayloadRecord(previous.payload);
+      if (!previousPayload) continue;
+
+      const options = previousPayload.options;
+      const optionTitle = findMenuOptionTitle(options, selectedId);
+      if (optionTitle) return optionTitle;
+    }
+
+    return null;
+  }
+
+  function extractEventText(
+    eventItem: ConversationEventItem,
+    events: ConversationEventItem[],
+    currentIndex: number,
+  ): string | null {
+    const payload = eventItem.payload;
+    const data = toPayloadRecord(payload);
+
+    if (!data) {
+      return typeof payload === "string" ? asReadableText(payload) : null;
+    }
 
     if (eventItem.eventType === "user_input") {
       const inboundText =
@@ -420,8 +487,14 @@ export default function SolicitudesPage() {
     }
 
     if (eventItem.eventType === "menu_selection") {
+      const selectedId = asReadableText(data.selected_id) ?? asReadableText(data.input);
+      if (selectedId) {
+        const selectedLabel = resolveMenuSelectionLabel(eventItem, events, currentIndex, selectedId);
+        if (selectedLabel) return selectedLabel;
+      }
+
       const selectedText =
-        asReadableText(data.selected_id) ??
+        selectedId ??
         asReadableText(data.selected_title) ??
         asReadableText(data.selected_label) ??
         asReadableText(data.input);
@@ -467,8 +540,8 @@ export default function SolicitudesPage() {
   }
 
   const conversationBubbles: ConversationBubble[] = conversationEvents
-    .map((eventItem) => {
-      const text = extractEventText(eventItem);
+    .map((eventItem, index) => {
+      const text = extractEventText(eventItem, conversationEvents, index);
       if (!text) return null;
       const isOutbound = eventItem.eventType === "message_sent" || eventItem.eventType === "conversation_started";
       return {
