@@ -431,6 +431,21 @@ export default function SolicitudesPage() {
     },
   });
 
+  function formatDateForInput(value: Date): string {
+    const year = value.getFullYear();
+    const month = String(value.getMonth() + 1).padStart(2, "0");
+    const day = String(value.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  }
+
+  function applyMessageDatePreset(days: number): void {
+    const end = new Date();
+    const start = new Date();
+    if (days > 1) start.setDate(start.getDate() - (days - 1));
+    setMessageStartDate(formatDateForInput(start));
+    setMessageEndDate(formatDateForInput(end));
+  }
+
   function formatEventPayload(payload: unknown): string {
     if (payload == null) return "Sin payload";
     if (typeof payload === "string") return payload;
@@ -1236,6 +1251,17 @@ export default function SolicitudesPage() {
                       disabled={!messageSearch.trim() && !messageDirection && !messageStartDate && !messageEndDate && !messageReadStatus}
                     >
                       Limpiar
+                    </Button>
+                  </div>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    <Button variant="secondary" size="sm" onClick={() => applyMessageDatePreset(1)}>
+                      Hoy
+                    </Button>
+                    <Button variant="secondary" size="sm" onClick={() => applyMessageDatePreset(7)}>
+                      7d
+                    </Button>
+                    <Button variant="secondary" size="sm" onClick={() => applyMessageDatePreset(30)}>
+                      30d
                     </Button>
                   </div>
                 </div>

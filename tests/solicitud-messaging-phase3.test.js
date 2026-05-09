@@ -317,6 +317,19 @@ describe('Frontend solicitudes page – real-time socket subscriptions', () => {
     expect(src).toContain('messageReadStatus');
   });
 
+  it('has quick date preset helper for messages', () => {
+    const src = readSrc('admin', 'app', '(app)', 'solicitudes', 'page.tsx');
+    expect(src).toContain('applyMessageDatePreset');
+    expect(src).toContain('formatDateForInput');
+  });
+
+  it('renders quick date preset controls (Hoy, 7d, 30d)', () => {
+    const src = readSrc('admin', 'app', '(app)', 'solicitudes', 'page.tsx');
+    expect(src).toContain('Hoy');
+    expect(src).toContain('7d');
+    expect(src).toContain('30d');
+  });
+
   it('passes filter params to messages API call', () => {
     const src = readSrc('admin', 'app', '(app)', 'solicitudes', 'page.tsx');
     // q param forwarded
