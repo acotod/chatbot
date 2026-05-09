@@ -23,8 +23,25 @@ router.use(requireJwt);
 // Helpers
 // ─────────────────────────────────────────────────────────────────────────────
 
-function tenantId(req) {
-  return req.user?.tenantId ?? req.user?.tenant_id;
+async function resolveTenantId(req, explicitTenantSlug) {
+  const fromAuth =
+    req.admin?.tenantId ??
+    req.admin?.tenant_id ??
+    req.user?.tenantId ??
+    req.user?.tenant_id;
+  if (fromAuth) return fromAuth;
+
+  const isSuperAdmin = Boolean(req.admin?.superAdmin ?? req.user?.superAdmin);
+  if (!isSuperAdmin) return null;
+
+  const slug = typeof explicitTenantSlug === 'string' ? explicitTenantSlug.trim() : '';
+  if (!slug) return null;
+
+  const tenant = await prisma.tenant.findUnique({
+    where: { slug },
+    select: { id: true },
+  });
+  return tenant?.id ?? null;
 }
 
 /** Parse a safe positive integer from a query param, with a default. */
@@ -56,7 +73,7 @@ function parseIntParam(val, def, max = 200) {
  */
 router.get('/', async (req, res, next) => {
   try {
-    const tid   = tenantId(req);
+    const tid   = await resolveTenantId(req, req.query.tenantSlug);
     if (!tid) return res.status(401).json({ error: 'Tenant context missing' });
 
     const page  = parseIntParam(req.query.page,  1);
@@ -132,7 +149,7 @@ router.get('/', async (req, res, next) => {
  */
 router.get('/:id', async (req, res, next) => {
   try {
-    const tid = tenantId(req);
+    const tid = await resolveTenantId(req, req.query.tenantSlug);
     if (!tid) return res.status(401).json({ error: 'Tenant context missing' });
 
     const conversation = await prisma.conversation.findFirst({
@@ -175,7 +192,7 @@ router.get('/:id', async (req, res, next) => {
  */
 router.get('/:id/events', async (req, res, next) => {
   try {
-    const tid = tenantId(req);
+    const tid = await resolveTenantId(req, req.query.tenantSlug);
     if (!tid) return res.status(401).json({ error: 'Tenant context missing' });
 
     // Verify conversation belongs to tenant
@@ -212,7 +229,7 @@ router.get('/:id/events', async (req, res, next) => {
  */
 router.patch('/:id', async (req, res, next) => {
   try {
-    const tid = tenantId(req);
+    const tid = await resolveTenantId(req, req.body?.tenantSlug ?? req.query?.tenantSlug);
     if (!tid) return res.status(401).json({ error: 'Tenant context missing' });
 
     const { status } = req.body ?? {};

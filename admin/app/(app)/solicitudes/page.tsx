@@ -333,7 +333,7 @@ export default function SolicitudesPage() {
     queryFn: () =>
       isAgentSession
         ? agentAuthApi.conversations({ userKey: detailClientKey, limit: 50 }).then((r) => r.data)
-        : conversationsApi.list({ userKey: detailClientKey, limit: 50 }).then((r) => r.data),
+        : conversationsApi.list({ tenantSlug: tenantSlug || undefined, userKey: detailClientKey, limit: 50 }).then((r) => r.data),
     enabled: Boolean(detailModal.open && detailModal.solicitud && detailClientKey && detailTab === "conversaciones"),
     staleTime: 30_000,
   });
