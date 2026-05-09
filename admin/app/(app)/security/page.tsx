@@ -1,0 +1,91 @@
+'use client';
+
+import React, { useState } from 'react';
+import DeviceManagement from '@/components/DeviceManagement';
+import MFARecoveryCodes from '@/components/MFARecoveryCodes';
+
+/**
+ * Admin Security Settings Page
+ * Allows admins to manage connected devices and MFA settings
+ * Phase 2: Enterprise authentication hardening
+ */
+export default function SecuritySettingsPage() {
+  const [activeTab, setActiveTab] = useState<'devices' | 'mfa'>('devices');
+
+  return (
+    <div className="min-h-screen bg-gray-50 p-8">
+      <div className="max-w-4xl mx-auto">
+        {/* Header */}
+        <div className="mb-8">
+          <h1 className="text-3xl font-bold text-gray-900">Security Settings</h1>
+          <p className="mt-2 text-gray-600">
+            Manage your connected devices, sessions, and multi-factor authentication settings
+          </p>
+        </div>
+
+        {/* Tabs */}
+        <div className="flex border-b border-gray-200 mb-6">
+          <button
+            onClick={() => setActiveTab('devices')}
+            className={`px-4 py-3 font-medium border-b-2 transition ${
+              activeTab === 'devices'
+                ? 'border-blue-600 text-blue-600'
+                : 'border-transparent text-gray-600 hover:text-gray-900'
+            }`}
+          >
+            Connected Devices
+          </button>
+          <button
+            onClick={() => setActiveTab('mfa')}
+            className={`px-4 py-3 font-medium border-b-2 transition ${
+              activeTab === 'mfa'
+                ? 'border-blue-600 text-blue-600'
+                : 'border-transparent text-gray-600 hover:text-gray-900'
+            }`}
+          >
+            MFA Recovery Codes
+          </button>
+        </div>
+
+        {/* Content */}
+        <div className="space-y-6">
+          {activeTab === 'devices' && (
+            <div>
+              <DeviceManagement showTitle={true} />
+              <div className="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                <h3 className="font-semibold text-blue-900 mb-2">💡 Device Security Tips</h3>
+                <ul className="text-sm text-blue-800 space-y-1 list-disc list-inside">
+                  <li>Regularly review your connected devices</li>
+                  <li>Revoke access from any unrecognized devices immediately</li>
+                  <li>If you see suspicious activity, change your password and audit your account</li>
+                  <li>Enable MFA recovery codes for emergency access</li>
+                </ul>
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'mfa' && (
+            <div>
+              <MFARecoveryCodes showTitle={true} />
+              <div className="mt-6 p-4 bg-green-50 border border-green-200 rounded-lg">
+                <h3 className="font-semibold text-green-900 mb-2">✅ MFA Best Practices</h3>
+                <ul className="text-sm text-green-800 space-y-1 list-disc list-inside">
+                  <li>Save recovery codes in a secure password manager</li>
+                  <li>Never share recovery codes with anyone</li>
+                  <li>Generate new codes periodically (e.g., every 3 months)</li>
+                  <li>Keep recovery codes separate from your authenticator backup</li>
+                </ul>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="mt-8 pt-6 border-t border-gray-200 text-center text-sm text-gray-500">
+          <p>Last updated: {new Date().toLocaleDateString()}</p>
+          <p className="mt-1">For security concerns, contact your system administrator</p>
+        </div>
+      </div>
+    </div>
+  );
+}
