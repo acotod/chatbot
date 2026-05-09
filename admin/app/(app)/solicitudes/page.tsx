@@ -12,7 +12,7 @@ import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Modal } from "@/components/ui/Modal";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { formatDate } from "@/lib/utils";
+import { cn, formatDate } from "@/lib/utils";
 import { AlertTriangle, Clock3, Filter, MessageCircleMore, Search, UserCheck } from "lucide-react";
 import { useSocket } from "@/hooks/useSocket";
 
@@ -48,6 +48,17 @@ const CATEGORIA_LABELS: Record<string, string> = {
   comercial: "Comercial",
   soporte: "Soporte",
   otro: "Otro",
+};
+
+const EVENT_BADGES: Record<string, { label: string; color: string }> = {
+  conversation_started: { label: "Inicio", color: "text-emerald-700 bg-emerald-50 border-emerald-200" },
+  message_sent: { label: "Bot", color: "text-blue-700 bg-blue-50 border-blue-200" },
+  user_input: { label: "Cliente", color: "text-slate-700 bg-slate-100 border-slate-200" },
+  menu_selection: { label: "Seleccion", color: "text-violet-700 bg-violet-50 border-violet-200" },
+  condition_evaluated: { label: "Condicion", color: "text-amber-700 bg-amber-50 border-amber-200" },
+  api_call: { label: "API", color: "text-orange-700 bg-orange-50 border-orange-200" },
+  task_status_change: { label: "Tarea", color: "text-fuchsia-700 bg-fuchsia-50 border-fuchsia-200" },
+  conversation_ended: { label: "Cierre", color: "text-slate-600 bg-slate-100 border-slate-200" },
 };
 
 interface Solicitud {
@@ -99,6 +110,15 @@ interface ConversationDetail {
   endedAt: string | null;
   flow?: { id: number; nombre: string } | null;
   events?: ConversationEventItem[];
+}
+
+interface ConversationBubble {
+  id: string;
+  text: string;
+  createdAt: string;
+  eventType: string;
+  nodeRef: string | null;
+  isOutbound: boolean;
 }
 
 interface Agente {
@@ -354,6 +374,205 @@ export default function SolicitudesPage() {
     } catch {
       return "Payload no serializable";
     }
+  }
+
+  function asReadableText(value: unknown): string | null {
+    if (typeof value === "string") {
+      const trimmed = value.trim();
+      return trimmed ? trimmed : null;
+    }
+    if (typeof value === "number" || typeof value === "boolean") {
+      return String(value);
+    }
+    return null;
+  }
+
+  function extractEventText(eventItem: ConversationEventItem): string | null {
+    const payload = eventItem.payload;
+    if (!payload || typeof payload !== "object" || Array.isArray(payload)) return null;
+    const data = payload as Record<string, unknown>;
+
+    const directCandidates = [
+      data.text,
+      data.content,
+      data.input,
+      data.message,
+      data.prompt,
+      data.caption,
+      data.title,
+    ];
+    for (const candidate of directCandidates) {
+      const text = asReadableText(candidate);
+      if (text) return text;
+    }
+
+    const output = data.output;
+    if (output && typeof output === "object" && !Array.isArray(output)) {
+      const out = output as Record<string, unknown>;
+      const outText = asReadableText(out.text) ?? asReadableText(out.title) ?? asReadableText(out.body);
+      if (outText) return outText;
+    }
+
+    const interactive = data.interactive;
+    if (interactive && typeof interactive === "object" && !Array.isArray(interactive)) {
+      const iv = interactive as Record<string, unknown>;
+      const reply = iv.reply;
+      if (reply && typeof reply === "object" && !Array.isArray(reply)) {
+        const rv = reply as Record<string, unknown>;
+        const replyText = asReadableText(rv.title) ?? asReadableText(rv.id);
+        if (replyText) return replyText;
+      }
+    }
+
+    return null;
+  }
+
+  const conversationBubbles: ConversationBubble[] = conversationEvents
+    .map((eventItem) => {
+      const text = extractEventText(eventItem);
+      if (!text) return null;
+      const isOutbound = eventItem.eventType === "message_sent" || eventItem.eventType === "conversation_started";
+      return {
+        id: eventItem.id,
+        text,
+        createdAt: eventItem.createdAt,
+        eventType: eventItem.eventType,
+        nodeRef: eventItem.nodeRef,
+        isOutbound,
+      };
+    })
+    .filter((bubble): bubble is ConversationBubble => Boolean(bubble));
+
+  function renderConversationDetailContent() {
+    if (!conversationDetailModal.conversation) return null;
+
+    return (
+      <div className="space-y-4">
+        <div className="rounded-2xl border border-slate-200 bg-white p-4">
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="h-10 w-10 rounded-full bg-blue-100 text-blue-700 font-semibold flex items-center justify-center">
+                <MessageCircleMore size={18} />
+              </div>
+              <div className="min-w-0">
+                <p className="text-sm font-semibold text-slate-900 truncate">
+                  {conversationDetailModal.conversation.flow?.nombre ?? "Conversacion"}
+                </p>
+                <p className="text-xs text-slate-500 truncate">Cliente {conversationDetailModal.conversation.userKey}</p>
+              </div>
+            </div>
+            <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700 whitespace-nowrap">
+              {conversationDetailModal.conversation.status}
+            </span>
+          </div>
+          <div className="mt-3 grid gap-2 text-xs text-slate-500 sm:grid-cols-2">
+            <p>Inicio: {formatDate(conversationDetailModal.conversation.startedAt)}</p>
+            <p>
+              Fin: {conversationDetailModal.conversation.endedAt
+                ? formatDate(conversationDetailModal.conversation.endedAt)
+                : "Activa / sin cierre"}
+            </p>
+          </div>
+        </div>
+
+        {isAgentSession ? (
+          <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 p-4 text-sm text-slate-500">
+            El detalle técnico solo está disponible para administradores. En esta vista se muestra el resumen de la conversación.
+          </div>
+        ) : (
+          <>
+            <div className="rounded-2xl border border-slate-200 overflow-hidden">
+              <div className="border-b border-slate-200 bg-white px-4 py-2.5">
+                <p className="text-sm font-medium text-slate-800">Mensajes</p>
+                <p className="text-xs text-slate-400">Vista estilo cliente</p>
+              </div>
+              <div className="max-h-[42vh] overflow-y-auto p-4 space-y-3 bg-slate-50">
+                {conversationDetailLoading ? (
+                  <div className="flex flex-col gap-3">
+                    {[1, 2, 3].map((item) => (
+                      <div key={item} className={cn("animate-pulse flex", item % 2 === 0 ? "justify-end" : "justify-start")}>
+                        <div className="h-10 w-48 bg-slate-200 rounded-2xl" />
+                      </div>
+                    ))}
+                  </div>
+                ) : conversationBubbles.length === 0 ? (
+                  <div className="flex items-center justify-center h-24 text-sm text-slate-400">
+                    No hay mensajes legibles para mostrar en esta conversación.
+                  </div>
+                ) : (
+                  conversationBubbles.map((bubble) => (
+                    <div key={bubble.id} className={cn("flex", bubble.isOutbound ? "justify-end" : "justify-start")}>
+                      <div
+                        className={cn(
+                          "max-w-xs lg:max-w-md px-4 py-2.5 rounded-2xl text-sm shadow-sm",
+                          bubble.isOutbound
+                            ? "bg-blue-600 text-white rounded-tr-sm"
+                            : "bg-white text-slate-800 rounded-tl-sm border border-slate-200"
+                        )}
+                      >
+                        <p className="whitespace-pre-wrap">{bubble.text}</p>
+                        <p className={cn("text-xs mt-1", bubble.isOutbound ? "text-blue-200" : "text-slate-400")}>
+                          {new Date(bubble.createdAt).toLocaleTimeString("es", { hour: "2-digit", minute: "2-digit" })}
+                        </p>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-slate-200 bg-white p-3.5 space-y-2 max-h-[28vh] overflow-y-auto">
+              <p className="text-sm font-medium text-slate-800">Actividad del flujo</p>
+              {conversationDetailLoading ? (
+                <p className="text-sm text-slate-400">Cargando actividad...</p>
+              ) : conversationEvents.length === 0 ? (
+                <p className="text-sm text-slate-400">No hay eventos registrados.</p>
+              ) : (
+                conversationEvents.map((eventItem) => {
+                  const badge = EVENT_BADGES[eventItem.eventType] ?? {
+                    label: eventItem.eventType,
+                    color: "text-slate-700 bg-slate-100 border-slate-200",
+                  };
+                  return (
+                    <div key={eventItem.id} className="rounded-xl border border-slate-200 bg-slate-50 p-2.5">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className={cn("text-[11px] font-semibold px-2 py-0.5 rounded-full border", badge.color)}>
+                            {badge.label}
+                          </span>
+                          {eventItem.nodeRef ? (
+                            <span className="text-[11px] text-slate-400 truncate">{eventItem.nodeRef}</span>
+                          ) : null}
+                        </div>
+                        <span className="text-[11px] text-slate-400 shrink-0">
+                          {new Date(eventItem.createdAt).toLocaleTimeString("es", {
+                            hour: "2-digit",
+                            minute: "2-digit",
+                            second: "2-digit",
+                          })}
+                        </span>
+                      </div>
+                      <details className="mt-1.5">
+                        <summary className="cursor-pointer text-[11px] text-slate-500 select-none">Ver detalle técnico</summary>
+                        <pre className="mt-2 overflow-auto rounded-lg bg-slate-950/95 p-3 text-xs text-slate-100">
+                          {formatEventPayload(eventItem.payload)}
+                        </pre>
+                      </details>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </>
+        )}
+
+        <div className="flex justify-end">
+          <Button variant="secondary" onClick={() => setConversationDetailModal({ open: false, conversation: null })}>
+            Cerrar
+          </Button>
+        </div>
+      </div>
+    );
   }
 
   const solicitudes: Solicitud[] = data?.data ?? [];
@@ -725,76 +944,7 @@ export default function SolicitudesPage() {
           title="Detalle de conversación"
           className="max-w-3xl"
         >
-          {conversationDetailModal.conversation && (
-            <div className="space-y-4">
-              <div className="grid gap-3 sm:grid-cols-2">
-                <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                  <p className="text-xs uppercase tracking-wide text-slate-500">Flujo</p>
-                  <p className="mt-1 font-medium text-slate-900">
-                    {conversationDetailModal.conversation.flow?.nombre ?? "Flujo sin nombre"}
-                  </p>
-                </div>
-                <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                  <p className="text-xs uppercase tracking-wide text-slate-500">Estado</p>
-                  <p className="mt-1 text-sm text-slate-700">{conversationDetailModal.conversation.status}</p>
-                </div>
-                <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 sm:col-span-2">
-                  <p className="text-xs uppercase tracking-wide text-slate-500">Identificador</p>
-                  <p className="mt-1 text-sm text-slate-700 break-all">{conversationDetailModal.conversation.id}</p>
-                  <p className="mt-1 text-sm text-slate-600">Cliente {conversationDetailModal.conversation.userKey}</p>
-                </div>
-                <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                  <p className="text-xs uppercase tracking-wide text-slate-500">Inicio</p>
-                  <p className="mt-1 text-sm text-slate-700">{formatDate(conversationDetailModal.conversation.startedAt)}</p>
-                </div>
-                <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                  <p className="text-xs uppercase tracking-wide text-slate-500">Fin</p>
-                  <p className="mt-1 text-sm text-slate-700">
-                    {conversationDetailModal.conversation.endedAt
-                      ? formatDate(conversationDetailModal.conversation.endedAt)
-                      : "Activa / sin cierre"}
-                  </p>
-                </div>
-              </div>
-
-              {isAgentSession ? (
-                <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 p-4 text-sm text-slate-500">
-                  En sesión de agente solo se muestra el resumen. El detalle técnico de eventos está disponible en sesión de administrador.
-                </div>
-              ) : conversationDetailLoading ? (
-                <div className="rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-500">
-                  Cargando eventos de la conversación...
-                </div>
-              ) : conversationEvents.length === 0 ? (
-                <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 p-4 text-sm text-slate-500">
-                  Esta conversación no tiene eventos registrados.
-                </div>
-              ) : (
-                <div className="space-y-2 max-h-[45vh] overflow-auto pr-1">
-                  {conversationEvents.map((eventItem) => (
-                    <div key={eventItem.id} className="rounded-xl border border-slate-200 bg-white p-3">
-                      <div className="flex items-center justify-between gap-3">
-                        <p className="text-sm font-medium text-slate-900">{eventItem.eventType}</p>
-                        <p className="text-xs text-slate-500">{formatDate(eventItem.createdAt)}</p>
-                      </div>
-                      {eventItem.nodeRef ? (
-                        <p className="mt-1 text-xs text-slate-500">Nodo: {eventItem.nodeRef}</p>
-                      ) : null}
-                      <pre className="mt-2 overflow-auto rounded-lg bg-slate-950/95 p-3 text-xs text-slate-100">
-                        {formatEventPayload(eventItem.payload)}
-                      </pre>
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              <div className="flex justify-end">
-                <Button variant="secondary" onClick={() => setConversationDetailModal({ open: false, conversation: null })}>
-                  Cerrar
-                </Button>
-              </div>
-            </div>
-          )}
+          {renderConversationDetailContent()}
         </Modal>
       </div>
     );
@@ -1377,76 +1527,7 @@ export default function SolicitudesPage() {
         title="Detalle de conversación"
         className="max-w-3xl"
       >
-        {conversationDetailModal.conversation && (
-          <div className="space-y-4">
-            <div className="grid gap-3 sm:grid-cols-2">
-              <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                <p className="text-xs uppercase tracking-wide text-slate-500">Flujo</p>
-                <p className="mt-1 font-medium text-slate-900">
-                  {conversationDetailModal.conversation.flow?.nombre ?? "Flujo sin nombre"}
-                </p>
-              </div>
-              <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                <p className="text-xs uppercase tracking-wide text-slate-500">Estado</p>
-                <p className="mt-1 text-sm text-slate-700">{conversationDetailModal.conversation.status}</p>
-              </div>
-              <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 sm:col-span-2">
-                <p className="text-xs uppercase tracking-wide text-slate-500">Identificador</p>
-                <p className="mt-1 text-sm text-slate-700 break-all">{conversationDetailModal.conversation.id}</p>
-                <p className="mt-1 text-sm text-slate-600">Cliente {conversationDetailModal.conversation.userKey}</p>
-              </div>
-              <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                <p className="text-xs uppercase tracking-wide text-slate-500">Inicio</p>
-                <p className="mt-1 text-sm text-slate-700">{formatDate(conversationDetailModal.conversation.startedAt)}</p>
-              </div>
-              <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                <p className="text-xs uppercase tracking-wide text-slate-500">Fin</p>
-                <p className="mt-1 text-sm text-slate-700">
-                  {conversationDetailModal.conversation.endedAt
-                    ? formatDate(conversationDetailModal.conversation.endedAt)
-                    : "Activa / sin cierre"}
-                </p>
-              </div>
-            </div>
-
-            {isAgentSession ? (
-              <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 p-4 text-sm text-slate-500">
-                En sesión de agente solo se muestra el resumen. El detalle técnico de eventos está disponible en sesión de administrador.
-              </div>
-            ) : conversationDetailLoading ? (
-              <div className="rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-500">
-                Cargando eventos de la conversación...
-              </div>
-            ) : conversationEvents.length === 0 ? (
-              <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 p-4 text-sm text-slate-500">
-                Esta conversación no tiene eventos registrados.
-              </div>
-            ) : (
-              <div className="space-y-2 max-h-[45vh] overflow-auto pr-1">
-                {conversationEvents.map((eventItem) => (
-                  <div key={eventItem.id} className="rounded-xl border border-slate-200 bg-white p-3">
-                    <div className="flex items-center justify-between gap-3">
-                      <p className="text-sm font-medium text-slate-900">{eventItem.eventType}</p>
-                      <p className="text-xs text-slate-500">{formatDate(eventItem.createdAt)}</p>
-                    </div>
-                    {eventItem.nodeRef ? (
-                      <p className="mt-1 text-xs text-slate-500">Nodo: {eventItem.nodeRef}</p>
-                    ) : null}
-                    <pre className="mt-2 overflow-auto rounded-lg bg-slate-950/95 p-3 text-xs text-slate-100">
-                      {formatEventPayload(eventItem.payload)}
-                    </pre>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            <div className="flex justify-end">
-              <Button variant="secondary" onClick={() => setConversationDetailModal({ open: false, conversation: null })}>
-                Cerrar
-              </Button>
-            </div>
-          </div>
-        )}
+        {renderConversationDetailContent()}
       </Modal>
     </div>
   );

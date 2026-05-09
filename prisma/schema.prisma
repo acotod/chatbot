@@ -401,6 +401,8 @@ model Agente {
   calendars         Calendar[]
   assignmentRules   SolicitudAssignmentRule[]
   passwordResets    AgentPasswordReset[]
+  deviceSessions    AgentDeviceSession[]
+  suspiciousActivities SuspiciousActivity[]
 
   @@index([tenantId, puestoId])
   @@index([tenantId, email])
@@ -468,6 +470,9 @@ model AdminUser {
   solicitudHistory    SolicitudHistory[]
   solicitudComments   SolicitudComment[]
   notifications       AdminNotification[]
+  deviceSessions      AdminDeviceSession[]
+  mfaRecoveryCodes    AdminMfaRecoveryCode[]
+  suspiciousActivities SuspiciousActivity[]
 
   @@map("admin_users")
 }
@@ -563,6 +568,78 @@ model AuditLog {
   @@index([accion])
   @@index([createdAt])
   @@map("audit_logs")
+}
+
+model AdminDeviceSession {
+  id               String    @id @default(cuid())
+  adminUserId      String    @db.Uuid @map("admin_user_id")
+  deviceFingerprint String   @map("device_fingerprint")
+  deviceName       String?   @map("device_name")
+  userAgent        String?   @map("user_agent") @db.VarChar(500)
+  ipAddress        String?   @map("ip_address") @db.VarChar(45)
+  isActive         Boolean   @default(true) @map("is_active")
+  lastSeenAt       DateTime? @map("last_seen_at")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+  adminUser        AdminUser @relation(fields: [adminUserId], references: [id], onDelete: Cascade)
+
+  @@index([adminUserId])
+  @@index([deviceFingerprint])
+  @@map("AdminDeviceSession")
+}
+
+model AdminMfaRecoveryCode {
+  id         String    @id @default(cuid())
+  adminUserId String   @db.Uuid @map("admin_user_id")
+  code       String    @unique
+  used       Boolean   @default(false)
+  usedAt     DateTime? @map("used_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
+  adminUser  AdminUser @relation(fields: [adminUserId], references: [id], onDelete: Cascade)
+
+  @@index([adminUserId])
+  @@map("AdminMfaRecoveryCode")
+}
+
+model AgentDeviceSession {
+  id               String    @id @default(cuid())
+  agenteId         Int       @map("agente_id")
+  deviceFingerprint String   @map("device_fingerprint")
+  deviceName       String?   @map("device_name")
+  userAgent        String?   @map("user_agent") @db.VarChar(500)
+  ipAddress        String?   @map("ip_address") @db.VarChar(45)
+  isActive         Boolean   @default(true) @map("is_active")
+  lastSeenAt       DateTime? @map("last_seen_at")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+  agente           Agente    @relation(fields: [agenteId], references: [id], onDelete: Cascade)
+
+  @@index([agenteId])
+  @@index([deviceFingerprint])
+  @@map("AgentDeviceSession")
+}
+
+model SuspiciousActivity {
+  id               String    @id @default(cuid())
+  adminUserId      String?   @db.Uuid @map("admin_user_id")
+  agenteId         Int?      @map("agente_id")
+  activityType     String    @map("activity_type")
+  severity         String    @default("medium")
+  description      String?
+  deviceFingerprint String?  @map("device_fingerprint")
+  ipAddress        String?   @map("ip_address") @db.VarChar(45)
+  userAgent        String?   @map("user_agent") @db.VarChar(500)
+  metadata         Json?
+  acknowledgedAt   DateTime? @map("acknowledged_at")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  adminUser        AdminUser? @relation(fields: [adminUserId], references: [id], onDelete: SetNull)
+  agente           Agente?   @relation(fields: [agenteId], references: [id], onDelete: SetNull)
+
+  @@index([adminUserId])
+  @@index([agenteId])
+  @@index([createdAt])
+  @@index([severity])
+  @@map("SuspiciousActivity")
 }
 
 // ── Flujos dinámicos ──────────────────────────────────────────────────────────

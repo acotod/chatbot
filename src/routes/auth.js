@@ -15,6 +15,8 @@ const wa = require('../services/whatsapp');
 const requireJwt = require('../middleware/requireJwt');
 const requireAgentJwt = require('../middleware/requireAgentJwt');
 const lockoutPolicy = require('../services/lockoutPolicy');
+const { generateDeviceFingerprint, parseDeviceNameFromUserAgent } = require('../services/deviceFingerprint');
+const { logSuspiciousActivity, detectNewDevice, ACTIVITY_TYPES, SEVERITY_LEVELS } = require('../services/suspiciousActivityDetection');
 
 const prisma = new PrismaClient();
 const router = express.Router();
@@ -525,6 +527,53 @@ router.post('/agent/login', loginRateLimiter, async (req, res) => {
       where: { id: agent.id },
       data: { lastSeenAt: new Date() },
     });
+
+    // Generate device fingerprint and track device session (Phase 2 enhancement)
+    const deviceFingerprint = generateDeviceFingerprint(userAgent, ip);
+    const deviceName = parseDeviceNameFromUserAgent(userAgent);
+    
+    // Record or update device session
+    try {
+      const existingSession = await prisma.agentDeviceSession.findFirst({
+        where: { agenteId: agent.id, deviceFingerprint },
+      });
+
+      if (existingSession) {
+        // Update last seen
+        await prisma.agentDeviceSession.update({
+          where: { id: existingSession.id },
+          data: { lastSeenAt: new Date(), ipAddress: ip },
+        });
+      } else {
+        // New device login - log suspicious activity
+        await prisma.agentDeviceSession.create({
+          data: {
+            agenteId: agent.id,
+            deviceFingerprint,
+            deviceName,
+            userAgent,
+            ipAddress: ip,
+            isActive: true,
+            lastSeenAt: new Date(),
+          },
+        });
+
+        // Log as suspicious activity (new device)
+        await logSuspiciousActivity({
+          agenteId: agent.id,
+          activityType: ACTIVITY_TYPES.NEW_DEVICE_LOGIN,
+          severity: SEVERITY_LEVELS.LOW,
+          description: `Agent logged in from new device: ${deviceName}`,
+          deviceFingerprint,
+          ipAddress: ip,
+          userAgent,
+          metadata: { tenantSlug, email, deviceName },
+        });
+      }
+    } catch (deviceError) {
+      // Don't block login if device tracking fails
+      console.error('[AgentAuth] Device tracking error:', deviceError);
+    }
 
     const { token: accessToken } = signAccess(
       { sub: 'agent', agenteId: agent.id, tenantId: agent.tenantId, tenantSlug: agent.tenant.slug, email: agent.email },
