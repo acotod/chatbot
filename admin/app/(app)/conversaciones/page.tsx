@@ -5,6 +5,7 @@ import {
   AlertTriangle,
   ChevronDown,
   ClipboardList,
+  ExternalLink,
   GitBranch,
   Search,
   Send,
@@ -17,6 +18,7 @@ import {
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useRouter } from "next/navigation";
 import { useAuthStore } from "@/store/auth";
 import { agentesApi, conversationsApi, solicitudesApi, whatsappApi } from "@/lib/api";
 import { useWaSocket } from "@/hooks/useSocket";
@@ -235,6 +237,7 @@ function ConvHistoryCard({ conv }: { conv: ConvRecord }) {
 export default function ConversacionesPage() {
   const { tenantSlug } = useAuthStore();
   const qc = useQueryClient();
+  const router = useRouter();
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const [activeThread, setActiveThread] = useState<Thread | null>(null);
@@ -751,13 +754,21 @@ export default function ConversacionesPage() {
                         <UserCheck size={10} /> {s.agente.nombre}
                       </p>
                     )}
-                    <div className="flex gap-1">
+                    <div className="flex gap-1 items-center">
+                      <button
+                        onClick={() => router.push("/solicitudes")}
+                        title="Ver en solicitudes"
+                        className="text-[10px] text-blue-500 hover:text-blue-700 flex items-center gap-0.5"
+                      >
+                        <ExternalLink size={9} />
+                        Ver
+                      </button>
                       {s.estado !== "completed" && (
                         <button
                           onClick={() => updateEstadoMutation.mutate({ id: s.id, estado: "completed" })}
-                          className="text-[10px] text-green-600 hover:underline"
+                          className="text-[10px] text-green-600 hover:underline ml-1"
                         >
-                          Marcar atendida
+                          Atendida
                         </button>
                       )}
                       {s.estado !== "rejected" && (

@@ -245,6 +245,14 @@ export default function SolicitudesPage() {
     qc.invalidateQueries({ queryKey: ["solicitudes"] });
     qc.invalidateQueries({ queryKey: ["solicitudes-stats"] });
   });
+  // Real-time: auto-refresh messages when a new message is sent/received for this solicitud
+  useSocket(tenantSlug || null, "SOLICITUD_MESSAGE_SENT", () => {
+    qc.invalidateQueries({ queryKey: ["solicitud-messages"] });
+  });
+  // Also refresh on WhatsApp delivery status changes while messages tab is open
+  useSocket(tenantSlug || null, "SOLICITUD_MESSAGE_STATUS", () => {
+    qc.invalidateQueries({ queryKey: ["solicitud-messages"] });
+  });
 
   const { data: agentesData } = useQuery({
     queryKey: ["agentes", tenantSlug],

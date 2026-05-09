@@ -311,6 +311,22 @@ async function _handleIncomingMessage({ msg, contacts, tenant, phoneNumberId, ac
     createdAt:   mensaje.createdAt,
   });
 
+  // Notify open solicitudes for this contact (best-effort, non-blocking)
+  if (userId !== null) {
+    getPrismaClient().solicitud.findFirst({
+      where: { tenantId: tenant.id, userId, estado: { notIn: ['completed', 'rejected'] } },
+      orderBy: { updatedAt: 'desc' },
+      select: { id: true },
+    }).then((sol) => {
+      if (sol) {
+        socketService.emit(tenant.id, 'SOLICITUD_MESSAGE_SENT', {
+          solicitudId: sol.id,
+          mensaje,
+        });
+      }
+    }).catch(() => {});
+  }
+
   // Mark as read (best-effort)
   if (accessToken) {
     wa.markAsRead(phoneNumberId, waMsgId, accessToken).catch((err) => {

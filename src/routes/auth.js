@@ -12,6 +12,7 @@ const { getRedisClient } = require('../services/redis');
 const logger = require('../utils/logger');
 const { sendEmail, EmailServiceError } = require('../services/emailService');
 const wa = require('../services/whatsapp');
+const socketService = require('../services/socketService');
 const requireJwt = require('../middleware/requireJwt');
 const requireAgentJwt = require('../middleware/requireAgentJwt');
 const lockoutPolicy = require('../services/lockoutPolicy');
@@ -1214,6 +1215,11 @@ router.post('/agent/solicitudes/:id/messages', requireAgentJwt, async (req, res,
       ip: req.ip,
       userAgent: req.headers['user-agent'],
       metadata: { agenteId, mensajeId: mensaje?.id ?? null, waMsgId: mensaje?.waMsgId ?? null },
+    });
+
+    socketService.emit(tenantId, 'SOLICITUD_MESSAGE_SENT', {
+      solicitudId,
+      mensaje,
     });
 
     return res.status(201).json({
