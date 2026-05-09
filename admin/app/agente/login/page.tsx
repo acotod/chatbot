@@ -2,7 +2,6 @@
 
 import { agentAuthApi, type AgentLoginResponse } from "@/lib/agentApi";
 import { useAgentAuthStore } from "@/store/agentAuth";
-import { useAuthStore } from "@/store/auth";
 import axios from "axios";
 import { MessageCircle } from "lucide-react";
 import { useRouter } from "next/navigation";
@@ -65,6 +64,17 @@ function getAuthErrorMessage(error: unknown): string {
   return String(error.response?.data?.error || "No se pudo iniciar sesión. Intenta nuevamente.");
 }
 
+function clearAdminAuthPreserveTabSession() {
+  if (typeof window === "undefined") return;
+  try {
+    sessionStorage.removeItem("admin_token");
+    sessionStorage.removeItem("admin_refresh_token");
+    sessionStorage.removeItem("auth-storage");
+  } catch {
+    // Best effort cleanup only.
+  }
+}
+
 export default async function AgentLoginPage({ searchParams }: AgentLoginPageProps) {
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
   const reasonValue = resolvedSearchParams?.reason;
@@ -79,7 +89,6 @@ export default async function AgentLoginPage({ searchParams }: AgentLoginPagePro
 function AgentLoginScreen({ reason, nextPath }: AgentLoginScreenProps) {
   const router = useRouter();
   const { setToken } = useAgentAuthStore();
-  const { logout } = useAuthStore();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -105,7 +114,8 @@ function AgentLoginScreen({ reason, nextPath }: AgentLoginScreenProps) {
         return;
       }
 
-      logout(); // Clear any stray admin token
+      // Clear admin tokens without resetting tabId to keep agent JWT tab context valid.
+      clearAdminAuthPreserveTabSession();
       setToken(payload.accessToken);
       router.replace(nextPath);
     } catch (err) {
@@ -120,7 +130,8 @@ function AgentLoginScreen({ reason, nextPath }: AgentLoginScreenProps) {
     setLoading(true);
     try {
       const res = await agentAuthApi.loginWithTenant(tenantSlug, email.trim().toLowerCase(), password);
-      logout();
+      // Clear admin tokens without resetting tabId to keep agent JWT tab context valid.
+      clearAdminAuthPreserveTabSession();
       setToken(res.data.accessToken);
       router.replace(nextPath);
     } catch (err) {
