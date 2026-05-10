@@ -1887,14 +1887,26 @@ async function listMensajes(tenantId, userId, { page = 1, limit = 50 } = {}) {
 async function listConversaciones(tenantId, { limit = 30 } = {}) {
   const client = getPrismaClient();
   if (!client) return [];
-  // Use raw groupBy to get the latest message per user
-  return client.mensaje.findMany({
-    where:    { tenantId },
-    distinct: ['userId'],
-    orderBy:  { createdAt: 'desc' },
-    take:     limit,
-    include:  { user: true },
+  // Avoid DB-specific DISTINCT/ORDER BY edge cases by deduping in memory.
+  // Fetch a bounded recent window and keep first message per conversation key.
+  const recent = await client.mensaje.findMany({
+    where:   { tenantId },
+    orderBy: { createdAt: 'desc' },
+    take:    Math.max(Number(limit) * 8, Number(limit)),
+    include: { user: true },
   });
+
+  const seen = new Set();
+  const threads = [];
+  for (const msg of recent) {
+    const key = msg.userId ? `u:${msg.userId}` : `p:${msg.phone || 'unknown'}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    threads.push(msg);
+    if (threads.length >= Number(limit)) break;
+  }
+
+  return threads;
 }
 
 // ---------------------------------------------------------------------------
