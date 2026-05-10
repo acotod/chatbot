@@ -222,3 +222,51 @@ export function resolveNodeType(type: NodeType): CanonicalNodeType {
   if (type in LEGACY_TYPE_MAP) return LEGACY_TYPE_MAP[type as LegacyNodeType];
   return type as CanonicalNodeType;
 }
+
+// ─── Canvas position data ─────────────────────────────────────────────────────
+
+export interface Position {
+  x: number;
+  y: number;
+}
+
+export type PositionMap = Record<string, Position>;
+
+// ─── Flow definition (internal format) ────────────────────────────────────────
+
+export interface NodeDef {
+  id: string;
+  type: string;
+  config: Record<string, unknown>;
+  next?: string | null;
+  branches?: Record<string, string>;
+}
+
+export interface FlowDefinition {
+  version?: string;
+  entry_point: string;
+  nodes: NodeDef[];
+  /** Node positions for canvas rendering (x, y coordinates) */
+  nodePositions?: PositionMap;
+  variables?: Record<string, unknown>;
+  integrations?: Record<string, unknown>;
+  metadata?: Record<string, unknown>;
+}
+
+// ─── ReactFlow node & edge types ──────────────────────────────────────────────
+
+export interface NodeData {
+  id: string;
+  type: string;
+  label: string;
+  config: Record<string, unknown>;
+  next?: string | null;
+  branches?: Record<string, string>;
+}
+
+/**
+ * Extended ReactFlow types for better type safety.
+ * Re-export from reactflow with our custom data types.
+ */
+export type FlowNode = import('reactflow').Node<NodeData>;
+export type FlowEdge = import('reactflow').Edge<FlowEdgeData>;
