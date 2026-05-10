@@ -11,8 +11,8 @@ import { FlowDefinition, Position, PositionMap } from './flowTypes';
 
 // ─── Configuration ────────────────────────────────────────────────────────────
 
-const GRID_SPACING_X = 300;
-const GRID_SPACING_Y = 200;
+const GRID_SPACING_X = 400;
+const GRID_SPACING_Y = 250;
 const COLS_PER_ROW = 4;
 
 interface LayoutOptions {

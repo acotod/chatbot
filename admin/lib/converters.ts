@@ -9,8 +9,8 @@ import { FlowDefinition, NodeDef, FlowNode, FlowEdge, Position, PositionMap } fr
 
 // ─── Constants ─────────────────────────────────────────────────────────────────
 
-const GRID_SPACING_X = 250;
-const GRID_SPACING_Y = 150;
+const GRID_SPACING_X = 400;
+const GRID_SPACING_Y = 250;
 
 interface FlattenedNode {
   node: NodeDef;
