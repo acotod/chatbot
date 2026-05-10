@@ -31,7 +31,7 @@ function resolveSocketBase(): string {
   if (typeof window !== 'undefined') {
     const { protocol, hostname } = window.location;
     if (isLocalHostname(hostname)) {
-      return 'http://127.0.0.1:3200';
+      return 'http://127.0.0.1:3001';
     }
     if (hostname.startsWith('admin.')) {
       return `${protocol}//api.${hostname.slice('admin.'.length)}`;
@@ -39,7 +39,7 @@ function resolveSocketBase(): string {
     return `${protocol}//${hostname}`;
   }
 
-  return 'http://127.0.0.1:3200';
+  return 'http://127.0.0.1:3001';
 }
 
 const API_URL = resolveSocketBase();
