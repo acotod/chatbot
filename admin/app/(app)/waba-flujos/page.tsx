@@ -70,6 +70,7 @@ interface NodeDef {
   branches?: Record<string, string>;
   parentId?: string | null;
   children?: NodeDef[];
+  _waba_screen_id?: string;
   ui?: {
     collapsed?: boolean;
   };
@@ -79,6 +80,7 @@ interface FlowDefinition {
   version?: string;
   entry_point: string;
   nodes: NodeDef[];
+  nodePositions?: Record<string, { x: number; y: number }>;
   variables?: Record<string, unknown>;
   integrations?: Record<string, unknown>;
   metadata?: Record<string, unknown>;
@@ -1004,6 +1006,7 @@ function VarComboInput({
 function NodeEditModal({
   node,
   allNodeIds,
+  allNodes,
   catalogEndpoints,
   flowVariables,
   integrations,
@@ -1012,6 +1015,7 @@ function NodeEditModal({
 }: {
   node: Partial<NodeDef>;
   allNodeIds: string[];
+  allNodes?: NodeDef[];
   catalogEndpoints: CatalogEndpoint[];
   flowVariables: string[];
   integrations: { id: number; nombre: string; tipo: string }[];
@@ -1020,6 +1024,19 @@ function NodeEditModal({
 }) {
   const cfg = (node.config ?? {}) as Record<string, unknown>;
   const initialBranches = (node.branches ?? {}) as Record<string, string>;
+
+  function nodeLabel(nid: string): string {
+    const found = allNodes?.find((n) => n.id === nid);
+    if (!found) return nid;
+    const text = typeof found.config?.text === "string" && found.config.text.trim()
+      ? found.config.text.trim()
+      : typeof found.config?.label === "string" && found.config.label.trim()
+      ? found.config.label.trim()
+      : typeof found.config?.title === "string" && found.config.title.trim()
+      ? found.config.title.trim()
+      : "";
+    return text ? `${nid} · ${text.slice(0, 40)}` : nid;
+  }
 
   function buildBranchesFromOptions(options: { id: string; title: string; next: string }[]): Record<string, string> {
     return options.reduce<Record<string, string>>((acc, option) => {
@@ -1327,7 +1344,7 @@ function NodeEditModal({
                   </div>
                   <MenuOptionsEditor
                     options={menuOptions}
-                    nextNodeOptions={allNodeIds.map((nid) => ({ value: nid, label: `${nid} · nodo` }))}
+                    nextNodeOptions={allNodeIds.map((nid) => ({ value: nid, label: nodeLabel(nid) }))}
                     onAddOption={() => {
                       setMenuOptions((prev) => {
                         const nextOptions = [...prev, { id: `opt_${prev.length + 1}`, title: "", next: "" }];
@@ -1614,7 +1631,7 @@ function NodeEditModal({
                   className="w-full rounded-lg border border-slate-200 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
                   <option value="">— ninguno —</option>
                   {allNodeIds.filter((nid) => nid !== id).map((nid) => (
-                    <option key={nid} value={nid}>{nid}</option>
+                    <option key={nid} value={nid}>{nodeLabel(nid)}</option>
                   ))}
                 </select>
               </div>
@@ -2057,6 +2074,7 @@ function FlowBuilder({
         <NodeEditModal
           node={editingNode}
           allNodeIds={flatNodesList.map((n) => n.id)}
+          allNodes={flatNodesList}
           catalogEndpoints={catalogEndpoints}
           flowVariables={flowVariables}
           integrations={integrations}
