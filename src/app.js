@@ -48,6 +48,20 @@ const configuredAllowedOrigins = (process.env.ALLOWED_ORIGINS || '')
   .map((o) => o.trim())
   .filter(Boolean);
 
+function getRequestHost(req) {
+  const forwardedHost = req.headers['x-forwarded-host'];
+  if (typeof forwardedHost === 'string' && forwardedHost.trim()) {
+    return forwardedHost.split(',')[0].trim().split(':')[0].toLowerCase();
+  }
+
+  const host = req.headers.host;
+  if (typeof host === 'string' && host.trim()) {
+    return host.trim().split(':')[0].toLowerCase();
+  }
+
+  return '';
+}
+
 function expandLoopbackOriginAliases(origins) {
   const expanded = new Set(origins);
 
@@ -71,19 +85,41 @@ const allowedOrigins = configuredAllowedOrigins.length > 0
   ? expandLoopbackOriginAliases(configuredAllowedOrigins)
   : defaultAllowedOrigins;
 
+function isSiblingAdminOrigin(origin, reqHost) {
+  if (!origin || !reqHost || !reqHost.startsWith('api.')) return false;
+
+  try {
+    const originHost = new URL(origin).hostname.toLowerCase();
+    const apiSuffix = reqHost.slice('api.'.length);
+    return apiSuffix.length > 0 && originHost === `admin.${apiSuffix}`;
+  } catch {
+    return false;
+  }
+}
+
 const corsOptions = {
-  origin: (origin, cb) => {
-    // Allow requests with no origin (e.g. curl, server-to-server)
-    if (!origin || allowedOrigins.includes(origin)) return cb(null, true);
-    cb(new Error('Not allowed by CORS'));
-  },
   methods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'x-api-key', 'x-correlation-id', 'x-idempotency-key', 'x-tab-id'],
   credentials: true,
 };
 
-app.use(cors(corsOptions));
-app.options('*', cors(corsOptions));
+const corsDelegate = (req, cb) => {
+  const requestOrigin = req.header('origin');
+  const reqHost = getRequestHost(req);
+
+  const isAllowed =
+    !requestOrigin ||
+    allowedOrigins.includes(requestOrigin) ||
+    isSiblingAdminOrigin(requestOrigin, reqHost);
+
+  cb(null, {
+    ...corsOptions,
+    origin: isAllowed,
+  });
+};
+
+app.use(cors(corsDelegate));
+app.options('*', cors(corsDelegate));
 
 app.use(express.json({
   verify: (_req, _res, buf) => {
