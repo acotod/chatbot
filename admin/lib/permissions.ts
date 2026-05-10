@@ -13,6 +13,8 @@ export type Permission =
   | 'VIEW_FLUJOS'
   | 'VIEW_SANDBOX'
   | 'EDIT_FLUJOS'
+  | 'VIEW_LLM_RESCUE'
+  | 'MANAGE_LLM_RESCUE'
   | 'VIEW_AUDITORIA'
   | 'MANAGE_ROLES'
   | 'MANAGE_TENANTS'
