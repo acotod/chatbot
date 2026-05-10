@@ -2,6 +2,7 @@
 
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import axios from 'axios';
 import { deviceSessionsApi } from '@/lib/api';
 
 interface DeviceSession {
@@ -35,6 +36,9 @@ export default function AgentSecuritySettingsPage() {
       const response = await deviceSessionsApi.listAgentDevices();
       setDevices(response.data.sessions || []);
     } catch (err: any) {
+      if (axios.isCancel(err) || err?.code === 'ERR_CANCELED') {
+        return;
+      }
       console.error('Error fetching devices:', err);
       setError(err.response?.data?.error || 'Failed to load devices');
     } finally {
@@ -53,6 +57,9 @@ export default function AgentSecuritySettingsPage() {
       setDevices(devices.filter(d => d.id !== deviceId));
       alert('Device session revoked successfully');
     } catch (err: any) {
+      if (axios.isCancel(err) || err?.code === 'ERR_CANCELED') {
+        return;
+      }
       console.error('Error revoking device:', err);
       setError(err.response?.data?.error || 'Failed to revoke device session');
     } finally {

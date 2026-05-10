@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import axios from 'axios';
 import { deviceSessionsApi } from '@/lib/api';
 
 interface DeviceSession {
@@ -41,6 +42,9 @@ export default function DeviceManagement({
       const response = await deviceSessionsApi.listAdminDevices();
       setDevices(response.data.sessions || []);
     } catch (err: any) {
+      if (axios.isCancel(err) || err?.code === 'ERR_CANCELED') {
+        return;
+      }
       console.error('Error fetching devices:', err);
       setError(err.response?.data?.error || 'Failed to load devices');
     } finally {
@@ -59,6 +63,9 @@ export default function DeviceManagement({
       setDevices(devices.filter(d => d.id !== deviceId));
       alert('Device session revoked successfully');
     } catch (err: any) {
+      if (axios.isCancel(err) || err?.code === 'ERR_CANCELED') {
+        return;
+      }
       console.error('Error revoking device:', err);
       setError(err.response?.data?.error || 'Failed to revoke device session');
     } finally {
