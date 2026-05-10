@@ -138,7 +138,111 @@ function removeNode(nodes: NodeDef[], nodeId: string): NodeDef[] {
   });
 }
 
-function buildMenuBranchesFromOptions(options: unknown): Record<string, string> {
+function asObjectRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" ? value as Record<string, unknown> : null;
+}
+
+function asArray(value: unknown): unknown[] {
+  return Array.isArray(value) ? value : [];
+}
+
+function getActionConfig(component: unknown): Record<string, unknown> | null {
+  const record = asObjectRecord(component);
+  if (!record) return null;
+
+  return asObjectRecord(record.on_click_action) ?? asObjectRecord(record["on-click-action"]);
+}
+
+function flattenWabaChildren(children: unknown): Record<string, unknown>[] {
+  return asArray(children).flatMap((child) => {
+    const record = asObjectRecord(child);
+    if (!record) return [];
+
+    return [record, ...flattenWabaChildren(record.children)];
+  });
+}
+
+function resolveWabaTarget(value: unknown): string | null {
+  if (!value) return null;
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    return trimmed || null;
+  }
+
+  const record = asObjectRecord(value);
+  if (!record) return null;
+
+  const screen = typeof record.screen === "string" ? record.screen.trim() : "";
+  const name = typeof record.name === "string" ? record.name.trim() : "";
+  return screen || name || null;
+}
+
+function getScreenTargetFromAction(actionConfig: unknown): string | null {
+  const record = asObjectRecord(actionConfig);
+  if (!record) return null;
+
+  return resolveWabaTarget(record.navigate) ?? resolveWabaTarget(record.next);
+}
+
+function getFooterTargetFromScreen(screen: unknown): string | null {
+  const screenRecord = asObjectRecord(screen);
+  const layout = asObjectRecord(screenRecord?.layout);
+  const children = flattenWabaChildren(layout?.children);
+  const footer = children.find((child) => child.type === "Footer");
+
+  return getScreenTargetFromAction(getActionConfig(footer));
+}
+
+function buildScreenIdToNodeIdMap(nodes: NodeDef[]): Map<string, string> {
+  return new Map(
+    nodes.flatMap((node) => {
+      const entries: Array<[string, string]> = [];
+      const screenId = typeof node._waba_screen_id === "string" ? node._waba_screen_id.trim() : "";
+      const embeddedScreen = asObjectRecord(node.config?._waba_screen);
+      const embeddedScreenId = typeof embeddedScreen?.id === "string" ? embeddedScreen.id.trim() : "";
+
+      if (screenId) entries.push([screenId, node.id]);
+      if (embeddedScreenId) entries.push([embeddedScreenId, node.id]);
+
+      return entries;
+    })
+  );
+}
+
+function resolveNodeTarget(
+  target: unknown,
+  nodeIds: Set<string>,
+  screenIdToNodeId: Map<string, string>
+): string | null {
+  const normalizedTarget = typeof target === "string" ? target.trim() : "";
+  if (!normalizedTarget) return null;
+  if (nodeIds.has(normalizedTarget)) return normalizedTarget;
+
+  const mappedTarget = screenIdToNodeId.get(normalizedTarget);
+  return mappedTarget && nodeIds.has(mappedTarget) ? mappedTarget : null;
+}
+
+function normalizeBranchTargets(
+  branches: unknown,
+  nodeIds: Set<string>,
+  screenIdToNodeId: Map<string, string>
+): Record<string, string> {
+  const branchRecord = asObjectRecord(branches);
+  if (!branchRecord) return {};
+
+  return Object.fromEntries(
+    Object.entries(branchRecord).flatMap(([branchKey, target]) => {
+      const resolvedTarget = resolveNodeTarget(target, nodeIds, screenIdToNodeId);
+      return branchKey && resolvedTarget ? [[branchKey, resolvedTarget]] : [];
+    })
+  );
+}
+
+function buildMenuBranchesFromOptions(
+  options: unknown,
+  nodeIds: Set<string>,
+  screenIdToNodeId: Map<string, string>
+): Record<string, string> {
   if (!Array.isArray(options)) return {};
 
   return Object.fromEntries(
@@ -147,9 +251,7 @@ function buildMenuBranchesFromOptions(options: unknown): Record<string, string> 
       const optionId = typeof (option as { id?: unknown }).id === "string"
         ? (option as { id: string }).id.trim()
         : "";
-      const nextNodeId = typeof (option as { next?: unknown }).next === "string"
-        ? (option as { next: string }).next.trim()
-        : "";
+      const nextNodeId = resolveNodeTarget((option as { next?: unknown }).next, nodeIds, screenIdToNodeId) ?? "";
 
       return optionId && nextNodeId ? [[optionId, nextNodeId]] : [];
     })
@@ -158,15 +260,22 @@ function buildMenuBranchesFromOptions(options: unknown): Record<string, string> 
 
 function normalizeFlowDefinition(definition: FlowDefinition): FlowDefinition {
   const flatNodes = flattenNodes(definition.nodes);
+  const nodeIds = new Set(flatNodes.map((node) => node.id));
+  const screenIdToNodeId = buildScreenIdToNodeIdMap(flatNodes);
   const normalizedNodes = definition.nodes.map(function normalizeNode(node): NodeDef {
     const normalizedChildren = node.children?.map(normalizeNode);
-    const inferredBranches = node.type === "menu" && (!node.branches || Object.keys(node.branches).length === 0)
-      ? buildMenuBranchesFromOptions(node.config?.options)
-      : node.branches;
+    const resolvedBranches = normalizeBranchTargets(node.branches, nodeIds, screenIdToNodeId);
+    const inferredBranches = node.type === "menu" && Object.keys(resolvedBranches).length === 0
+      ? buildMenuBranchesFromOptions(node.config?.options, nodeIds, screenIdToNodeId)
+      : resolvedBranches;
+    const footerTarget = getFooterTargetFromScreen(node.config?._waba_screen);
+    const resolvedNext = resolveNodeTarget(node.next, nodeIds, screenIdToNodeId)
+      ?? resolveNodeTarget(footerTarget, nodeIds, screenIdToNodeId);
 
     return {
       ...node,
-      branches: inferredBranches && Object.keys(inferredBranches).length > 0 ? inferredBranches : node.branches,
+      next: resolvedNext ?? node.next,
+      branches: Object.keys(inferredBranches).length > 0 ? inferredBranches : node.branches,
       children: normalizedChildren && normalizedChildren.length > 0 ? normalizedChildren : undefined,
     };
   });

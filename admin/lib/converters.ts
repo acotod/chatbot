@@ -20,6 +20,39 @@ interface FlattenedNode {
   order: number;
 }
 
+function asObjectRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === 'object' ? value as Record<string, unknown> : null;
+}
+
+function buildScreenIdToNodeIdMap(flattenedNodes: FlattenedNode[]): Map<string, string> {
+  return new Map(
+    flattenedNodes.flatMap(({ node }) => {
+      const entries: Array<[string, string]> = [];
+      const directScreenId = typeof node._waba_screen_id === 'string' ? node._waba_screen_id.trim() : '';
+      const embeddedScreen = asObjectRecord(node.config?._waba_screen);
+      const embeddedScreenId = typeof embeddedScreen?.id === 'string' ? embeddedScreen.id.trim() : '';
+
+      if (directScreenId) entries.push([directScreenId, node.id]);
+      if (embeddedScreenId) entries.push([embeddedScreenId, node.id]);
+
+      return entries;
+    })
+  );
+}
+
+function resolveTargetNodeId(
+  target: unknown,
+  nodeIds: Set<string>,
+  screenIdToNodeId: Map<string, string>
+): string | null {
+  const normalizedTarget = typeof target === 'string' ? target.trim() : '';
+  if (!normalizedTarget) return null;
+  if (nodeIds.has(normalizedTarget)) return normalizedTarget;
+
+  const mappedTarget = screenIdToNodeId.get(normalizedTarget);
+  return mappedTarget && nodeIds.has(mappedTarget) ? mappedTarget : null;
+}
+
 function flattenDefinitionNodes(nodes: NodeDef[], parentId: string | null = null, depth = 0): FlattenedNode[] {
   return nodes.flatMap((node, index) => {
     const resolvedParentId = node.parentId ?? parentId;
@@ -93,14 +126,16 @@ export function toReactFlowEdges(definition: FlowDefinition): FlowEdge[] {
   const edges: FlowEdge[] = [];
   const flattenedNodes = flattenDefinitionNodes(definition.nodes);
   const nodeIds = new Set(flattenedNodes.map(({ node }) => node.id));
+  const screenIdToNodeId = buildScreenIdToNodeIdMap(flattenedNodes);
 
   flattenedNodes.forEach(({ node }) => {
     // Linear next edge
-    if (node.next && nodeIds.has(node.next)) {
+    const resolvedNext = resolveTargetNodeId(node.next, nodeIds, screenIdToNodeId);
+    if (resolvedNext) {
       edges.push({
-        id: `${node.id}-next-${node.next}`,
+        id: `${node.id}-next-${resolvedNext}`,
         source: node.id,
-        target: node.next,
+        target: resolvedNext,
         data: {
           label: 'next',
         },
@@ -110,11 +145,12 @@ export function toReactFlowEdges(definition: FlowDefinition): FlowEdge[] {
     // Branch edges (for condition/menu nodes)
     if (node.branches) {
       Object.entries(node.branches).forEach(([branchKey, targetNodeId]) => {
-        if (nodeIds.has(targetNodeId as string)) {
+        const resolvedTarget = resolveTargetNodeId(targetNodeId, nodeIds, screenIdToNodeId);
+        if (resolvedTarget) {
           edges.push({
-            id: `${node.id}-branch-${branchKey}-${targetNodeId}`,
+            id: `${node.id}-branch-${branchKey}-${resolvedTarget}`,
             source: node.id,
-            target: targetNodeId as string,
+            target: resolvedTarget,
             data: {
               branch: branchKey,
               label: branchKey,
