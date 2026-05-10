@@ -21,146 +21,133 @@ const PRIORIDADES = ["", "baja", "media", "alta"];
 const CATEGORIAS = ["", "tecnico", "facturacion", "comercial", "soporte", "otro"];
 const SLA_FILTERS = ["", "on_track", "warning", "breached", "no_sla"];
 
-const ESTADO_LABELS: Record<string, string> = {
-  open: "Abierta",
-  in_progress: "En progreso",
-  pending_info: "Pendiente info",
-  completed: "Completada",
-  rejected: "Rechazada",
-};
-
-const SLA_LABELS: Record<string, string> = {
-  on_track: "En SLA",
-  warning: "Por vencer",
-  breached: "Vencido",
-  no_sla: "Sin SLA",
-};
-
-const PRIORIDAD_LABELS: Record<string, string> = {
-  baja: "Baja",
-  media: "Media",
-  alta: "Alta",
-};
-
-const CATEGORIA_LABELS: Record<string, string> = {
-  tecnico: "Tecnico",
-  facturacion: "Facturacion",
-  comercial: "Comercial",
-  soporte: "Soporte",
-  otro: "Otro",
-};
-
-const EVENT_BADGES: Record<string, { label: string; color: string }> = {
-  conversation_started: { label: "Inicio", color: "text-emerald-700 bg-emerald-50 border-emerald-200" },
-  message_sent: { label: "Bot", color: "text-blue-700 bg-blue-50 border-blue-200" },
-  user_input: { label: "Cliente", color: "text-slate-700 bg-slate-100 border-slate-200" },
-  menu_selection: { label: "Seleccion", color: "text-violet-700 bg-violet-50 border-violet-200" },
-  condition_evaluated: { label: "Condicion", color: "text-amber-700 bg-amber-50 border-amber-200" },
-  api_call: { label: "API", color: "text-orange-700 bg-orange-50 border-orange-200" },
-  task_status_change: { label: "Tarea", color: "text-fuchsia-700 bg-fuchsia-50 border-fuchsia-200" },
-  conversation_ended: { label: "Cierre", color: "text-slate-600 bg-slate-100 border-slate-200" },
-};
-
-interface Solicitud {
-  id: number;
-  titulo?: string | null;
-  nombre?: string;
-  telefonoContacto?: string;
-  horario?: string;
-  estado: string;
-  prioridad?: string;
-  categoria?: string | null;
-  subcategoria?: string | null;
-  dueAt?: string | null;
-  firstResponseAt?: string | null;
-  escalationLevel?: number;
-  createdAt: string;
-  conversation?: { id: string } | null;
-  user?: { phone?: string | null } | null;
-  slaStatus?: {
-    status: string;
-    minutesRemaining: number | null;
-  };
-  agente?: { id?: number; nombre: string } | null;
-}
-
-interface ConversationItem {
-  id: string;
-  userKey: string;
-  status: string;
-  startedAt: string;
-  endedAt: string | null;
-  flow?: { nombre: string } | null;
-  solicitudes?: Array<{ id: number; estado: string; createdAt: string }>;
-}
-
-interface ConversationEventItem {
-  id: string;
-  nodeRef: string | null;
-  eventType: string;
-  payload: unknown;
-  createdAt: string;
-}
-
-interface ConversationDetail {
-  id: string;
-  userKey: string;
-  status: string;
-  startedAt: string;
-  endedAt: string | null;
-  flow?: { id: number; nombre: string } | null;
-  events?: ConversationEventItem[];
-}
-
-interface ConversationBubble {
-  id: string;
-  text: string;
-  createdAt: string;
-  eventType: string;
-  nodeRef: string | null;
-  isOutbound: boolean;
-}
-
-interface Agente {
-  id: number;
-  nombre: string;
-  estado: string;
-}
-
-interface SolicitudesTenantConfig {
-  enterpriseEnabled: boolean;
-  advancedSearchEnabled: boolean;
-  slaEnabled: boolean;
-  warningThresholdMinutes: number;
-  manualEscalationEnabled: boolean;
-  autoEscalationEnabled: boolean;
-  escalationIntervalMinutes: number;
-  assignmentRulesEnabled: boolean;
-  customerPortalEnabled: boolean;
-  webhooksEnabled: boolean;
-}
-
-const DEFAULT_SOLICITUDES_CONFIG: SolicitudesTenantConfig = {
-  enterpriseEnabled: true,
-  advancedSearchEnabled: true,
-  slaEnabled: true,
-  warningThresholdMinutes: 60,
-  manualEscalationEnabled: true,
-  autoEscalationEnabled: false,
-  escalationIntervalMinutes: 30,
-  assignmentRulesEnabled: true,
-  customerPortalEnabled: false,
-  webhooksEnabled: false,
-};
-
-export default function SolicitudesPage() {
-  const { tenantSlug } = useAuthStore();
-  const qc = useQueryClient();
-  const hasAccessToken = Boolean(getStoredAccessToken());
-  const hasAgentAccessToken = Boolean(getStoredAgentAccessToken());
-  const isAgentSession = hasAgentAccessToken && !hasAccessToken;
-
-  const [agentStatusFilter, setAgentStatusFilter] = useState<"assigned" | "completed">("assigned");
+              <TabsContent value="resumen" className="space-y-4">
+                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                    <p className="text-xs uppercase tracking-wide text-slate-500">Cliente</p>
+                    <p className="mt-1 font-medium text-slate-900">{detailModal.solicitud.nombre || "Sin nombre"}</p>
+                    <p className="text-sm text-slate-600">{detailModal.solicitud.telefonoContacto || "Sin teléfono"}</p>
+                  </div>
+                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                    <p className="text-xs uppercase tracking-wide text-slate-500">Conexión</p>
+                    <p className="mt-1 text-sm text-slate-700">{detailClientKey || "Sin identificador de cliente"}</p>
+                  </div>
+                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                    <p className="text-xs uppercase tracking-wide text-slate-500">Primera respuesta</p>
+                    <p className="mt-1 text-sm text-slate-700">{detailModal.solicitud.firstResponseAt ? formatDate(detailModal.solicitud.firstResponseAt) : "Pendiente"}</p>
+                  </div>
+                </div>
+                <div className="rounded-xl border border-slate-200 bg-white p-4 space-y-3 shadow-sm">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-medium text-slate-900">Gestionar solicitud</p>
+                      <p className="text-xs text-slate-500">Actualiza estado, prioridad, categoría y vencimiento.</p>
+                    </div>
+                    <p className="text-xs text-slate-500">{isAgentSession ? "Edición limitada por sesión" : "Edición completa de admin"}</p>
+                  </div>
+                  <div className="grid gap-3 sm:grid-cols-3">
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-medium uppercase tracking-wide text-slate-500">Estado</label>
+                      <select
+                        value={detailDraft.estado}
+                        onChange={(e) => setDetailDraft((prev) => ({ ...prev, estado: e.target.value }))}
+                        className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm"
+                      >
+                        {ESTADOS.filter(Boolean).map((estado) => (
+                          <option key={estado} value={estado}>
+                            {ESTADO_LABELS[estado] ?? estado}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-medium uppercase tracking-wide text-slate-500">Prioridad</label>
+                      <select
+                        value={detailDraft.prioridad}
+                        onChange={(e) => setDetailDraft((prev) => ({ ...prev, prioridad: e.target.value }))}
+                        className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm"
+                      >
+                        {PRIORIDADES.filter(Boolean).map((prioridad) => (
+                          <option key={prioridad} value={prioridad}>
+                            {PRIORIDAD_LABELS[prioridad] ?? prioridad}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-medium uppercase tracking-wide text-slate-500">Agente</label>
+                      <select
+                        value={detailDraft.agenteId}
+                        disabled
+                        className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-500"
+                      >
+                        <option value="">{detailModal.solicitud.agente?.nombre ?? "Asignado automáticamente"}</option>
+                      </select>
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-medium uppercase tracking-wide text-slate-500">Categoria</label>
+                      <select
+                        value={detailDraft.categoria}
+                        onChange={(e) => setDetailDraft((prev) => ({ ...prev, categoria: e.target.value }))}
+                        className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm"
+                      >
+                        <option value="">Sin categoria</option>
+                        {CATEGORIAS.filter(Boolean).map((categoria) => (
+                          <option key={categoria} value={categoria}>
+                            {CATEGORIA_LABELS[categoria] ?? categoria}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-medium uppercase tracking-wide text-slate-500">Subcategoria</label>
+                      <input
+                        value={detailDraft.subcategoria}
+                        onChange={(e) => setDetailDraft((prev) => ({ ...prev, subcategoria: e.target.value }))}
+                        placeholder="Ej: integracion-whatsapp"
+                        className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-medium uppercase tracking-wide text-slate-500">Fecha limite</label>
+                      <input
+                        type="datetime-local"
+                        value={detailDraft.dueAt}
+                        onChange={(e) => setDetailDraft((prev) => ({ ...prev, dueAt: e.target.value }))}
+                        className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm"
+                      />
+                    </div>
+                  </div>
+                  <div className="flex justify-end gap-3 pt-1">
+                    <Button
+                      onClick={() => {
+                        if (!detailModal.solicitud) return;
+                        updateAgentSolicitud.mutate({
+                          id: detailModal.solicitud.id,
+                          data: {
+                            estado: detailDraft.estado,
+                            prioridad: detailDraft.prioridad || null,
+                            categoria: detailDraft.categoria || null,
+                            subcategoria: detailDraft.subcategoria || null,
+                            dueAt: detailDraft.dueAt ? new Date(detailDraft.dueAt).toISOString() : null,
+                          },
+                        });
+                      }}
+                      disabled={updateAgentSolicitud.isPending}
+                    >
+                      {updateAgentSolicitud.isPending ? "Guardando..." : "Guardar cambios"}
+                    </Button>
+                  </div>
+                </div>
+                <div className="flex justify-end gap-3 pt-2">
+                  <Button variant="secondary" onClick={() => setDetailModal({ open: false, solicitud: null })}>
+                    Cerrar
+                  </Button>
+                  <Button onClick={() => setDetailTab("conversaciones") }>
+                    Ver conversaciones del cliente
+                  </Button>
+                </div>
+              </TabsContent>
 
   const { data: agentSolicitudes, isLoading: isAgentSolicitudesLoading } = useQuery({
     queryKey: ["agent-solicitudes", agentStatusFilter],
@@ -203,6 +190,10 @@ export default function SolicitudesPage() {
   }>({ open: false, conversation: null });
   const [selectedAgente, setSelectedAgente] = useState("");
   const defaultDetailTab: "resumen" | "conversaciones" | "mensajes" = isAgentSession ? "mensajes" : "resumen";
+  const detailModeLabel = isAgentSession ? "Vista de agente" : "Vista admin";
+  const detailModeDescription = isAgentSession
+    ? "Esta solicitud se está viendo con sesión de agente; el detalle técnico queda limitado."
+    : "Edición completa del panel admin con estados, prioridad, agente y mensajes.";
 
   function openSolicitudDetail(solicitud: Solicitud): void {
     setDetailModal({ open: true, solicitud });
@@ -990,12 +981,51 @@ export default function SolicitudesPage() {
           className="max-w-4xl"
         >
           {detailModal.solicitud && (
-            <Tabs value={detailTab} className="space-y-4">
-              <TabsList className="w-full justify-start overflow-x-auto">
-                <TabsTrigger value="resumen" onClick={() => setDetailTab("resumen")}>Resumen</TabsTrigger>
-                <TabsTrigger value="conversaciones" onClick={() => setDetailTab("conversaciones")}>Conversaciones del cliente</TabsTrigger>
-                <TabsTrigger value="mensajes" onClick={() => setDetailTab("mensajes")}>Mensajes WhatsApp</TabsTrigger>
-              </TabsList>
+            <div className="space-y-5">
+              <div className="rounded-2xl border border-slate-200 bg-gradient-to-r from-slate-50 via-white to-blue-50 p-4 shadow-sm">
+                <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span
+                        className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide ${
+                          isAgentSession
+                            ? "border-amber-200 bg-amber-50 text-amber-700"
+                            : "border-blue-200 bg-blue-50 text-blue-700"
+                        }`}
+                      >
+                        {detailModeLabel}
+                      </span>
+                      <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-600">
+                        Solicitud #{detailModal.solicitud.id}
+                      </span>
+                    </div>
+                    <h3 className="mt-3 truncate text-xl font-semibold text-slate-900">
+                      {detailModal.solicitud.nombre || "Sin nombre"}
+                    </h3>
+                    <p className="mt-1 text-sm text-slate-600">
+                      {detailModal.solicitud.telefonoContacto || "Sin teléfono"}
+                      {detailModal.solicitud.createdAt ? ` · Creada ${formatDate(detailModal.solicitud.createdAt)}` : ""}
+                    </p>
+                  </div>
+                  <div className="flex flex-col gap-2 lg:items-end">
+                    <StatusBadge status={detailModal.solicitud.estado} />
+                    <p className="text-xs text-slate-500">
+                      {detailModal.solicitud.agente?.nombre ? `Agente: ${detailModal.solicitud.agente.nombre}` : "Sin agente asignado"}
+                    </p>
+                    <p className="text-xs text-slate-500">
+                      {detailModal.solicitud.dueAt ? `Vence ${formatDate(detailModal.solicitud.dueAt)}` : "Sin vencimiento"}
+                    </p>
+                  </div>
+                </div>
+                <p className="mt-3 text-sm text-slate-600">{detailModeDescription}</p>
+              </div>
+
+              <Tabs value={detailTab} className="space-y-4">
+                <TabsList className="w-full justify-start overflow-x-auto">
+                  <TabsTrigger value="resumen" onClick={() => setDetailTab("resumen")}>Resumen</TabsTrigger>
+                  <TabsTrigger value="conversaciones" onClick={() => setDetailTab("conversaciones")}>Conversaciones del cliente</TabsTrigger>
+                  <TabsTrigger value="mensajes" onClick={() => setDetailTab("mensajes")}>Mensajes WhatsApp</TabsTrigger>
+                </TabsList>
 
               <TabsContent value="resumen" className="space-y-4">
                 <div className="grid gap-3 sm:grid-cols-2">
