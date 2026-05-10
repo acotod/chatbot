@@ -1298,7 +1298,19 @@ router.get('/agent/solicitudes/:id/messages', requireAgentJwt, async (req, res, 
     });
     if (!result) return res.status(404).json({ error: 'Solicitud not found' });
 
-    return res.json(result);
+    return res.json({
+      ok: true,
+      solicitud: result.solicitud,
+      data: result.data,
+      total: result.total,
+      page: result.page,
+      limit: result.limit,
+      meta: {
+        page: result.page,
+        limit: result.limit,
+        total: result.total,
+      },
+    });
   } catch (err) {
     return next(err);
   }
@@ -1377,6 +1389,11 @@ router.post('/agent/solicitudes/:id/messages', requireAgentJwt, async (req, res,
 
     return res.status(201).json({
       ok: true,
+      data: {
+        solicitudId,
+        mensaje,
+        waResponse: waResp,
+      },
       solicitudId,
       mensaje,
       waResponse: waResp,

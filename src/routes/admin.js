@@ -1516,7 +1516,19 @@ router.get('/tenants/:slug/solicitudes/:id/messages', requirePermiso('VIEW_SOLIC
         });
         if (!result) return res.status(404).json({ error: 'Solicitud not found' });
 
-        return res.json(result);
+        return res.json({
+            ok: true,
+            solicitud: result.solicitud,
+            data: result.data,
+            total: result.total,
+            page: result.page,
+            limit: result.limit,
+            meta: {
+                page: result.page,
+                limit: result.limit,
+                total: result.total,
+            },
+        });
     } catch (err) {
         next(err);
     }
@@ -1591,6 +1603,11 @@ router.post('/tenants/:slug/solicitudes/:id/messages', requirePermiso('EDIT_SOLI
 
         return res.status(201).json({
             ok: true,
+            data: {
+                solicitudId,
+                mensaje,
+                waResponse: waResp,
+            },
             solicitudId,
             mensaje,
             waResponse: waResp,
