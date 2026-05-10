@@ -6,6 +6,7 @@ import { metricsApi, solicitudesApi, whatsappApi } from "@/lib/api";
 import { buildPermissionSet } from "@/lib/permissions";
 import { getStoredAccessToken, useAuthStore } from "@/store/auth";
 import { useQuery } from "@tanstack/react-query";
+import axios from "axios";
 import { AlertTriangle, CalendarCheck, ClipboardList, MessageSquare, TrendingUp } from "lucide-react";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { Card, CardContent, CardHeader } from "@/components/ui/Card";
@@ -136,11 +137,15 @@ export default function DashboardPage() {
         if (!cancelled) {
           setAgentProfile(res.data);
         }
-      } catch {
+      } catch (err) {
         if (!cancelled) {
+          const status = axios.isAxiosError(err) ? err.response?.status : undefined;
+          if (status === 401) {
+            logoutAgent();
+            router.replace("/agente/login?reason=expired");
+            return;
+          }
           setAgentError("No se pudo cargar el dashboard de agente.");
-          logoutAgent();
-          router.replace("/agente/login?reason=expired");
         }
       } finally {
         if (!cancelled) {

@@ -5,6 +5,17 @@ import { getTabId } from "./tabManager";
 
 let inMemoryRequestTabId = "";
 
+function getTokenTabId(token: string): string {
+  try {
+    const payload = JSON.parse(atob(token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/"))) as {
+      tabId?: unknown;
+    };
+    return typeof payload.tabId === "string" ? payload.tabId : "";
+  } catch {
+    return "";
+  }
+}
+
 function getRequestTabId(): string {
   const fromManager = getTabId();
   if (fromManager) {
@@ -26,6 +37,14 @@ agentApiClient.interceptors.request.use((config) => {
   const token = getStoredAgentAccessToken();
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
+
+    // Keep x-tab-id aligned with the token claim to avoid spurious 401
+    // "Invalid tab context" responses when tab storage changes.
+    const tokenTabId = getTokenTabId(token);
+    if (tokenTabId) {
+      config.headers["x-tab-id"] = tokenTabId;
+      return config;
+    }
   } else {
     // Abort silently when no agent token is available to prevent 401 floods
     // caused by the race between useQuery/useEffect evaluated before the

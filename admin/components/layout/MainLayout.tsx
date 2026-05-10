@@ -3,7 +3,7 @@
 import { useEffect, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
 import { usePathname } from "next/navigation";
-import { getStoredAccessToken, useAuthStore } from "@/store/auth";
+import { getStoredAccessToken } from "@/store/auth";
 import { getStoredAgentAccessToken } from "@/store/agentAuth";
 import { Sidebar } from "./Sidebar";
 import { Header } from "./Header";
@@ -27,13 +27,12 @@ export default function MainLayout({
 }) {
   const router = useRouter();
   const pathname = usePathname();
-  const token = useAuthStore((state) => state.token);
   const isClient = useSyncExternalStore(
     subscribeToClientSnapshot,
     getClientSnapshot,
     getServerSnapshot
   );
-  const hasAccessToken = isClient && Boolean(token || getStoredAccessToken());
+  const hasAccessToken = isClient && Boolean(getStoredAccessToken());
   const hasAgentAccessToken = isClient && Boolean(getStoredAgentAccessToken());
   const allowAgentSharedRoute = ["/dashboard", "/solicitudes", "/agenda", "/contactos"].includes(pathname) && hasAgentAccessToken;
 
