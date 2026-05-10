@@ -87,7 +87,6 @@ const AGENT_NAV_ITEMS: Array<{
   { icon: ClipboardList, label: "Solicitudes", href: "/solicitudes" },
   { icon: CalendarDays, label: "Agenda", href: "/agenda" },
   { icon: UserCircle2, label: "Contactos", href: "/contactos" },
-  { icon: UserCircle2, label: "Perfil", href: "/agente/perfil" },
   { icon: ShieldCheck, label: "Seguridad", href: "/agente/security" },
 ];
 
