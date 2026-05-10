@@ -337,31 +337,33 @@ function normalizeFlowDefinition(definition: FlowDefinition): FlowDefinition {
     const normalizedChildren = node.children?.map(normalizeNode);
     const nodeScreenId = getNodeScreenId(node) ?? "";
     const routeTargets = nodeScreenId ? resolveRouteTargets(routingModel, nodeScreenId) : [];
-    const branchesFromRouting = node.type === "menu"
-      ? buildMenuBranchesFromRouteTargets(node.config?.options, routeTargets, nodeIds, screenIdToNodeId)
-      : {};
+
+    // Normalize explicit branches and options-based branches.
+    // Do NOT infer branches from routing_model index — that mapping is not semantically
+    // correct (WABA routing_model lists reachable screens, not per-option routes).
     const branchesFromDefinition = normalizeBranchTargets(node.branches, nodeIds, screenIdToNodeId);
     const branchesFromOptions = node.type === "menu"
       ? buildMenuBranchesFromOptions(node.config?.options, nodeIds, screenIdToNodeId)
       : {};
 
-    // Merge all branch sources so partial mappings don't erase valid routes.
     const finalBranches = {
-      ...branchesFromRouting,
       ...branchesFromOptions,
       ...branchesFromDefinition,
     };
 
     const footerTarget = getFooterTargetFromScreen(node.config?._waba_screen);
-    const nextFromRouting = routeTargets.length === 1
-      ? resolveNodeTarget(routeTargets[0], nodeIds, screenIdToNodeId)
-      : null;
-    const resolvedNext = resolveNodeTarget(node.next, nodeIds, screenIdToNodeId)
-      ?? resolveNodeTarget(footerTarget, nodeIds, screenIdToNodeId);
+    // Resolve node.next: try direct resolution, then footer action, then single routing target.
+    // Critically, always fall back to the original node.next if it's already a valid node ID
+    // so we never accidentally overwrite a good value with null.
+    const resolvedNext =
+      resolveNodeTarget(node.next, nodeIds, screenIdToNodeId) ??
+      resolveNodeTarget(footerTarget, nodeIds, screenIdToNodeId) ??
+      (routeTargets.length === 1 ? resolveNodeTarget(routeTargets[0], nodeIds, screenIdToNodeId) : null) ??
+      (typeof node.next === "string" && nodeIds.has(node.next) ? node.next : null);
 
     return {
       ...node,
-      next: resolvedNext ?? nextFromRouting ?? null,
+      next: resolvedNext,
       branches: Object.keys(finalBranches).length > 0 ? finalBranches : undefined,
       children: normalizedChildren && normalizedChildren.length > 0 ? normalizedChildren : undefined,
     };
@@ -477,19 +479,16 @@ function convertWabaJsonToFlowDefinition(value: unknown): FlowDefinition {
       ? screenToNodeId.get(resolvedNextScreen) ?? null
       : null;
 
+    // Only create per-option branches when the option carries an EXPLICIT navigate action.
+    // Routing-model index assignment is semantically wrong: in standard WABA Flows the Footer
+    // drives navigation, not individual radio/dropdown options.
     const branches = nodeType === "menu"
       ? Object.fromEntries(
-          options.flatMap((option, optionIndex) => {
+          options.flatMap((option) => {
             const explicitTarget = typeof option.next === "string" ? option.next.trim() : "";
-            const mappedExplicit = explicitTarget && screenToNodeId.has(explicitTarget)
-              ? screenToNodeId.get(explicitTarget)
-              : null;
-            const mappedByOptionId = screenToNodeId.get(option.id);
-            const mappedByRoute = routeTargets[optionIndex]
-              ? (screenToNodeId.get(routeTargets[optionIndex]) ?? null)
-              : null;
-            const resolvedTarget = mappedExplicit ?? mappedByOptionId ?? mappedByRoute;
-            return resolvedTarget ? [[option.id, resolvedTarget]] : [];
+            if (!explicitTarget) return [];
+            const mappedExplicit = screenToNodeId.get(explicitTarget);
+            return mappedExplicit ? [[option.id, mappedExplicit]] : [];
           })
         )
       : {};
