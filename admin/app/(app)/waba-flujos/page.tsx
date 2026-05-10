@@ -31,6 +31,8 @@ import {
 import { wabaFlowsApi, integrationsApi, variablesApi } from "@/lib/api";
 import { useAuthStore } from "@/store/auth";
 import MenuOptionsEditor from "@/components/flujos/MenuOptionsEditor";
+import CanvasEditor from "@/components/FlowBuilder/CanvasEditor";
+import { layoutAsHierarchy } from "@/lib/autoLayout";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
@@ -134,6 +136,52 @@ function removeNode(nodes: NodeDef[], nodeId: string): NodeDef[] {
       },
     ];
   });
+}
+
+function buildMenuBranchesFromOptions(options: unknown): Record<string, string> {
+  if (!Array.isArray(options)) return {};
+
+  return Object.fromEntries(
+    options.flatMap((option) => {
+      if (!option || typeof option !== "object") return [];
+      const optionId = typeof (option as { id?: unknown }).id === "string"
+        ? (option as { id: string }).id.trim()
+        : "";
+      const nextNodeId = typeof (option as { next?: unknown }).next === "string"
+        ? (option as { next: string }).next.trim()
+        : "";
+
+      return optionId && nextNodeId ? [[optionId, nextNodeId]] : [];
+    })
+  );
+}
+
+function normalizeFlowDefinition(definition: FlowDefinition): FlowDefinition {
+  const flatNodes = flattenNodes(definition.nodes);
+  const normalizedNodes = definition.nodes.map(function normalizeNode(node): NodeDef {
+    const normalizedChildren = node.children?.map(normalizeNode);
+    const inferredBranches = node.type === "menu" && (!node.branches || Object.keys(node.branches).length === 0)
+      ? buildMenuBranchesFromOptions(node.config?.options)
+      : node.branches;
+
+    return {
+      ...node,
+      branches: inferredBranches && Object.keys(inferredBranches).length > 0 ? inferredBranches : node.branches,
+      children: normalizedChildren && normalizedChildren.length > 0 ? normalizedChildren : undefined,
+    };
+  });
+
+  const normalizedDefinition: FlowDefinition = {
+    ...definition,
+    nodes: normalizedNodes,
+  };
+
+  const positionCount = Object.keys(normalizedDefinition.nodePositions || {}).length;
+  if (positionCount >= flatNodes.length && flatNodes.length > 0) {
+    return normalizedDefinition;
+  }
+
+  return layoutAsHierarchy(normalizedDefinition as never) as unknown as FlowDefinition;
 }
 
 interface SimulationStep {
@@ -1252,6 +1300,7 @@ function FlowBuilder({
   const validationErrors = validation?.internal?.errors ?? [];
   const validationWarnings = validation?.internal?.warnings ?? [];
   const wabaValidationErrors = validation?.waba?.errors ?? [];
+  const flatNodesList = definition ? flattenNodes(definition.nodes) : [];
 
   const loadLatestVersion = useCallback(async () => {
     try {
@@ -1264,9 +1313,10 @@ function FlowBuilder({
       if (!versions.length) return;
       const latest = versions[0];
       const { data: vd } = await wabaFlowsApi.getVersion(flow.id, latest.id, tenantSlug);
-      setActiveVersion({ ...latest, definition: vd.definition });
-      setDefinition(vd.definition);
-      setJsonText(JSON.stringify(vd.definition, null, 2));
+      const normalizedDefinition = normalizeFlowDefinition(vd.definition as FlowDefinition);
+      setActiveVersion({ ...latest, definition: normalizedDefinition });
+      setDefinition(normalizedDefinition);
+      setJsonText(JSON.stringify(normalizedDefinition, null, 2));
     } catch { /* ignore */ }
   }, [flow.id, tenantSlug]);
 
@@ -1320,7 +1370,7 @@ function FlowBuilder({
       if (!prev) return prev;
       const result = upsertNode(prev.nodes, node);
       const nodes = result.updated ? result.nodes : [...prev.nodes, node];
-      const newDef = { ...prev, nodes };
+      const newDef = normalizeFlowDefinition({ ...prev, nodes });
       if (!newDef.entry_point && flattenNodes(nodes).length === 1) newDef.entry_point = node.id;
       setJsonText(JSON.stringify(newDef, null, 2));
       return newDef;
@@ -1332,7 +1382,7 @@ function FlowBuilder({
     setDefinition((prev) => {
       if (!prev) return prev;
       const nodes = removeNode(prev.nodes, id);
-      const newDef = { ...prev, nodes };
+      const newDef = normalizeFlowDefinition({ ...prev, nodes });
       setJsonText(JSON.stringify(newDef, null, 2));
       return newDef;
     });
@@ -1350,7 +1400,7 @@ function FlowBuilder({
       const [moved] = nodes.splice(idx, 1);
       nodes.splice(nextIdx, 0, moved);
 
-      const newDef = { ...prev, nodes };
+      const newDef = normalizeFlowDefinition({ ...prev, nodes });
       setJsonText(JSON.stringify(newDef, null, 2));
       return newDef;
     });
@@ -1359,7 +1409,7 @@ function FlowBuilder({
   function handleEntryPointChange(id: string) {
     setDefinition((prev) => {
       if (!prev) return prev;
-      const newDef = { ...prev, entry_point: id };
+      const newDef = normalizeFlowDefinition({ ...prev, entry_point: id });
       setJsonText(JSON.stringify(newDef, null, 2));
       return newDef;
     });
@@ -1368,11 +1418,19 @@ function FlowBuilder({
   function handleJsonApply() {
     try {
       const parsed = JSON.parse(jsonText) as FlowDefinition;
-      setDefinition(parsed);
+      const normalizedDefinition = normalizeFlowDefinition(parsed);
+      setDefinition(normalizedDefinition);
+      setJsonText(JSON.stringify(normalizedDefinition, null, 2));
       setJsonError("");
     } catch {
       setJsonError("JSON inválido");
     }
+  }
+
+  function handleCanvasChange(nextDefinition: FlowDefinition) {
+    const normalizedDefinition = normalizeFlowDefinition(nextDefinition);
+    setDefinition(normalizedDefinition);
+    setJsonText(JSON.stringify(normalizedDefinition, null, 2));
   }
 
   async function handleValidate() {
@@ -1489,8 +1547,8 @@ function FlowBuilder({
       )}
 
       <div className="flex gap-4 flex-1 min-h-0">
-        {/* Node list / JSON editor */}
-        <div className="flex-1 flex flex-col min-h-0">
+        {/* Visual canvas / JSON editor */}
+        <div className="flex-[1.5] flex flex-col min-h-0">
           {jsonView ? (
             <div className="flex flex-col flex-1 gap-2">
               <textarea
@@ -1507,41 +1565,68 @@ function FlowBuilder({
               </button>
             </div>
           ) : (
-            <div className="flex flex-col flex-1 gap-3 overflow-y-auto pr-1">
-              {definition?.nodes.length === 0 && (
-                <div className="flex flex-col items-center justify-center py-12 text-slate-400 gap-3 border-2 border-dashed border-slate-200 rounded-2xl">
-                  <Layers className="w-10 h-10" />
-                  <p className="text-sm">No hay nodos todavía</p>
-                  <button
-                    onClick={handleAddNode}
-                    className="text-sm text-blue-600 hover:underline"
-                  >Añadir primer nodo</button>
-                </div>
-              )}
-              {definition?.nodes.map((node, index) => (
-                <NodeCard
-                  key={node.id}
-                  node={node}
-                  isEntry={node.id === definition.entry_point}
-                  canMoveUp={index > 0}
-                  canMoveDown={index < definition.nodes.length - 1}
-                  onMoveUp={(id) => handleMoveNode(id, -1)}
-                  onMoveDown={(id) => handleMoveNode(id, 1)}
-                  onEdit={(n) => setEditingNode(n)}
-                  onDelete={handleDeleteNode}
-                />
-              ))}
-              {(definition?.nodes.length ?? 0) > 0 && (
-                <button
-                  onClick={handleAddNode}
-                  className="flex items-center justify-center gap-2 py-3 rounded-xl border-2 border-dashed border-slate-200 text-sm text-slate-400 hover:border-blue-300 hover:text-blue-500 transition"
-                >
-                  <Plus className="w-4 h-4" />
-                  Añadir nodo
-                </button>
-              )}
+            <div className="flex flex-col flex-1 gap-3 min-h-0">
+              <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-xs text-slate-500">
+                El canvas visual usa esta misma definición interna. Si pegas un JSON como el que compartiste y aplicas cambios, se diagrama automáticamente en esta vista.
+              </div>
+              <div className="flex-1 min-h-0 rounded-2xl border border-slate-200 bg-white overflow-hidden">
+                {definition ? (
+                  <CanvasEditor
+                    definition={definition}
+                    onChange={handleCanvasChange}
+                    onNodeClick={(nodeId) => {
+                      const selectedNode = flatNodesList.find((node) => node.id === nodeId);
+                      if (selectedNode) {
+                        setEditingNode(selectedNode);
+                      }
+                    }}
+                  />
+                ) : (
+                  <div className="flex h-full items-center justify-center text-slate-400">
+                    <RefreshCw className="w-5 h-5 animate-spin" />
+                  </div>
+                )}
+              </div>
             </div>
           )}
+        </div>
+
+        {/* Node list */}
+        <div className="w-80 flex flex-col min-h-0">
+          <div className="flex flex-col flex-1 gap-3 overflow-y-auto pr-1">
+            {flatNodesList.length === 0 && (
+              <div className="flex flex-col items-center justify-center py-12 text-slate-400 gap-3 border-2 border-dashed border-slate-200 rounded-2xl">
+                <Layers className="w-10 h-10" />
+                <p className="text-sm">No hay nodos todavía</p>
+                <button
+                  onClick={handleAddNode}
+                  className="text-sm text-blue-600 hover:underline"
+                >Añadir primer nodo</button>
+              </div>
+            )}
+            {flatNodesList.map((node, index) => (
+              <NodeCard
+                key={node.id}
+                node={node}
+                isEntry={node.id === definition?.entry_point}
+                canMoveUp={index > 0}
+                canMoveDown={index < flatNodesList.length - 1}
+                onMoveUp={(id) => handleMoveNode(id, -1)}
+                onMoveDown={(id) => handleMoveNode(id, 1)}
+                onEdit={(n) => setEditingNode(n)}
+                onDelete={handleDeleteNode}
+              />
+            ))}
+            {flatNodesList.length > 0 && (
+              <button
+                onClick={handleAddNode}
+                className="flex items-center justify-center gap-2 py-3 rounded-xl border-2 border-dashed border-slate-200 text-sm text-slate-400 hover:border-blue-300 hover:text-blue-500 transition"
+              >
+                <Plus className="w-4 h-4" />
+                Añadir nodo
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Sidebar: entry point + save version */}
@@ -1554,7 +1639,7 @@ function FlowBuilder({
               onChange={(e) => handleEntryPointChange(e.target.value)}
               className="w-full rounded-xl border border-slate-200 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
-              {definition?.nodes.map((n) => (
+              {flatNodesList.map((n) => (
                 <option key={n.id} value={n.id}>{n.id} ({n.type})</option>
               ))}
             </select>
@@ -1585,10 +1670,10 @@ function FlowBuilder({
             <div className="bg-slate-50 rounded-2xl p-4 border border-slate-100 space-y-2">
               <p className="text-xs font-medium text-slate-600">Estadísticas</p>
               <div className="space-y-1 text-xs text-slate-500">
-                <div className="flex justify-between"><span>Nodos totales</span><span className="font-medium text-slate-700">{definition.nodes.length}</span></div>
-                <div className="flex justify-between"><span>Acción</span><span className="font-medium text-slate-700">{definition.nodes.filter((n) => n.type === "action").length}</span></div>
-                <div className="flex justify-between"><span>Condición</span><span className="font-medium text-slate-700">{definition.nodes.filter((n) => n.type === "condition").length}</span></div>
-                <div className="flex justify-between"><span>Fin</span><span className="font-medium text-slate-700">{definition.nodes.filter((n) => n.type === "end").length}</span></div>
+                <div className="flex justify-between"><span>Nodos totales</span><span className="font-medium text-slate-700">{flatNodesList.length}</span></div>
+                <div className="flex justify-between"><span>Menu</span><span className="font-medium text-slate-700">{flatNodesList.filter((n) => n.type === "menu").length}</span></div>
+                <div className="flex justify-between"><span>Acción</span><span className="font-medium text-slate-700">{flatNodesList.filter((n) => n.type === "action").length}</span></div>
+                <div className="flex justify-between"><span>Fin</span><span className="font-medium text-slate-700">{flatNodesList.filter((n) => n.type === "end").length}</span></div>
               </div>
             </div>
           )}
@@ -1599,7 +1684,7 @@ function FlowBuilder({
       {editingNode && (
         <NodeEditModal
           node={editingNode}
-          allNodeIds={definition?.nodes.map((n) => n.id) ?? []}
+          allNodeIds={flatNodesList.map((n) => n.id)}
           catalogEndpoints={catalogEndpoints}
           flowVariables={flowVariables}
           integrations={integrations}

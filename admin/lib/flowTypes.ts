@@ -202,13 +202,18 @@ export interface FlowDiagnostic {
 
 // ─── Node visual metadata (colors, icons) ────────────────────────────────────
 
-export const NODE_META: Record<CanonicalNodeType, { color: string; bg: string; label: string }> = {
+export const NODE_META: Record<string, { color: string; bg: string; label: string }> = {
   start:     { color: '#16a34a', bg: '#dcfce7', label: 'Inicio' },
   screen:    { color: '#2563eb', bg: '#dbeafe', label: 'Pantalla' },
   input:     { color: '#7c3aed', bg: '#ede9fe', label: 'Entrada' },
+  menu:      { color: '#9333ea', bg: '#f3e8ff', label: 'Menu' },
   condition: { color: '#d97706', bg: '#fef3c7', label: 'Condición' },
+  action:    { color: '#0891b2', bg: '#cffafe', label: 'Accion' },
   webhook:   { color: '#0891b2', bg: '#cffafe', label: 'Webhook' },
+  delay:     { color: '#64748b', bg: '#f1f5f9', label: 'Espera' },
   end:       { color: '#dc2626', bg: '#fee2e2', label: 'Fin' },
+  handoff:   { color: '#4f46e5', bg: '#e0e7ff', label: 'Handoff' },
+  llm:       { color: '#a21caf', bg: '#fae8ff', label: 'LLM' },
 };
 
 /** Map legacy node types to their canonical equivalent for rendering */
