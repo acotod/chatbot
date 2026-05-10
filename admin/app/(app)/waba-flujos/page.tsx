@@ -66,6 +66,11 @@ interface NodeDef {
   config: Record<string, unknown>;
   next?: string | null;
   branches?: Record<string, string>;
+  parentId?: string | null;
+  children?: NodeDef[];
+  ui?: {
+    collapsed?: boolean;
+  };
 }
 
 interface FlowDefinition {
@@ -75,6 +80,60 @@ interface FlowDefinition {
   variables?: Record<string, unknown>;
   integrations?: Record<string, unknown>;
   metadata?: Record<string, unknown>;
+}
+
+function flattenNodes(nodes: NodeDef[]): NodeDef[] {
+  return nodes.flatMap((node) => [node, ...flattenNodes(node.children || [])]);
+}
+
+function upsertNode(nodes: NodeDef[], nextNode: NodeDef): { nodes: NodeDef[]; updated: boolean } {
+  let updated = false;
+
+  const mapped = nodes.map((node) => {
+    if (node.id === nextNode.id) {
+      updated = true;
+      return {
+        ...node,
+        ...nextNode,
+        parentId: nextNode.parentId ?? node.parentId,
+        children: nextNode.children ?? node.children,
+        ui: nextNode.ui ?? node.ui,
+      };
+    }
+
+    if (!node.children?.length) {
+      return node;
+    }
+
+    const childResult = upsertNode(node.children, nextNode);
+    if (!childResult.updated) {
+      return node;
+    }
+
+    updated = true;
+    return {
+      ...node,
+      children: childResult.nodes,
+    };
+  });
+
+  return { nodes: mapped, updated };
+}
+
+function removeNode(nodes: NodeDef[], nodeId: string): NodeDef[] {
+  return nodes.flatMap((node) => {
+    if (node.id === nodeId) {
+      return [];
+    }
+
+    const childNodes = node.children ? removeNode(node.children, nodeId) : undefined;
+    return [
+      {
+        ...node,
+        children: childNodes && childNodes.length > 0 ? childNodes : undefined,
+      },
+    ];
+  });
 }
 
 interface SimulationStep {
@@ -1251,7 +1310,7 @@ function FlowBuilder({
   }, [loadLatestVersion, tenantSlug]);
 
   function handleAddNode() {
-    const ids = definition?.nodes.map((n) => n.id) ?? [];
+    const ids = definition ? flattenNodes(definition.nodes).map((n) => n.id) : [];
     const nextId = `node_${ids.length + 1}`;
     setEditingNode({ id: nextId, type: "message", config: { text: "" }, next: null, branches: {} });
   }
@@ -1259,12 +1318,10 @@ function FlowBuilder({
   function handleSaveNode(node: NodeDef) {
     setDefinition((prev) => {
       if (!prev) return prev;
-      const idx = prev.nodes.findIndex((n) => n.id === node.id);
-      const nodes = idx >= 0
-        ? prev.nodes.map((n, i) => (i === idx ? node : n))
-        : [...prev.nodes, node];
+      const result = upsertNode(prev.nodes, node);
+      const nodes = result.updated ? result.nodes : [...prev.nodes, node];
       const newDef = { ...prev, nodes };
-      if (!newDef.entry_point && nodes.length === 1) newDef.entry_point = node.id;
+      if (!newDef.entry_point && flattenNodes(nodes).length === 1) newDef.entry_point = node.id;
       setJsonText(JSON.stringify(newDef, null, 2));
       return newDef;
     });
@@ -1274,7 +1331,7 @@ function FlowBuilder({
   function handleDeleteNode(id: string) {
     setDefinition((prev) => {
       if (!prev) return prev;
-      const nodes = prev.nodes.filter((n) => n.id !== id);
+      const nodes = removeNode(prev.nodes, id);
       const newDef = { ...prev, nodes };
       setJsonText(JSON.stringify(newDef, null, 2));
       return newDef;

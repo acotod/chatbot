@@ -4,6 +4,32 @@
 
 import { FlowDefinition, NodeDef, Position } from '@/lib/flowTypes';
 
+function flattenNodes(nodes: NodeDef[]): NodeDef[] {
+  return nodes.flatMap((node) => [node, ...flattenNodes(node.children || [])]);
+}
+
+function mapNodes(nodes: NodeDef[], mapper: (node: NodeDef) => NodeDef | null): NodeDef[] {
+  return nodes.flatMap((node) => {
+    const mappedNode = mapper(node);
+    if (!mappedNode) {
+      return [];
+    }
+
+    const childNodes = mappedNode.children ? mapNodes(mappedNode.children, mapper) : undefined;
+    return [
+      {
+        ...mappedNode,
+        children: childNodes && childNodes.length > 0 ? childNodes : undefined,
+      },
+    ];
+  });
+}
+
+function getFirstNodeId(nodes: NodeDef[]): string | undefined {
+  const flattened = flattenNodes(nodes);
+  return flattened[0]?.id;
+}
+
 // ─── Delete node ──────────────────────────────────────────────────────────────
 
 /**
@@ -21,49 +47,94 @@ export function deleteNode(definition: FlowDefinition, nodeId: string): {
 } {
   const warnings: string[] = [];
 
-  // Check if deleting entry point
   if (definition.entry_point === nodeId) {
     warnings.push(`⚠️ Nodo de entrada será retirado. Por favor, designar nuevo punto de entrada.`);
   }
 
-  // Filter out the node
-  const updatedNodes = definition.nodes.filter((n) => n.id !== nodeId);
-
-  // Remove references to this node
-  updatedNodes.forEach((node) => {
-    if (node.next === nodeId) {
-      node.next = undefined;
+  const prunedNodes = mapNodes(definition.nodes, (node) => (node.id === nodeId ? null : { ...node }));
+  const updatedNodes = mapNodes(prunedNodes, (node) => {
+    const updatedNode = { ...node };
+    if (updatedNode.next === nodeId) {
+      updatedNode.next = undefined;
     }
-    if (node.branches) {
-      Object.keys(node.branches).forEach((key) => {
-        if (node.branches![key] === nodeId) {
-          delete node.branches[key];
-        }
-      });
-      // Clean up empty branches object
-      if (Object.keys(node.branches).length === 0) {
-        node.branches = undefined;
-      }
+    if (updatedNode.branches) {
+      const nextBranches = Object.fromEntries(
+        Object.entries(updatedNode.branches).filter(([, targetNodeId]) => targetNodeId !== nodeId)
+      );
+      updatedNode.branches = Object.keys(nextBranches).length > 0 ? nextBranches : undefined;
     }
+    if (updatedNode.parentId === nodeId) {
+      updatedNode.parentId = undefined;
+    }
+    return updatedNode;
   });
 
-  // Remove position
+  const removedIds = new Set(
+    flattenNodes(definition.nodes)
+      .filter((node) => node.id === nodeId || node.parentId === nodeId)
+      .map((node) => node.id)
+  );
+
+  if (!removedIds.has(nodeId)) {
+    removedIds.add(nodeId);
+  }
+
+  if (flattenNodes(updatedNodes).length === 0) {
+    warnings.push('⚠️ El flujo quedó sin nodos tras la eliminación.');
+  }
+
   const nodePositions = { ...(definition.nodePositions || {}) };
-  delete nodePositions[nodeId];
+  for (const removedId of removedIds) {
+    delete nodePositions[removedId];
+  }
+
+  const nextEntryPoint = getFirstNodeId(updatedNodes);
 
   return {
     updatedDefinition: {
       ...definition,
       nodes: updatedNodes,
       nodePositions: Object.keys(nodePositions).length > 0 ? nodePositions : undefined,
-      // If entry point was deleted, set to first node (or keep it - will be validated later)
       entry_point:
-        definition.entry_point === nodeId && updatedNodes.length > 0
-          ? updatedNodes[0].id
+        definition.entry_point === nodeId && nextEntryPoint
+          ? nextEntryPoint
           : definition.entry_point,
     },
     warnings,
   };
+}
+
+function insertDuplicate(nodes: NodeDef[], nodeId: string, duplicate: NodeDef): NodeDef[] {
+  return nodes.flatMap((node) => {
+    const updatedNode = {
+      ...node,
+      children: node.children ? insertDuplicate(node.children, nodeId, duplicate) : undefined,
+    };
+
+    if (node.id === nodeId) {
+      return [updatedNode, duplicate];
+    }
+
+    return [updatedNode];
+  });
+}
+
+function findNode(nodes: NodeDef[], nodeId: string): NodeDef | undefined {
+  for (const node of nodes) {
+    if (node.id === nodeId) {
+      return node;
+    }
+    const childMatch = node.children ? findNode(node.children, nodeId) : undefined;
+    if (childMatch) {
+      return childMatch;
+    }
+  }
+
+  return undefined;
+}
+
+function countNodesWithId(nodes: NodeDef[], nodeId: string): number {
+  return flattenNodes(nodes).filter((node) => node.id === nodeId).length;
 }
 
 // ─── Duplicate node ───────────────────────────────────────────────────────────
@@ -80,7 +151,7 @@ export function duplicateNode(definition: FlowDefinition, nodeId: string): {
   updatedDefinition: FlowDefinition;
   newNodeId: string;
 } {
-  const sourceNode = definition.nodes.find((n) => n.id === nodeId);
+  const sourceNode = findNode(definition.nodes, nodeId);
   if (!sourceNode) {
     throw new Error(`Node ${nodeId} not found`);
   }
@@ -88,7 +159,7 @@ export function duplicateNode(definition: FlowDefinition, nodeId: string): {
   // Generate new ID
   let newId = `${nodeId}_copy`;
   let counter = 1;
-  while (definition.nodes.some((n) => n.id === newId)) {
+  while (countNodesWithId(definition.nodes, newId) > 0) {
     newId = `${nodeId}_copy_${counter}`;
     counter++;
   }
@@ -99,6 +170,7 @@ export function duplicateNode(definition: FlowDefinition, nodeId: string): {
     id: newId,
     next: undefined,
     branches: undefined,
+    children: undefined,
   };
 
   // Get position of original
@@ -108,7 +180,7 @@ export function duplicateNode(definition: FlowDefinition, nodeId: string): {
     y: originalPos.y + 20,
   };
 
-  const updatedNodes = [...definition.nodes, clonedNode];
+  const updatedNodes = insertDuplicate(definition.nodes, nodeId, clonedNode);
   const updatedPositions = {
     ...(definition.nodePositions || {}),
     [newId]: newPos,
@@ -137,11 +209,11 @@ export function deleteEdge(
   targetNodeId: string,
   branchKey?: string
 ): FlowDefinition {
-  const sourceNode = definition.nodes.find((n) => n.id === sourceNodeId);
+  const sourceNode = findNode(definition.nodes, sourceNodeId);
   if (!sourceNode) return definition;
 
-  const updatedNodes = definition.nodes.map((n) => {
-    if (n.id !== sourceNodeId) return n;
+  const updatedNodes = mapNodes(definition.nodes, (n) => {
+    if (n.id !== sourceNodeId) return { ...n };
 
     const updated = { ...n };
 
@@ -186,7 +258,8 @@ export interface ValidationResult {
 export function validateFlowStructure(definition: FlowDefinition): ValidationResult {
   const errors: string[] = [];
   const warnings: string[] = [];
-  const nodeIds = new Set(definition.nodes.map((n) => n.id));
+  const flattenedNodes = flattenNodes(definition.nodes);
+  const nodeIds = new Set(flattenedNodes.map((n) => n.id));
 
   // Check entry point
   if (!definition.entry_point) {
@@ -196,7 +269,7 @@ export function validateFlowStructure(definition: FlowDefinition): ValidationRes
   }
 
   // Check all next/branches references
-  definition.nodes.forEach((node) => {
+  flattenedNodes.forEach((node) => {
     if (node.next && !nodeIds.has(node.next)) {
       errors.push(`Nodo ${node.id}: referencia inválida 'next' a ${node.next}`);
     }
@@ -220,7 +293,7 @@ export function validateFlowStructure(definition: FlowDefinition): ValidationRes
     visited.add(nodeId);
     recursionStack.add(nodeId);
 
-    const node = definition.nodes.find((n) => n.id === nodeId);
+    const node = flattenedNodes.find((candidate) => candidate.id === nodeId);
     if (!node) return false;
 
     const nextNodes: string[] = [];
@@ -265,7 +338,8 @@ export function findOrphanedNodes(definition: FlowDefinition): string[] {
 
   const reachable = new Set<string>();
   const queue = [definition.entry_point];
-  const nodeMap = new Map(definition.nodes.map((n) => [n.id, n]));
+  const flattenedNodes = flattenNodes(definition.nodes);
+  const nodeMap = new Map(flattenedNodes.map((n) => [n.id, n]));
 
   while (queue.length > 0) {
     const nodeId = queue.shift()!;
@@ -289,7 +363,7 @@ export function findOrphanedNodes(definition: FlowDefinition): string[] {
     }
   }
 
-  return definition.nodes
+  return flattenedNodes
     .filter((n) => !reachable.has(n.id))
     .map((n) => n.id);
 }

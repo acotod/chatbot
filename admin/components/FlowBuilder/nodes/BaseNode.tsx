@@ -9,7 +9,7 @@ import { Handle, Position, NodeProps } from 'reactflow';
 import { NodeData } from '@/lib/flowTypes';
 import { NODE_META } from '@/lib/flowTypes';
 
-export interface BaseNodeProps extends NodeProps<NodeData> {}
+export type BaseNodeProps = NodeProps<NodeData>;
 
 /**
  * BaseNode - Common node rendering component
@@ -18,9 +18,10 @@ export interface BaseNodeProps extends NodeProps<NodeData> {}
  */
 export const BaseNode = React.memo(
   React.forwardRef<HTMLDivElement, BaseNodeProps>(
-    ({ data, selected, isConnectable, id }, ref) => {
-      const typeKey = data.type as any;
+    ({ data, selected, isConnectable }, ref) => {
+      const typeKey = data.type as keyof typeof NODE_META;
       const meta = NODE_META[typeKey] || { color: '#888', bg: '#f0f0f0', label: data.type };
+      const hierarchy = data.hierarchy;
 
       // Truncate label for display
       const displayLabel = data.label ? (data.label.length > 25 ? `${data.label.substring(0, 22)}...` : data.label) : data.id;
@@ -38,12 +39,28 @@ export const BaseNode = React.memo(
             textAlign: 'center',
             fontSize: '12px',
             fontWeight: '500',
+            boxShadow: hierarchy?.isParent ? `0 0 0 1px ${meta.color}33 inset` : undefined,
           }}
         >
-          <div className="text-xs font-bold" style={{ color: meta.color }}>
-            {meta.label}
+          <div className="flex items-center justify-center gap-1 text-xs font-bold" style={{ color: meta.color }}>
+            <span>{meta.label}</span>
+            {hierarchy?.isParent ? (
+              <span className="rounded-full bg-white/70 px-1.5 py-0.5 text-[10px] font-semibold">
+                {hierarchy.childCount} hijo{hierarchy.childCount === 1 ? '' : 's'}
+              </span>
+            ) : null}
+            {hierarchy?.isChild ? (
+              <span className="rounded-full bg-white/70 px-1.5 py-0.5 text-[10px] font-semibold">
+                Nivel {hierarchy.depth}
+              </span>
+            ) : null}
           </div>
           <div className="text-xs text-gray-700 mt-1 font-medium">{displayLabel}</div>
+          {data.parentId ? (
+            <div className="mt-1 text-[10px] text-gray-500">
+              Padre: {data.parentId}
+            </div>
+          ) : null}
 
           {/* Input handle (for connections from previous nodes) */}
           <Handle

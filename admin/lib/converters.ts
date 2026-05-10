@@ -9,10 +9,35 @@ import { FlowDefinition, NodeDef, FlowNode, FlowEdge, Position, PositionMap } fr
 
 // ─── Constants ─────────────────────────────────────────────────────────────────
 
-const DEFAULT_NODE_WIDTH = 180;
-const DEFAULT_NODE_HEIGHT = 80;
 const GRID_SPACING_X = 250;
 const GRID_SPACING_Y = 150;
+
+interface FlattenedNode {
+  node: NodeDef;
+  parentId: string | null;
+  depth: number;
+  childCount: number;
+  order: number;
+}
+
+function flattenDefinitionNodes(nodes: NodeDef[], parentId: string | null = null, depth = 0): FlattenedNode[] {
+  return nodes.flatMap((node, index) => {
+    const resolvedParentId = node.parentId ?? parentId;
+    const childNodes = Array.isArray(node.children) ? node.children : [];
+    const current: FlattenedNode = {
+      node,
+      parentId: resolvedParentId,
+      depth,
+      childCount: childNodes.length,
+      order: index,
+    };
+
+    return [
+      current,
+      ...flattenDefinitionNodes(childNodes, node.id, depth + 1),
+    ];
+  });
+}
 
 // ─── Convert FlowDefinition → ReactFlow nodes ──────────────────────────────────
 
@@ -26,9 +51,13 @@ export function toReactFlowNodes(definition: FlowDefinition): FlowNode[] {
   }
 
   const positions = definition.nodePositions || {};
+  const flattenedNodes = flattenDefinitionNodes(definition.nodes);
 
-  return definition.nodes.map((node) => {
-    const position = positions[node.id] || { x: 0, y: 0 };
+  return flattenedNodes.map(({ node, parentId, depth, childCount, order }) => {
+    const fallbackPosition = parentId
+      ? { x: 48 + depth * 24, y: 120 + order * GRID_SPACING_Y }
+      : { x: order * GRID_SPACING_X, y: depth * GRID_SPACING_Y };
+    const position = positions[node.id] || fallbackPosition;
 
     return {
       id: node.id,
@@ -40,6 +69,13 @@ export function toReactFlowNodes(definition: FlowDefinition): FlowNode[] {
         config: node.config,
         next: node.next,
         branches: node.branches,
+        parentId,
+        hierarchy: {
+          depth,
+          childCount,
+          isParent: childCount > 0,
+          isChild: depth > 0,
+        },
       },
       position,
       draggable: true,
@@ -55,9 +91,10 @@ export function toReactFlowNodes(definition: FlowDefinition): FlowNode[] {
  */
 export function toReactFlowEdges(definition: FlowDefinition): FlowEdge[] {
   const edges: FlowEdge[] = [];
-  const nodeIds = new Set(definition.nodes.map((n) => n.id));
+  const flattenedNodes = flattenDefinitionNodes(definition.nodes);
+  const nodeIds = new Set(flattenedNodes.map(({ node }) => node.id));
 
-  definition.nodes.forEach((node) => {
+  flattenedNodes.forEach(({ node }) => {
     // Linear next edge
     if (node.next && nodeIds.has(node.next)) {
       edges.push({
@@ -121,6 +158,16 @@ export function fromReactFlowNodes(
   return { updatedDefinition, nodePositions };
 }
 
+function mapNodeTree(nodes: NodeDef[], updater: (node: NodeDef) => NodeDef): NodeDef[] {
+  return nodes.map((node) => {
+    const updatedNode = updater(node);
+    return {
+      ...updatedNode,
+      children: updatedNode.children ? mapNodeTree(updatedNode.children, updater) : updatedNode.children,
+    };
+  });
+}
+
 // ─── Convert ReactFlow edges → FlowDefinition update ──────────────────────────
 
 /**
@@ -134,13 +181,13 @@ export function fromReactFlowEdges(
   edges: FlowEdge[],
   definition: FlowDefinition
 ): FlowDefinition {
-  const nodesById = new Map(definition.nodes.map((n) => [n.id, { ...n }]));
-
-  // Clear all next/branches first
-  nodesById.forEach((node) => {
-    node.next = undefined;
-    node.branches = {};
-  });
+  const flattenedNodes = flattenDefinitionNodes(definition.nodes);
+  const nodesById = new Map(flattenedNodes.map(({ node, parentId }) => [node.id, {
+    ...node,
+    parentId,
+    next: undefined,
+    branches: undefined,
+  }]));
 
   // Rebuild from edges
   edges.forEach((edge) => {
@@ -159,9 +206,24 @@ export function fromReactFlowEdges(
     }
   });
 
+  const updatedNodes = mapNodeTree(definition.nodes, (node) => {
+    const updatedNode = nodesById.get(node.id);
+    if (!updatedNode) {
+      return node;
+    }
+
+    return {
+      ...updatedNode,
+      branches:
+        updatedNode.branches && Object.keys(updatedNode.branches).length > 0
+          ? updatedNode.branches
+          : undefined,
+    };
+  });
+
   return {
     ...definition,
-    nodes: Array.from(nodesById.values()),
+    nodes: updatedNodes,
   };
 }
 

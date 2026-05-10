@@ -240,6 +240,11 @@ export interface NodeDef {
   config: Record<string, unknown>;
   next?: string | null;
   branches?: Record<string, string>;
+  parentId?: string | null;
+  children?: NodeDef[];
+  ui?: {
+    collapsed?: boolean;
+  };
 }
 
 export interface FlowDefinition {
@@ -262,6 +267,13 @@ export interface NodeData {
   config: Record<string, unknown>;
   next?: string | null;
   branches?: Record<string, string>;
+  parentId?: string | null;
+  hierarchy?: {
+    depth: number;
+    childCount: number;
+    isParent: boolean;
+    isChild: boolean;
+  };
 }
 
 /**
