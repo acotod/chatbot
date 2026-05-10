@@ -146,6 +146,11 @@ function asArray(value: unknown): unknown[] {
   return Array.isArray(value) ? value : [];
 }
 
+function getDataSource(component: unknown): unknown[] {
+  const record = asObjectRecord(component);
+  return asArray(record?.data_source ?? record?.["data-source"]);
+}
+
 function getActionConfig(component: unknown): Record<string, unknown> | null {
   const record = asObjectRecord(component);
   if (!record) return null;
@@ -293,6 +298,167 @@ function normalizeFlowDefinition(definition: FlowDefinition): FlowDefinition {
   return layoutAsHierarchy(normalizedDefinition as never) as unknown as FlowDefinition;
 }
 
+function parseJsonLenient(raw: string): unknown {
+  const base = raw.trim();
+  if (!base) throw new Error("empty");
+
+  const normalizedQuotes = base
+    .replace(/[\u201C\u201D]/g, '"')
+    .replace(/[\u2018\u2019]/g, "'");
+
+  const unwrapped =
+    normalizedQuotes.startsWith("(") && normalizedQuotes.endsWith(")")
+      ? normalizedQuotes.slice(1, -1).trim()
+      : normalizedQuotes;
+
+  const stripTrailingCommas = (value: string) => value.replace(/,\s*([}\]])/g, "$1");
+
+  const candidates = [base, normalizedQuotes, unwrapped, stripTrailingCommas(unwrapped)];
+  let lastError: unknown;
+
+  for (const candidate of candidates) {
+    try {
+      return JSON.parse(candidate);
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  throw lastError ?? new Error("invalid_json");
+}
+
+function isFlowDefinitionShape(value: unknown): value is FlowDefinition {
+  const record = asObjectRecord(value);
+  return Boolean(record && Array.isArray(record.nodes) && typeof record.entry_point === "string");
+}
+
+function resolveRouteTargets(routingModel: unknown, screenId: string): string[] {
+  const routing = asObjectRecord(routingModel);
+  return asArray(routing?.[screenId]).flatMap((target) => {
+    if (typeof target !== "string") return [];
+    const normalized = target.trim();
+    return normalized ? [normalized] : [];
+  });
+}
+
+function convertWabaJsonToFlowDefinition(value: unknown): FlowDefinition {
+  const waba = asObjectRecord(value);
+  const screens = asArray(waba?.screens).map(asObjectRecord).filter((screen): screen is Record<string, unknown> => Boolean(screen));
+  if (screens.length === 0) {
+    throw new Error("waba_without_screens");
+  }
+
+  const screenToNodeId = new Map<string, string>();
+  screens.forEach((screen, index) => {
+    const screenId = typeof screen.id === "string" && screen.id.trim() ? screen.id.trim() : `SCREEN_${index + 1}`;
+    screenToNodeId.set(screenId, `node_${index + 1}`);
+  });
+
+  const nodes: NodeDef[] = screens.map((screen, index) => {
+    const nodeId = `node_${index + 1}`;
+    const screenId = typeof screen.id === "string" && screen.id.trim() ? screen.id.trim() : `SCREEN_${index + 1}`;
+    const children = flattenWabaChildren(asObjectRecord(screen.layout)?.children);
+    const routeTargets = resolveRouteTargets(waba?.routing_model, screenId);
+
+    const hasMenu = children.some((component) => ["Dropdown", "RadioButtonsGroup", "CheckboxGroup"].includes(String(component.type ?? "")));
+    const hasInput = children.some((component) => ["TextInput", "TextArea", "DatePicker", "OptIn"].includes(String(component.type ?? "")));
+    const isTerminal = screen.terminal === true || index === screens.length - 1;
+
+    let nodeType = "message";
+    if (isTerminal && !hasMenu && !hasInput) nodeType = "end";
+    else if (hasMenu) nodeType = "menu";
+    else if (hasInput) nodeType = "input";
+
+    const textComponent = children.find((component) => ["TextHeading", "TextBody", "TextCaption"].includes(String(component.type ?? "")));
+    const text = typeof textComponent?.text === "string"
+      ? textComponent.text
+      : (typeof screen.title === "string" ? screen.title : `Screen ${index + 1}`);
+
+    const menuComponent = children.find((component) => ["Dropdown", "RadioButtonsGroup", "CheckboxGroup"].includes(String(component.type ?? "")));
+    const options = getDataSource(menuComponent).map((option, optionIndex) => {
+      const record = asObjectRecord(option);
+      const id = typeof record?.id === "string" && record.id.trim()
+        ? record.id.trim()
+        : String(record?.value ?? `option_${index + 1}_${optionIndex + 1}`);
+      const title = typeof record?.title === "string" && record.title.trim()
+        ? record.title.trim()
+        : String(record?.label ?? id);
+
+      const actionTarget = getScreenTargetFromAction(getActionConfig(record));
+      const nextTarget = actionTarget || (typeof record?.next === "string" ? record.next.trim() : "");
+      return nextTarget ? { id, title, next: nextTarget } : { id, title };
+    });
+
+    const footerTarget = getFooterTargetFromScreen(screen);
+    const resolvedNextScreen = footerTarget || (routeTargets.length === 1 ? routeTargets[0] : "");
+    const next = resolvedNextScreen && screenToNodeId.has(resolvedNextScreen)
+      ? screenToNodeId.get(resolvedNextScreen) ?? null
+      : null;
+
+    const branches = nodeType === "menu"
+      ? Object.fromEntries(
+          options.flatMap((option) => {
+            const explicitTarget = typeof option.next === "string" ? option.next.trim() : "";
+            const mappedExplicit = explicitTarget && screenToNodeId.has(explicitTarget)
+              ? screenToNodeId.get(explicitTarget)
+              : null;
+            const mappedByOptionId = screenToNodeId.get(option.id);
+            const mappedByRoute = routeTargets.includes(option.id)
+              ? (screenToNodeId.get(option.id) ?? null)
+              : null;
+            const resolvedTarget = mappedExplicit ?? mappedByOptionId ?? mappedByRoute;
+            return resolvedTarget ? [[option.id, resolvedTarget]] : [];
+          })
+        )
+      : {};
+
+    return {
+      id: nodeId,
+      type: nodeType,
+      config: {
+        text,
+        ...(nodeType === "menu" ? { options } : {}),
+        _waba_screen: screen,
+      },
+      next,
+      branches,
+      _waba_screen_id: screenId,
+    } as NodeDef;
+  });
+
+  const entryPoint = nodes[0]?.id ?? "node_1";
+  return {
+    version: typeof waba?.version === "string" ? waba.version : "7.1",
+    entry_point: entryPoint,
+    nodes,
+    metadata: {
+      source: "waba_json",
+      routing_model: waba?.routing_model,
+    },
+  };
+}
+
+function coerceToFlowDefinition(value: unknown): FlowDefinition {
+  if (isFlowDefinitionShape(value)) {
+    return value;
+  }
+
+  const record = asObjectRecord(value);
+  if (isFlowDefinitionShape(record?.definition)) {
+    return record.definition;
+  }
+
+  if (record && Array.isArray(record.screens)) {
+    return convertWabaJsonToFlowDefinition(record);
+  }
+
+  if (record && asObjectRecord(record.wabaJson) && Array.isArray(asObjectRecord(record.wabaJson)?.screens)) {
+    return convertWabaJsonToFlowDefinition(record.wabaJson);
+  }
+
+  throw new Error("unsupported_json_shape");
+}
+
 interface SimulationStep {
   nodeId?: string;
   nodeType?: string;
@@ -410,7 +576,7 @@ function ImportModal({ onClose, onImported, tenantSlug }: { onClose: () => void;
     }
     let parsed: unknown;
     try {
-      parsed = JSON.parse(json);
+      parsed = parseJsonLenient(json);
     } catch {
       setError("JSON inválido — verifica el formato.");
       return;
@@ -1541,13 +1707,14 @@ function FlowBuilder({
 
   function handleJsonApply() {
     try {
-      const parsed = JSON.parse(jsonText) as FlowDefinition;
-      const normalizedDefinition = normalizeFlowDefinition(parsed);
+      const parsed = parseJsonLenient(jsonText);
+      const coercedDefinition = coerceToFlowDefinition(parsed);
+      const normalizedDefinition = normalizeFlowDefinition(coercedDefinition);
       setDefinition(normalizedDefinition);
       setJsonText(JSON.stringify(normalizedDefinition, null, 2));
       setJsonError("");
     } catch {
-      setJsonError("JSON inválido");
+      setJsonError("JSON inválido o formato no soportado (se espera definición interna o WABA JSON)");
     }
   }
 
