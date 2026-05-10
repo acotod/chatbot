@@ -154,6 +154,8 @@ const DEFAULT_SOLICITUDES_CONFIG: SolicitudesTenantConfig = {
 
 export default function SolicitudesPage() {
 
+  const { tenantSlug } = useAuthStore();
+
   const hasAccessToken = Boolean(getStoredAccessToken());
   const hasAgentAccessToken = Boolean(getStoredAgentAccessToken());
   const isAgentSession = hasAgentAccessToken && !hasAccessToken;
