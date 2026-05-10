@@ -214,6 +214,15 @@ function buildScreenIdToNodeIdMap(nodes: NodeDef[]): Map<string, string> {
   );
 }
 
+function getNodeScreenId(node: NodeDef): string | null {
+  const explicit = typeof node._waba_screen_id === "string" ? node._waba_screen_id.trim() : "";
+  if (explicit) return explicit;
+
+  const embedded = asObjectRecord(node.config?._waba_screen);
+  const embeddedId = typeof embedded?.id === "string" ? embedded.id.trim() : "";
+  return embeddedId || null;
+}
+
 function resolveNodeTarget(
   target: unknown,
   nodeIds: Set<string>,
@@ -263,24 +272,81 @@ function buildMenuBranchesFromOptions(
   );
 }
 
+function buildMenuBranchesFromRouteTargets(
+  options: unknown,
+  routeTargets: string[],
+  nodeIds: Set<string>,
+  screenIdToNodeId: Map<string, string>
+): Record<string, string> {
+  const optionRecords = asArray(options)
+    .map(asObjectRecord)
+    .filter((option): option is Record<string, unknown> => Boolean(option));
+  if (optionRecords.length === 0 || routeTargets.length === 0) return {};
+
+  const mappedRouteTargets = routeTargets
+    .map((target) => resolveNodeTarget(target, nodeIds, screenIdToNodeId))
+    .filter((target): target is string => Boolean(target));
+
+  if (mappedRouteTargets.length === 0) return {};
+
+  const result: Record<string, string> = {};
+
+  // Direct mapping when option id already points to a known node or screen id.
+  optionRecords.forEach((option) => {
+    const optionId = typeof option.id === "string" ? option.id.trim() : "";
+    if (!optionId) return;
+
+    const directTarget = resolveNodeTarget(optionId, nodeIds, screenIdToNodeId);
+    if (directTarget) {
+      result[optionId] = directTarget;
+    }
+  });
+
+  // Ordered fallback: option[0] -> routeTargets[0], etc.
+  optionRecords.forEach((option, index) => {
+    const optionId = typeof option.id === "string" ? option.id.trim() : "";
+    if (!optionId || result[optionId]) return;
+
+    const orderedTarget = mappedRouteTargets[index];
+    if (orderedTarget) {
+      result[optionId] = orderedTarget;
+    }
+  });
+
+  return result;
+}
+
 function normalizeFlowDefinition(definition: FlowDefinition): FlowDefinition {
   const flatNodes = flattenNodes(definition.nodes);
   const nodeIds = new Set(flatNodes.map((node) => node.id));
   const screenIdToNodeId = buildScreenIdToNodeIdMap(flatNodes);
+  const metadata = asObjectRecord(definition.metadata);
+  const routingModel = metadata?.routing_model;
   const normalizedNodes = definition.nodes.map(function normalizeNode(node): NodeDef {
     const normalizedChildren = node.children?.map(normalizeNode);
+    const nodeScreenId = getNodeScreenId(node) ?? "";
+    const routeTargets = nodeScreenId ? resolveRouteTargets(routingModel, nodeScreenId) : [];
+    const inferredBranchesFromRouting = node.type === "menu"
+      ? buildMenuBranchesFromRouteTargets(node.config?.options, routeTargets, nodeIds, screenIdToNodeId)
+      : {};
     const resolvedBranches = normalizeBranchTargets(node.branches, nodeIds, screenIdToNodeId);
     const inferredBranches = node.type === "menu" && Object.keys(resolvedBranches).length === 0
       ? buildMenuBranchesFromOptions(node.config?.options, nodeIds, screenIdToNodeId)
       : resolvedBranches;
+    const finalBranches = Object.keys(inferredBranches).length > 0
+      ? inferredBranches
+      : inferredBranchesFromRouting;
     const footerTarget = getFooterTargetFromScreen(node.config?._waba_screen);
+    const nextFromRouting = routeTargets.length === 1
+      ? resolveNodeTarget(routeTargets[0], nodeIds, screenIdToNodeId)
+      : null;
     const resolvedNext = resolveNodeTarget(node.next, nodeIds, screenIdToNodeId)
       ?? resolveNodeTarget(footerTarget, nodeIds, screenIdToNodeId);
 
     return {
       ...node,
-      next: resolvedNext ?? node.next,
-      branches: Object.keys(inferredBranches).length > 0 ? inferredBranches : node.branches,
+      next: resolvedNext ?? nextFromRouting ?? null,
+      branches: Object.keys(finalBranches).length > 0 ? finalBranches : undefined,
       children: normalizedChildren && normalizedChildren.length > 0 ? normalizedChildren : undefined,
     };
   });
@@ -397,14 +463,14 @@ function convertWabaJsonToFlowDefinition(value: unknown): FlowDefinition {
 
     const branches = nodeType === "menu"
       ? Object.fromEntries(
-          options.flatMap((option) => {
+          options.flatMap((option, optionIndex) => {
             const explicitTarget = typeof option.next === "string" ? option.next.trim() : "";
             const mappedExplicit = explicitTarget && screenToNodeId.has(explicitTarget)
               ? screenToNodeId.get(explicitTarget)
               : null;
             const mappedByOptionId = screenToNodeId.get(option.id);
-            const mappedByRoute = routeTargets.includes(option.id)
-              ? (screenToNodeId.get(option.id) ?? null)
+            const mappedByRoute = routeTargets[optionIndex]
+              ? (screenToNodeId.get(routeTargets[optionIndex]) ?? null)
               : null;
             const resolvedTarget = mappedExplicit ?? mappedByOptionId ?? mappedByRoute;
             return resolvedTarget ? [[option.id, resolvedTarget]] : [];
