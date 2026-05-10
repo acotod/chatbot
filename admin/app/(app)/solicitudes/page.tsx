@@ -404,7 +404,7 @@ export default function SolicitudesPage() {
               end: messageEndDate || undefined,
               lectura: messageReadStatus || undefined,
             })
-            .then((r) => r as any)
+            .then((r) => r.data)
         : solicitudesApi
             .messages(tenantSlug || "", detailModal.solicitud?.id || 0, {
               page: 1,
@@ -415,7 +415,7 @@ export default function SolicitudesPage() {
               end: messageEndDate || undefined,
               lectura: messageReadStatus || undefined,
             })
-            .then((r) => r as any),
+            .then((r) => r.data),
     enabled: Boolean(detailModal.open && detailModal.solicitud?.id && detailTab === "mensajes"),
     staleTime: 0,
   });
