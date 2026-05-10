@@ -1259,7 +1259,7 @@ function NodeEditModal({
 
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl flex flex-col max-h-[90vh]">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl flex flex-col max-h-[92vh]">
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
           <h2 className="font-semibold text-slate-800">{node.id ? "Editar nodo" : "Nuevo nodo"}</h2>
           <div className="flex items-center gap-2">
@@ -1275,107 +1275,121 @@ function NodeEditModal({
           </div>
         </div>
 
-        <div className="overflow-y-auto flex-1 px-6 py-4 space-y-4">
+        <div className="overflow-y-auto flex-1 px-6 py-4">
           {/* ID + Type */}
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-3 gap-4 mb-6 pb-6 border-b border-slate-100">
             <div>
-              <label className="block text-xs font-medium text-slate-600 mb-1">ID del nodo</label>
+              <label className="block text-xs font-medium text-slate-600 mb-2">ID del nodo</label>
               <input value={id} onChange={(e) => setId(e.target.value)} placeholder="node_1" disabled={!!node.id}
-                className="w-full rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-slate-50" />
+                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-slate-50" />
             </div>
             <div>
-              <label className="block text-xs font-medium text-slate-600 mb-1">Tipo</label>
+              <label className="block text-xs font-medium text-slate-600 mb-2">Tipo</label>
               <select value={type} onChange={(e) => setType(e.target.value)}
-                className="w-full rounded-lg border border-slate-200 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
                 {NODE_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
               </select>
             </div>
+            {!isTerminalNode && (
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-2">Siguiente nodo (next)</label>
+                <select value={next} onChange={(e) => setNext(e.target.value)}
+                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                  <option value="">— ninguno —</option>
+                  {allNodeIds.filter((nid) => nid !== id).map((nid) => (
+                    <option key={nid} value={nid}>{nodeLabel(nid)}</option>
+                  ))}
+                </select>
+              </div>
+            )}
           </div>
 
           {isTerminalNode && (
-            <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-              Este nodo es terminal. Solo define el mensaje de cierre; no usa next ni branches.
+            <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-800 mb-6">
+              Este nodo es terminal. Solo define el contenido; no usa next ni branches.
             </div>
           )}
 
           {/* Config */}
           {showJson ? (
             <div>
-              <label className="block text-xs font-medium text-slate-600 mb-1">Config (JSON)</label>
-              <textarea value={rawJson} onChange={(e) => setRawJson(e.target.value)} rows={8}
-                className="w-full rounded-xl border border-slate-200 px-3 py-2 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              <label className="block text-xs font-medium text-slate-600 mb-2">Config (JSON)</label>
+              <textarea value={rawJson} onChange={(e) => setRawJson(e.target.value)} rows={10}
+                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-blue-500" />
             </div>
           ) : (
-            <div className="space-y-3">
+            <div className="space-y-5">
               {/* message */}
               {type === "message" && (
-                <div>
-                  <label className="block text-xs font-medium text-slate-600 mb-1">Mensaje</label>
+                <div className="bg-slate-50 rounded-lg border border-slate-100 p-4">
+                  <label className="block text-xs font-medium text-slate-600 mb-2">Mensaje</label>
                   <textarea value={text} onChange={(e) => setText(e.target.value)} rows={3}
                     placeholder="Hola {{variables.nombre}}, ¿en qué te puedo ayudar?"
-                    className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                    className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
                 </div>
               )}
               {/* input */}
               {type === "input" && (
-                <>
-                  <div>
-                    <label className="block text-xs font-medium text-slate-600 mb-1">Pregunta al usuario</label>
-                    <textarea value={inputText} onChange={(e) => setInputText(e.target.value)} rows={2}
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="bg-slate-50 rounded-lg border border-slate-100 p-4">
+                    <label className="block text-xs font-medium text-slate-600 mb-2">Pregunta al usuario</label>
+                    <textarea value={inputText} onChange={(e) => setInputText(e.target.value)} rows={3}
                       placeholder="¿Cuál es tu número de cédula?"
-                      className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                      className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
                   </div>
-                  <div>
-                    <label className="block text-xs font-medium text-slate-600 mb-1">Guardar respuesta en variable</label>
+                  <div className="bg-slate-50 rounded-lg border border-slate-100 p-4">
+                    <label className="block text-xs font-medium text-slate-600 mb-2">Guardar respuesta en variable</label>
                     <VarComboInput value={inputVar} onChange={setInputVar} placeholder="variables.cedula"
                       suggestions={flowVariables.length > 0 ? flowVariables : MENU_VARIABLE_PRESETS}
-                      className="w-full rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                      className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500" />
                   </div>
-                </>
+                </div>
               )}
               {/* menu */}
               {type === "menu" && (
-                <>
-                  <div>
-                    <label className="block text-xs font-medium text-slate-600 mb-1">Texto del menú</label>
+                <div className="space-y-4">
+                  <div className="bg-slate-50 rounded-lg border border-slate-100 p-4">
+                    <label className="block text-xs font-medium text-slate-600 mb-2">Texto del menú</label>
                     <textarea value={menuText} onChange={(e) => setMenuText(e.target.value)} rows={2}
                       placeholder="¿En qué te puedo ayudar?"
-                      className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                      className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
                   </div>
-                  <MenuOptionsEditor
-                    options={menuOptions}
-                    nextNodeOptions={allNodeIds.map((nid) => ({ value: nid, label: nodeLabel(nid) }))}
-                    onAddOption={() => {
-                      setMenuOptions((prev) => {
-                        const nextOptions = [...prev, { id: `opt_${prev.length + 1}`, title: "", next: "" }];
-                        setBranchesJson(JSON.stringify(buildBranchesFromOptions(nextOptions), null, 2));
-                        return nextOptions;
-                      });
-                    }}
-                    onRemoveOption={(index) => {
-                      setMenuOptions((prev) => {
-                        const nextOptions = prev.filter((_, i) => i !== index);
-                        setBranchesJson(JSON.stringify(buildBranchesFromOptions(nextOptions), null, 2));
-                        return nextOptions;
-                      });
-                    }}
-                    onChangeOption={(index, key, value) => {
-                      setMenuOptions((prev) => {
-                        const nextOptions = prev.map((option, i) => i === index ? { ...option, [key]: value } : option);
-                        setBranchesJson(JSON.stringify(buildBranchesFromOptions(nextOptions), null, 2));
-                        return nextOptions;
-                      });
-                    }}
-                    showNextSelector
-                    title="Opciones del menú"
-                    addLabel="Agregar"
-                    emptyText="Este menú aún no tiene opciones."
-                    idPlaceholder="id_opcion"
-                    titlePlaceholder="Título visible"
-                    nextPlaceholder="Siguiente nodo (opcional)"
-                  />
+                  <div className="bg-slate-50 rounded-lg border border-slate-100 p-4">
+                    <MenuOptionsEditor
+                      options={menuOptions}
+                      nextNodeOptions={allNodeIds.map((nid) => ({ value: nid, label: nodeLabel(nid) }))}
+                      onAddOption={() => {
+                        setMenuOptions((prev) => {
+                          const nextOptions = [...prev, { id: `opt_${prev.length + 1}`, title: "", next: "" }];
+                          setBranchesJson(JSON.stringify(buildBranchesFromOptions(nextOptions), null, 2));
+                          return nextOptions;
+                        });
+                      }}
+                      onRemoveOption={(index) => {
+                        setMenuOptions((prev) => {
+                          const nextOptions = prev.filter((_, i) => i !== index);
+                          setBranchesJson(JSON.stringify(buildBranchesFromOptions(nextOptions), null, 2));
+                          return nextOptions;
+                        });
+                      }}
+                      onChangeOption={(index, key, value) => {
+                        setMenuOptions((prev) => {
+                          const nextOptions = prev.map((option, i) => i === index ? { ...option, [key]: value } : option);
+                          setBranchesJson(JSON.stringify(buildBranchesFromOptions(nextOptions), null, 2));
+                          return nextOptions;
+                        });
+                      }}
+                      showNextSelector
+                      title="Opciones del menú"
+                      addLabel="Agregar"
+                      emptyText="Este menú aún no tiene opciones."
+                      idPlaceholder="id_opcion"
+                      titlePlaceholder="Título visible"
+                      nextPlaceholder="Siguiente nodo (opcional)"
+                    />
+                  </div>
                   {hasMenuValidationErrors && (
-                    <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700 space-y-1">
+                    <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-xs text-red-700 space-y-1">
                       {menuValidation.duplicateIds.length > 0 && (
                         <p>IDs duplicados: {menuValidation.duplicateIds.join(", ")}</p>
                       )}
@@ -1384,235 +1398,242 @@ function NodeEditModal({
                       )}
                     </div>
                   )}
-                  <div>
-                    <label className="block text-xs font-medium text-slate-600 mb-1">Guardar selección en variable</label>
+                  <div className="bg-slate-50 rounded-lg border border-slate-100 p-4">
+                    <label className="block text-xs font-medium text-slate-600 mb-2">Guardar selección en variable</label>
                     <VarComboInput value={menuVar} onChange={setMenuVar} placeholder="variables.opcion_menu"
                       suggestions={flowVariables.length > 0 ? flowVariables : MENU_VARIABLE_PRESETS}
-                      className="w-full rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                      className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500" />
                   </div>
-                </>
+                </div>
               )}
               {/* condition */}
               {type === "condition" && (
-                <div className="grid grid-cols-3 gap-2">
-                  <div>
-                    <label className="block text-xs font-medium text-slate-600 mb-1">Variable</label>
+                <div className="grid grid-cols-3 gap-4">
+                  <div className="bg-slate-50 rounded-lg border border-slate-100 p-4">
+                    <label className="block text-xs font-medium text-slate-600 mb-2">Variable</label>
                     <VarComboInput value={condVar} onChange={setCondVar} placeholder="variables.estatus"
                       suggestions={flowVariables.length > 0 ? flowVariables : MENU_VARIABLE_PRESETS}
-                      className="w-full rounded-lg border border-slate-200 px-2 py-1.5 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                      className="w-full rounded-lg border border-slate-200 px-2 py-2 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-blue-500" />
                   </div>
-                  <div>
-                    <label className="block text-xs font-medium text-slate-600 mb-1">Operador</label>
+                  <div className="bg-slate-50 rounded-lg border border-slate-100 p-4">
+                    <label className="block text-xs font-medium text-slate-600 mb-2">Operador</label>
                     <select value={condOp} onChange={(e) => setCondOp(e.target.value)}
-                      className="w-full rounded-lg border border-slate-200 px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500">
+                      className="w-full rounded-lg border border-slate-200 px-2 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500">
                       {CONDITION_OPS.map((op) => <option key={op} value={op}>{op}</option>)}
                     </select>
                   </div>
-                  <div>
-                    <label className="block text-xs font-medium text-slate-600 mb-1">Valor</label>
+                  <div className="bg-slate-50 rounded-lg border border-slate-100 p-4">
+                    <label className="block text-xs font-medium text-slate-600 mb-2">Valor</label>
                     <input value={condVal} onChange={(e) => setCondVal(e.target.value)} placeholder="activo"
-                      className="w-full rounded-lg border border-slate-200 px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                      className="w-full rounded-lg border border-slate-200 px-2 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500" />
                   </div>
                 </div>
               )}
               {/* delay */}
               {type === "delay" && (
-                <div>
-                  <label className="block text-xs font-medium text-slate-600 mb-1">Duración (segundos)</label>
+                <div className="bg-slate-50 rounded-lg border border-slate-100 p-4 max-w-xs">
+                  <label className="block text-xs font-medium text-slate-600 mb-2">Duración (segundos)</label>
                   <input type="number" min={1} value={delaySeconds} onChange={(e) => setDelaySeconds(Number(e.target.value))}
-                    className="w-32 rounded-lg border border-slate-200 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                    className="w-24 rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
                 </div>
               )}
               {/* end */}
               {type === "end" && (
-                <div>
-                  <label className="block text-xs font-medium text-slate-600 mb-1">Mensaje de cierre (opcional)</label>
+                <div className="bg-slate-50 rounded-lg border border-slate-100 p-4">
+                  <label className="block text-xs font-medium text-slate-600 mb-2">Mensaje de cierre (opcional)</label>
                   <textarea value={endMsg} onChange={(e) => setEndMsg(e.target.value)} rows={2}
                     placeholder="Gracias por contactarnos. ¡Hasta pronto!"
-                    className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                    className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
                 </div>
               )}
               {/* handoff */}
               {type === "handoff" && (
-                <>
-                  <div>
-                    <label className="block text-xs font-medium text-slate-600 mb-1">Departamento / Agente</label>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="bg-slate-50 rounded-lg border border-slate-100 p-4">
+                    <label className="block text-xs font-medium text-slate-600 mb-2">Departamento / Agente</label>
                     <input value={handoffDept} onChange={(e) => setHandoffDept(e.target.value)} placeholder="soporte_tecnico"
-                      className="w-full rounded-lg border border-slate-200 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                      className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
                   </div>
-                  <div>
-                    <label className="block text-xs font-medium text-slate-600 mb-1">Mensaje al transferir</label>
+                  <div className="bg-slate-50 rounded-lg border border-slate-100 p-4">
+                    <label className="block text-xs font-medium text-slate-600 mb-2">Mensaje al transferir</label>
                     <textarea value={handoffMsg} onChange={(e) => setHandoffMsg(e.target.value)} rows={2}
                       placeholder="Te transfiero con un agente..."
-                      className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                      className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
                   </div>
-                </>
+                </div>
               )}
               {/* llm */}
               {type === "llm" && (
-                <>
-                  <div>
-                    <label className="block text-xs font-medium text-slate-600 mb-1">Prompt</label>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="bg-slate-50 rounded-lg border border-slate-100 p-4">
+                    <label className="block text-xs font-medium text-slate-600 mb-2">Prompt</label>
                     <textarea value={llmPrompt} onChange={(e) => setLlmPrompt(e.target.value)} rows={4}
                       placeholder="Dado el contexto {{variables.contexto}}, genera una respuesta..."
-                      className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                      className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
                   </div>
-                  <div>
-                    <label className="block text-xs font-medium text-slate-600 mb-1">Guardar respuesta en</label>
+                  <div className="bg-slate-50 rounded-lg border border-slate-100 p-4">
+                    <label className="block text-xs font-medium text-slate-600 mb-2">Guardar respuesta en</label>
                     <VarComboInput value={llmVar} onChange={setLlmVar} placeholder="variables.respuesta_llm"
                       suggestions={flowVariables.length > 0 ? flowVariables : MENU_VARIABLE_PRESETS}
-                      className="w-full rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                      className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500" />
                   </div>
-                </>
+                </div>
               )}
               {/* action / menu / input / message webhook call */}
               {supportsEndpointMapping && (
-                <div className="space-y-4">
-                  {normalizedType === "menu" && (
-                    <p className="text-xs font-medium text-slate-600 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
-                      Llamado de endpoint/webhook al seleccionar opción (opcional)
-                    </p>
-                  )}
-                  {(normalizedType === "input" || normalizedType === "open_response") && (
-                    <p className="text-xs font-medium text-slate-600 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
-                      Llamado de endpoint/webhook después de capturar la respuesta (opcional)
-                    </p>
-                  )}
-                  {(normalizedType === "message" || normalizedType === "text") && (
-                    <p className="text-xs font-medium text-slate-600 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
-                      Llamado de endpoint/webhook después de enviar el mensaje (opcional)
-                    </p>
-                  )}
-                  {(["condition", "end", "llm", "handoff"].includes(normalizedType)) && (
-                    <p className="text-xs font-medium text-slate-600 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
-                      Llamado de endpoint/webhook en este nodo (opcional)
-                    </p>
-                  )}
+                <div className="space-y-4 border-t border-slate-100 pt-4 mt-4">
+                  <div className="mb-3">
+                    {normalizedType === "menu" && (
+                      <p className="text-xs font-medium text-slate-700 bg-blue-50 border border-blue-100 rounded-lg px-3 py-2">
+                        📲 Llamado de endpoint/webhook al seleccionar opción (opcional)
+                      </p>
+                    )}
+                    {(normalizedType === "input" || normalizedType === "open_response") && (
+                      <p className="text-xs font-medium text-slate-700 bg-green-50 border border-green-100 rounded-lg px-3 py-2">
+                        📝 Llamado de endpoint/webhook después de capturar la respuesta (opcional)
+                      </p>
+                    )}
+                    {(normalizedType === "message" || normalizedType === "text") && (
+                      <p className="text-xs font-medium text-slate-700 bg-purple-50 border border-purple-100 rounded-lg px-3 py-2">
+                        💬 Llamado de endpoint/webhook después de enviar el mensaje (opcional)
+                      </p>
+                    )}
+                    {(["condition", "end", "llm", "handoff"].includes(normalizedType)) && (
+                      <p className="text-xs font-medium text-slate-700 bg-orange-50 border border-orange-100 rounded-lg px-3 py-2">
+                        ⚙️ Llamado de endpoint/webhook en este nodo (opcional)
+                      </p>
+                    )}
+                  </div>
+                  
                   {/* Catalog endpoint picker */}
                   {catalogEndpoints.length > 0 && (
-                    <div>
-                      <label className="block text-xs font-medium text-slate-600 mb-2">Endpoint del catálogo</label>
-                      <div className="flex flex-wrap gap-1.5">
+                    <div className="bg-slate-50 rounded-lg border border-slate-100 p-4">
+                      <label className="block text-xs font-medium text-slate-600 mb-3">Endpoint del catálogo</label>
+                      <div className="flex flex-wrap gap-2">
                         {catalogEndpoints.map((ep) => (
                           <button key={ep.id} onClick={() => applyEndpoint(ep)}
-                            className={`text-xs px-2.5 py-1 rounded-lg border transition ${
+                            className={`text-xs px-3 py-1.5 rounded-lg border transition ${
                               actionRef === ep.id
-                                ? "bg-blue-600 text-white border-blue-600"
-                                : "bg-white text-slate-600 border-slate-200 hover:border-blue-400 hover:text-blue-600"
+                                ? "bg-blue-600 text-white border-blue-600 shadow-sm"
+                                : "bg-white text-slate-600 border-slate-200 hover:border-blue-300 hover:bg-blue-50"
                             }`}>
                             {ep.sessionInit ? "⚡ " : ""}{ep.name}
                           </button>
                         ))}
                         {actionRef && (
                           <button onClick={() => setActionRef("")}
-                            className="text-xs px-2 py-1 rounded-lg border border-slate-200 text-slate-400 hover:text-red-500">
-                            × Personalizado
+                            className="text-xs px-2 py-1.5 rounded-lg border border-slate-200 text-slate-400 hover:text-red-600 transition">
+                            ✕ Personalizado
                           </button>
                         )}
                       </div>
                       {selectedEp?.description && (
-                        <p className="text-xs text-slate-400 mt-1 italic">{selectedEp.description}</p>
+                        <p className="text-xs text-slate-500 mt-2 italic border-l-2 border-slate-300 pl-2">{selectedEp.description}</p>
                       )}
                     </div>
                   )}
-                  {/* Integrations picker (fallback / always shown) */}
+                  
+                  {/* Integrations picker */}
                   {integrations.length > 0 && (
-                    <div>
-                      <label className="block text-xs font-medium text-slate-600 mb-2">Integración</label>
-                      <div className="flex flex-wrap gap-1.5">
+                    <div className="bg-slate-50 rounded-lg border border-slate-100 p-4">
+                      <label className="block text-xs font-medium text-slate-600 mb-3">Integración</label>
+                      <div className="flex flex-wrap gap-2">
                         {integrations.map((intg) => (
                           <button key={intg.id} onClick={() => setActionRef(String(intg.id))}
-                            className={`text-xs px-2.5 py-1 rounded-lg border transition ${
+                            className={`text-xs px-3 py-1.5 rounded-lg border transition ${
                               actionRef === String(intg.id)
-                                ? "bg-violet-600 text-white border-violet-600"
-                                : "bg-white text-slate-600 border-slate-200 hover:border-violet-400 hover:text-violet-600"
+                                ? "bg-violet-600 text-white border-violet-600 shadow-sm"
+                                : "bg-white text-slate-600 border-slate-200 hover:border-violet-300 hover:bg-violet-50"
                             }`}>
                             {intg.tipo === "webhook" ? "🔗 " : intg.tipo === "rest" ? "⚙️ " : ""}{intg.nombre}
                           </button>
                         ))}
                         {actionRef && (
                           <button onClick={() => setActionRef("")}
-                            className="text-xs px-2 py-1 rounded-lg border border-slate-200 text-slate-400 hover:text-red-500">
-                            × Limpiar
+                            className="text-xs px-2 py-1.5 rounded-lg border border-slate-200 text-slate-400 hover:text-red-600 transition">
+                            ✕ Limpiar
                           </button>
                         )}
                       </div>
                     </div>
                   )}
+                  
                   {/* Method + URL */}
-                  <div className="flex gap-2">
-                    <div className="w-28 shrink-0">
-                      <label className="block text-xs font-medium text-slate-600 mb-1">Método</label>
+                  <div className="grid grid-cols-4 gap-3">
+                    <div className="col-span-1 bg-slate-50 rounded-lg border border-slate-100 p-4">
+                      <label className="block text-xs font-medium text-slate-600 mb-2">Método HTTP</label>
                       <select value={actionMethod} onChange={(e) => setActionMethod(e.target.value)}
-                        className="w-full rounded-lg border border-slate-200 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white">
                         {HTTP_METHODS.map((m) => <option key={m} value={m}>{m}</option>)}
                       </select>
                     </div>
-                    <div className="flex-1">
-                      <label className="block text-xs font-medium text-slate-600 mb-1">URL del endpoint</label>
+                    <div className="col-span-3 bg-slate-50 rounded-lg border border-slate-100 p-4">
+                      <label className="block text-xs font-medium text-slate-600 mb-2">URL del endpoint</label>
                       <datalist id="waba-url-suggestions">
                         {catalogEndpoints.map((ep) => (
                           <option key={ep.id} value={ep.url}>{ep.name}</option>
                         ))}
                       </datalist>
                       <input list="waba-url-suggestions" value={actionUrl} onChange={(e) => handleActionUrlChange(e.target.value)} placeholder="/api/billing/balance"
-                        className="w-full rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                        className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white" />
                     </div>
                   </div>
+                  
                   {/* Body params */}
-                  <div className="rounded-xl border border-slate-200 p-3 bg-slate-50">
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-xs font-semibold text-slate-600">Parámetros del body (inputs)</span>
+                  <div className="bg-slate-50 rounded-lg border border-slate-100 p-4">
+                    <div className="flex items-center justify-between mb-3">
+                      <span className="text-xs font-semibold text-slate-600">📤 Parámetros del body (inputs)</span>
                       <button onClick={() => setActionBody((b) => [...b, { key: "", value: "" }])}
-                        className="flex items-center gap-0.5 text-xs text-blue-600 hover:text-blue-800">
-                        <Plus className="w-3 h-3" /> Agregar
+                        className="flex items-center gap-0.5 text-xs text-blue-600 hover:text-blue-800 font-medium">
+                        <Plus className="w-3.5 h-3.5" /> Agregar
                       </button>
                     </div>
                     {actionBody.length === 0 && (
-                      <p className="text-xs text-slate-400 italic">Sin parámetros. Selecciona un endpoint del catálogo o haz click en &quot;+ Agregar&quot;.</p>
+                      <p className="text-xs text-slate-400 italic">Sin parámetros. Selecciona un endpoint o haz click en &quot;+ Agregar&quot;.</p>
                     )}
-                    <div className="space-y-1.5">
+                    <div className="space-y-2">
                       {actionBody.map((row, i) => (
-                        <div key={i} className="flex gap-2 items-center">
+                        <div key={i} className="flex gap-2 items-center bg-white rounded-lg border border-slate-200 p-2">
                           <input value={row.key} onChange={(e) => setActionBody((b) => b.map((r, j) => j === i ? { ...r, key: e.target.value } : r))}
                             placeholder="campo_api"
-                            className="w-36 rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-blue-500" />
-                          <span className="text-slate-400 text-xs shrink-0">→</span>
+                            className="w-32 rounded-lg border border-slate-100 bg-slate-50 px-2 py-1 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-blue-500" />
+                          <span className="text-slate-400 text-xs shrink-0 font-medium">→</span>
                           <VarComboInput value={row.value} onChange={(v) => setActionBody((b) => b.map((r, j) => j === i ? { ...r, value: v } : r))}
                             placeholder="variables.cedula o valor fijo"
                             suggestions={flowVariables.length > 0 ? flowVariables : MENU_VARIABLE_PRESETS}
-                            className="flex-1 rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-blue-500" />
+                            className="flex-1 rounded-lg border border-slate-100 bg-slate-50 px-2 py-1 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-blue-500" />
                           <button onClick={() => setActionBody((b) => b.filter((_, j) => j !== i))}
-                            className="text-red-400 hover:text-red-600 shrink-0"><Trash2 className="w-3.5 h-3.5" /></button>
+                            className="text-red-400 hover:text-red-600 shrink-0 transition"><Trash2 className="w-4 h-4" /></button>
                         </div>
                       ))}
                     </div>
                   </div>
+                  
                   {/* Response mapping */}
-                  <div className="rounded-xl border border-slate-200 p-3 bg-slate-50">
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-xs font-semibold text-slate-600">Mapeo de respuesta (outputs → variables)</span>
+                  <div className="bg-slate-50 rounded-lg border border-slate-100 p-4">
+                    <div className="flex items-center justify-between mb-3">
+                      <span className="text-xs font-semibold text-slate-600">📥 Mapeo de respuesta (outputs → variables)</span>
                       <button onClick={() => setActionResponse((r) => [...r, { key: "", value: "" }])}
-                        className="flex items-center gap-0.5 text-xs text-blue-600 hover:text-blue-800">
-                        <Plus className="w-3 h-3" /> Agregar
+                        className="flex items-center gap-0.5 text-xs text-blue-600 hover:text-blue-800 font-medium">
+                        <Plus className="w-3.5 h-3.5" /> Agregar
                       </button>
                     </div>
                     {actionResponse.length === 0 && (
-                      <p className="text-xs text-slate-400 italic">Sin mapeo. Selecciona un endpoint del catálogo o haz click en &quot;+ Agregar&quot;.</p>
+                      <p className="text-xs text-slate-400 italic">Sin mapeo. Selecciona un endpoint o haz click en &quot;+ Agregar&quot;.</p>
                     )}
-                    <div className="space-y-1.5">
+                    <div className="space-y-2">
                       {actionResponse.map((row, i) => (
-                        <div key={i} className="flex gap-2 items-center">
+                        <div key={i} className="flex gap-2 items-center bg-white rounded-lg border border-slate-200 p-2">
                           <input value={row.key} onChange={(e) => setActionResponse((r) => r.map((x, j) => j === i ? { ...x, key: e.target.value } : x))}
                             placeholder="campo_respuesta"
-                            className="w-36 rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-blue-500" />
-                          <span className="text-slate-400 text-xs shrink-0">→</span>
+                            className="w-32 rounded-lg border border-slate-100 bg-slate-50 px-2 py-1 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-blue-500" />
+                          <span className="text-slate-400 text-xs shrink-0 font-medium">→</span>
                           <VarComboInput value={row.value} onChange={(v) => setActionResponse((r) => r.map((x, j) => j === i ? { ...x, value: v } : x))}
                             placeholder="variables.saldo"
                             suggestions={flowVariables.length > 0 ? flowVariables : MENU_VARIABLE_PRESETS}
-                            className="flex-1 rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-blue-500" />
+                            className="flex-1 rounded-lg border border-slate-100 bg-slate-50 px-2 py-1 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-blue-500" />
                           <button onClick={() => setActionResponse((r) => r.filter((_, j) => j !== i))}
-                            className="text-red-400 hover:text-red-600 shrink-0"><Trash2 className="w-3.5 h-3.5" /></button>
+                            className="text-red-400 hover:text-red-600 shrink-0 transition"><Trash2 className="w-4 h-4" /></button>
                         </div>
                       ))}
                     </div>
@@ -1624,26 +1645,28 @@ function NodeEditModal({
 
           {/* Next + Branches */}
           {!isTerminalNode ? (
-            <div className="grid grid-cols-2 gap-3 pt-2 border-t border-slate-100">
-              <div>
-                <label className="block text-xs font-medium text-slate-600 mb-1">Siguiente nodo (next)</label>
-                <select value={next} onChange={(e) => setNext(e.target.value)}
-                  className="w-full rounded-lg border border-slate-200 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
-                  <option value="">— ninguno —</option>
-                  {allNodeIds.filter((nid) => nid !== id).map((nid) => (
-                    <option key={nid} value={nid}>{nodeLabel(nid)}</option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-slate-600 mb-1">Branches (JSON)</label>
-                <textarea value={branchesJson} onChange={(e) => setBranchesJson(e.target.value)} rows={2}
-                  className="w-full rounded-xl border border-slate-200 px-3 py-1.5 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            <div className="mt-6 pt-6 border-t border-slate-100">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="bg-slate-50 rounded-lg border border-slate-100 p-4">
+                  <label className="block text-xs font-medium text-slate-600 mb-2">Siguiente nodo (next)</label>
+                  <select value={next} onChange={(e) => setNext(e.target.value)}
+                    className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white">
+                    <option value="">— ninguno —</option>
+                    {allNodeIds.filter((nid) => nid !== id).map((nid) => (
+                      <option key={nid} value={nid}>{nodeLabel(nid)}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="bg-slate-50 rounded-lg border border-slate-100 p-4">
+                  <label className="block text-xs font-medium text-slate-600 mb-2">Branches (JSON)</label>
+                  <textarea value={branchesJson} onChange={(e) => setBranchesJson(e.target.value)} rows={3}
+                    className="w-full rounded-lg border border-slate-200 px-3 py-2 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white" />
+                </div>
               </div>
             </div>
           ) : null}
 
-          {err && <p className="text-sm text-red-600">{err}</p>}
+          {err && <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-lg"><p className="text-xs text-red-700 font-medium">{err}</p></div>}
         </div>
         <div className="px-6 py-4 border-t border-slate-100 flex justify-end gap-3">
           <button onClick={onClose} className="px-4 py-2 text-sm text-slate-600 hover:text-slate-800">Cancelar</button>
