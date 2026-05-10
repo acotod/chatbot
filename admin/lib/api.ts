@@ -467,69 +467,6 @@ export const auditApi = {
     apiClient.get("/audit", { params }),
 };
 
-// ── LLM / WABA Rescue ───────────────────────────────────────────────────────
-export const llmApi = {
-  status: (tenantId?: string) =>
-    apiClient.get("/llm/status", { params: tenantId ? { tenantId } : {} }),
-  validate: (flowJson: unknown) =>
-    apiClient.post("/llm/validate", { flowJson }),
-  rescue: (payload: { originalJson: unknown; wabaError: unknown; tenantId?: string }) =>
-    apiClient.post("/llm/rescue", payload),
-  listRescues: (params?: Record<string, unknown>) =>
-    apiClient.get("/llm/rescue", { params }),
-  getRescue: (id: number) =>
-    apiClient.get(`/llm/rescue/${id}`),
-  /** POST /llm/prompt-assistant — validate prompt and ask follow-up questions */
-  promptAssistant: (payload: {
-    tenantId?: string;
-    draftPrompt?: string;
-    userMessage?: string;
-    brief?: Record<string, unknown>;
-    history?: Array<{ role: "user" | "assistant"; text: string }>;
-  }) => apiClient.post("/llm/prompt-assistant", payload, { timeout: 120000 }),
-  /** POST /llm/design-intelligent-flow — enterprise orchestrator response */
-  designIntelligentFlow: (payload: { prompt: string; tenantId?: string }) =>
-    apiClient.post("/llm/design-intelligent-flow", payload, { timeout: 120000 }),
-  /** POST /llm/generate-flow — prompt → Meta WhatsApp Flow JSON */
-  generateFlow: (payload: { prompt: string; tenantId?: string }) =>
-    apiClient.post("/llm/generate-flow", payload, { timeout: 120000 }),
-  /** POST /llm/simulate-flow — dry-run simulation of a Meta WABA flow JSON */
-  simulateFlow: (payload: {
-    flowJson: unknown;
-    dataContract?: unknown;
-    tenantId?: string;
-  }) => apiClient.post("/llm/simulate-flow", payload, { timeout: 60000 }),
-  /** POST /llm/save-flow-draft — save design as inactive draft pending approval */
-  saveFlowDraft: (payload: {
-    flowJson: unknown;
-    nombre: string;
-    tenantId?: string;
-    designReport?: unknown;
-  }) => apiClient.post("/llm/save-flow-draft", payload, { timeout: 30000 }),
-  /** POST /llm/approve-flow/:draftId — approve and publish a saved draft */
-  approveFlow: (draftId: number, tenantId?: string) =>
-    apiClient.post(`/llm/approve-flow/${draftId}`, { tenantId }),
-  /** POST /llm/design-intelligent-flow/feedback — record good/bad rating */
-  submitFeedback: (payload: {
-    rating: "good" | "bad";
-    tenantId?: string;
-    prompt?: string;
-    intent?: string;
-    flowId?: number;
-    corrections?: string;
-  }) => apiClient.post("/llm/design-intelligent-flow/feedback", payload, { timeout: 15000 }),
-  /** GET /llm/flow-history — paginated list of AI-designed flows with feedback */
-  flowHistory: (params: {
-    tenantId?: string;
-    page?: number;
-    limit?: number;
-    status?: "draft" | "published" | "all";
-  }) => apiClient.get("/llm/flow-history", { params }),
-  /** GET /llm/flow-metrics — aggregated orchestrator stats */
-  flowMetrics: (tenantId?: string) =>
-    apiClient.get("/llm/flow-metrics", { params: tenantId ? { tenantId } : {} }),
-};
-
 // ── WhatsApp Business ─────────────────────────────────────────────────────────
 export const whatsappApi = {
   /** One row per unique user — latest message per thread */

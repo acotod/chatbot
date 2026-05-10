@@ -32,7 +32,6 @@ import {
   Plug,
   TestTube2,
   Variable,
-  Wrench,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -73,7 +72,6 @@ const NAV_ITEMS: Array<{
   { icon: Plug, label: "Integraciones", href: "/integraciones", permission: "MANAGE_TENANTS" },
   { icon: Variable, label: "Variables", href: "/variables", permission: "EDIT_FLUJOS" },
   { icon: Webhook, label: "WABA Flujos", href: "/waba-flujos", permission: "VIEW_FLUJOS" },
-  { icon: Wrench, label: "LLM Rescue", href: "/flujos", permission: "VIEW_LLM_RESCUE" },
   { icon: Webhook, label: "Webhooks", href: "/webhooks", permission: "EDIT_SOLICITUDES" },
   { icon: TestTube2, label: "Sandbox", href: "/sandbox", permission: "VIEW_SANDBOX" },
 ];
