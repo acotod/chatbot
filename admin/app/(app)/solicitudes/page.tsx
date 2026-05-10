@@ -154,6 +154,10 @@ const DEFAULT_SOLICITUDES_CONFIG: SolicitudesTenantConfig = {
 
 export default function SolicitudesPage() {
 
+  const hasAccessToken = Boolean(getStoredAccessToken());
+  const hasAgentAccessToken = Boolean(getStoredAgentAccessToken());
+  const isAgentSession = hasAgentAccessToken && !hasAccessToken;
+
   const [agentStatusFilter, setAgentStatusFilter] = useState<"assigned" | "completed">("assigned");
 
   const { data: agentSolicitudes, isLoading: isAgentSolicitudesLoading } = useQuery({
