@@ -40,7 +40,7 @@ function normalizeTenantName(nombre: unknown, slug: string): string {
 }
 
 const TITLES: Record<string, string> = {
-  "/dashboard": "Dashboard",
+  "/dashboard": "Panel",
   "/conversaciones": "Conversaciones",
   "/solicitudes": "Solicitudes",
   "/agenda": "Agenda",

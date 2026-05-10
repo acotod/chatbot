@@ -13,7 +13,7 @@ interface MFARecoveryCodesProps {
  * Phase 2: Enterprise authentication hardening
  */
 export default function MFARecoveryCodes({
-  title = 'MFA Recovery Codes',
+  title = 'Códigos de recuperación MFA',
   showTitle = true,
 }: MFARecoveryCodesProps) {
   const [unusedCount, setUnusedCount] = useState(0);
@@ -35,14 +35,14 @@ export default function MFARecoveryCodes({
       setUnusedCount(response.data.unusedCodeCount || 0);
     } catch (err: any) {
       console.error('Error fetching recovery codes count:', err);
-      setError(err.response?.data?.error || 'Failed to load recovery codes');
+      setError(err.response?.data?.error || 'No se pudieron cargar los códigos de recuperación');
     } finally {
       setLoading(false);
     }
   };
 
   const handleGenerateNewCodes = async () => {
-    if (!confirm('Are you sure you want to generate new recovery codes? Old codes will be invalidated. Make sure to save the new codes in a secure location.')) {
+    if (!confirm('¿Seguro que quieres generar nuevos códigos de recuperación? Los códigos anteriores dejarán de ser válidos. Asegúrate de guardar los nuevos en un lugar seguro.')) {
       return;
     }
 
@@ -54,7 +54,7 @@ export default function MFARecoveryCodes({
       setUnusedCount(response.data.codes?.length || 0);
     } catch (err: any) {
       console.error('Error generating recovery codes:', err);
-      setError(err.response?.data?.error || 'Failed to generate recovery codes');
+      setError(err.response?.data?.error || 'No se pudieron generar los códigos de recuperación');
     } finally {
       setGenerating(false);
     }
@@ -73,7 +73,7 @@ export default function MFARecoveryCodes({
         {showTitle && <h2 className="text-lg font-semibold mb-4">{title}</h2>}
         <div className="text-center py-8">
           <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
-          <p className="mt-2 text-gray-600">Loading recovery codes...</p>
+          <p className="mt-2 text-gray-600">Cargando códigos de recuperación...</p>
         </div>
       </div>
     );
@@ -92,16 +92,16 @@ export default function MFARecoveryCodes({
       {/* Recovery Codes Status */}
       <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded">
         <p className="text-sm text-gray-700">
-          <strong>Unused Recovery Codes:</strong> {unusedCount}
+          <strong>Códigos de recuperación sin usar:</strong> {unusedCount}
         </p>
         {unusedCount < 3 && unusedCount > 0 && (
           <p className="text-sm text-orange-600 mt-1">
-            ⚠️ Running low on recovery codes. Consider generating new ones.
+            ⚠️ Quedan pocos códigos de recuperación. Considera generar nuevos.
           </p>
         )}
         {unusedCount === 0 && (
           <p className="text-sm text-red-600 mt-1">
-            ⚠️ No recovery codes available. Generate new ones now.
+            ⚠️ No hay códigos de recuperación disponibles. Genera nuevos ahora.
           </p>
         )}
       </div>
@@ -110,7 +110,7 @@ export default function MFARecoveryCodes({
       {generatedCodes.length > 0 && (
         <div className="mb-4 p-4 bg-yellow-50 border border-yellow-200 rounded">
           <p className="text-sm font-semibold text-yellow-900 mb-2">
-            🔒 Save these codes in a secure location. They will not be shown again!
+            🔒 Guarda estos códigos en un lugar seguro. No se volverán a mostrar.
           </p>
           <div className="bg-white p-3 rounded font-mono text-sm mb-3">
             {generatedCodes.map((code, idx) => (
@@ -127,7 +127,7 @@ export default function MFARecoveryCodes({
                 : 'bg-yellow-600 text-white hover:bg-yellow-700'
             }`}
           >
-            {copied ? '✓ Copied' : 'Copy Codes'}
+            {copied ? '✓ Copiados' : 'Copiar códigos'}
           </button>
         </div>
       )}
@@ -142,17 +142,17 @@ export default function MFARecoveryCodes({
             : 'bg-blue-600 hover:bg-blue-700'
         }`}
       >
-        {generating ? 'Generating...' : 'Generate New Recovery Codes'}
+        {generating ? 'Generando...' : 'Generar nuevos códigos de recuperación'}
       </button>
 
       {/* Information Section */}
       <div className="mt-4 p-3 bg-gray-100 rounded text-sm text-gray-700">
-        <p className="font-semibold mb-2">What are recovery codes?</p>
+        <p className="font-semibold mb-2">¿Qué son los códigos de recuperación?</p>
         <ul className="list-disc list-inside space-y-1 text-xs">
-          <li>One-time use codes for emergency access if you lose your authenticator</li>
-          <li>Each code can only be used once</li>
-          <li>Store them in a secure, encrypted location</li>
-          <li>Never share your recovery codes with anyone</li>
+          <li>Códigos de un solo uso para acceder en caso de emergencia si pierdes tu autenticador</li>
+          <li>Cada código solo puede usarse una vez</li>
+          <li>Guárdalos en un lugar seguro y cifrado</li>
+          <li>Nunca compartas tus códigos de recuperación con nadie</li>
         </ul>
       </div>
     </div>

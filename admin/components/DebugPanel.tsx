@@ -29,7 +29,7 @@ export function DebugPanel() {
       <button
         onClick={() => setIsOpen(true)}
         className="fixed bottom-4 right-4 z-50 bg-red-500 hover:bg-red-600 text-white px-3 py-2 rounded-lg text-xs font-semibold transition-all shadow-lg"
-        title="Click to open error debug panel"
+        title="Haz clic para abrir el panel de depuración de errores"
       >
         🐛 Debug ({logs.length})
       </button>
@@ -43,16 +43,16 @@ export function DebugPanel() {
     <div className="fixed bottom-4 right-4 z-50 w-96 max-h-96 bg-white border-2 border-red-500 rounded-lg shadow-2xl overflow-hidden flex flex-col">
       {/* Header */}
       <div className="bg-red-500 text-white px-4 py-3 flex justify-between items-center">
-        <div className="font-semibold text-sm">Error Debug Panel</div>
+        <div className="font-semibold text-sm">Panel de depuración de errores</div>
         <div className="flex gap-2 items-center text-xs">
           <span className="bg-red-600 px-2 py-1 rounded">E: {errorCount}</span>
           <span className="bg-yellow-600 px-2 py-1 rounded">W: {warnCount}</span>
           <button
             onClick={() => clearLogs()}
             className="bg-gray-700 hover:bg-gray-800 px-2 py-1 rounded transition-all"
-            title="Clear logs"
+            title="Limpiar registros"
           >
-            Clear
+            Limpiar
           </button>
           <button
             onClick={() => setIsOpen(false)}
@@ -66,7 +66,7 @@ export function DebugPanel() {
       {/* Logs */}
       <div className="overflow-y-auto flex-1 bg-gray-50 text-xs font-mono">
         {logs.length === 0 ? (
-          <div className="p-3 text-gray-500">No errors logged yet</div>
+          <div className="p-3 text-gray-500">Todavía no hay errores registrados</div>
         ) : (
           logs.map((log, idx) => (
             <div
@@ -99,7 +99,7 @@ export function DebugPanel() {
                   {log.details && (
                     <details className="mt-2 cursor-pointer">
                       <summary className="text-gray-600 hover:text-gray-800">
-                        Details
+                        Detalles
                       </summary>
                       <pre className="text-xs bg-white p-2 mt-1 border border-gray-200 rounded max-h-24 overflow-auto">
                         {JSON.stringify(log.details, null, 2)}

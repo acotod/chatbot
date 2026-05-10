@@ -157,8 +157,8 @@ export default function RolesPage() {
             <thead className="bg-gray-50 border-b">
               <tr>
                 <th className="px-4 py-3 text-left font-medium text-gray-600">Nombre</th>
-                <th className="px-4 py-3 text-left font-medium text-gray-600">Email</th>
-                <th className="px-4 py-3 text-left font-medium text-gray-600">Tenant</th>
+                <th className="px-4 py-3 text-left font-medium text-gray-600">Correo electrónico</th>
+                <th className="px-4 py-3 text-left font-medium text-gray-600">Empresa</th>
                 <th className="px-4 py-3 text-left font-medium text-gray-600">Roles</th>
                 <th className="px-4 py-3 text-left font-medium text-gray-600">Tipo</th>
                 <th className="px-4 py-3" />
@@ -196,11 +196,11 @@ export default function RolesPage() {
                       <td className="px-4 py-3">
                         {u.superAdmin ? (
                           <span className="text-xs bg-purple-100 text-purple-700 px-2 py-1 rounded font-medium">
-                            Super Admin
+                            Superadministrador
                           </span>
                         ) : (
                           <span className="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded">
-                            Admin
+                            Administrador
                           </span>
                         )}
                       </td>

@@ -34,7 +34,14 @@ export default function MainLayout({
   );
   const hasAccessToken = isClient && Boolean(getStoredAccessToken());
   const hasAgentAccessToken = isClient && Boolean(getStoredAgentAccessToken());
-  const allowAgentSharedRoute = ["/dashboard", "/solicitudes", "/agenda", "/contactos"].includes(pathname) && hasAgentAccessToken;
+  const allowAgentSharedRoute = [
+    "/dashboard",
+    "/solicitudes",
+    "/agenda",
+    "/contactos",
+    "/agente/perfil",
+    "/agente/security",
+  ].includes(pathname) && hasAgentAccessToken;
 
   useEffect(() => {
     if (!isClient) return;

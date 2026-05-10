@@ -74,7 +74,7 @@ export default function AgentDashboardPage() {
         <div className="rounded-3xl bg-white border border-slate-200 shadow-sm p-6 sm:p-8">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
             <div>
-              <p className="text-sm font-medium uppercase tracking-[0.2em] text-cyan-600">Dashboard</p>
+              <p className="text-sm font-medium uppercase tracking-[0.2em] text-cyan-600">Panel</p>
               <h1 className="mt-2 text-3xl font-semibold tracking-tight text-slate-900">Panel de agente</h1>
               <p className="mt-2 text-slate-600">
                 Vista principal de tu acceso operativo. Desde aqu\u00ed pod\u00e9s revisar tus datos y abrir tu perfil.
@@ -92,7 +92,7 @@ export default function AgentDashboardPage() {
 
         {loading ? (
           <div className="rounded-3xl bg-white border border-slate-200 shadow-sm p-6 text-sm text-slate-500">
-            Cargando dashboard...
+            Cargando panel...
           </div>
         ) : error ? (
           <div className="rounded-3xl bg-white border border-red-200 shadow-sm p-6 text-sm text-red-600">
@@ -122,9 +122,9 @@ export default function AgentDashboardPage() {
             <div className="rounded-3xl bg-white border border-slate-200 shadow-sm p-6">
               <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Resumen</p>
               <div className="mt-3 space-y-2 text-sm text-slate-600">
-                <p><span className="font-medium text-slate-900">Email:</span> {profile.email}</p>
+                <p><span className="font-medium text-slate-900">Correo electrónico:</span> {profile.email}</p>
                 <p><span className="font-medium text-slate-900">Puesto:</span> {profile.puesto?.nombre || "Sin puesto"}</p>
-                <p><span className="font-medium text-slate-900">Ultimo acceso:</span> {profile.lastSeenAt ? new Date(profile.lastSeenAt).toLocaleString("es-ES") : "Sin registro"}</p>
+                <p><span className="font-medium text-slate-900">Último acceso:</span> {profile.lastSeenAt ? new Date(profile.lastSeenAt).toLocaleString("es-ES") : "Sin registro"}</p>
               </div>
             </div>
           </div>

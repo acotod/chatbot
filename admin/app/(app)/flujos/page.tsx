@@ -230,7 +230,7 @@ type MainTab = "generar" | "builder" | "preview" | "probar" | "exportar" | "resc
 
 const STEPS: { id: MainTab; label: string; icon: string }[] = [
   { id: "builder",  label: "1. Editar",   icon: "⬡" },
-  { id: "preview",  label: "2. Preview",  icon: "📱" },
+  { id: "preview",  label: "2. Vista previa",  icon: "📱" },
   { id: "probar",   label: "3. Probar",   icon: "▶" },
   { id: "exportar", label: "4. Exportar", icon: "⬇" },
 ];
@@ -1735,11 +1735,11 @@ export default function FlujoSPage() {
     "Quiero hablar con alguien",
   ];
   const sandboxScenarios: Array<{ id: SandboxScenario; label: string; hint: string }> = [
-    { id: "live", label: "Live", hint: "Ejecuta el flujo real contra el backend" },
-    { id: "400", label: "400 bad request", hint: "Simula payload inválido o campos faltantes" },
-    { id: "500", label: "500 server error", hint: "Simula fallo interno del webhook" },
-    { id: "timeout", label: "Timeout", hint: "Simula espera agotada o dependencia lenta" },
-    { id: "mismatch", label: "Data mismatch", hint: "Simula respuesta con shape distinto al esperado" },
+    { id: "live", label: "En vivo", hint: "Ejecuta el flujo real contra el backend" },
+    { id: "400", label: "400 solicitud incorrecta", hint: "Simula payload inválido o campos faltantes" },
+    { id: "500", label: "500 error del servidor", hint: "Simula fallo interno del webhook" },
+    { id: "timeout", label: "Tiempo de espera", hint: "Simula espera agotada o dependencia lenta" },
+    { id: "mismatch", label: "Desajuste de datos", hint: "Simula respuesta con una estructura distinta a la esperada" },
   ];
   const sandboxIndustries: Array<{ id: SandboxIndustry; label: string; validationHint: string }> = [
     { id: "general", label: "General", validationHint: "Valida campos mínimos, fallback humano y consistencia de variables." },
@@ -3121,7 +3121,7 @@ export default function FlujoSPage() {
 
             <div className="pt-3 border-t space-y-3">
               <div>
-                <div className="text-[11px] font-semibold text-gray-600 uppercase tracking-wide">Sandbox</div>
+                <div className="text-[11px] font-semibold text-gray-600 uppercase tracking-wide">Entorno de pruebas</div>
                 <p className="text-[11px] text-gray-500 mt-1">Prueba mappings, retries y fallbacks con escenarios controlados y ayuda automática.</p>
               </div>
 

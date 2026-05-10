@@ -189,7 +189,7 @@ export default function LoginPage() {
 
         <form onSubmit={handleSubmit} className="space-y-4.5">
           <div className="flex flex-col gap-1.5">
-            <label className="text-sm font-medium text-slate-700">Email</label>
+            <label className="text-sm font-medium text-slate-700">Correo electrónico</label>
             <input
               type="email"
               value={email}

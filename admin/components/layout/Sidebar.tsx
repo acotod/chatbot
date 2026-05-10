@@ -56,7 +56,7 @@ const NAV_ITEMS: Array<{
   permission?: Permission;
   superAdminOnly?: boolean;
 }> = [
-  { icon: LayoutDashboard, label: "Dashboard", href: "/dashboard", permission: "VIEW_DASHBOARD" },
+  { icon: LayoutDashboard, label: "Panel", href: "/dashboard", permission: "VIEW_DASHBOARD" },
   { icon: MessageCircle, label: "Conversaciones", href: "/conversaciones", permission: "VIEW_CONVERSACIONES" },
   { icon: ClipboardList, label: "Solicitudes", href: "/solicitudes", permission: "VIEW_SOLICITUDES" },
   { icon: BarChart3, label: "Reportes", href: "/reportes", permission: "VIEW_METRICS" },
@@ -81,7 +81,7 @@ const AGENT_NAV_ITEMS: Array<{
   label: string;
   href: string;
 }> = [
-  { icon: LayoutDashboard, label: "Dashboard", href: "/dashboard" },
+  { icon: LayoutDashboard, label: "Panel", href: "/dashboard" },
   { icon: ClipboardList, label: "Solicitudes", href: "/solicitudes" },
   { icon: CalendarDays, label: "Agenda", href: "/agenda" },
   { icon: UserCircle2, label: "Contactos", href: "/contactos" },

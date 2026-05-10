@@ -22,7 +22,7 @@ interface DeviceManagementProps {
  * Phase 2: Enterprise authentication hardening
  */
 export default function DeviceManagement({
-  title = 'Connected Devices',
+  title = 'Dispositivos conectados',
   showTitle = true,
 }: DeviceManagementProps) {
   const [devices, setDevices] = useState<DeviceSession[]>([]);
@@ -46,14 +46,14 @@ export default function DeviceManagement({
         return;
       }
       console.error('Error fetching devices:', err);
-      setError(err.response?.data?.error || 'Failed to load devices');
+      setError(err.response?.data?.error || 'No se pudieron cargar los dispositivos');
     } finally {
       setLoading(false);
     }
   };
 
   const handleRevokeDevice = async (deviceId: string, deviceName: string) => {
-    if (!confirm(`Are you sure you want to revoke access from "${deviceName}"? You'll need to log in again on that device.`)) {
+    if (!confirm(`¿Seguro que quieres revocar el acceso de "${deviceName}"? Tendrás que iniciar sesión otra vez en ese dispositivo.`)) {
       return;
     }
 
@@ -61,13 +61,13 @@ export default function DeviceManagement({
       setRevoking(deviceId);
       await deviceSessionsApi.revokeAdminDevice(deviceId);
       setDevices(devices.filter(d => d.id !== deviceId));
-      alert('Device session revoked successfully');
+      alert('La sesión del dispositivo se revocó correctamente');
     } catch (err: any) {
       if (axios.isCancel(err) || err?.code === 'ERR_CANCELED') {
         return;
       }
       console.error('Error revoking device:', err);
-      setError(err.response?.data?.error || 'Failed to revoke device session');
+      setError(err.response?.data?.error || 'No se pudo revocar la sesión del dispositivo');
     } finally {
       setRevoking(null);
     }
@@ -87,7 +87,7 @@ export default function DeviceManagement({
         {showTitle && <h2 className="text-lg font-semibold mb-4">{title}</h2>}
         <div className="text-center py-8">
           <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
-          <p className="mt-2 text-gray-600">Loading devices...</p>
+          <p className="mt-2 text-gray-600">Cargando dispositivos...</p>
         </div>
       </div>
     );
@@ -104,7 +104,7 @@ export default function DeviceManagement({
       )}
 
       {devices.length === 0 ? (
-        <p className="text-gray-500">No connected devices found</p>
+        <p className="text-gray-500">No se encontraron dispositivos conectados</p>
       ) : (
         <div className="space-y-3">
           {devices.map((device) => (
@@ -113,7 +113,7 @@ export default function DeviceManagement({
                 <div className="font-semibold text-gray-900">{device.deviceName}</div>
                 <div className="text-sm text-gray-600 mt-1">
                   <div>IP: {device.ipAddress}</div>
-                  <div>Last seen: {formatDate(device.lastSeenAt)}</div>
+                  <div>Última conexión: {formatDate(device.lastSeenAt)}</div>
                 </div>
               </div>
               <button
@@ -125,7 +125,7 @@ export default function DeviceManagement({
                     : 'bg-red-600 hover:bg-red-700'
                 }`}
               >
-                {revoking === device.id ? 'Revoking...' : 'Revoke'}
+                {revoking === device.id ? 'Revocando...' : 'Revocar'}
               </button>
             </div>
           ))}
@@ -136,7 +136,7 @@ export default function DeviceManagement({
         onClick={fetchDevices}
         className="mt-4 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition"
       >
-        Refresh
+        Actualizar
       </button>
     </div>
   );

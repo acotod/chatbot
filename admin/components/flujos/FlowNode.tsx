@@ -38,7 +38,7 @@ function FlowNode({ data, selected }: NodeProps<FlowNodeData>) {
       { id: "edit", label: "Editar nodo", icon: Pencil },
       { id: "webhook", label: "Configurar API/Webhook", icon: PlugZap },
       { id: "vars", label: "Ver variables", icon: Variable },
-      { id: "test", label: "Run test", icon: TestTube2 },
+      { id: "test", label: "Ejecutar prueba", icon: TestTube2 },
       { id: "delete", label: "Eliminar", icon: Trash2 },
     ];
   }, []);
@@ -129,7 +129,7 @@ function FlowNode({ data, selected }: NodeProps<FlowNodeData>) {
 
       {/* Footer */}
       <div className="px-3 pb-2 pt-1 flex items-center justify-between text-[10px] text-gray-500">
-        <span>Input</span>
+        <span>Entrada</span>
         <div className="flex items-center gap-1.5">
           {validationState && (
             <span
@@ -142,7 +142,7 @@ function FlowNode({ data, selected }: NodeProps<FlowNodeData>) {
               {validationState}
             </span>
           )}
-          <span>Output</span>
+          <span>Salida</span>
         </div>
       </div>
 

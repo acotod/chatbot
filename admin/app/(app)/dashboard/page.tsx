@@ -145,7 +145,7 @@ export default function DashboardPage() {
             router.replace("/agente/login?reason=expired");
             return;
           }
-          setAgentError("No se pudo cargar el dashboard de agente.");
+          setAgentError("No se pudo cargar el panel de agente.");
         }
       } finally {
         if (!cancelled) {
@@ -163,7 +163,7 @@ export default function DashboardPage() {
 
   if (isAgentSession) {
     if (agentLoading) {
-      return <div className="rounded-3xl bg-white border border-slate-200 shadow-sm p-6 text-sm text-slate-500">Cargando dashboard...</div>;
+      return <div className="rounded-3xl bg-white border border-slate-200 shadow-sm p-6 text-sm text-slate-500">Cargando panel...</div>;
     }
 
     if (agentError) {
@@ -177,7 +177,7 @@ export default function DashboardPage() {
     return (
       <div className="space-y-6">
         <div className="rounded-3xl bg-white border border-slate-200 shadow-sm p-6 sm:p-8">
-          <p className="text-sm font-medium uppercase tracking-[0.2em] text-cyan-600">Dashboard</p>
+          <p className="text-sm font-medium uppercase tracking-[0.2em] text-cyan-600">Panel</p>
           <h1 className="mt-2 text-3xl font-semibold tracking-tight text-slate-900">Panel de agente</h1>
           <p className="mt-2 text-slate-600">Vista principal de tu acceso operativo.</p>
         </div>
@@ -233,9 +233,9 @@ export default function DashboardPage() {
           <div className="rounded-3xl bg-white border border-slate-200 shadow-sm p-6">
             <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Resumen</p>
             <div className="mt-3 space-y-2 text-sm text-slate-600">
-              <p><span className="font-medium text-slate-900">Email:</span> {agentProfile.email}</p>
+              <p><span className="font-medium text-slate-900">Correo electrónico:</span> {agentProfile.email}</p>
               <p><span className="font-medium text-slate-900">Puesto:</span> {agentProfile.puesto?.nombre || "Sin puesto"}</p>
-              <p><span className="font-medium text-slate-900">Ultimo acceso:</span> {agentProfile.lastSeenAt ? new Date(agentProfile.lastSeenAt).toLocaleString("es-ES") : "Sin registro"}</p>
+              <p><span className="font-medium text-slate-900">Último acceso:</span> {agentProfile.lastSeenAt ? new Date(agentProfile.lastSeenAt).toLocaleString("es-ES") : "Sin registro"}</p>
             </div>
           </div>
         </div>

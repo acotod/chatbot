@@ -613,10 +613,10 @@ export default function ConfiguracionPage() {
               onChange={(e) => setEmailSettings((prev) => ({ ...prev, smtpUser: e.target.value }))}
             />
             <div className="flex flex-col gap-1.5">
-              <label className="text-sm font-medium text-slate-700">SMTP Password</label>
+              <label className="text-sm font-medium text-slate-700">Contraseña SMTP</label>
               <Input
                 type="password"
-                placeholder={emailPassConfigured ? "•••••••• (ya configurado)" : "App password / SMTP password"}
+                placeholder={emailPassConfigured ? "•••••••• (ya configurado)" : "Contraseña de aplicación / SMTP"}
                 value={emailSettings.smtpPass}
                 onChange={(e) => setEmailSettings((prev) => ({ ...prev, smtpPass: e.target.value }))}
                 autoComplete="new-password"
@@ -641,7 +641,7 @@ export default function ConfiguracionPage() {
 
           <div className="grid grid-cols-2 gap-4">
             <Input
-              label="Email From"
+              label="Correo remitente"
               placeholder="no-reply@tu-dominio.com"
               value={emailSettings.emailFrom}
               onChange={(e) => setEmailSettings((prev) => ({ ...prev, emailFrom: e.target.value }))}
@@ -662,7 +662,7 @@ export default function ConfiguracionPage() {
             <Button onClick={() => saveEmailMutation.mutate()} disabled={saveEmailMutation.isPending}>
               {emailSaved ? (
                 <><Check size={16} /> Guardado 💙</>
-              ) : saveEmailMutation.isPending ? "Guardando..." : "Guardar configuración email"}
+              ) : saveEmailMutation.isPending ? "Guardando..." : "Guardar configuración de correo"}
             </Button>
           </div>
         </div>

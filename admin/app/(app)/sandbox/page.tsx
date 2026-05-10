@@ -241,7 +241,7 @@ export default function SandboxPage() {
   if (!canAccessSandbox) {
     return (
       <div className="rounded-3xl border border-red-200 bg-red-50 px-6 py-5 text-sm text-red-700">
-        No tienes permisos para acceder al Sandbox Emulator.
+        No tienes permisos para acceder al entorno de pruebas.
       </div>
     );
   }
@@ -250,14 +250,14 @@ export default function SandboxPage() {
     <div className="space-y-6">
       <div className="flex flex-col gap-4 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm lg:flex-row lg:items-start lg:justify-between">
         <div>
-          <h1 className="text-2xl font-semibold text-slate-900">Sandbox Emulator</h1>
+          <h1 className="text-2xl font-semibold text-slate-900">Emulador de pruebas</h1>
           <p className="mt-2 max-w-3xl text-sm text-slate-500">
-            Primer slice operativo del sandbox enterprise. Este panel ya dispara un inbound reutilizando el runtime real de
-            webhook, chatbot router, flow engine y node executors.
+            Primer corte operativo del entorno enterprise. Este panel ya dispara una entrada reutilizando el runtime real de
+            webhook, el router del chatbot, el motor de flujos y los ejecutores de nodos.
           </p>
         </div>
         <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-          Estado inicial: runtime real + simulación inbound.
+          Estado inicial: runtime real + simulación de entrada.
         </div>
       </div>
 
@@ -282,7 +282,7 @@ export default function SandboxPage() {
         <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
           <div className="mb-5 flex items-center gap-2 text-slate-900">
             <Webhook className="h-5 w-5 text-blue-600" />
-            <h2 className="text-lg font-semibold">Simular inbound</h2>
+            <h2 className="text-lg font-semibold">Simular entrada</h2>
           </div>
 
           <div className="grid gap-4 md:grid-cols-2">
@@ -301,7 +301,7 @@ export default function SandboxPage() {
                 value={contactName}
                 onChange={(e) => setContactName(e.target.value)}
                 className="w-full rounded-2xl border border-slate-200 px-3 py-2.5 text-sm text-slate-900 transition focus:border-blue-500 focus:outline-none"
-                placeholder="Sandbox User"
+                placeholder="Usuario de pruebas"
               />
             </label>
             <label className="space-y-2 text-sm text-slate-600 md:col-span-2">

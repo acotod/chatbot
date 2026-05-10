@@ -111,7 +111,7 @@ export default function AgentProfilePage() {
               <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Identidad</p>
               <h2 className="mt-2 text-2xl font-semibold text-slate-900">{profile.nombre}</h2>
               <div className="mt-4 space-y-2 text-sm text-slate-600">
-                <p><span className="font-medium text-slate-900">Email:</span> {profile.email}</p>
+                <p><span className="font-medium text-slate-900">Correo electrónico:</span> {profile.email}</p>
                 <p><span className="font-medium text-slate-900">WhatsApp:</span> {profile.whatsapp || "No definido"}</p>
                 <p><span className="font-medium text-slate-900">Estado:</span> {profile.estado}</p>
                 <p><span className="font-medium text-slate-900">Puesto:</span> {profile.puesto?.nombre || "Sin puesto"}</p>

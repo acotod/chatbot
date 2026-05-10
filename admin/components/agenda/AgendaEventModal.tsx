@@ -232,7 +232,7 @@ export function AgendaEventModal({
             placeholder="https://api.tu-dominio.com/hook"
           />
           <div className="flex flex-col gap-1.5">
-            <label className="text-sm font-medium text-slate-700">Metodo webhook</label>
+            <label className="text-sm font-medium text-slate-700">Método del webhook</label>
             <select
               className="h-11 rounded-xl border border-slate-200 px-3 text-sm"
               value={form.webhookMethod}
@@ -247,7 +247,7 @@ export function AgendaEventModal({
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="flex flex-col gap-1.5">
-            <label className="text-sm font-medium text-slate-700">Webhook headers (JSON)</label>
+            <label className="text-sm font-medium text-slate-700">Cabeceras del webhook (JSON)</label>
             <textarea
               className="min-h-20 rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500/40 font-mono"
               value={form.webhookHeadersJson}
@@ -255,7 +255,7 @@ export function AgendaEventModal({
             />
           </div>
           <div className="flex flex-col gap-1.5">
-            <label className="text-sm font-medium text-slate-700">Webhook payload (JSON)</label>
+            <label className="text-sm font-medium text-slate-700">Carga útil del webhook (JSON)</label>
             <textarea
               className="min-h-20 rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500/40 font-mono"
               value={form.webhookPayloadJson}
@@ -307,7 +307,7 @@ export function AgendaEventModal({
                 onClick={() => onTriggerStart(form.id!)}
                 disabled={saving}
               >
-                Trigger webhook
+                Disparar webhook
               </Button>
             )}
           </div>
