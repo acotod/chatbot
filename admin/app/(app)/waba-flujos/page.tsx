@@ -302,12 +302,23 @@ function buildMenuBranchesFromRouteTargets(
     }
   });
 
+  // If routing has a single destination, map every unmapped option to that same target.
+  if (mappedRouteTargets.length === 1) {
+    const sharedTarget = mappedRouteTargets[0];
+    optionRecords.forEach((option) => {
+      const optionId = typeof option.id === "string" ? option.id.trim() : "";
+      if (!optionId || result[optionId]) return;
+      result[optionId] = sharedTarget;
+    });
+    return result;
+  }
+
   // Ordered fallback: option[0] -> routeTargets[0], etc.
   optionRecords.forEach((option, index) => {
     const optionId = typeof option.id === "string" ? option.id.trim() : "";
     if (!optionId || result[optionId]) return;
 
-    const orderedTarget = mappedRouteTargets[index];
+    const orderedTarget = mappedRouteTargets[index] ?? mappedRouteTargets[mappedRouteTargets.length - 1];
     if (orderedTarget) {
       result[optionId] = orderedTarget;
     }
@@ -326,16 +337,21 @@ function normalizeFlowDefinition(definition: FlowDefinition): FlowDefinition {
     const normalizedChildren = node.children?.map(normalizeNode);
     const nodeScreenId = getNodeScreenId(node) ?? "";
     const routeTargets = nodeScreenId ? resolveRouteTargets(routingModel, nodeScreenId) : [];
-    const inferredBranchesFromRouting = node.type === "menu"
+    const branchesFromRouting = node.type === "menu"
       ? buildMenuBranchesFromRouteTargets(node.config?.options, routeTargets, nodeIds, screenIdToNodeId)
       : {};
-    const resolvedBranches = normalizeBranchTargets(node.branches, nodeIds, screenIdToNodeId);
-    const inferredBranches = node.type === "menu" && Object.keys(resolvedBranches).length === 0
+    const branchesFromDefinition = normalizeBranchTargets(node.branches, nodeIds, screenIdToNodeId);
+    const branchesFromOptions = node.type === "menu"
       ? buildMenuBranchesFromOptions(node.config?.options, nodeIds, screenIdToNodeId)
-      : resolvedBranches;
-    const finalBranches = Object.keys(inferredBranches).length > 0
-      ? inferredBranches
-      : inferredBranchesFromRouting;
+      : {};
+
+    // Merge all branch sources so partial mappings don't erase valid routes.
+    const finalBranches = {
+      ...branchesFromRouting,
+      ...branchesFromOptions,
+      ...branchesFromDefinition,
+    };
+
     const footerTarget = getFooterTargetFromScreen(node.config?._waba_screen);
     const nextFromRouting = routeTargets.length === 1
       ? resolveNodeTarget(routeTargets[0], nodeIds, screenIdToNodeId)
