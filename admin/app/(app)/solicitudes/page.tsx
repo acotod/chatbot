@@ -154,6 +154,8 @@ const DEFAULT_SOLICITUDES_CONFIG: SolicitudesTenantConfig = {
 
 export default function SolicitudesPage() {
 
+  const [agentStatusFilter, setAgentStatusFilter] = useState<"assigned" | "completed">("assigned");
+
   const { data: agentSolicitudes, isLoading: isAgentSolicitudesLoading } = useQuery({
     queryKey: ["agent-solicitudes", agentStatusFilter],
     queryFn: () => agentAuthApi.solicitudes({ status: agentStatusFilter, page: 1, limit: 50 }).then((r) => r.data),
