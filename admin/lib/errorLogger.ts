@@ -76,6 +76,8 @@ export function clearLogs(): void {
  * Call this once at app startup (in layout.tsx or root client component)
  */
 export function initGlobalErrorLogger(): void {
+    if ((window as Window & { __errorLoggerInit?: boolean }).__errorLoggerInit) return;
+    (window as Window & { __errorLoggerInit?: boolean }).__errorLoggerInit = true;
   if (typeof window === "undefined") return;
 
   // Capture unhandled promise rejections

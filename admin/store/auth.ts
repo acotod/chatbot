@@ -2,6 +2,7 @@ import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 import { normalizePermissions, type Permission } from "@/lib/permissions";
 import { clearTabSession } from "@/lib/tabManager";
+import { clearLogs } from "@/lib/errorLogger";
 
 // Module-level refresh timer handle
 let _proactiveRefreshTimer: ReturnType<typeof setTimeout> | null = null;
@@ -95,6 +96,7 @@ export function clearStoredAuth() {
   safeSessionStorageRemove(REFRESH_TOKEN_STORAGE_KEY);
   safeSessionStorageRemove(AUTH_STORAGE_KEY);
   clearTabSession();
+  clearLogs();
 }
 
 function parseJwtExpToUnixMs(token: string): number | null {
