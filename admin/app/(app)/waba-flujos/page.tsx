@@ -736,6 +736,7 @@ function NodeEditModal({
 
   const selectedEp = catalogEndpoints.find((ep) => ep.id === actionRef);
   const normalizedType = String(type ?? "").trim().toLowerCase();
+  const isTerminalNode = normalizedType === "end";
   const supportsEndpointMapping = [
     "action",
     "menu",
@@ -747,7 +748,7 @@ function NodeEditModal({
     "end",
     "llm",
     "handoff",
-  ].includes(normalizedType);
+  ].includes(normalizedType) && !isTerminalNode;
 
   const menuValidation = (() => {
     if (type !== "menu") {
@@ -874,7 +875,13 @@ function NodeEditModal({
     } else {
       config = buildConfig();
     }
-    onSave({ id: id.trim(), type, config, next: next || null, branches });
+    onSave({
+      id: id.trim(),
+      type,
+      config,
+      ...(isTerminalNode ? { next: null } : { next: next || null }),
+      ...(isTerminalNode ? {} : { branches }),
+    });
   }
 
   return (
@@ -911,6 +918,12 @@ function NodeEditModal({
               </select>
             </div>
           </div>
+
+          {isTerminalNode && (
+            <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+              Este nodo es terminal. Solo define el mensaje de cierre; no usa next ni branches.
+            </div>
+          )}
 
           {/* Config */}
           {showJson ? (
@@ -1237,23 +1250,25 @@ function NodeEditModal({
           )}
 
           {/* Next + Branches */}
-          <div className="grid grid-cols-2 gap-3 pt-2 border-t border-slate-100">
-            <div>
-              <label className="block text-xs font-medium text-slate-600 mb-1">Siguiente nodo (next)</label>
-              <select value={next} onChange={(e) => setNext(e.target.value)}
-                className="w-full rounded-lg border border-slate-200 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
-                <option value="">— ninguno —</option>
-                {allNodeIds.filter((nid) => nid !== id).map((nid) => (
-                  <option key={nid} value={nid}>{nid}</option>
-                ))}
-              </select>
+          {!isTerminalNode ? (
+            <div className="grid grid-cols-2 gap-3 pt-2 border-t border-slate-100">
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">Siguiente nodo (next)</label>
+                <select value={next} onChange={(e) => setNext(e.target.value)}
+                  className="w-full rounded-lg border border-slate-200 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                  <option value="">— ninguno —</option>
+                  {allNodeIds.filter((nid) => nid !== id).map((nid) => (
+                    <option key={nid} value={nid}>{nid}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">Branches (JSON)</label>
+                <textarea value={branchesJson} onChange={(e) => setBranchesJson(e.target.value)} rows={2}
+                  className="w-full rounded-xl border border-slate-200 px-3 py-1.5 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              </div>
             </div>
-            <div>
-              <label className="block text-xs font-medium text-slate-600 mb-1">Branches (JSON)</label>
-              <textarea value={branchesJson} onChange={(e) => setBranchesJson(e.target.value)} rows={2}
-                className="w-full rounded-xl border border-slate-200 px-3 py-1.5 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-blue-500" />
-            </div>
-          </div>
+          ) : null}
 
           {err && <p className="text-sm text-red-600">{err}</p>}
         </div>
