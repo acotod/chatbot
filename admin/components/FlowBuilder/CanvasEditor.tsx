@@ -10,8 +10,9 @@
 import React, { useCallback, useState, useEffect } from 'react';
 import ReactFlow, {
   Node,
-  Edge,
   addEdge,
+  applyNodeChanges,
+  applyEdgeChanges,
   useNodesState,
   useEdgesState,
   Connection,
@@ -27,7 +28,7 @@ import 'reactflow/dist/style.css';
 
 import { FlowDefinition, FlowNode, FlowEdge } from '@/lib/flowTypes';
 import { toReactFlowNodes, toReactFlowEdges, fromReactFlowNodes, fromReactFlowEdges } from '@/lib/converters';
-import { deleteNode, duplicateNode, deleteEdge } from '@/lib/nodeOperations';
+import { deleteNode, duplicateNode } from '@/lib/nodeOperations';
 
 import StartNodeComponent from './nodes/StartNode';
 import ScreenNodeComponent from './nodes/ScreenNode';
@@ -85,8 +86,8 @@ function CanvasEditorInner({
   readOnly = false,
   className = '',
 }: CanvasEditorProps) {
-  const [nodes, setNodes, onNodesChange] = useNodesState<FlowNode>([]);
-  const [edges, setEdges, onEdgesChange] = useEdgesState<FlowEdge>([]);
+  const [nodes, setNodes] = useNodesState<FlowNode>([]);
+  const [edges, setEdges] = useEdgesState<FlowEdge>([]);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; nodeId: string } | null>(null);
   const [jsonViewNode, setJsonViewNode] = useState<string | null>(null);
@@ -103,30 +104,33 @@ function CanvasEditorInner({
   // Handle node position changes
   const handleNodesChange = useCallback(
     (changes: NodeChange[]) => {
-      onNodesChange(changes);
+      const nextNodes = applyNodeChanges(changes, nodes);
+      setNodes(nextNodes);
 
       // Detect if this is a position change
       const positionChanges = changes.filter((c) => c.type === 'position' && 'position' in c);
       if (positionChanges.length > 0) {
-        const { updatedDefinition } = fromReactFlowNodes(nodes, definition);
+        const { updatedDefinition } = fromReactFlowNodes(nextNodes, definition);
         onChange(updatedDefinition);
       }
     },
-    [nodes, definition, onChange, onNodesChange]
+    [nodes, definition, onChange, setNodes]
   );
 
   // Handle edge changes (connections added/removed)
   const handleEdgesChange = useCallback(
     (changes: EdgeChange[]) => {
-      onEdgesChange(changes);
+      const nextEdges = applyEdgeChanges(changes, edges);
+      setEdges(nextEdges);
 
-      // After edge change is applied, sync to definition
-      setTimeout(() => {
-        const updatedDef = fromReactFlowEdges(edges, definition);
+      // Keep flow routing in sync after edge mutations
+      const structuralChanges = changes.some((change) => change.type !== 'select');
+      if (structuralChanges) {
+        const updatedDef = fromReactFlowEdges(nextEdges, definition);
         onChange(updatedDef);
-      }, 0);
+      }
     },
-    [edges, definition, onChange, onEdgesChange]
+    [edges, definition, onChange, setEdges]
   );
 
   // Handle new edge connection
@@ -260,7 +264,8 @@ function CanvasEditorInner({
           y={contextMenu.y}
           nodeId={contextMenu.nodeId}
           onEdit={(nodeId) => {
-            handleNodeClick({} as any, { id: nodeId } as any);
+            setSelectedNodeId(nodeId);
+            onNodeClick?.(nodeId);
             setContextMenu(null);
           }}
           onDelete={handleDeleteNode}
