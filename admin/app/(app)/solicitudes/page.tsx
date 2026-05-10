@@ -420,6 +420,14 @@ export default function SolicitudesPage() {
     staleTime: 0,
   });
 
+  const messageRows: any[] = Array.isArray(messagesData)
+    ? messagesData
+    : Array.isArray((messagesData as any)?.data)
+      ? (messagesData as any).data
+      : Array.isArray((messagesData as any)?.items)
+        ? (messagesData as any).items
+        : [];
+
   const sendMessageMutation = useMutation({
     mutationFn: ({ text }: { text: string }) =>
       isAgentSession
@@ -1270,14 +1278,14 @@ export default function SolicitudesPage() {
                   <div className="flex items-center justify-center py-8">
                     <div className="text-slate-500">Cargando mensajes...</div>
                   </div>
-                ) : (messagesData?.data || []).length === 0 ? (
+                ) : messageRows.length === 0 ? (
                   <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50 px-4 py-8 text-center">
                     <MessageCircleMore className="mx-auto mb-2 h-6 w-6 text-slate-400" />
                     <p className="text-sm text-slate-600">No hay mensajes aún</p>
                   </div>
                 ) : (
                   <div className="space-y-3 max-h-96 overflow-y-auto">
-                    {(messagesData?.data || []).map((msg: any) => (
+                    {messageRows.map((msg: any) => (
                       <div
                         key={msg.id}
                         className={cn(
