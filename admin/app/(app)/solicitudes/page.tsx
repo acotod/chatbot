@@ -202,6 +202,12 @@ export default function SolicitudesPage() {
     conversation: ConversationItem | null;
   }>({ open: false, conversation: null });
   const [selectedAgente, setSelectedAgente] = useState("");
+  const defaultDetailTab: "resumen" | "conversaciones" | "mensajes" = isAgentSession ? "mensajes" : "resumen";
+
+  function openSolicitudDetail(solicitud: Solicitud): void {
+    setDetailModal({ open: true, solicitud });
+    setDetailTab(defaultDetailTab);
+  }
 
   const { data: configData } = useQuery({
     queryKey: ["solicitudes-config", tenantSlug],
@@ -961,7 +967,7 @@ export default function SolicitudesPage() {
                                   agente: null,
                                 },
                               });
-                              setDetailTab("resumen");
+                                setDetailTab(defaultDetailTab);
                             }}
                             className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs font-medium text-slate-700"
                           >
@@ -1606,8 +1612,7 @@ export default function SolicitudesPage() {
                         </button>
                         <button
                           onClick={() => {
-                            setDetailModal({ open: true, solicitud: s });
-                            setDetailTab("resumen");
+                            openSolicitudDetail(s as Solicitud);
                           }}
                           className="text-xs text-slate-700 hover:text-slate-900 font-medium border border-slate-200 rounded-lg px-2 py-1 bg-white hover:bg-slate-50 transition flex items-center gap-1"
                         >
