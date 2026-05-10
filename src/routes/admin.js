@@ -92,6 +92,34 @@ function normalizeOptionalHttpUrl(value) {
     }
 }
 
+function normalizeWhatsappRecipient(value) {
+    const digits = String(value || '').replace(/\D+/g, '');
+    return digits || null;
+}
+
+async function buildAgentSolicitudesUrl(tenantId) {
+    const path = `/agente/login?next=${encodeURIComponent('/solicitudes')}`;
+    const emailSettings = tenantId ? await db.getEmailSettings(tenantId) : null;
+    const origin = String(
+        emailSettings?.adminBaseUrl
+        || process.env.AGENT_PORTAL_BASE_URL
+        || process.env.ADMIN_BASE_URL
+        || process.env.CUSTOMER_PORTAL_BASE_URL
+        || ''
+    ).trim().replace(/\/$/, '');
+    return origin ? `${origin}${path}` : path;
+}
+
+function buildAgentAssignmentWhatsappText({ solicitudId, agenteNombre, tenantNombre, loginUrl }) {
+    const safeAgenteNombre = String(agenteNombre || 'agente').trim();
+    const safeTenantNombre = String(tenantNombre || 'tu empresa').trim();
+    return [
+        `Hola ${safeAgenteNombre}, se te asigno la solicitud #${solicitudId} en ${safeTenantNombre}.`,
+        'Ingresa al portal de agente para responder:',
+        loginUrl,
+    ].join('\n');
+}
+
 function parseCalendarSelection(value) {
     if (value === undefined) return { provided: false, clear: false, calendarId: null };
     if (value === null) return { provided: true, clear: true, calendarId: null };
@@ -1210,6 +1238,56 @@ router.patch('/tenants/:slug/solicitudes/:id/agente', requirePermiso('EDIT_SOLIC
             message: `La solicitud #${Number(req.params.id)} fue asignada al agente #${Number(agenteId)}.`,
             data: { solicitudId: Number(req.params.id), agenteId: Number(agenteId) },
         });
+
+        try {
+            const assignedAgente = await prisma.agente.findFirst({
+                where: { id: Number(agenteId), tenantId: tenant.id },
+                select: { id: true, nombre: true, whatsapp: true },
+            });
+
+            const recipient = normalizeWhatsappRecipient(assignedAgente?.whatsapp);
+            if (recipient) {
+                const { phoneNumberId, accessToken } = await db.getWaCredentials(tenant.id);
+                if (phoneNumberId && accessToken) {
+                    const loginUrl = await buildAgentSolicitudesUrl(tenant.id);
+                    const text = buildAgentAssignmentWhatsappText({
+                        solicitudId: Number(req.params.id),
+                        agenteNombre: assignedAgente?.nombre,
+                        tenantNombre: tenant.nombre,
+                        loginUrl,
+                    });
+                    const waResp = await wa.sendTextMessage(phoneNumberId, recipient, text, accessToken);
+                    audit({
+                        adminUserId: req.admin?.adminUserId,
+                        tenantId: tenant.id,
+                        accion: 'AGENT_ASSIGNMENT_WHATSAPP_NOTIFIED',
+                        entidad: 'solicitud',
+                        entidadId: req.params.id,
+                        ip: req.ip,
+                        userAgent: req.headers['user-agent'],
+                        metadata: {
+                            agenteId: Number(agenteId),
+                            waMsgId: waResp?.messages?.[0]?.id ?? null,
+                            recipient,
+                        },
+                    });
+                }
+            }
+        } catch (notifyErr) {
+            audit({
+                adminUserId: req.admin?.adminUserId,
+                tenantId: tenant.id,
+                accion: 'AGENT_ASSIGNMENT_WHATSAPP_NOTIFY_FAILED',
+                entidad: 'solicitud',
+                entidadId: req.params.id,
+                ip: req.ip,
+                userAgent: req.headers['user-agent'],
+                metadata: {
+                    agenteId: Number(agenteId),
+                    error: String(notifyErr?.message || notifyErr || 'unknown_error'),
+                },
+            });
+        }
 
         res.json(result);
     } catch (err) {
