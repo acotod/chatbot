@@ -9,6 +9,11 @@ import {
 } from "@/store/auth";
 import { getTabId } from "./tabManager";
 
+// Set to true when an intentional logout is in progress so response-interceptor
+// errors that race with session teardown are not surfaced in the console.
+let _isLoggingOut = false;
+export function markLoggingOut() { _isLoggingOut = true; }
+
 let inMemoryRequestTabId = "";
 
 function getRequestTabId(): string {
@@ -148,8 +153,12 @@ apiClient.interceptors.response.use(
       !url.includes("/auth/refresh") &&
       !!getStoredRefreshToken();
 
-    // Only log non-recoverable errors immediately; recoverable 401s are logged only if refresh fails
-    if (!isRecoverable401) {
+    const isPostLogout =
+      (status === 401 || status === 403) &&
+      !getStoredAccessToken() &&
+      !getStoredRefreshToken();
+
+    if (!isRecoverable401 && !isPostLogout) {
       addLog({
         level: "error",
         source: "network",
