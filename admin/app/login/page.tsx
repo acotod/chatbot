@@ -1,6 +1,6 @@
 "use client";
 
-import { authApi } from "@/lib/api";
+import { API_BASE, authApi } from "@/lib/api";
 import { addLog, initGlobalErrorLogger } from "@/lib/errorLogger";
 import { buildPermissionSet, normalizePermissions, type Permission } from "@/lib/permissions";
 import { scheduleProactiveRefresh, useAuthStore } from "@/store/auth";
@@ -122,11 +122,7 @@ export default function LoginPage() {
       const rt = getStoredRefreshToken();
       if (!rt) return;
       const { default: axios } = await import("axios");
-      const apiBase = process.env.NEXT_PUBLIC_API_URL?.trim() ||
-        (typeof window !== "undefined" && window.location.hostname !== "localhost"
-          ? `${window.location.protocol}//${window.location.hostname}`
-          : "http://127.0.0.1:3200");
-      const r = await axios.post(`${apiBase}/auth/refresh`, { refreshToken: rt });
+      const r = await axios.post(`${API_BASE}/auth/refresh`, { refreshToken: rt });
       setToken(r.data.accessToken, r.data.expiresIn);
       scheduleProactiveRefresh(r.data.expiresIn ?? 900, async () => {});
     });

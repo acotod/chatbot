@@ -1,6 +1,6 @@
 "use client";
 
-import { tenantApi } from "@/lib/api";
+import { API_BASE, tenantApi } from "@/lib/api";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRef, useState } from "react";
 import { getStoredAccessToken } from "@/store/auth";
@@ -8,8 +8,6 @@ import { Card, CardContent, CardHeader } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { ImagePlus, KeyRound, Plus, Power, PowerOff, RefreshCcw } from "lucide-react";
-
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:3200";
 
 const PLAN_OPTIONS = [
   { value: "free", label: "Free" },

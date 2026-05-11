@@ -10,8 +10,8 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci
 COPY . .
-# Bake the API URL at build time (overridable via build arg)
-ARG NEXT_PUBLIC_API_URL=http://127.0.0.1:3200
+# Let the app resolve the API base at runtime unless an explicit build arg is set.
+ARG NEXT_PUBLIC_API_URL
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 RUN npm run build
 

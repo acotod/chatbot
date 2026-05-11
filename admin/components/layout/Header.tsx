@@ -1,6 +1,6 @@
 "use client";
 
-import { tenantApi } from "@/lib/api";
+import { API_BASE, tenantApi } from "@/lib/api";
 import { agentAuthApi } from "@/lib/agentApi";
 import { useNotifications } from "@/hooks/useNotifications";
 import { getMe } from "@/lib/useMe";
@@ -64,7 +64,6 @@ export function Header() {
   const hasAgentAccessToken = isClient && Boolean(getStoredAgentAccessToken());
   const isAgentSharedRoute = ["/dashboard", "/solicitudes", "/agenda", "/contactos"].includes(pathname);
   const isAgentSession = hasAgentAccessToken && (isAgentSharedRoute || !hasAccessToken);
-  const apiBase = process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:3200";
   const sessionEmail = isClient ? (getMe()?.email ?? null) : null;
 
   const { data: agentProfile } = useQuery({
@@ -110,7 +109,7 @@ export function Header() {
   const tenantLogoSrc = selectedTenant?.logoUrl
     ? selectedTenant.logoUrl.startsWith("http")
       ? selectedTenant.logoUrl
-      : `${apiBase}${selectedTenant.logoUrl}`
+      : `${API_BASE}${selectedTenant.logoUrl}`
     : null;
   const identityEmail = isAgentSession
     ? (agentProfile?.email ?? "Sesion de agente")
