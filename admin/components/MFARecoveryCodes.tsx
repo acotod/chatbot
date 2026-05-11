@@ -56,12 +56,19 @@ export default function MFARecoveryCodes({
     try {
       setGenerating(true);
       setError(null);
-      const response = await deviceSessionsApi.generateRecoveryCodes();
+      const timeout = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('TIMEOUT')), 15000)
+      );
+      const response = await Promise.race([deviceSessionsApi.generateRecoveryCodes(), timeout]);
       setGeneratedCodes(response.data.codes || []);
       setUnusedCount(response.data.codes?.length || 0);
     } catch (err: any) {
-      console.error('Error generating recovery codes:', err);
-      setError(err.response?.data?.error || 'No se pudieron generar los códigos de recuperación');
+      if (err?.message === 'TIMEOUT') {
+        setError('La solicitud tardó demasiado. Intenta de nuevo en unos momentos.');
+      } else {
+        console.error('Error generating recovery codes:', err);
+        setError(err.response?.data?.error || 'No se pudieron generar los códigos de recuperación');
+      }
     } finally {
       setGenerating(false);
     }
