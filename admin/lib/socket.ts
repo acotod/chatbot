@@ -29,14 +29,14 @@ function resolveSocketBase(): string {
   }
 
   if (typeof window !== 'undefined') {
-    const { protocol, hostname } = window.location;
+    const { hostname, origin, port, protocol } = window.location;
     if (isLocalHostname(hostname)) {
       return 'http://127.0.0.1:3001';
     }
     if (hostname.startsWith('admin.')) {
-      return `${protocol}//api.${hostname.slice('admin.'.length)}`;
+      return `${protocol}//api.${hostname.slice('admin.'.length)}${port ? `:${port}` : ''}`;
     }
-    return `${protocol}//${hostname}`;
+    return origin;
   }
 
   return 'http://127.0.0.1:3001';

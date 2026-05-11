@@ -56,15 +56,15 @@ function resolveApiBase(): string {
   }
 
   if (typeof window !== "undefined") {
-    const { protocol, hostname } = window.location;
+    const { hostname, origin, port, protocol } = window.location;
     if (hostname === "localhost" || hostname === "127.0.0.1") {
       return "http://127.0.0.1:3200";
     }
     if (hostname.startsWith("admin.")) {
-      return `${protocol}//api.${hostname.slice("admin.".length)}`;
+      return `${protocol}//api.${hostname.slice("admin.".length)}${port ? `:${port}` : ""}`;
     }
     // In production-like environments, prefer same-origin if explicit API URL is missing.
-    return `${protocol}//${hostname}`;
+    return origin;
   }
 
   return "http://127.0.0.1:3200";
