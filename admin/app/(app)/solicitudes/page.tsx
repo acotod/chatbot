@@ -101,6 +101,16 @@ interface ConversationEventItem {
   createdAt: string;
 }
 
+interface ConversationMensajeItem {
+  id: number;
+  direccion: string;
+  tipo: string;
+  contenido: unknown;
+  createdAt: string;
+  agenteId: number | null;
+  agente?: { id: number; nombre: string } | null;
+}
+
 interface ConversationDetail {
   id: string;
   userKey: string;
@@ -109,6 +119,7 @@ interface ConversationDetail {
   endedAt: string | null;
   flow?: { id: number; nombre: string } | null;
   events?: ConversationEventItem[];
+  mensajes?: ConversationMensajeItem[];
 }
 
 interface ConversationBubble {
@@ -700,25 +711,67 @@ export default function SolicitudesPage() {
     return null;
   }
 
-  const conversationBubbles: ConversationBubble[] = conversationEvents
-    .map((eventItem, index) => {
-      const text = extractEventText(eventItem, conversationEvents, index);
-      if (!text) return null;
-      const eventType = (eventItem.eventType || "").toLowerCase();
-      const isOutbound =
-        eventType === "message_sent" ||
-        eventType === "conversation_started" ||
-        eventType === "flow_start";
-      return {
-        id: eventItem.id,
-        text,
-        createdAt: eventItem.createdAt,
-        eventType: eventItem.eventType,
-        nodeRef: eventItem.nodeRef,
-        isOutbound,
-      };
-    })
-    .filter((bubble): bubble is ConversationBubble => Boolean(bubble));
+  const conversationBubbles: ConversationBubble[] = (() => {
+    const fromEvents: ConversationBubble[] = conversationEvents
+      .map((eventItem, index) => {
+        const text = extractEventText(eventItem, conversationEvents, index);
+        if (!text) return null;
+        const eventType = (eventItem.eventType || "").toLowerCase();
+        const isOutbound =
+          eventType === "message_sent" ||
+          eventType === "conversation_started" ||
+          eventType === "flow_start";
+        return {
+          id: eventItem.id,
+          text,
+          createdAt: eventItem.createdAt,
+          eventType: eventItem.eventType,
+          nodeRef: eventItem.nodeRef,
+          isOutbound,
+        };
+      })
+      .filter((bubble): bubble is ConversationBubble => Boolean(bubble));
+
+    const conversationMensajes: ConversationMensajeItem[] =
+      (conversationDetailData?.mensajes as ConversationMensajeItem[] | undefined) ?? [];
+
+    const fromMensajes: ConversationBubble[] = conversationMensajes
+      .map((m) => {
+        const contenido = m.contenido as Record<string, unknown> | null;
+        const text: string =
+          typeof contenido?.text === "string" && contenido.text.trim()
+            ? contenido.text.trim()
+            : typeof contenido?.body === "string" && contenido.body.trim()
+              ? contenido.body.trim()
+              : null!;
+        if (!text) return null;
+        const isOutbound = m.direccion === "salida";
+        const actorLabel = m.agente?.nombre
+          ? m.agente.nombre
+          : isOutbound
+            ? "Agente"
+            : "Cliente";
+        return {
+          id: `msg-${m.id}`,
+          text,
+          createdAt: m.createdAt,
+          eventType: isOutbound ? "crm_outbound" : "crm_inbound",
+          nodeRef: actorLabel,
+          isOutbound,
+        };
+      })
+      .filter((bubble): bubble is ConversationBubble => Boolean(bubble));
+
+    // Merge and sort by time; dedupe events that overlap with mensajes
+    const eventCreatedAts = new Set(fromEvents.map((b) => b.createdAt));
+    const uniqueMensajes = fromMensajes.filter(
+      (b) => !eventCreatedAts.has(b.createdAt)
+    );
+
+    return [...fromEvents, ...uniqueMensajes].sort(
+      (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+    );
+  })();
 
   function renderConversationDetailContent() {
     if (!conversationDetailModal.conversation) return null;
@@ -777,26 +830,34 @@ export default function SolicitudesPage() {
                     No hay mensajes legibles para mostrar en esta conversación.
                   </div>
                 ) : (
-                  conversationBubbles.map((bubble) => (
+                  conversationBubbles.map((bubble) => {
+                    const isCrm = bubble.eventType === "crm_outbound" || bubble.eventType === "crm_inbound";
+                    const senderLabel = isCrm
+                      ? (bubble.nodeRef ?? (bubble.isOutbound ? "Agente" : "Cliente"))
+                      : bubble.isOutbound
+                        ? "Bot"
+                        : "Cliente";
+                    return (
                     <div key={bubble.id} className={cn("flex flex-col gap-0.5", bubble.isOutbound ? "items-end" : "items-start")}>
-                      <span className={cn("text-[10px] font-medium px-1", bubble.isOutbound ? "text-blue-500" : "text-slate-400")}>
-                        {bubble.isOutbound ? "Bot" : "Cliente"}
+                      <span className={cn("text-[10px] font-medium px-1", bubble.isOutbound ? (isCrm ? "text-emerald-600" : "text-blue-500") : "text-slate-400")}>
+                        {senderLabel}
                       </span>
                       <div
                         className={cn(
                           "max-w-xs lg:max-w-md px-4 py-2.5 rounded-2xl text-sm shadow-sm",
                           bubble.isOutbound
-                            ? "bg-blue-600 text-white rounded-tr-sm"
+                            ? (isCrm ? "bg-emerald-600 text-white rounded-tr-sm" : "bg-blue-600 text-white rounded-tr-sm")
                             : "bg-white text-slate-800 rounded-tl-sm border border-slate-200"
                         )}
                       >
                         <p className="whitespace-pre-wrap">{bubble.text}</p>
-                        <p className={cn("text-xs mt-1", bubble.isOutbound ? "text-blue-200" : "text-slate-400")}>
+                        <p className={cn("text-xs mt-1", bubble.isOutbound ? (isCrm ? "text-emerald-200" : "text-blue-200") : "text-slate-400")}>
                           {new Date(bubble.createdAt).toLocaleTimeString("es", { hour: "2-digit", minute: "2-digit" })}
                         </p>
                       </div>
                     </div>
-                  ))
+                    );
+                  })
                 )}
               </div>
             </div>

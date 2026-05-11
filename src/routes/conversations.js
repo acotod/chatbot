@@ -161,6 +161,18 @@ router.get('/:id', async (req, res, next) => {
           orderBy: { createdAt: 'asc' },
           select : { id: true, nodeRef: true, eventType: true, payload: true, createdAt: true },
         },
+        mensajes: {
+          orderBy: { createdAt: 'asc' },
+          select : {
+            id: true,
+            direccion: true,
+            tipo: true,
+            contenido: true,
+            createdAt: true,
+            agenteId: true,
+            agente: { select: { id: true, nombre: true } },
+          },
+        },
         solicitudes: {
           orderBy: { createdAt: 'desc' },
           include: {
