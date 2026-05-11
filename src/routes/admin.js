@@ -2498,7 +2498,9 @@ router.get('/tenants/:slug/config/:clave', requirePermiso('MANAGE_TENANTS'), asy
         if (!tenant) return res.status(404).json({ error: 'Tenant not found' });
         if (denyIfWrongTenant(req, res, tenant.id)) return;
         const config = await db.getConfig(tenant.id, req.params.clave);
-        if (!config) return res.status(404).json({ error: 'Config not found' });
+        if (!config) {
+            return res.json({ tenantId: tenant.id, clave: req.params.clave, valor: null });
+        }
 
         // Mask api_key for llm_config — never expose it to the client
         if (req.params.clave === 'llm_config' && config?.valor?.api_key) {
