@@ -24,6 +24,9 @@ router.get('/admin', requireJwt, async (req, res) => {
   try {
     const adminUserId = getAdminUserId(req);
     if (!adminUserId) {
+      if (req.admin?.superAdmin) {
+        return res.json({ sessions: [], count: 0, superAdmin: true });
+      }
       return res.status(401).json({ error: 'Invalid token payload' });
     }
     const sessions = await getAdminDeviceSessions(adminUserId);
@@ -170,6 +173,9 @@ router.post('/mfa/generate-recovery-codes', requireJwt, async (req, res) => {
   try {
     const adminUserId = getAdminUserId(req);
     if (!adminUserId) {
+      if (req.admin?.superAdmin) {
+        return res.status(403).json({ error: 'Super-admin accounts do not support MFA recovery codes' });
+      }
       return res.status(401).json({ error: 'Invalid token payload' });
     }
 
