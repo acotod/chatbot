@@ -85,13 +85,15 @@ const allowedOrigins = configuredAllowedOrigins.length > 0
   ? expandLoopbackOriginAliases(configuredAllowedOrigins)
   : defaultAllowedOrigins;
 
-function isSiblingAdminOrigin(origin, reqHost) {
+function isSiblingDomainOrigin(origin, reqHost) {
   if (!origin || !reqHost || !reqHost.startsWith('api.')) return false;
 
   try {
     const originHost = new URL(origin).hostname.toLowerCase();
     const apiSuffix = reqHost.slice('api.'.length);
-    return apiSuffix.length > 0 && originHost === `admin.${apiSuffix}`;
+    
+    // Allow any subdomain under the same root domain (e.g., admin.pmc-dev.com, agente.pmc-dev.com)
+    return apiSuffix.length > 0 && originHost.endsWith(apiSuffix);
   } catch {
     return false;
   }
@@ -110,7 +112,7 @@ const corsDelegate = (req, cb) => {
   const isAllowed =
     !requestOrigin ||
     allowedOrigins.includes(requestOrigin) ||
-    isSiblingAdminOrigin(requestOrigin, reqHost);
+    isSiblingDomainOrigin(requestOrigin, reqHost);
 
   cb(null, {
     ...corsOptions,
