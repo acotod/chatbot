@@ -31,11 +31,18 @@ export default function MFARecoveryCodes({
     try {
       setLoading(true);
       setError(null);
-      const response = await deviceSessionsApi.getRecoveryCodesCount();
+      const timeout = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('TIMEOUT')), 12000)
+      );
+      const response = await Promise.race([deviceSessionsApi.getRecoveryCodesCount(), timeout]);
       setUnusedCount(response.data.unusedCodeCount || 0);
     } catch (err: any) {
-      console.error('Error fetching recovery codes count:', err);
-      setError(err.response?.data?.error || 'No se pudieron cargar los códigos de recuperación');
+      if (err?.message === 'TIMEOUT') {
+        setError('La solicitud tardó demasiado. Intenta recargar la página.');
+      } else {
+        console.error('Error fetching recovery codes count:', err);
+        setError(err.response?.data?.error || 'No se pudieron cargar los códigos de recuperación');
+      }
     } finally {
       setLoading(false);
     }

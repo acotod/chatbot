@@ -205,6 +205,10 @@ router.get('/mfa/recovery-codes-count', requireJwt, async (req, res) => {
   try {
     const adminUserId = getAdminUserId(req);
     if (!adminUserId) {
+      // Superadmin (env-based) has no DB-backed user — return empty count instead of 401
+      if (req.admin?.superAdmin) {
+        return res.json({ unusedCodeCount: 0, needsGeneration: false, warning: null, superAdmin: true });
+      }
       return res.status(401).json({ error: 'Invalid token payload' });
     }
     const count = await getUnusedCodeCount(adminUserId);
