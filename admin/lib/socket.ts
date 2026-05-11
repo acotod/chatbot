@@ -29,12 +29,14 @@ function resolveSocketBase(): string {
   }
 
   if (typeof window !== 'undefined') {
-    const { hostname, origin, port, protocol } = window.location;
+    const { hostname, origin, protocol } = window.location;
     if (isLocalHostname(hostname)) {
       return 'http://127.0.0.1:3001';
     }
-    if (hostname.startsWith('admin.')) {
-      return `${protocol}//api.${hostname.slice('admin.'.length)}${port ? `:${port}` : ''}`;
+    // Map admin.* or agente.* subdomains to api.* for socket connection
+    if (hostname.startsWith('admin.') || hostname.startsWith('agente.')) {
+      const suffix = hostname.includes('.') ? hostname.slice(hostname.indexOf('.') + 1) : hostname;
+      return `${protocol}//api.${suffix}`;
     }
     return origin;
   }

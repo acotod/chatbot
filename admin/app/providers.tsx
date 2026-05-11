@@ -72,7 +72,18 @@ function SessionSecurityGuard() {
   }, [hasAccessToken, tokenExpiresAt, pathname, isAgentOnSharedRoute, logout, router]);
 
   useEffect(() => {
-    if (!hasAccessToken || pathname.startsWith("/login") || pathname.startsWith("/agente") || isAgentOnSharedRoute) return;
+    // CRITICAL: Do not run inactivity checks on login/auth pages to prevent logout loops
+    const isAuthPage = 
+      pathname === "/login" || 
+      pathname?.startsWith("/login/") ||
+      pathname === "/portal" ||
+      pathname?.startsWith("/portal/") ||
+      pathname === "/agente/login" ||
+      pathname?.startsWith("/agente/login/") ||
+      pathname === "/agente/register" ||
+      pathname?.startsWith("/agente/register/");
+    
+    if (!hasAccessToken || isAuthPage || isAgentOnSharedRoute) return;
 
     lastActivityAtRef.current = Date.now();
 
