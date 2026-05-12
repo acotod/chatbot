@@ -60,7 +60,7 @@ services:
       WA_VERIFY_TOKEN: ${WA_VERIFY_TOKEN}
       ADMIN_API_KEY: ${ADMIN_API_KEY}
     ports:
-      - "${PORT:-3200}:3000"
+      - "${API_HOST_PORT:-3200}:3000"
     volumes:
       - uploads_data:/app/uploads
     depends_on:
