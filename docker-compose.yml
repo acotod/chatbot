@@ -6,7 +6,7 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_USER: chatbot
-      POSTGRES_PASSWORD: chatbot
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-chatbot}
       POSTGRES_DB: chatbot
     volumes:
       - postgres_data:/var/lib/postgresql/data
@@ -38,7 +38,7 @@ services:
       context: .
       target: migrate
     environment:
-      DATABASE_URL: postgresql://chatbot:chatbot@postgres:5432/chatbot
+      DATABASE_URL: ${DATABASE_URL:-postgresql://chatbot:chatbot@postgres:5432/chatbot}
     depends_on:
       postgres:
         condition: service_healthy
@@ -52,11 +52,13 @@ services:
     env_file:
       - .env
     environment:
-      DATABASE_URL: postgresql://chatbot:chatbot@postgres:5432/chatbot
-      REDIS_URL: redis://redis:6379
-      JWT_SECRET: "${JWT_SECRET:-dev-local-jwt-secret-change-this-1234567890}"
-      NODE_ENV: production
-      PORT: "3000"
+      DATABASE_URL: ${DATABASE_URL:-postgresql://chatbot:chatbot@postgres:5432/chatbot}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379}
+      JWT_SECRET: ${JWT_SECRET}
+      NODE_ENV: ${NODE_ENV:-production}
+      PORT: ${PORT:-3000}
+      WA_VERIFY_TOKEN: ${WA_VERIFY_TOKEN}
+      ADMIN_API_KEY: ${ADMIN_API_KEY}
     ports:
       - "${PORT:-3200}:3000"
     volumes:
@@ -66,9 +68,6 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-      # Note: migrate dependency temporarily disabled due to pre-existing DB migration issue
-      # migrate:
-      #   condition: service_completed_successfully
 
   # ── Admin panel (Next.js) ────────────────────────────────────────────────────
   admin:
