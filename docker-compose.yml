@@ -32,17 +32,19 @@ services:
       timeout: 3s
       retries: 10
 
-  # ── Migrate (runs once then exits) ─────────────────────────────────────────
+  # ── Migrate (manual profile; run only when needed) ─────────────────────────
   migrate:
     build:
       context: .
       target: migrate
+    profiles:
+      - migrations
     environment:
       DATABASE_URL: ${DATABASE_URL:-postgresql://chatbot:chatbot@postgres:5432/chatbot}
     depends_on:
       postgres:
         condition: service_healthy
-    restart: on-failure
+    restart: "no"
 
   # ── API backend ─────────────────────────────────────────────────────────────
   api:
