@@ -422,7 +422,6 @@ router.post('/facebook', loginRateLimiter, async (req, res) => {
 // Facebook ID and return a confirmation code so Meta can track the request.
 //
 // Endpoint: POST /auth/facebook/data-deletion
-// Also provides: GET /auth/facebook/data-deletion/status/:code  (status page)
 
 function parseFacebookSignedRequest(signedRequest, appSecret) {
   // signed_request = base64url(sig).base64url(payload)
@@ -523,7 +522,7 @@ router.post('/facebook/data-deletion', urlencodedParser, async (req, res) => {
     const adminBase = String(process.env.ADMIN_BASE_URL || '').trim().replace(/\/$/, '');
     const apiBase   = String(process.env.API_BASE_URL   || '').trim().replace(/\/$/, '');
     const origin    = adminBase || apiBase || `${req.protocol}://${req.get('host')}`;
-    const statusUrl = `${origin}/auth/facebook/data-deletion/status/${confirmationCode}`;
+    const statusUrl = `${origin}/facebook/data-deletion?confirmation_code=${encodeURIComponent(confirmationCode)}`;
 
     logger.info('[Facebook] Data deletion request processed', {
       facebookUserId,

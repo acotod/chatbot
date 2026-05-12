@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import { ShieldCheck, Trash2, Clock3, Mail, ExternalLink } from "lucide-react";
 
 export const metadata: Metadata = {
@@ -7,7 +6,14 @@ export const metadata: Metadata = {
   description: "Instrucciones para solicitar eliminacion de datos de usuario vinculados con Facebook Login.",
 };
 
-export default function FacebookDataDeletionInstructionsPage() {
+type PageProps = {
+  searchParams: Promise<{ confirmation_code?: string }>;
+};
+
+export default async function FacebookDataDeletionInstructionsPage({ searchParams }: PageProps) {
+  const resolvedSearchParams = await searchParams;
+  const confirmationCode = String(resolvedSearchParams.confirmation_code || "").trim();
+
   return (
     <main className="min-h-screen bg-gradient-to-br from-slate-100 via-white to-blue-50 px-4 py-10 sm:px-6 lg:px-8">
       <div className="mx-auto w-full max-w-4xl">
@@ -56,18 +62,14 @@ export default function FacebookDataDeletionInstructionsPage() {
             <section className="rounded-2xl border border-slate-200 bg-white p-5">
               <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-900">Estado de la solicitud</h3>
               <p className="mt-2 text-sm text-slate-600">
-                Una vez recibida la solicitud, Facebook recibira una URL de confirmacion con un codigo unico.
+                Una vez recibida la solicitud, Facebook recibira esta misma URL con un codigo unico de confirmacion.
               </p>
-              <p className="mt-3 text-sm text-slate-700">
-                Puedes revisar un ejemplo de pagina de estado aqui:{" "}
-                <Link
-                  href="/auth/facebook/data-deletion/status/example-code"
-                  className="font-medium text-blue-700 underline decoration-blue-300 underline-offset-2 hover:text-blue-900"
-                >
-                  ver estado de eliminacion
-                </Link>
-                .
-              </p>
+              {confirmationCode ? (
+                <div className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 p-3">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-emerald-800">Confirmation Code</p>
+                  <p className="mt-1 break-all font-mono text-sm text-emerald-900">{confirmationCode}</p>
+                </div>
+              ) : null}
             </section>
 
             <section className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
