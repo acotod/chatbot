@@ -415,6 +415,142 @@ router.post('/facebook', loginRateLimiter, async (req, res) => {
   }
 });
 
+// ── Facebook Data Deletion Callback ──────────────────────────────────────────
+// Meta requires apps using Facebook Login to provide a Data Deletion Callback
+// URL. When a user removes the app on Facebook, Meta POSTs a signed_request
+// here. We parse+verify the payload, anonymise any data linked to that
+// Facebook ID and return a confirmation code so Meta can track the request.
+//
+// Endpoint: POST /auth/facebook/data-deletion
+// Also provides: GET /auth/facebook/data-deletion/status/:code  (status page)
+
+function parseFacebookSignedRequest(signedRequest, appSecret) {
+  // signed_request = base64url(sig).base64url(payload)
+  const parts = (signedRequest || '').split('.');
+  if (parts.length !== 2) {
+    const err = new Error('Invalid signed_request format');
+    err.status = 400;
+    throw err;
+  }
+
+  const [encodedSig, encodedPayload] = parts;
+
+  // Verify HMAC-SHA256 signature
+  const expectedSig = crypto
+    .createHmac('sha256', appSecret)
+    .update(encodedPayload)
+    .digest('base64')
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/, '');
+
+  if (!crypto.timingSafeEqual(Buffer.from(encodedSig), Buffer.from(expectedSig))) {
+    const err = new Error('Invalid signed_request signature');
+    err.status = 401;
+    throw err;
+  }
+
+  const payloadJson = Buffer.from(encodedPayload, 'base64').toString('utf8');
+  return JSON.parse(payloadJson);
+}
+
+const urlencodedParser = express.urlencoded({ extended: false });
+
+router.post('/facebook/data-deletion', urlencodedParser, async (req, res) => {
+  const appSecret = process.env.FACEBOOK_APP_SECRET;
+  if (!appSecret) {
+    return res.status(503).json({ error: 'Facebook app is not configured' });
+  }
+
+  // Facebook may POST as application/x-www-form-urlencoded
+  const signedRequest = req.body?.signed_request || req.query?.signed_request;
+  if (!signedRequest || typeof signedRequest !== 'string') {
+    return res.status(400).json({ error: 'signed_request is required' });
+  }
+
+  let payload;
+  try {
+    payload = parseFacebookSignedRequest(signedRequest, appSecret);
+  } catch (err) {
+    return res.status(err.status || 400).json({ error: err.message });
+  }
+
+  const facebookUserId = String(payload.user_id || '');
+  if (!facebookUserId) {
+    return res.status(400).json({ error: 'signed_request payload missing user_id' });
+  }
+
+  // Generate a unique confirmation code for this deletion request
+  const confirmationCode = crypto.randomBytes(16).toString('hex');
+
+  try {
+    // Find admin users who logged in via Facebook (facebookId stored in audit log metadata)
+    const relatedLogs = await prisma.auditLog.findMany({
+      where: {
+        metadata: { path: ['facebookId'], equals: facebookUserId },
+      },
+      select: { adminUserId: true },
+      distinct: ['adminUserId'],
+    });
+
+    const adminUserIds = relatedLogs
+      .map((l) => l.adminUserId)
+      .filter(Boolean);
+
+    // Anonymise each matched account: scrub PII without hard-deleting
+    // (admin users are linked to tenants; full deletion is done by the
+    //  tenant admin per their own data-retention policy)
+    for (const adminUserId of adminUserIds) {
+      await prisma.$transaction([
+        // Revoke all refresh tokens
+        prisma.refreshToken.deleteMany({ where: { adminUserId } }),
+        // Nullify email & name so the account can no longer be used
+        prisma.adminUser.update({
+          where: { id: adminUserId },
+          data: {
+            email: `deleted-fb-${facebookUserId}-${adminUserId}@removed.invalid`,
+            nombre: '[Deleted]',
+            passwordHash: crypto.randomBytes(32).toString('hex'), // unusable hash
+            failedAttempts: 0,
+            lockedUntil: null,
+          },
+        }),
+      ]);
+    }
+
+    // Build the status check URL (uses ADMIN_BASE_URL or falls back to the
+    // API's own origin derived from x-forwarded-host / host header)
+    const adminBase = String(process.env.ADMIN_BASE_URL || '').trim().replace(/\/$/, '');
+    const apiBase   = String(process.env.API_BASE_URL   || '').trim().replace(/\/$/, '');
+    const origin    = adminBase || apiBase || `${req.protocol}://${req.get('host')}`;
+    const statusUrl = `${origin}/auth/facebook/data-deletion/status/${confirmationCode}`;
+
+    logger.info('[Facebook] Data deletion request processed', {
+      facebookUserId,
+      affectedAccounts: adminUserIds.length,
+      confirmationCode,
+    });
+
+    // Meta expects exactly: { url, confirmation_code }
+    return res.json({ url: statusUrl, confirmation_code: confirmationCode });
+  } catch (err) {
+    logger.error('[Facebook] Data deletion error', { err: err.message });
+    return res.status(500).json({ error: 'Data deletion processing failed' });
+  }
+});
+
+// Status page — publicly accessible so Meta/users can verify deletion was received
+router.get('/facebook/data-deletion/status/:code', (req, res) => {
+  const { code } = req.params;
+  // In a production system you would store the confirmation code + status in DB
+  // and look it up here. For now we acknowledge receipt with a static response.
+  return res.json({
+    confirmation_code: code,
+    status: 'received',
+    message: 'Your data deletion request has been received and is being processed.',
+  });
+});
+
 // ── POST /auth/google ─────────────────────────────────────────────────────────
 async function validateGoogleToken(idToken) {
   const clientId = process.env.GOOGLE_CLIENT_ID;
