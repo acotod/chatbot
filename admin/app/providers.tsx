@@ -10,6 +10,10 @@ import { useEffect, useRef, useState } from "react";
 const INACTIVITY_TIMEOUT_MS = 3 * 60 * 1000;
 const INACTIVITY_CHECK_INTERVAL_MS = 5000;
 
+function isPublicPage(pathname: string) {
+  return pathname === "/facebook/data-deletion" || pathname.startsWith("/facebook/data-deletion/");
+}
+
 function SessionSecurityGuard() {
   const pathname = usePathname();
   const router = useRouter();
@@ -34,6 +38,8 @@ function SessionSecurityGuard() {
 
     const currentPathname = window.location.pathname;
 
+    if (isPublicPage(currentPathname)) return;
+
     // Explicit security behavior requested: hard refresh forces a fresh login.
     logout();
     agentLogout();
@@ -53,7 +59,7 @@ function SessionSecurityGuard() {
   }, [agentLogout, logout, router]);
 
   useEffect(() => {
-    if (pathname.startsWith("/login") || pathname.startsWith("/portal") || pathname.startsWith("/agente")) return;
+    if (pathname.startsWith("/login") || pathname.startsWith("/portal") || pathname.startsWith("/agente") || isPublicPage(pathname)) return;
     if (hasAccessToken || isAgentOnSharedRoute) return;
 
     logout();
@@ -61,7 +67,7 @@ function SessionSecurityGuard() {
   }, [hasAccessToken, isAgentOnSharedRoute, logout, pathname, router]);
 
   useEffect(() => {
-    if (!hasAccessToken || pathname.startsWith("/login") || pathname.startsWith("/agente") || isAgentOnSharedRoute) return;
+    if (!hasAccessToken || pathname.startsWith("/login") || pathname.startsWith("/agente") || isAgentOnSharedRoute || isPublicPage(pathname)) return;
 
     const now = Date.now();
     if (tokenExpiresAt && now >= tokenExpiresAt) {
@@ -81,7 +87,8 @@ function SessionSecurityGuard() {
       pathname === "/agente/login" ||
       pathname?.startsWith("/agente/login/") ||
       pathname === "/agente/register" ||
-      pathname?.startsWith("/agente/register/");
+      pathname?.startsWith("/agente/register/") ||
+      isPublicPage(pathname);
     
     if (!hasAccessToken || isAuthPage || isAgentOnSharedRoute) return;
 
