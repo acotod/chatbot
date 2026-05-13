@@ -62,6 +62,7 @@ const EVENT_BADGES: Record<string, { label: string; color: string }> = {
 
 interface Solicitud {
   id: number;
+  userId?: number | null;
   titulo?: string | null;
   nombre?: string;
   telefonoContacto?: string;
@@ -75,7 +76,7 @@ interface Solicitud {
   escalationLevel?: number;
   createdAt: string;
   conversation?: { id: string } | null;
-  user?: { phone?: string | null } | null;
+  user?: { id?: number | null; phone?: string | null; name?: string | null } | null;
   slaStatus?: {
     status: string;
     minutesRemaining: number | null;
@@ -966,6 +967,10 @@ export default function SolicitudesPage() {
   }
 
   function openEscalationModal(solicitud: Solicitud) {
+    if (!solicitud.userId) {
+      alert("La solicitud debe tener un usuario asociado para escalar.");
+      return;
+    }
     setEscalationModal({ open: true, solicitud });
     setEscalationReason("");
     setEscalationTargetAgenteId("");
@@ -1730,7 +1735,7 @@ export default function SolicitudesPage() {
                         {tenantConfig.manualEscalationEnabled && (
                           <button
                             onClick={() => openEscalationModal(s)}
-                            disabled={escalateSolicitud.isPending}
+                            disabled={escalateSolicitud.isPending || !s.userId}
                             className="text-xs text-rose-600 hover:text-rose-700 font-medium border border-rose-200 rounded-lg px-2 py-1 bg-rose-50 hover:bg-rose-100 transition"
                           >
                             Escalar
@@ -1868,6 +1873,9 @@ export default function SolicitudesPage() {
           <div>
             <p className="text-sm font-medium text-slate-800">
               Solicitud #{escalationModal.solicitud?.id}
+            </p>
+            <p className="text-xs text-slate-600 mt-1">
+              Usuario a escalar: {escalationModal.solicitud?.nombre || escalationModal.solicitud?.user?.phone || escalationModal.solicitud?.telefonoContacto || "No definido"}
             </p>
             <p className="text-xs text-slate-500 mt-1">
               Seleccioná el agente destino dentro del árbol jerárquico (Puesto -&gt; Agente).

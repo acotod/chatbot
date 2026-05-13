@@ -1400,6 +1400,12 @@ router.post('/tenants/:slug/solicitudes/:id/escalate', requirePermiso('EDIT_SOLI
             return res.status(403).json({ error: 'Manual escalation is disabled for this tenant' });
         }
 
+        const solicitud = await db.getSolicitudById(Number(req.params.id), tenant.id);
+        if (!solicitud) return res.status(404).json({ error: 'Solicitud not found' });
+        if (!solicitud.userId) {
+            return res.status(400).json({ error: 'La solicitud debe tener un usuario asociado para escalar' });
+        }
+
         const reason = req.body?.reason ? String(req.body.reason) : null;
         const rawTargetAgenteId = req.body?.targetAgenteId;
         const targetAgenteId = rawTargetAgenteId != null && rawTargetAgenteId !== ''
