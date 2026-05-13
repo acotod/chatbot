@@ -370,10 +370,7 @@ async function _handleIncomingMessage({ msg, contacts, tenant, phoneNumberId, ac
 
   // ── Chatbot engine ───────────────────────────────────────────────────────
   let chatbotConversationId = null;
-  const canRunWithSandboxMock =
-    conversationMeta?.sandbox === true && conversationMeta?.outboundMetaMock === true;
-
-  if (userId !== null && userInput !== null && (accessToken || canRunWithSandboxMock)) {
+  if (userId !== null && userInput !== null) {
     if (conversationMeta?.sandbox === true) {
       try {
         chatbotConversationId = await _runChatbot({
@@ -480,6 +477,43 @@ async function _sendChatbotResponse({ tenant, userId, phone, phoneNumberId, acce
   const useSandboxOutboundMock =
     conversationMeta?.sandbox === true && conversationMeta?.outboundMetaMock === true;
 
+  const persistFailedOutbound = async (reason) => {
+    try {
+      const failedMsg = await db.saveMensaje({
+        tenantId: tenant.id,
+        userId,
+        waMsgId: null,
+        direccion: 'salida',
+        tipo: type === 'buttons' ? 'interactive' : 'text',
+        contenido: response,
+        conversationId: conversationId ?? undefined,
+        status: 'failed',
+        errorReason: reason,
+      });
+
+      if (failedMsg) {
+        socketService.emit(tenant.id, 'nuevo_mensaje', {
+          id: failedMsg.id,
+          userId,
+          phone,
+          tipo: failedMsg.tipo,
+          contenido: failedMsg.contenido,
+          waMsgId: failedMsg.waMsgId,
+          createdAt: failedMsg.createdAt,
+          direccion: 'salida',
+          status: failedMsg.status,
+          errorReason: failedMsg.errorReason,
+        });
+      }
+    } catch (persistErr) {
+      logger.warn('Failed to persist outbound failed message', {
+        tenantId: tenant.id,
+        phone,
+        message: persistErr.message,
+      });
+    }
+  };
+
   if (useSandboxOutboundMock) {
     const mockWaMsgId = `sandbox-outbound-${Date.now()}`;
     const outboundMsg = await db.saveMensaje({
@@ -528,6 +562,18 @@ async function _sendChatbotResponse({ tenant, userId, phone, phoneNumberId, acce
       createdAt: outboundMsg.createdAt,
       direccion: 'salida',
     });
+    return;
+  }
+
+  if (!accessToken || !phoneNumberId) {
+    const reason = 'Missing WhatsApp credentials';
+    logger.warn('_sendChatbotResponse skipped: missing credentials', {
+      tenantId: tenant.id,
+      phone,
+      hasAccessToken: Boolean(accessToken),
+      hasPhoneNumberId: Boolean(phoneNumberId),
+    });
+    await persistFailedOutbound(reason);
     return;
   }
 
@@ -588,6 +634,8 @@ async function _sendChatbotResponse({ tenant, userId, phone, phoneNumberId, acce
       direccion: 'salida',
     });
   } catch (err) {
+    await persistFailedOutbound(err.message);
+
     logger.error('_sendChatbotResponse failed, enqueueing retry', {
       tenantId: tenant.id,
       phone,
@@ -642,6 +690,43 @@ async function _sendText(phoneNumberId, phone, text, accessToken, tenant, userId
   const useSandboxOutboundMock =
     options?.conversationMeta?.sandbox === true && options?.conversationMeta?.outboundMetaMock === true;
 
+  const persistFailedText = async (reason) => {
+    try {
+      const msg = await db.saveMensaje({
+        tenantId: tenant.id,
+        userId,
+        waMsgId: null,
+        direccion: 'salida',
+        tipo: 'text',
+        contenido: { text },
+        conversationId: conversationId ?? undefined,
+        status: 'failed',
+        errorReason: reason,
+      });
+
+      if (msg) {
+        socketService.emit(tenant.id, 'nuevo_mensaje', {
+          id: msg.id,
+          userId,
+          phone,
+          tipo: 'text',
+          contenido: msg.contenido,
+          waMsgId: msg.waMsgId,
+          createdAt: msg.createdAt,
+          direccion: 'salida',
+          status: msg.status,
+          errorReason: msg.errorReason,
+        });
+      }
+    } catch (persistErr) {
+      logger.warn('Failed to persist fallback failed message', {
+        tenantId: tenant.id,
+        phone,
+        message: persistErr.message,
+      });
+    }
+  };
+
   if (useSandboxOutboundMock) {
     try {
       const mockWaMsgId = `sandbox-outbound-${Date.now()}`;
@@ -692,6 +777,18 @@ async function _sendText(phoneNumberId, phone, text, accessToken, tenant, userId
     return;
   }
 
+  if (!accessToken || !phoneNumberId) {
+    const reason = 'Missing WhatsApp credentials';
+    logger.warn('_sendText skipped: missing credentials', {
+      tenantId: tenant.id,
+      phone,
+      hasAccessToken: Boolean(accessToken),
+      hasPhoneNumberId: Boolean(phoneNumberId),
+    });
+    await persistFailedText(reason);
+    return;
+  }
+
   try {
     const waResp = await wa.sendTextMessage(phoneNumberId, phone, text, accessToken);
     const msg = await db.saveMensaje({
@@ -734,6 +831,7 @@ async function _sendText(phoneNumberId, phone, text, accessToken, tenant, userId
       createdAt: msg.createdAt, direccion: 'salida',
     });
   } catch (err) {
+    await persistFailedText(err.message);
     logger.warn('_sendText failed', { tenantId: tenant.id, phone, message: err.message });
   }
 }
