@@ -1,6 +1,6 @@
 "use client";
 
-import { agentePuestosApi, agendaApi, apiClient, configApi, solicitudesApi } from "@/lib/api";
+import { adminUsersApi, agentePuestosApi, agendaApi, apiClient, configApi, solicitudesApi } from "@/lib/api";
 import { useAuthStore } from "@/store/auth";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
@@ -84,6 +84,76 @@ const DEFAULT_SOLICITUDES_CONFIG: SolicitudesTenantConfig = {
   customerPortalEnabled: false,
   webhooksEnabled: false,
 };
+
+interface AdminUserItem {
+  id: number;
+  nombre: string;
+  email: string;
+  jefeId: number | null;
+  superAdmin: boolean;
+}
+
+function AdminHierarchySection({ tenantSlug }: { tenantSlug: string }) {
+  const qc = useQueryClient();
+  const { data: rawData } = useQuery({
+    queryKey: ["admin-users", tenantSlug],
+    queryFn: () => adminUsersApi.list(tenantSlug).then((r) => r.data),
+    enabled: !!tenantSlug,
+  });
+  const adminUsers: AdminUserItem[] = rawData?.data ?? rawData ?? [];
+
+  const setJefeMutation = useMutation({
+    mutationFn: ({ id, jefeId }: { id: number; jefeId: number | null }) =>
+      adminUsersApi.setJefe(tenantSlug, id, jefeId),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["admin-users", tenantSlug] }),
+  });
+
+  if (!tenantSlug) return null;
+
+  return (
+    <ConfigSection
+      title="Jerarquía de administradores"
+      description="Asigná el jefe (superior directo) de cada usuario administrador para construir el árbol de escalación."
+    >
+      <div className="space-y-3">
+        {adminUsers.length === 0 ? (
+          <p className="text-sm text-slate-500">No hay administradores en este tenant.</p>
+        ) : (
+          adminUsers.map((user) => {
+            const otherUsers = adminUsers.filter((u) => u.id !== user.id);
+            return (
+              <div key={user.id} className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-3 py-2">
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-slate-800 truncate">{user.nombre}</p>
+                  <p className="text-xs text-slate-500 truncate">{user.email}</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-slate-400">Jefe:</span>
+                  <select
+                    value={user.jefeId ?? ""}
+                    onChange={(e) => {
+                      const val = e.target.value === "" ? null : Number(e.target.value);
+                      setJefeMutation.mutate({ id: user.id, jefeId: val });
+                    }}
+                    disabled={setJefeMutation.isPending}
+                    className="text-sm border border-slate-200 rounded-lg px-2 py-1 bg-white focus:outline-none focus:ring-2 focus:ring-rose-500/30"
+                  >
+                    <option value="">— Sin jefe —</option>
+                    {otherUsers.map((u) => (
+                      <option key={u.id} value={u.id}>
+                        {u.nombre}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            );
+          })
+        )}
+      </div>
+    </ConfigSection>
+  );
+}
 
 export default function ConfiguracionPage() {
   const { tenantSlug } = useAuthStore();
@@ -1040,6 +1110,9 @@ export default function ConfiguracionPage() {
           </div>
         </div>
       </ConfigSection>
+
+      {/* Jerarquía de administradores */}
+      <AdminHierarchySection tenantSlug={tenantSlug ?? ""} />
 
       {/* Save button */}
       <div className="flex items-center justify-between pt-2">

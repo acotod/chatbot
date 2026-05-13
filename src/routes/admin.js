@@ -502,6 +502,77 @@ router.get('/tenants/:slug/agentes', requirePermiso('VIEW_AGENTES'), async (req,
     }
 });
 
+// GET /admin/tenants/:slug/admin-users  — list admin users for escalation tree
+router.get('/tenants/:slug/admin-users', requirePermiso('VIEW_SOLICITUDES'), async (req, res, next) => {
+    try {
+        const tenant = await db.findTenantBySlug(req.params.slug);
+        if (!tenant) return res.status(404).json({ error: 'Tenant not found' });
+        if (denyIfWrongTenant(req, res, tenant.id)) return;
+        const users = await db.listAdminUsers(tenant.id);
+        return res.json(users);
+    } catch (err) {
+        next(err);
+    }
+});
+
+// PATCH /admin/tenants/:slug/admin-users/:id/jefe  — set supervisor in the hierarchy tree
+router.patch('/tenants/:slug/admin-users/:id/jefe', requirePermiso('MANAGE_TENANTS'), async (req, res, next) => {
+    try {
+        const tenant = await db.findTenantBySlug(req.params.slug);
+        if (!tenant) return res.status(404).json({ error: 'Tenant not found' });
+        if (denyIfWrongTenant(req, res, tenant.id)) return;
+
+        const id = Number(req.params.id);
+        if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: 'invalid admin user id' });
+
+        const rawJefeId = req.body?.jefeId;
+        const jefeId = rawJefeId == null || rawJefeId === '' ? null : Number(rawJefeId);
+        if (jefeId !== null && (!Number.isInteger(jefeId) || jefeId <= 0)) {
+            return res.status(400).json({ error: 'jefeId must be a positive integer or null' });
+        }
+        if (jefeId !== null) {
+            const jefeExiste = await prisma.adminUser.findFirst({ where: { id: jefeId }, select: { id: true } });
+            if (!jefeExiste) return res.status(400).json({ error: 'jefeId not found' });
+        }
+
+        const result = await db.setAdminUserJefe({ id, tenantId: tenant.id, jefeId });
+        if (!result) return res.status(404).json({ error: 'Admin user not found' });
+        if (result.error) return res.status(422).json({ error: result.error });
+
+        audit({
+            adminUserId: req.admin?.adminUserId,
+            tenantId: tenant.id,
+            accion: 'SET_ADMIN_USER_JEFE',
+            entidad: 'admin_user',
+            entidadId: String(id),
+            ip: req.ip,
+            userAgent: req.headers['user-agent'],
+            metadata: { jefeId },
+        });
+
+        return res.json(result);
+    } catch (err) {
+        next(err);
+    }
+});
+
+// GET /admin/tenants/:slug/admin-users/:id/escalation-chain
+router.get('/tenants/:slug/admin-users/:id/escalation-chain', requirePermiso('VIEW_SOLICITUDES'), async (req, res, next) => {
+    try {
+        const tenant = await db.findTenantBySlug(req.params.slug);
+        if (!tenant) return res.status(404).json({ error: 'Tenant not found' });
+        if (denyIfWrongTenant(req, res, tenant.id)) return;
+
+        const id = Number(req.params.id);
+        if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: 'invalid admin user id' });
+
+        const chain = await db.getAdminUserEscalationChain(id, tenant.id);
+        return res.json(chain);
+    } catch (err) {
+        next(err);
+    }
+});
+
 // GET /admin/tenants/:slug/calendars
 router.get('/tenants/:slug/calendars', requirePermiso('VIEW_AGENTES'), async (req, res, next) => {
     try {
@@ -1407,21 +1478,21 @@ router.post('/tenants/:slug/solicitudes/:id/escalate', requirePermiso('EDIT_SOLI
         }
 
         const reason = req.body?.reason ? String(req.body.reason) : null;
-        const rawTargetAgenteId = req.body?.targetAgenteId;
-        const targetAgenteId = rawTargetAgenteId != null && rawTargetAgenteId !== ''
-            ? Number(rawTargetAgenteId)
+        const rawTargetAdminUserId = req.body?.targetAdminUserId;
+        const targetAdminUserId = rawTargetAdminUserId != null && rawTargetAdminUserId !== ''
+            ? Number(rawTargetAdminUserId)
             : null;
 
-        if (targetAgenteId != null) {
-            if (!Number.isInteger(targetAgenteId) || targetAgenteId <= 0) {
-                return res.status(400).json({ error: 'targetAgenteId must be a positive integer' });
+        if (targetAdminUserId != null) {
+            if (!Number.isInteger(targetAdminUserId) || targetAdminUserId <= 0) {
+                return res.status(400).json({ error: 'targetAdminUserId must be a positive integer' });
             }
-            const targetAgente = await prisma.agente.findFirst({
-                where: { id: targetAgenteId, tenantId: tenant.id },
+            const targetAdmin = await prisma.adminUser.findFirst({
+                where: { id: targetAdminUserId },
                 select: { id: true },
             });
-            if (!targetAgente) {
-                return res.status(400).json({ error: 'targetAgenteId is not valid for this tenant' });
+            if (!targetAdmin) {
+                return res.status(400).json({ error: 'targetAdminUserId is not valid' });
             }
         }
 
@@ -1430,7 +1501,7 @@ router.post('/tenants/:slug/solicitudes/:id/escalate', requirePermiso('EDIT_SOLI
             tenantId: tenant.id,
             actorUserId: req.admin?.adminUserId ?? null,
             reason,
-            targetAgenteId,
+            targetAdminUserId,
         });
         if (!escalated) return res.status(404).json({ error: 'Solicitud not found' });
 
@@ -1442,14 +1513,14 @@ router.post('/tenants/:slug/solicitudes/:id/escalate', requirePermiso('EDIT_SOLI
             entidadId: req.params.id,
             ip: req.ip,
             userAgent: req.headers['user-agent'],
-            metadata: { reason, escalationLevel: escalated.escalationLevel, targetAgenteId },
+            metadata: { reason, escalationLevel: escalated.escalationLevel, targetAdminUserId },
         });
 
         socketService.emit(tenant.id, 'SOLICITUD_ESCALATED', {
             solicitudId: Number(req.params.id),
             escalationLevel: escalated.escalationLevel,
             reason,
-            targetAgenteId,
+            targetAdminUserId,
         });
 
         queueSolicitudWebhook({
@@ -1461,7 +1532,7 @@ router.post('/tenants/:slug/solicitudes/:id/escalate', requirePermiso('EDIT_SOLI
                 id: Number(req.params.id),
                 escalationLevel: escalated.escalationLevel,
                 reason,
-                targetAgenteId,
+                targetAdminUserId,
             },
         });
 

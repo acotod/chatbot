@@ -538,6 +538,77 @@ async function listAgentes(tenantId) {
   return agentes.map(serializeAgente);
 }
 
+// ---------------------------------------------------------------------------
+// AdminUser hierarchy helpers
+// ---------------------------------------------------------------------------
+
+async function listAdminUsers(tenantId) {
+  const client = getPrismaClient();
+  if (!client) return [];
+  return client.adminUser.findMany({
+    where: { tenantId },
+    select: {
+      id: true,
+      tenantId: true,
+      nombre: true,
+      email: true,
+      superAdmin: true,
+      jefeId: true,
+      createdAt: true,
+    },
+    orderBy: { nombre: 'asc' },
+  });
+}
+
+async function setAdminUserJefe({ id, tenantId, jefeId }) {
+  const client = getPrismaClient();
+  if (!client) return null;
+
+  if (jefeId != null) {
+    const normalizedJefeId = Number(jefeId);
+    if (normalizedJefeId === id) return { error: 'Un usuario no puede ser su propio jefe' };
+    let cursor = normalizedJefeId;
+    const visited = new Set();
+    while (cursor != null) {
+      if (visited.has(cursor)) break;
+      if (cursor === id) return { error: 'Asignación crearía un ciclo en la jerarquía' };
+      visited.add(cursor);
+      const parent = await client.adminUser.findFirst({ where: { id: cursor }, select: { jefeId: true } });
+      cursor = parent?.jefeId ?? null;
+    }
+  }
+
+  await client.adminUser.update({
+    where: { id },
+    data: { jefeId: jefeId != null ? Number(jefeId) : null },
+  });
+
+  return client.adminUser.findFirst({
+    where: { id },
+    select: { id: true, tenantId: true, nombre: true, email: true, superAdmin: true, jefeId: true, createdAt: true },
+  });
+}
+
+async function getAdminUserEscalationChain(adminUserId, tenantId, maxDepth = 10) {
+  const client = getPrismaClient();
+  if (!client) return [];
+  const chain = [];
+  let cursor = adminUserId;
+  const visited = new Set();
+  while (cursor != null && chain.length < maxDepth) {
+    if (visited.has(cursor)) break;
+    visited.add(cursor);
+    const user = await client.adminUser.findFirst({
+      where: { id: cursor },
+      select: { id: true, nombre: true, email: true, superAdmin: true, jefeId: true, tenantId: true },
+    });
+    if (!user) break;
+    chain.push(user);
+    cursor = user.jefeId ?? null;
+  }
+  return chain;
+}
+
 async function createAgente({ tenantId, nombre, email, whatsapp = null, puestoId = null, calendarLink = null, passwordHash = null }) {
   const client = getPrismaClient();
   if (!client) return null;
@@ -1328,7 +1399,7 @@ async function escalateSolicitud({
   tenantId,
   actorUserId = null,
   reason = null,
-  targetAgenteId = null,
+  targetAdminUserId = null,
 }) {
   const client = getPrismaClient();
   if (!client) return null;
@@ -1337,15 +1408,15 @@ async function escalateSolicitud({
   if (!current) return null;
 
   const escalationLevel = Number(current.escalationLevel ?? 0) + 1;
-  const normalizedTargetAgenteId = Number.isInteger(Number(targetAgenteId))
-    ? Number(targetAgenteId)
+  const normalizedTargetAdminUserId = Number.isInteger(Number(targetAdminUserId))
+    ? Number(targetAdminUserId)
     : null;
   const updated = await client.solicitud.update({
     where: { id },
     data: {
       escalatedAt: new Date(),
       escalationLevel,
-      ...(normalizedTargetAgenteId ? { agenteId: normalizedTargetAgenteId } : {}),
+      ...(normalizedTargetAdminUserId ? { escaladoAId: normalizedTargetAdminUserId } : {}),
       estado: current.estado === SOLICITUD_STATUS.OPEN ? SOLICITUD_STATUS.IN_PROGRESS : current.estado,
     },
   });
@@ -1359,8 +1430,7 @@ async function escalateSolicitud({
       newValue: asHistoryValue({
         level: escalationLevel,
         reason,
-        fromAgenteId: current.agenteId ?? null,
-        toAgenteId: normalizedTargetAgenteId,
+        toAdminUserId: normalizedTargetAdminUserId,
       }),
     },
   }).catch(() => {});
@@ -2168,6 +2238,9 @@ module.exports = {
   createAgentePuesto,
   updateAgentePuesto,
   deleteAgentePuesto,
+  listAdminUsers,
+  setAdminUserJefe,
+  getAdminUserEscalationChain,
   setAgenteEstado,
   setAgenteLastSeen,
   // solicitudes

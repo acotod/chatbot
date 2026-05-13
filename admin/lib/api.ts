@@ -338,11 +338,11 @@ export const solicitudesApi = {
   escalate: (
     slug: string,
     id: number,
-    payload?: { reason?: string; targetAgenteId?: number }
+    payload?: { reason?: string; targetAdminUserId?: number }
   ) =>
     apiClient.post(`/admin/tenants/${slug}/solicitudes/${id}/escalate`, {
       reason: payload?.reason,
-      targetAgenteId: payload?.targetAgenteId,
+      targetAdminUserId: payload?.targetAdminUserId,
     }),
   createPortalToken: (slug: string, id: number) =>
     apiClient.post(`/admin/tenants/${slug}/solicitudes/${id}/portal-token`),
@@ -405,6 +405,14 @@ export const agentesApi = {
     apiClient.patch(`/admin/tenants/${slug}/agentes/${id}`, data),
   updateEstado: (slug: string, id: number, estado: string) =>
     apiClient.patch(`/admin/tenants/${slug}/agentes/${id}/estado`, { estado }),
+};
+
+export const adminUsersApi = {
+  list: (slug: string) => apiClient.get(`/admin/tenants/${slug}/admin-users`),
+  setJefe: (slug: string, id: number, jefeId: number | null) =>
+    apiClient.patch(`/admin/tenants/${slug}/admin-users/${id}/jefe`, { jefeId }),
+  escalationChain: (slug: string, id: number) =>
+    apiClient.get(`/admin/tenants/${slug}/admin-users/${id}/escalation-chain`),
 };
 
 export const calendarsApi = {

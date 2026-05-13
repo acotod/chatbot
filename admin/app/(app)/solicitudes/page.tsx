@@ -1,6 +1,7 @@
 "use client";
 
-import { agentesApi, conversationsApi, solicitudesApi } from "@/lib/api";
+import React from "react";
+import { adminUsersApi, agentesApi, conversationsApi, solicitudesApi } from "@/lib/api";
 import { agentAuthApi, type AgentSolicitud } from "@/lib/agentApi";
 import { useAuthStore } from "@/store/auth";
 import { getStoredAccessToken } from "@/store/auth";
@@ -226,7 +227,7 @@ export default function SolicitudesPage() {
     solicitud: null,
   });
   const [escalationReason, setEscalationReason] = useState("");
-  const [escalationTargetAgenteId, setEscalationTargetAgenteId] = useState<string>("");
+  const [escalationTargetAdminUserId, setEscalationTargetAdminUserId] = useState<string>("");
   const defaultDetailTab: "resumen" | "conversaciones" | "mensajes" = isAgentSession ? "mensajes" : "resumen";
   const detailModeLabel = isAgentSession ? "Vista de agente" : "Vista admin";
   const detailModeDescription = isAgentSession
@@ -292,6 +293,12 @@ export default function SolicitudesPage() {
     qc.invalidateQueries({ queryKey: ["solicitud-messages"] });
   });
 
+  const { data: adminUsersData } = useQuery({
+    queryKey: ["admin-users", tenantSlug],
+    queryFn: () => adminUsersApi.list(tenantSlug).then((r) => r.data),
+    enabled: !!tenantSlug,
+  });
+
   const { data: agentesData } = useQuery({
     queryKey: ["agentes", tenantSlug],
     queryFn: () => agentesApi.list(tenantSlug).then((r) => r.data),
@@ -327,22 +334,22 @@ export default function SolicitudesPage() {
     mutationFn: ({
       id,
       reason,
-      targetAgenteId,
+      targetAdminUserId,
     }: {
       id: number;
       reason?: string;
-      targetAgenteId?: number;
+      targetAdminUserId?: number;
     }) =>
       solicitudesApi.escalate(tenantSlug, id, {
         reason,
-        targetAgenteId,
+        targetAdminUserId,
       }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["solicitudes"] });
       qc.invalidateQueries({ queryKey: ["solicitudes-stats"] });
       setEscalationModal({ open: false, solicitud: null });
       setEscalationReason("");
-      setEscalationTargetAgenteId("");
+      setEscalationTargetAdminUserId("");
     },
   });
 
@@ -950,13 +957,14 @@ export default function SolicitudesPage() {
   const agentes: Agente[] = agentesData?.data ?? agentesData ?? [];
   const stats = statsData ?? { total: 0, estado: {}, sla: { onTrack: 0, warning: 0, breached: 0 } };
   const agentesActivos = agentes.filter((agente) => agente.estado === "activo");
-  const agentesByPuesto = agentesActivos.reduce<Record<string, Agente[]>>((acc, agente) => {
-    const puestoNombre = agente.puesto?.nombre?.trim() || "Sin puesto";
-    if (!acc[puestoNombre]) acc[puestoNombre] = [];
-    acc[puestoNombre].push(agente);
-    return acc;
-  }, {});
-  const puestoNames = Object.keys(agentesByPuesto).sort((a, b) => a.localeCompare(b, "es"));
+  const adminUsers: Array<{ id: number; nombre: string; email: string; jefeId: number | null; superAdmin: boolean }> =
+    adminUsersData?.data ?? adminUsersData ?? [];
+
+  // Build AdminUser tree: group by root (no jefeId) vs children
+  const rootAdminUsers = adminUsers.filter((u) => !u.jefeId);
+  function getAdminUserSubordinados(parentId: number): typeof adminUsers {
+    return adminUsers.filter((u) => u.jefeId === parentId);
+  }
 
   function handleAssign() {
     if (!assignModal.solicitudId || !selectedAgente) return;
@@ -973,16 +981,16 @@ export default function SolicitudesPage() {
     }
     setEscalationModal({ open: true, solicitud });
     setEscalationReason("");
-    setEscalationTargetAgenteId("");
+    setEscalationTargetAdminUserId("");
   }
 
   function handleEscalateSubmit() {
     if (!escalationModal.solicitud) return;
-    if (!escalationTargetAgenteId) return;
+    if (!escalationTargetAdminUserId) return;
     escalateSolicitud.mutate({
       id: escalationModal.solicitud.id,
       reason: escalationReason.trim() || undefined,
-      targetAgenteId: Number(escalationTargetAgenteId),
+      targetAdminUserId: Number(escalationTargetAdminUserId),
     });
   }
 
@@ -1865,7 +1873,7 @@ export default function SolicitudesPage() {
           if (escalateSolicitud.isPending) return;
           setEscalationModal({ open: false, solicitud: null });
           setEscalationReason("");
-          setEscalationTargetAgenteId("");
+          setEscalationTargetAdminUserId("");
         }}
         title="Escalar por árbol jerárquico"
       >
@@ -1878,49 +1886,46 @@ export default function SolicitudesPage() {
               Usuario a escalar: {escalationModal.solicitud?.nombre || escalationModal.solicitud?.user?.phone || escalationModal.solicitud?.telefonoContacto || "No definido"}
             </p>
             <p className="text-xs text-slate-500 mt-1">
-              Seleccioná el agente destino dentro del árbol jerárquico (Puesto -&gt; Agente).
+              Seleccioná el administrador destino dentro del árbol jerárquico.
             </p>
           </div>
 
           <div className="rounded-xl border border-slate-200 bg-slate-50 max-h-72 overflow-y-auto p-3 space-y-3">
-            {puestoNames.length === 0 ? (
-              <p className="text-sm text-slate-500">No hay agentes activos para escalar.</p>
+            {adminUsers.length === 0 ? (
+              <p className="text-sm text-slate-500">No hay administradores disponibles para escalar.</p>
             ) : (
-              puestoNames.map((puestoName) => (
-                <div key={puestoName} className="space-y-2">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                    {puestoName}
-                  </p>
-                  <div className="space-y-1.5 pl-3 border-l border-slate-200">
-                    {agentesByPuesto[puestoName]
-                      .slice()
-                      .sort((a, b) => a.nombre.localeCompare(b.nombre, "es"))
-                      .map((agente) => {
-                        const isSelected = escalationTargetAgenteId === String(agente.id);
-                        const isCurrentAssignee =
-                          escalationModal.solicitud?.agente?.id && escalationModal.solicitud.agente.id === agente.id;
-                        return (
-                          <button
-                            key={agente.id}
-                            type="button"
-                            onClick={() => setEscalationTargetAgenteId(String(agente.id))}
-                            className={cn(
-                              "w-full text-left rounded-lg border px-3 py-2 text-sm transition",
-                              isSelected
-                                ? "border-rose-300 bg-rose-50 text-rose-700"
-                                : "border-slate-200 bg-white text-slate-700 hover:border-slate-300"
-                            )}
-                          >
-                            <span className="font-medium">{agente.nombre}</span>
-                            {isCurrentAssignee ? (
-                              <span className="ml-2 text-[11px] text-slate-500">(asignado actual)</span>
-                            ) : null}
-                          </button>
-                        );
-                      })}
-                  </div>
-                </div>
-              ))
+              (() => {
+                function renderAdminUserNode(user: typeof adminUsers[0], depth: number): React.ReactNode {
+                  const isSelected = escalationTargetAdminUserId === String(user.id);
+                  const subs = getAdminUserSubordinados(user.id);
+                  return (
+                    <div key={user.id} style={{ marginLeft: depth * 16 }} className="space-y-1">
+                      <button
+                        type="button"
+                        onClick={() => setEscalationTargetAdminUserId(String(user.id))}
+                        className={cn(
+                          "w-full text-left rounded-lg border px-3 py-2 text-sm transition",
+                          isSelected
+                            ? "border-rose-300 bg-rose-50 text-rose-700"
+                            : "border-slate-200 bg-white text-slate-700 hover:border-slate-300"
+                        )}
+                      >
+                        <span className="font-medium">{user.nombre}</span>
+                        <span className="ml-2 text-[11px] text-slate-400">{user.email}</span>
+                        {user.superAdmin && (
+                          <span className="ml-2 text-[11px] text-indigo-500">Super Admin</span>
+                        )}
+                      </button>
+                      {subs.length > 0 && (
+                        <div className="pl-3 border-l border-slate-200 space-y-1">
+                          {subs.map((sub) => renderAdminUserNode(sub, depth + 1))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                }
+                return rootAdminUsers.map((u) => renderAdminUserNode(u, 0));
+              })()
             )}
           </div>
 
@@ -1941,7 +1946,7 @@ export default function SolicitudesPage() {
               onClick={() => {
                 setEscalationModal({ open: false, solicitud: null });
                 setEscalationReason("");
-                setEscalationTargetAgenteId("");
+                setEscalationTargetAdminUserId("");
               }}
               disabled={escalateSolicitud.isPending}
             >
@@ -1949,7 +1954,7 @@ export default function SolicitudesPage() {
             </Button>
             <Button
               onClick={handleEscalateSubmit}
-              disabled={!escalationTargetAgenteId || escalateSolicitud.isPending || puestoNames.length === 0}
+              disabled={!escalationTargetAdminUserId || escalateSolicitud.isPending || adminUsers.length === 0}
             >
               {escalateSolicitud.isPending ? "Escalando..." : "Confirmar escalación"}
             </Button>
