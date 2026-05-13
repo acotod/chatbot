@@ -174,7 +174,7 @@ const DEFAULT_SOLICITUDES_CONFIG: SolicitudesTenantConfig = {
 
 export default function SolicitudesPage() {
 
-  const { tenantSlug } = useAuthStore();
+  const { tenantSlug, superAdmin } = useAuthStore();
 
   const hasAccessToken = Boolean(getStoredAccessToken());
   const hasAgentAccessToken = Boolean(getStoredAgentAccessToken());
@@ -420,7 +420,13 @@ export default function SolicitudesPage() {
       isAgentSession
         ? agentAuthApi.conversations({ userKey: detailClientKey, limit: 50 }).then((r) => r.data)
         : conversationsApi.list({ tenantSlug: tenantSlug || undefined, userKey: detailClientKey, limit: 50 }).then((r) => r.data),
-    enabled: Boolean(detailModal.open && detailModal.solicitud && detailClientKey && detailTab === "conversaciones"),
+    enabled: Boolean(
+      detailModal.open &&
+      detailModal.solicitud &&
+      detailClientKey &&
+      detailTab === "conversaciones" &&
+      (isAgentSession || !superAdmin || Boolean(tenantSlug))
+    ),
     staleTime: 30_000,
   });
   const conversations: ConversationItem[] = (conversationData as { data?: ConversationItem[] })?.data ?? (Array.isArray(conversationData) ? conversationData : []);
@@ -431,7 +437,12 @@ export default function SolicitudesPage() {
       conversationsApi
         .getById(selectedConversationId, { tenantSlug: tenantSlug || undefined })
         .then((r) => r.data as ConversationDetail),
-    enabled: Boolean(conversationDetailModal.open && selectedConversationId && !isAgentSession),
+    enabled: Boolean(
+      conversationDetailModal.open &&
+      selectedConversationId &&
+      !isAgentSession &&
+      (!superAdmin || Boolean(tenantSlug))
+    ),
     staleTime: 30_000,
   });
   const conversationEvents: ConversationEventItem[] =
