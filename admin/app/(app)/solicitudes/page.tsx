@@ -541,6 +541,16 @@ export default function SolicitudesPage() {
       : Array.isArray((messagesData as any)?.items)
         ? (messagesData as any).items
         : [];
+  const hasActiveMessageFilters = Boolean(
+    messageSearch.trim() || messageDirection || messageReadStatus || messageStartDate || messageEndDate
+  );
+  const activeMessageFilterCount = [
+    Boolean(messageSearch.trim()),
+    Boolean(messageDirection),
+    Boolean(messageReadStatus),
+    Boolean(messageStartDate),
+    Boolean(messageEndDate),
+  ].filter(Boolean).length;
 
   const sendMessageMutation = useMutation({
     mutationFn: ({ text }: { text: string }) =>
@@ -566,6 +576,14 @@ export default function SolicitudesPage() {
     if (days > 1) start.setDate(start.getDate() - (days - 1));
     setMessageStartDate(formatDateForInput(start));
     setMessageEndDate(formatDateForInput(end));
+  }
+
+  function clearMessageFilters(): void {
+    setMessageSearch("");
+    setMessageDirection("");
+    setMessageStartDate("");
+    setMessageEndDate("");
+    setMessageReadStatus("");
   }
 
   function formatEventPayload(payload: unknown): string {
@@ -1473,61 +1491,99 @@ export default function SolicitudesPage() {
               </TabsContent>
 
               <TabsContent value="mensajes" className="space-y-4">
-                <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
-                  <div className="flex flex-col gap-2 sm:flex-row">
-                    <input
-                      type="text"
-                      value={messageSearch}
-                      onChange={(e) => setMessageSearch(e.target.value)}
-                      placeholder="Filtrar por texto..."
-                      className="flex-1 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm placeholder-slate-500 focus:border-blue-500 focus:outline-none"
-                    />
-                    <select
-                      value={messageDirection}
-                      onChange={(e) => setMessageDirection((e.target.value as "" | "entrada" | "salida") || "")}
-                      className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
-                    >
-                      <option value="">Todas las direcciones</option>
-                      <option value="entrada">Recibidos</option>
-                      <option value="salida">Enviados</option>
-                    </select>
-                    <select
-                      value={messageReadStatus}
-                      onChange={(e) => setMessageReadStatus((e.target.value as "" | "leido" | "no_leido") || "")}
-                      className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
-                    >
-                      <option value="">Todos los estados</option>
-                      <option value="leido">Leidos</option>
-                      <option value="no_leido">No leidos</option>
-                    </select>
-                    <input
-                      type="date"
-                      value={messageStartDate}
-                      onChange={(e) => setMessageStartDate(e.target.value)}
-                      className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
-                    />
-                    <input
-                      type="date"
-                      value={messageEndDate}
-                      onChange={(e) => setMessageEndDate(e.target.value)}
-                      className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
-                    />
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      onClick={() => {
-                        setMessageSearch("");
-                        setMessageDirection("");
-                        setMessageStartDate("");
-                        setMessageEndDate("");
-                        setMessageReadStatus("");
-                      }}
-                      disabled={!messageSearch.trim() && !messageDirection && !messageStartDate && !messageEndDate && !messageReadStatus}
-                    >
-                      Limpiar
-                    </Button>
+                <div className="rounded-xl border border-slate-200 bg-gradient-to-b from-slate-50 to-white p-3 sm:p-4">
+                  <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                    <div>
+                      <div className="flex items-center gap-2 text-sm font-medium text-slate-800">
+                        <Filter size={16} className="text-slate-500" />
+                        Filtros de mensajes
+                      </div>
+                      <p className="mt-1 text-xs text-slate-500">
+                        Acotá la conversación por contenido, dirección, estado de lectura o rango de fechas.
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2 self-start">
+                      {activeMessageFilterCount > 0 ? (
+                        <span className="rounded-full border border-blue-200 bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-700">
+                          {activeMessageFilterCount} activos
+                        </span>
+                      ) : null}
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        onClick={clearMessageFilters}
+                        disabled={!hasActiveMessageFilters}
+                        className="shrink-0"
+                      >
+                        Limpiar filtros
+                      </Button>
+                    </div>
                   </div>
-                  <div className="mt-2 flex flex-wrap gap-2">
+
+                  <div className="mt-4 grid gap-3 lg:grid-cols-12">
+                    <label className="space-y-1.5 lg:col-span-4">
+                      <span className="text-xs font-medium uppercase tracking-wide text-slate-500">Buscar texto</span>
+                      <div className="relative">
+                        <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                        <input
+                          type="text"
+                          value={messageSearch}
+                          onChange={(e) => setMessageSearch(e.target.value)}
+                          placeholder="Texto del mensaje"
+                          className="w-full rounded-lg border border-slate-200 bg-white py-2 pl-9 pr-3 text-sm placeholder-slate-400 focus:border-blue-500 focus:outline-none"
+                        />
+                      </div>
+                    </label>
+
+                    <label className="space-y-1.5 lg:col-span-2">
+                      <span className="text-xs font-medium uppercase tracking-wide text-slate-500">Dirección</span>
+                      <select
+                        value={messageDirection}
+                        onChange={(e) => setMessageDirection((e.target.value as "" | "entrada" | "salida") || "")}
+                        className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+                      >
+                        <option value="">Todas</option>
+                        <option value="entrada">Recibidos</option>
+                        <option value="salida">Enviados</option>
+                      </select>
+                    </label>
+
+                    <label className="space-y-1.5 lg:col-span-2">
+                      <span className="text-xs font-medium uppercase tracking-wide text-slate-500">Lectura</span>
+                      <select
+                        value={messageReadStatus}
+                        onChange={(e) => setMessageReadStatus((e.target.value as "" | "leido" | "no_leido") || "")}
+                        className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+                      >
+                        <option value="">Todos</option>
+                        <option value="leido">Leidos</option>
+                        <option value="no_leido">No leidos</option>
+                      </select>
+                    </label>
+
+                    <label className="space-y-1.5 lg:col-span-2">
+                      <span className="text-xs font-medium uppercase tracking-wide text-slate-500">Desde</span>
+                      <input
+                        type="date"
+                        value={messageStartDate}
+                        onChange={(e) => setMessageStartDate(e.target.value)}
+                        className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+                      />
+                    </label>
+
+                    <label className="space-y-1.5 lg:col-span-2">
+                      <span className="text-xs font-medium uppercase tracking-wide text-slate-500">Hasta</span>
+                      <input
+                        type="date"
+                        value={messageEndDate}
+                        onChange={(e) => setMessageEndDate(e.target.value)}
+                        className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+                      />
+                    </label>
+                  </div>
+
+                  <div className="mt-3 flex flex-wrap items-center gap-2">
+                    <span className="text-[11px] font-medium uppercase tracking-wide text-slate-400">Rangos rápidos</span>
                     <Button variant="secondary" size="sm" onClick={() => applyMessageDatePreset(1)}>
                       Hoy
                     </Button>
