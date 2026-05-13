@@ -25,6 +25,30 @@ const { getPrismaClient } = require('../services/database');
 
 const router = express.Router();
 
+async function resolveTenantId(req, explicitTenantSlug) {
+  const fromAuth =
+    req.admin?.tenantId ??
+    req.admin?.tenant_id ??
+    req.user?.tenantId ??
+    req.user?.tenant_id;
+  if (fromAuth) return fromAuth;
+
+  const isSuperAdmin = Boolean(req.admin?.superAdmin ?? req.user?.superAdmin);
+  if (!isSuperAdmin) return null;
+
+  const slug = typeof explicitTenantSlug === 'string' ? explicitTenantSlug.trim() : '';
+  if (!slug) return null;
+
+  const prisma = getPrismaClient();
+  if (!prisma) return null;
+
+  const tenant = await prisma.tenant.findUnique({
+    where: { slug },
+    select: { id: true },
+  });
+  return tenant?.id ?? null;
+}
+
 function _toIsoFromUnixSeconds(seconds) {
   const ts = Number(seconds);
   if (!Number.isFinite(ts)) return new Date().toISOString();
@@ -804,14 +828,17 @@ router.post('/send', async (req, res, next) => {
 // ── Admin: list conversation threads ─────────────────────────────────────────
 
 /**
- * GET /whatsapp/conversaciones?tenantId=
+ * GET /whatsapp/conversaciones?tenantId= | ?tenantSlug=
  * Returns the latest message per unique user (conversation thread list).
  * Requires JWT.
  */
 router.get('/conversaciones', requireJwt, async (req, res, next) => {
   try {
-    const { tenantId } = req.query;
-    if (!tenantId) return res.status(400).json({ error: 'tenantId is required' });
+    const fromQueryTenantId = typeof req.query.tenantId === 'string' ? req.query.tenantId.trim() : '';
+    const resolvedTenantId = await resolveTenantId(req, req.query.tenantSlug);
+    const tenantId = fromQueryTenantId || resolvedTenantId;
+    if (!tenantId) return res.status(400).json({ error: 'tenantId or tenantSlug is required' });
+
     const threads = await db.listConversaciones(tenantId);
     return res.json({ data: threads });
   } catch (err) {
@@ -822,15 +849,19 @@ router.get('/conversaciones', requireJwt, async (req, res, next) => {
 // ── Admin: message history for one user ──────────────────────────────────────
 
 /**
- * GET /whatsapp/mensajes?tenantId=&userId=&page=
+ * GET /whatsapp/mensajes?tenantId=&userId=&page= | ?tenantSlug=&userId=&page=
  * Returns paginated message history for a user in a tenant.
  * Requires JWT.
  */
 router.get('/mensajes', requireJwt, async (req, res, next) => {
   try {
-    const { tenantId, userId, page, limit } = req.query;
+    const { userId, page, limit } = req.query;
+    const fromQueryTenantId = typeof req.query.tenantId === 'string' ? req.query.tenantId.trim() : '';
+    const resolvedTenantId = await resolveTenantId(req, req.query.tenantSlug);
+    const tenantId = fromQueryTenantId || resolvedTenantId;
+
     if (!tenantId || !userId) {
-      return res.status(400).json({ error: 'tenantId and userId are required' });
+      return res.status(400).json({ error: 'tenantId/tenantSlug and userId are required' });
     }
     const parsedLimit = Math.min(Math.max(parseInt(limit, 10) || 50, 1), 200);
     const mensajes = await db.listMensajes(tenantId, Number(userId), {

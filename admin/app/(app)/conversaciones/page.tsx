@@ -294,24 +294,29 @@ export default function ConversacionesPage() {
 
   // Conversation thread list
   const { data: threadsData, isLoading: threadsLoading } = useQuery({
-    queryKey: ["conversaciones", tenantId],
-    queryFn: () => whatsappApi.listConversaciones(tenantId!).then((r) => r.data),
-    enabled: !!tenantId,
+    queryKey: ["conversaciones", effectiveTenantSlug, tenantId],
+    queryFn: () =>
+      whatsappApi
+        .listConversaciones({ tenantSlug: effectiveTenantSlug ?? undefined, tenantId: tenantId ?? undefined })
+        .then((r) => r.data),
+    enabled: !!effectiveTenantSlug || !!tenantId,
     staleTime: 30_000,
   });
   const threads: Thread[] = threadsData?.data ?? [];
 
   // Messages for active thread
   const { data: mensajesData, isLoading: mensajesLoading } = useQuery({
-    queryKey: ["mensajes", tenantId, activeThread?.userId],
+    queryKey: ["mensajes", effectiveTenantSlug, tenantId, activeThread?.userId],
     queryFn: () =>
-      whatsappApi.listMensajes(tenantId!, activeThread!.userId!, 1, 100).then((r) => {
+      whatsappApi
+        .listMensajes({ tenantSlug: effectiveTenantSlug ?? undefined, tenantId: tenantId ?? undefined, userId: activeThread!.userId!, page: 1, limit: 100 })
+        .then((r) => {
         setHasMore((r.data?.count ?? r.data?.data?.length ?? 0) >= 100);
         setOlderMessages([]);
         setMsgPage(1);
         return r.data;
       }),
-    enabled: !!tenantId && !!activeThread?.userId,
+    enabled: (!!effectiveTenantSlug || !!tenantId) && !!activeThread?.userId,
     staleTime: 0,
   });
   // Backend returns newest-first (desc). No reverse — display newest at top.
@@ -319,11 +324,17 @@ export default function ConversacionesPage() {
   const messages: Mensaje[] = [...latestMessages, ...olderMessages];
 
   async function loadMoreMessages() {
-    if (!tenantId || !activeThread?.userId || loadingMore) return;
+    if ((!effectiveTenantSlug && !tenantId) || !activeThread?.userId || loadingMore) return;
     setLoadingMore(true);
     try {
       const nextPage = msgPage + 1;
-      const r = await whatsappApi.listMensajes(tenantId, activeThread.userId, nextPage, 100);
+      const r = await whatsappApi.listMensajes({
+        tenantSlug: effectiveTenantSlug ?? undefined,
+        tenantId: tenantId ?? undefined,
+        userId: activeThread.userId,
+        page: nextPage,
+        limit: 100,
+      });
       const older: Mensaje[] = r.data?.data ?? [];
       setOlderMessages((prev) => [...prev, ...older]);
       setMsgPage(nextPage);

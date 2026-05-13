@@ -470,12 +470,12 @@ export const auditApi = {
 // ── WhatsApp Business ─────────────────────────────────────────────────────────
 export const whatsappApi = {
   /** One row per unique user — latest message per thread */
-  listConversaciones: (tenantId: string) =>
-    apiClient.get("/whatsapp/conversaciones", { params: { tenantId } }),
+  listConversaciones: (params: { tenantId?: string; tenantSlug?: string }) =>
+    apiClient.get("/whatsapp/conversaciones", { params }),
   /** Full message history for one user */
-  listMensajes: (tenantId: string, userId: number, page = 1, limit = 100) =>
+  listMensajes: (params: { tenantId?: string; tenantSlug?: string; userId: number; page?: number; limit?: number }) =>
     apiClient.get("/whatsapp/mensajes", {
-      params: { tenantId, userId, page, limit },
+      params: { page: 1, limit: 100, ...params },
     }),
   /** Send an outbound text message */
   send: (tenantId: string, to: string, text: string) =>

@@ -110,8 +110,8 @@ export default function DashboardPage() {
   const tenantId: string | null = tenantData?.id ?? null;
 
   const { data: conversacionesData } = useQuery({
-    queryKey: ["conversaciones", tenantId],
-    queryFn: () => whatsappApi.listConversaciones(tenantId!).then((r) => r.data),
+    queryKey: ["conversaciones", tenantSlug, tenantId],
+    queryFn: () => whatsappApi.listConversaciones({ tenantSlug: tenantSlug || undefined, tenantId: tenantId ?? undefined }).then((r) => r.data),
     enabled: !isAgentSession && !!tenantId,
     staleTime: 60_000,
   });
