@@ -257,7 +257,7 @@ export default function ConversacionesPage() {
   const [escalandoId, setEscalandoId] = useState<number | null>(null);
 
   // Resolve tenantId (UUID) from slug
-  const { data: tenantData } = useQuery({
+  const { data: tenantData, isLoading: tenantLoading } = useQuery({
     queryKey: ["tenant", tenantSlug],
     queryFn: () =>
       import("@/lib/api").then(({ apiClient }) =>
@@ -275,18 +275,19 @@ export default function ConversacionesPage() {
 
   const tenants = Array.isArray(tenantsData) ? tenantsData : [];
   const fallbackTenant = tenants[0] ?? null;
-  const effectiveTenantSlug = tenantData?.slug ?? fallbackTenant?.slug ?? tenantSlug;
-  const tenantId: string | null = tenantData?.id ?? fallbackTenant?.id ?? null;
+  const shouldUseFallback = Boolean(tenantSlug && !tenantLoading && !tenantData && fallbackTenant?.slug);
+  const effectiveTenantSlug = tenantData?.slug ?? (shouldUseFallback ? fallbackTenant?.slug : tenantSlug);
+  const tenantId: string | null = tenantData?.id ?? (shouldUseFallback ? fallbackTenant?.id : null);
 
   useEffect(() => {
-    if (!tenantSlug && effectiveTenantSlug) {
-      setTenantSlug(effectiveTenantSlug);
+    if (!tenantSlug && fallbackTenant?.slug) {
+      setTenantSlug(fallbackTenant.slug);
       return;
     }
-    if (tenantSlug && effectiveTenantSlug && tenantSlug !== effectiveTenantSlug) {
+    if (shouldUseFallback && effectiveTenantSlug && tenantSlug !== effectiveTenantSlug) {
       setTenantSlug(effectiveTenantSlug);
     }
-  }, [tenantSlug, effectiveTenantSlug, setTenantSlug]);
+  }, [tenantSlug, fallbackTenant?.slug, shouldUseFallback, effectiveTenantSlug, setTenantSlug]);
 
   // Subscribe to WA real-time events — keeps cache up to date
   useWaSocket(tenantId);
