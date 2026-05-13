@@ -1130,6 +1130,7 @@ router.get('/agent/me', requireAgentJwt, async (req, res) => {
     tenantId: agent.tenantId ?? null,
     tenantSlug: agent.tenantSlug ?? null,
     tenantNombre: agent.tenantNombre ?? null,
+    tenantLogoUrl: agent.tenantLogoUrl ?? null,
     nombre: agent.nombre ?? null,
     email: agent.email ?? null,
     whatsapp: agent.whatsapp ?? null,
@@ -1322,6 +1323,227 @@ router.get('/agent/conversations', requireAgentJwt, async (req, res, next) => {
     }));
 
     return res.json({ data, total, page, limit });
+  } catch (err) {
+    return next(err);
+  }
+});
+
+// ── GET /auth/agent/conversation-threads ───────────────────────────────────
+router.get('/agent/conversation-threads', requireAgentJwt, async (req, res, next) => {
+  try {
+    const tenantId = req.agent?.tenantId;
+    const agenteId = Number(req.agent?.agenteId);
+    if (!tenantId || !Number.isInteger(agenteId) || agenteId <= 0) {
+      return res.status(400).json({ error: 'Invalid agent context' });
+    }
+
+    const limit = Math.min(100, Math.max(1, Number.parseInt(String(req.query.limit || '30'), 10) || 30));
+    const q = String(req.query.q || '').trim();
+
+    const baseWhere = {
+      tenantId,
+      user: {
+        is: {
+          solicitudes: {
+            some: { agenteId },
+          },
+        },
+      },
+    };
+
+    const where = q
+      ? {
+          ...baseWhere,
+          AND: [
+            {
+              OR: [
+                { user: { is: { nombre: { contains: q, mode: 'insensitive' } } } },
+                { user: { is: { phone: { contains: q } } } },
+                { user: { is: { email: { contains: q, mode: 'insensitive' } } } },
+              ],
+            },
+          ],
+        }
+      : baseWhere;
+
+    const recent = await prisma.mensaje.findMany({
+      where,
+      orderBy: { createdAt: 'desc' },
+      take: Math.max(limit * 8, limit),
+      select: {
+        id: true,
+        userId: true,
+        tipo: true,
+        contenido: true,
+        createdAt: true,
+        user: {
+          select: {
+            id: true,
+            phone: true,
+            nombre: true,
+            solicitudes: {
+              where: { agenteId },
+              orderBy: { createdAt: 'desc' },
+              take: 1,
+              select: {
+                id: true,
+                estado: true,
+                createdAt: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    const seen = new Set();
+    const threads = [];
+    for (const msg of recent) {
+      const key = msg.userId ? `u:${msg.userId}` : `p:${msg.user?.phone || `msg_${msg.id}`}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+
+      const assignedSolicitud = msg.user?.solicitudes?.[0] || null;
+      if (!assignedSolicitud) continue;
+
+      threads.push({
+        id: msg.id,
+        userId: msg.userId,
+        tipo: msg.tipo,
+        contenido: msg.contenido,
+        createdAt: msg.createdAt,
+        user: msg.user
+          ? {
+              id: msg.user.id,
+              phone: msg.user.phone,
+            }
+          : null,
+        _contactName: msg.user?.nombre || null,
+        _assignedSolicitudId: assignedSolicitud.id,
+      });
+
+      if (threads.length >= limit) break;
+    }
+
+    return res.json({ data: threads, count: threads.length });
+  } catch (err) {
+    return next(err);
+  }
+});
+
+// ── GET /auth/agent/conversation-messages ──────────────────────────────────
+router.get('/agent/conversation-messages', requireAgentJwt, async (req, res, next) => {
+  try {
+    const tenantId = req.agent?.tenantId;
+    const agenteId = Number(req.agent?.agenteId);
+    if (!tenantId || !Number.isInteger(agenteId) || agenteId <= 0) {
+      return res.status(400).json({ error: 'Invalid agent context' });
+    }
+
+    const userId = Number(req.query.userId);
+    if (!Number.isInteger(userId) || userId <= 0) {
+      return res.status(400).json({ error: 'userId is required' });
+    }
+
+    const scope = await prisma.solicitud.findFirst({
+      where: { tenantId, agenteId, userId },
+      select: { id: true },
+    });
+    if (!scope) {
+      return res.status(403).json({ error: 'Conversation is not assigned to this agent' });
+    }
+
+    const page = Math.max(1, Number.parseInt(String(req.query.page || '1'), 10) || 1);
+    const limit = Math.min(Math.max(Number.parseInt(String(req.query.limit || '100'), 10) || 100, 1), 200);
+    const mensajes = await db.listMensajes(tenantId, userId, { page, limit });
+
+    return res.json({ data: mensajes, page, limit, count: mensajes.length });
+  } catch (err) {
+    return next(err);
+  }
+});
+
+// ── POST /auth/agent/conversation-messages ─────────────────────────────────
+router.post('/agent/conversation-messages', requireAgentJwt, async (req, res, next) => {
+  try {
+    const tenantId = req.agent?.tenantId;
+    const agenteId = Number(req.agent?.agenteId);
+    if (!tenantId || !Number.isInteger(agenteId) || agenteId <= 0) {
+      return res.status(400).json({ error: 'Invalid agent context' });
+    }
+
+    const userId = Number(req.body?.userId);
+    const text = String(req.body?.text ?? '').trim();
+    const requestedSolicitudId = Number(req.body?.solicitudId);
+    if (!Number.isInteger(userId) || userId <= 0) {
+      return res.status(400).json({ error: 'userId is required' });
+    }
+    if (!text) {
+      return res.status(400).json({ error: 'text is required' });
+    }
+
+    const solicitudScope = await prisma.solicitud.findFirst({
+      where: {
+        tenantId,
+        agenteId,
+        userId,
+        ...(Number.isInteger(requestedSolicitudId) && requestedSolicitudId > 0 ? { id: requestedSolicitudId } : {}),
+      },
+      orderBy: { createdAt: 'desc' },
+      select: {
+        id: true,
+        userId: true,
+        conversationId: true,
+        user: { select: { phone: true } },
+      },
+    });
+
+    if (!solicitudScope) {
+      return res.status(403).json({ error: 'Conversation is not assigned to this agent' });
+    }
+    if (!solicitudScope.user?.phone) {
+      return res.status(400).json({ error: 'Assigned contact has no WhatsApp phone' });
+    }
+
+    const { phoneNumberId, accessToken } = await db.getWaCredentials(tenantId);
+    if (!phoneNumberId || !accessToken) {
+      return res.status(422).json({ error: 'WhatsApp credentials not configured for this tenant' });
+    }
+
+    const waResp = await wa.sendTextMessage(phoneNumberId, solicitudScope.user.phone, text, accessToken);
+    const mensaje = await db.saveMensaje({
+      tenantId,
+      userId,
+      agenteId,
+      waMsgId: waResp?.messages?.[0]?.id ?? null,
+      status: 'sent',
+      direccion: 'salida',
+      tipo: 'text',
+      contenido: {
+        text,
+        source: 'agent_conversation',
+        solicitudId: solicitudScope.id,
+        actor: {
+          type: 'agente',
+          agenteId,
+          nombre: req.agent?.nombre ?? null,
+          email: req.agent?.email ?? null,
+        },
+      },
+      conversationId: solicitudScope.conversationId || undefined,
+    });
+
+    return res.status(201).json({
+      ok: true,
+      data: {
+        userId,
+        solicitudId: solicitudScope.id,
+        mensaje,
+        waResponse: waResp,
+      },
+      mensaje,
+      waResponse: waResp,
+    });
   } catch (err) {
     return next(err);
   }

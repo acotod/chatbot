@@ -137,6 +137,7 @@ export type AgentLoginResponse = {
     tenantId: string;
     tenantSlug: string;
     tenantNombre: string | null;
+    tenantLogoUrl?: string | null;
     nombre: string;
     email: string;
     whatsapp: string | null;
@@ -242,6 +243,39 @@ export type AgentAgendaEvent = {
 export type AgentAgendaResponse = {
   total: number;
   data: AgentAgendaEvent[];
+};
+
+export type AgentConversationThread = {
+  id: number;
+  userId: number | null;
+  tipo: string;
+  contenido: unknown;
+  createdAt: string;
+  user?: { id: number; phone?: string | null } | null;
+  _contactName?: string | null;
+  _assignedSolicitudId?: number | null;
+};
+
+export type AgentConversationThreadsResponse = {
+  data: AgentConversationThread[];
+  count: number;
+};
+
+export type AgentConversationMessage = {
+  id: number;
+  userId: number | null;
+  waMsgId: string | null;
+  direccion: "entrada" | "salida";
+  tipo: string;
+  contenido: unknown;
+  createdAt: string;
+};
+
+export type AgentConversationMessagesResponse = {
+  data: AgentConversationMessage[];
+  page: number;
+  limit: number;
+  count: number;
 };
 
 export type AgentContacto = {
@@ -357,6 +391,15 @@ export const agentAuthApi = {
     agentApiClient.get<AgentAgendaResponse>("/auth/agent/agenda", { params }),
   contactos: (params?: { q?: string; page?: number; limit?: number }) =>
     agentApiClient.get<AgentContactosResponse>("/auth/agent/contactos", { params }),
+  conversationThreads: (params?: { q?: string; limit?: number }) =>
+    agentApiClient.get<AgentConversationThreadsResponse>("/auth/agent/conversation-threads", { params }),
+  conversationMessages: (params: { userId: number; page?: number; limit?: number }) =>
+    agentApiClient.get<AgentConversationMessagesResponse>("/auth/agent/conversation-messages", { params }),
+  sendConversationMessage: (data: { userId: number; text: string; solicitudId?: number | null }) =>
+    agentApiClient.post<{ ok: boolean; data: { userId: number; solicitudId: number; mensaje: AgentConversationMessage; waResponse: unknown } }>(
+      "/auth/agent/conversation-messages",
+      data,
+    ),
   logout: () =>
     agentApiClient.post("/auth/agent/logout"),
 };

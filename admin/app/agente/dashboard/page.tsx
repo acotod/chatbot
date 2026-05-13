@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
 import { agentAuthApi, type AgentKpisResponse, type AgentSolicitud, type AgentAgendaEvent } from "@/lib/agentApi";
+import { Header } from "@/components/layout/Header";
 import { useAgentAuthStore } from "@/store/agentAuth";
 
 type AgentProfile = {
@@ -169,8 +170,9 @@ export default function AgentDashboardPage() {
   const dateLabel = today.toLocaleDateString("es-ES", { weekday: "long", day: "numeric", month: "long" });
 
   return (
-    <div className="min-h-screen bg-slate-100 px-4 py-8 sm:px-6 lg:px-8">
-      <div className="mx-auto max-w-5xl space-y-6">
+    <div className="min-h-screen bg-slate-100">
+      <Header />
+      <div className="mx-auto max-w-5xl space-y-6 px-4 py-8 sm:px-6 lg:px-8">
 
         {/* Header */}
         <div className="rounded-3xl bg-white border border-slate-200 shadow-sm p-6 sm:p-8">
@@ -353,7 +355,17 @@ export default function AgentDashboardPage() {
             </div>
 
             {/* Quick actions */}
-            <div className="grid gap-3 sm:grid-cols-3">
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              <Link
+                href="/agente/conversaciones"
+                className="rounded-2xl bg-white border border-slate-200 px-5 py-4 flex items-center gap-3 hover:border-blue-300 hover:bg-blue-50 transition group"
+              >
+                <span className="text-2xl">💬</span>
+                <div>
+                  <p className="text-sm font-semibold text-slate-800 group-hover:text-blue-700">Conversaciones</p>
+                  <p className="text-xs text-slate-400">Chat en tiempo real</p>
+                </div>
+              </Link>
               <Link
                 href="/agente/solicitudes"
                 className="rounded-2xl bg-white border border-slate-200 px-5 py-4 flex items-center gap-3 hover:border-cyan-300 hover:bg-cyan-50 transition group"

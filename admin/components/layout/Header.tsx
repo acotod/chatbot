@@ -45,6 +45,7 @@ const TITLES: Record<string, string> = {
   "/solicitudes": "Solicitudes",
   "/agenda": "Agenda",
   "/agente/dashboard": "Panel",
+  "/agente/conversaciones": "Conversaciones",
   "/agente/solicitudes": "Solicitudes",
   "/agente/agenda": "Agenda",
   "/agente/contactos": "Contactos",
@@ -66,7 +67,7 @@ export function Header() {
   );
   const hasAccessToken = isClient && Boolean(getStoredAccessToken());
   const hasAgentAccessToken = isClient && Boolean(getStoredAgentAccessToken());
-  const isAgentSharedRoute = ["/dashboard", "/solicitudes", "/agenda", "/contactos"].includes(pathname);
+  const isAgentSharedRoute = ["/dashboard", "/conversaciones", "/solicitudes", "/agenda", "/contactos", "/agente/conversaciones"].includes(pathname);
   const isAgentSession = hasAgentAccessToken && (isAgentSharedRoute || !hasAccessToken);
   const sessionEmail = isClient ? (getMe()?.email ?? null) : null;
 
@@ -110,10 +111,13 @@ export function Header() {
   const tenantDisplayName = isAgentSession
     ? (agentProfile?.tenantNombre || agentProfile?.tenantSlug || "Agente")
     : (selectedTenantName || selectedTenant?.slug || tenantSlug || "Admin");
-  const tenantLogoSrc = selectedTenant?.logoUrl
-    ? selectedTenant.logoUrl.startsWith("http")
-      ? selectedTenant.logoUrl
-      : `${API_BASE}${selectedTenant.logoUrl}`
+  const rawTenantLogo = isAgentSession
+    ? (agentProfile?.tenantLogoUrl ?? null)
+    : (selectedTenant?.logoUrl ?? null);
+  const tenantLogoSrc = rawTenantLogo
+    ? rawTenantLogo.startsWith("http")
+      ? rawTenantLogo
+      : `${API_BASE}${rawTenantLogo}`
     : null;
   const identityEmail = isAgentSession
     ? (agentProfile?.email ?? "Sesion de agente")
@@ -253,7 +257,7 @@ export function Header() {
 
         {/* Tenant identity */}
         <div className="flex items-center gap-2 pl-3 border-l border-slate-200">
-          {!isAgentSession && tenantLogoSrc ? (
+          {tenantLogoSrc ? (
             <img
               src={tenantLogoSrc}
               alt={`Logo ${tenantDisplayName}`}

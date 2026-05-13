@@ -23,7 +23,7 @@ function SessionSecurityGuard() {
   const handledReloadGuardRef = useRef(false);
   const hasAccessToken = Boolean(token || getStoredAccessToken());
   const hasAgentAccessToken = Boolean(getStoredAgentAccessToken());
-  const isAgentOnSharedRoute = ["/dashboard", "/solicitudes", "/agenda", "/contactos"].includes(pathname) && hasAgentAccessToken;
+  const isAgentOnSharedRoute = ["/dashboard", "/conversaciones", "/solicitudes", "/agenda", "/contactos", "/agente/conversaciones"].includes(pathname) && hasAgentAccessToken;
   const effectiveRefreshToken = refreshToken ?? getStoredRefreshToken();
 
   useEffect(() => {
