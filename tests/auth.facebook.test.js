@@ -4,7 +4,7 @@ const jwt = require('jsonwebtoken');
 
 const mockPrisma = {
   adminUser: {
-    findUnique: jest.fn(),
+    findFirst: jest.fn(),
     update: jest.fn(),
   },
   refreshToken: {
@@ -77,7 +77,7 @@ describe('POST /auth/facebook', () => {
         json: async () => ({ id: 'fb-user-1', email: 'admin@example.com', name: 'Admin FB' }),
       });
 
-    mockPrisma.adminUser.findUnique.mockResolvedValue({
+    mockPrisma.adminUser.findFirst.mockResolvedValue({
       id: 7,
       tenantId: 'aaaaaaaa-0000-0000-0000-000000000001',
       email: 'admin@example.com',
@@ -121,7 +121,7 @@ describe('POST /auth/facebook', () => {
         json: async () => ({ id: 'fb-user-2', email: 'no-user@example.com' }),
       });
 
-    mockPrisma.adminUser.findUnique.mockResolvedValue(null);
+    mockPrisma.adminUser.findFirst.mockResolvedValue(null);
 
     const res = await request(app)
       .post('/auth/facebook')
