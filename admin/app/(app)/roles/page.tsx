@@ -41,12 +41,18 @@ export default function RolesPage() {
   const { data: permisos = [] } = useQuery<Permiso[]>({
     queryKey: ["permisos"],
     queryFn: () => rbacApi.listPermisos().then((r) => r.data),
+    enabled: canManageRoles,
   });
 
   const { data: roles = [], isLoading: loadingRoles } = useQuery<Role[]>({
     queryKey: ["roles"],
     queryFn: () => rbacApi.listRoles().then((r) => r.data),
+    enabled: canManageRoles,
   });
+
+  useEffect(() => {
+    if (!canManageRoles && tab === "roles") setTab("users");
+  }, [canManageRoles, tab]);
 
   const { data: users = [], isLoading: loadingUsers } = useQuery<AdminUser[]>({
     queryKey: ["adminUsers"],
@@ -73,7 +79,7 @@ export default function RolesPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-semibold text-gray-900">Roles y Accesos</h1>
+          <h1 className="text-2xl font-semibold text-gray-900">{canManageRoles ? "Roles y Accesos" : "Usuarios admin"}</h1>
           <p className="text-sm text-gray-500 mt-1">
             {canManageRoles ? "Control granular de permisos (RBAC)" : "Gestión de usuarios admin"}
           </p>
@@ -240,15 +246,17 @@ export default function RolesPage() {
       )}
 
       {/* Create Role Modal */}
-      <CreateRoleModal
-        open={showRoleModal}
-        permisos={permisos}
-        onClose={() => setShowRoleModal(false)}
-        onCreated={() => { setShowRoleModal(false); qc.invalidateQueries({ queryKey: ["roles"] }); }}
-      />
+      {canManageRoles && (
+        <CreateRoleModal
+          open={showRoleModal}
+          permisos={permisos}
+          onClose={() => setShowRoleModal(false)}
+          onCreated={() => { setShowRoleModal(false); qc.invalidateQueries({ queryKey: ["roles"] }); }}
+        />
+      )}
 
       {/* Edit Role Modal */}
-      {editingRole && (
+      {canManageRoles && editingRole && (
         <EditRoleModal
           open={!!editingRole}
           role={editingRole}

@@ -54,6 +54,7 @@ const NAV_ITEMS: Array<{
   label: string;
   href: string;
   permission?: Permission;
+  permissions?: Permission[];
   superAdminOnly?: boolean;
 }> = [
   { icon: LayoutDashboard, label: "Panel", href: "/dashboard", permission: "VIEW_DASHBOARD" },
@@ -190,10 +191,16 @@ export function Sidebar() {
   );
 
   // Filter nav items based on permissions
-  const filteredNavItems = useMemo<(typeof NAV_ITEMS)[number][]>(
-    () => (isAgentSession ? AGENT_NAV_ITEMS : filterAuthorizedNavItems(NAV_ITEMS, accessContext)),
-    [accessContext, isAgentSession]
-  );
+  const filteredNavItems = useMemo<(typeof NAV_ITEMS)[number][]>(() => {
+    if (isAgentSession) return AGENT_NAV_ITEMS;
+
+    const onlyManageUsers = !superAdmin && permissionSet.has("MANAGE_USERS") && !permissionSet.has("MANAGE_ROLES");
+    const navItems = onlyManageUsers
+      ? NAV_ITEMS.map((item) => (item.href === "/roles" ? { ...item, label: "Usuarios admin" } : item))
+      : NAV_ITEMS;
+
+    return filterAuthorizedNavItems(navItems, accessContext);
+  }, [accessContext, isAgentSession, permissionSet, superAdmin]);
 
   const authorizedFallbackHref = useMemo(
     () => resolveAuthorizedFallback(NAV_ITEMS, accessContext, "/dashboard"),
