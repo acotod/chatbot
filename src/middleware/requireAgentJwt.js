@@ -53,7 +53,7 @@ async function requireAgentJwt(req, res, next) {
         tenantId: payload.tenantId,
       },
       include: {
-        tenant: { select: { id: true, slug: true, nombre: true } },
+        tenant: { select: { id: true, slug: true, nombre: true, logoUrl: true } },
         puesto: { select: { id: true, nombre: true } },
       },
     });
@@ -68,6 +68,7 @@ async function requireAgentJwt(req, res, next) {
       tenantId: agente.tenantId,
       tenantSlug: agente.tenant?.slug ?? null,
       tenantNombre: agente.tenant?.nombre ?? null,
+      tenantLogoUrl: agente.tenant?.logoUrl ?? null,
       nombre: agente.nombre,
       email: agente.email,
       whatsapp: agente.whatsapp,

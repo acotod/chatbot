@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { type AgentConversation, agentAuthApi, type AgentSolicitud, type AgentSolicitudMessage } from "@/lib/agentApi";
+import { Header } from "@/components/layout/Header";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Modal } from "@/components/ui/Modal";
@@ -190,8 +191,9 @@ export default function AgentSolicitudesPage() {
 	}
 
 	return (
-		<div className="min-h-screen bg-slate-50 p-4 sm:p-6">
-			<div className="mx-auto max-w-5xl space-y-4">
+		<div className="min-h-screen bg-slate-50">
+			<Header />
+			<div className="mx-auto max-w-5xl space-y-4 p-4 sm:p-6">
 				<div className="rounded-2xl border bg-white p-5">
 					<h1 className="text-xl font-semibold text-slate-900">Solicitudes asignadas</h1>
 					<p className="mt-1 text-sm text-slate-500">Vista del agente sobre sus solicitudes.</p>

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
 import { agentAuthApi } from "@/lib/agentApi";
+import { Header } from "@/components/layout/Header";
 
 export default function AgentAgendaPage() {
 	const { data, isLoading, isError } = useQuery({
@@ -13,8 +14,9 @@ export default function AgentAgendaPage() {
 	const events = data?.data ?? [];
 
 	return (
-		<div className="min-h-screen bg-slate-50 p-4 sm:p-6">
-			<div className="mx-auto max-w-5xl space-y-4">
+		<div className="min-h-screen bg-slate-50">
+			<Header />
+			<div className="mx-auto max-w-5xl space-y-4 p-4 sm:p-6">
 				<div className="rounded-2xl border bg-white p-5">
 					<h1 className="text-xl font-semibold text-slate-900">Mi agenda</h1>
 					<p className="mt-1 text-sm text-slate-500">Eventos asignados al agente (proximos 30 dias).</p>
