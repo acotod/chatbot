@@ -1828,7 +1828,12 @@ router.patch('/tenants/:slug/solicitudes/:id', requirePermiso('EDIT_SOLICITUDES'
         const updates = {};
         for (const key of allowedFields) {
             if (Object.prototype.hasOwnProperty.call(req.body || {}, key)) {
-                updates[key] = req.body[key];
+                const value = req.body[key];
+                // Skip empty strings and undefined (keep null for explicit null values)
+                if (value === '' || value === undefined) {
+                    continue;
+                }
+                updates[key] = value;
             }
         }
 

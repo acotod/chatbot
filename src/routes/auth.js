@@ -1360,7 +1360,12 @@ router.patch('/agent/solicitudes/:id', requireAgentJwt, async (req, res, next) =
     const updates = {};
     for (const key of allowedFields) {
       if (Object.prototype.hasOwnProperty.call(req.body || {}, key)) {
-        updates[key] = req.body[key];
+        const value = req.body[key];
+        // Skip empty strings and undefined (keep null for explicit null values)
+        if (value === '' || value === undefined) {
+          continue;
+        }
+        updates[key] = value;
       }
     }
 
@@ -1371,7 +1376,7 @@ router.patch('/agent/solicitudes/:id', requireAgentJwt, async (req, res, next) =
     if (updates.estado !== undefined) {
       const normalizedEstado = db.normalizeSolicitudStatus(updates.estado, '');
       if (!normalizedEstado || !Object.values(db.SOLICITUD_STATUS).includes(normalizedEstado)) {
-        return res.status(400).json({ error: 'estado is invalid' });
+        return res.status(400).json({ error: `estado must be one of: ${Object.values(db.SOLICITUD_STATUS).join(', ')}` });
       }
       updates.estado = normalizedEstado;
     }

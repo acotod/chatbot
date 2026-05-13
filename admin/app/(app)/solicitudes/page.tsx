@@ -17,7 +17,7 @@ import { cn, formatDate } from "@/lib/utils";
 import { AlertTriangle, Clock3, Filter, MessageCircleMore, Search, UserCheck } from "lucide-react";
 import { useSocket } from "@/hooks/useSocket";
 
-const ESTADOS = ["", "open", "in_progress", "pending_info", "completed", "rejected"];
+const ESTADOS = ["open", "in_progress", "pending_info", "completed", "rejected"];
 const PRIORIDADES = ["", "baja", "media", "alta"];
 const CATEGORIAS = ["", "tecnico", "facturacion", "comercial", "soporte", "otro"];
 const SLA_FILTERS = ["", "on_track", "warning", "breached", "no_sla"];
@@ -204,7 +204,7 @@ export default function SolicitudesPage() {
   }>({ open: false, solicitud: null });
   const [detailTab, setDetailTab] = useState<"resumen" | "conversaciones" | "mensajes">("resumen");
   const [detailDraft, setDetailDraft] = useState({
-    estado: "",
+    estado: "open",
     prioridad: "",
     agenteId: "",
     categoria: "",
