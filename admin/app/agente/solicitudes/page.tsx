@@ -215,10 +215,7 @@ export default function AgentSolicitudesPage() {
 				<Card>
 					{isLoading && <div className="py-16 text-center text-sm text-slate-400">Cargando solicitudes...</div>}
 					{isError && <div className="py-16 text-center text-sm text-rose-600">No se pudieron cargar las solicitudes.</div>}
-					{!isLoading && !isError && rows.length === 0 && (
-						<div className="py-16 text-center text-sm text-slate-400">No hay solicitudes para este filtro.</div>
-					)}
-					{!isLoading && !isError && rows.length > 0 && (
+					{!isLoading && !isError && (
 						<div className="overflow-x-auto">
 							<table className="min-w-full text-sm">
 								<thead className="bg-slate-50 text-slate-600">
@@ -235,47 +232,55 @@ export default function AgentSolicitudesPage() {
 									</tr>
 								</thead>
 								<tbody>
-									{rows.map((item) => (
-										<tr key={item.id} className="border-t border-slate-100">
-											<td className="px-4 py-3 text-slate-700">#{item.id}</td>
-											<td className="px-4 py-3 text-slate-700">{item.titulo || item.nombre || "Sin titulo"}</td>
-											<td className="px-4 py-3 text-slate-600">{item.nombre || item.telefonoContacto || "-"}</td>
-											<td className="px-4 py-3 text-slate-700">{CATEGORIA_LABELS[item.categoria || ""] ?? item.categoria ?? "-"}</td>
-											<td className="px-4 py-3 text-slate-700">{ESTADO_LABELS[item.estado || ""] ?? item.estado ?? "-"}</td>
-											<td className="px-4 py-3 text-slate-700">{PRIORIDAD_LABELS[item.prioridad || ""] ?? item.prioridad ?? "-"}</td>
-											<td className="px-4 py-3 text-slate-500">{item.dueAt ? formatDate(item.dueAt) : "-"}</td>
-											<td className="px-4 py-3 text-slate-500">{formatDate(item.updatedAt)}</td>
-											<td className="px-4 py-3">
-												<div className="flex items-center gap-2">
-													{item.estado === "open" && (
-														<button
-															type="button"
-															onClick={() => updateAgentSolicitud.mutate({ id: item.id, data: { estado: "in_progress" } })}
-															className="rounded-lg border border-blue-200 bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700"
-														>
-															Tomar
-														</button>
-													)}
-													{item.estado !== "completed" && item.estado !== "rejected" && (
-														<button
-															type="button"
-															onClick={() => updateAgentSolicitud.mutate({ id: item.id, data: { estado: "completed" } })}
-															className="rounded-lg border border-emerald-200 bg-emerald-50 px-2 py-1 text-xs font-medium text-emerald-700"
-														>
-															Completar
-														</button>
-													)}
-													<button
-														type="button"
-														onClick={() => openSolicitudDetail(item)}
-														className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs font-medium text-slate-700"
-													>
-														Conversaciones
-													</button>
-												</div>
+									{rows.length === 0 ? (
+										<tr className="border-t border-slate-100">
+											<td colSpan={9} className="px-4 py-10 text-center text-sm text-slate-400">
+												No hay solicitudes para este filtro.
 											</td>
 										</tr>
-									))}
+									) : (
+										rows.map((item) => (
+											<tr key={item.id} className="border-t border-slate-100">
+												<td className="px-4 py-3 text-slate-700">#{item.id}</td>
+												<td className="px-4 py-3 text-slate-700">{item.titulo || item.nombre || "Sin titulo"}</td>
+												<td className="px-4 py-3 text-slate-600">{item.nombre || item.telefonoContacto || "-"}</td>
+												<td className="px-4 py-3 text-slate-700">{CATEGORIA_LABELS[item.categoria || ""] ?? item.categoria ?? "-"}</td>
+												<td className="px-4 py-3 text-slate-700">{ESTADO_LABELS[item.estado || ""] ?? item.estado ?? "-"}</td>
+												<td className="px-4 py-3 text-slate-700">{PRIORIDAD_LABELS[item.prioridad || ""] ?? item.prioridad ?? "-"}</td>
+												<td className="px-4 py-3 text-slate-500">{item.dueAt ? formatDate(item.dueAt) : "-"}</td>
+												<td className="px-4 py-3 text-slate-500">{formatDate(item.updatedAt)}</td>
+												<td className="px-4 py-3">
+													<div className="flex items-center gap-2">
+														{item.estado === "open" && (
+															<button
+																type="button"
+																onClick={() => updateAgentSolicitud.mutate({ id: item.id, data: { estado: "in_progress" } })}
+																className="rounded-lg border border-blue-200 bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700"
+															>
+																Tomar
+															</button>
+														)}
+														{item.estado !== "completed" && item.estado !== "rejected" && (
+															<button
+																type="button"
+																onClick={() => updateAgentSolicitud.mutate({ id: item.id, data: { estado: "completed" } })}
+																className="rounded-lg border border-emerald-200 bg-emerald-50 px-2 py-1 text-xs font-medium text-emerald-700"
+															>
+																Completar
+															</button>
+														)}
+														<button
+															type="button"
+															onClick={() => openSolicitudDetail(item)}
+															className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs font-medium text-slate-700"
+														>
+															Conversaciones
+														</button>
+													</div>
+												</td>
+											</tr>
+										))
+									)}
 								</tbody>
 							</table>
 						</div>
