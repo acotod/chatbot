@@ -897,7 +897,9 @@ router.post('/simulate/inbound', async (req, res, next) => {
       return res.status(500).json({ error: 'Sandbox runtime is unavailable' });
     }
 
-    const e2eEnabled = req.body?.e2e !== false;
+    // Manual "Simular inbound" should run a single realistic inbound message by default.
+    // Auto E2E traversal remains available only when explicitly requested.
+    const e2eEnabled = req.body?.e2e === true;
     const e2eTraverseAllPaths = req.body?.e2eTraverseAllPaths !== false;
     const e2eUseLlm = req.body?.e2eUseLlm !== false;
     const e2eMaxSteps = parseLimit(req.body?.e2eMaxSteps, 8, 30);

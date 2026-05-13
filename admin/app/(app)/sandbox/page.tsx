@@ -154,6 +154,7 @@ export default function SandboxPage() {
         phone,
         text,
         contactName,
+        e2e: false,
       }).then((res) => res.data as SimulationResponse),
     onSuccess: (result) => {
       if (result.simulated.conversationId) {
