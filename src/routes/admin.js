@@ -1055,7 +1055,7 @@ router.put('/tenants/:slug/solicitudes/config', requirePermiso('EDIT_SOLICITUDES
 });
 
 // GET /admin/tenants/:slug/solicitudes/webhooks
-router.get('/tenants/:slug/solicitudes/webhooks', requirePermiso('VIEW_SOLICITUDES'), async (req, res, next) => {
+router.get('/tenants/:slug/solicitudes/webhooks', requirePermiso('MANAGE_WEBHOOKS'), async (req, res, next) => {
     try {
         const tenant = await db.findTenantBySlug(req.params.slug);
         if (!tenant) return res.status(404).json({ error: 'Tenant not found' });
@@ -1075,7 +1075,7 @@ router.get('/tenants/:slug/solicitudes/webhooks', requirePermiso('VIEW_SOLICITUD
 });
 
 // POST /admin/tenants/:slug/solicitudes/webhooks
-router.post('/tenants/:slug/solicitudes/webhooks', requirePermiso('EDIT_SOLICITUDES'), async (req, res, next) => {
+router.post('/tenants/:slug/solicitudes/webhooks', requirePermiso('MANAGE_WEBHOOKS'), async (req, res, next) => {
     try {
         const tenant = await db.findTenantBySlug(req.params.slug);
         if (!tenant) return res.status(404).json({ error: 'Tenant not found' });
@@ -1120,7 +1120,7 @@ router.post('/tenants/:slug/solicitudes/webhooks', requirePermiso('EDIT_SOLICITU
 });
 
 // PATCH /admin/tenants/:slug/solicitudes/webhooks/:id
-router.patch('/tenants/:slug/solicitudes/webhooks/:id', requirePermiso('EDIT_SOLICITUDES'), async (req, res, next) => {
+router.patch('/tenants/:slug/solicitudes/webhooks/:id', requirePermiso('MANAGE_WEBHOOKS'), async (req, res, next) => {
     try {
         const tenant = await db.findTenantBySlug(req.params.slug);
         if (!tenant) return res.status(404).json({ error: 'Tenant not found' });
@@ -1169,7 +1169,7 @@ router.patch('/tenants/:slug/solicitudes/webhooks/:id', requirePermiso('EDIT_SOL
 });
 
 // DELETE /admin/tenants/:slug/solicitudes/webhooks/:id
-router.delete('/tenants/:slug/solicitudes/webhooks/:id', requirePermiso('EDIT_SOLICITUDES'), async (req, res, next) => {
+router.delete('/tenants/:slug/solicitudes/webhooks/:id', requirePermiso('MANAGE_WEBHOOKS'), async (req, res, next) => {
     try {
         const tenant = await db.findTenantBySlug(req.params.slug);
         if (!tenant) return res.status(404).json({ error: 'Tenant not found' });
@@ -1196,7 +1196,7 @@ router.delete('/tenants/:slug/solicitudes/webhooks/:id', requirePermiso('EDIT_SO
 });
 
 // GET /admin/tenants/:slug/solicitudes/webhooks/deliveries
-router.get('/tenants/:slug/solicitudes/webhooks/deliveries', requirePermiso('VIEW_METRICS'), async (req, res, next) => {
+router.get('/tenants/:slug/solicitudes/webhooks/deliveries', requirePermiso('MANAGE_WEBHOOKS'), async (req, res, next) => {
     try {
         const tenant = await db.findTenantBySlug(req.params.slug);
         if (!tenant) return res.status(404).json({ error: 'Tenant not found' });
@@ -1215,7 +1215,7 @@ router.get('/tenants/:slug/solicitudes/webhooks/deliveries', requirePermiso('VIE
 });
 
 // POST /admin/tenants/:slug/solicitudes/webhooks/test
-router.post('/tenants/:slug/solicitudes/webhooks/test', requirePermiso('EDIT_SOLICITUDES'), async (req, res, next) => {
+router.post('/tenants/:slug/solicitudes/webhooks/test', requirePermiso('MANAGE_WEBHOOKS'), async (req, res, next) => {
     try {
         const tenant = await db.findTenantBySlug(req.params.slug);
         if (!tenant) return res.status(404).json({ error: 'Tenant not found' });

@@ -35,7 +35,7 @@ const LOGIN_REDIRECT_ORDER: Array<{ href: string; permission: Permission }> = [
   { href: "/integraciones", permission: "MANAGE_TENANTS" },
   { href: "/variables", permission: "EDIT_FLUJOS" },
   { href: "/waba-flujos", permission: "VIEW_FLUJOS" },
-  { href: "/webhooks", permission: "EDIT_SOLICITUDES" },
+  { href: "/webhooks", permission: "MANAGE_WEBHOOKS" },
   { href: "/sandbox", permission: "VIEW_SANDBOX" },
 ];
 

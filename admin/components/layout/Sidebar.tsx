@@ -72,7 +72,7 @@ const NAV_ITEMS: Array<{
   { icon: Plug, label: "Integraciones", href: "/integraciones", permission: "MANAGE_TENANTS" },
   { icon: Variable, label: "Variables", href: "/variables", permission: "EDIT_FLUJOS" },
   { icon: Webhook, label: "WABA Flujos", href: "/waba-flujos", permission: "VIEW_FLUJOS" },
-  { icon: Webhook, label: "Webhooks", href: "/webhooks", permission: "EDIT_SOLICITUDES" },
+  { icon: Webhook, label: "Webhooks", href: "/webhooks", permission: "MANAGE_WEBHOOKS" },
   { icon: TestTube2, label: "Sandbox", href: "/sandbox", permission: "VIEW_SANDBOX" },
 ];
 
