@@ -1,5 +1,4 @@
 import axios from "axios";
-import { API_BASE } from "./api";
 import { getStoredAgentAccessToken } from "@/store/agentAuth";
 import { getTabId } from "./tabManager";
 
@@ -27,13 +26,32 @@ function getRequestTabId(): string {
   return inMemoryRequestTabId;
 }
 
+function getAgentApiBase(): string {
+  if (typeof window === "undefined") return "http://127.0.0.1:3200";
+  const { hostname, origin, port, protocol } = window.location;
+  if (hostname === "localhost" || hostname === "127.0.0.1") {
+    return "http://127.0.0.1:3200";
+  }
+  if (hostname.startsWith("admin.")) {
+    return `${protocol}//api.${hostname.slice("admin.".length)}${port ? `:${port}` : ""}`;
+  }
+  if (hostname.startsWith("agente.")) {
+    return `${protocol}//api.${hostname.slice("agente.".length)}${port ? `:${port}` : ""}`;
+  }
+  return origin;
+}
+
 export const agentApiClient = axios.create({
-  baseURL: API_BASE,
+  baseURL: getAgentApiBase(),
   headers: { "Content-Type": "application/json" },
   timeout: 10000,
 });
 
 agentApiClient.interceptors.request.use((config) => {
+  // Dynamically update baseURL for agent subdomain routing
+  if (typeof window !== "undefined") {
+    config.baseURL = getAgentApiBase();
+  }
   const token = getStoredAgentAccessToken();
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
