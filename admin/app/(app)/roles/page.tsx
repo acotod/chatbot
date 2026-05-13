@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { rbacApi, tenantApi } from "@/lib/api";
 import { getMe } from "@/lib/useMe";
-import { getStoredAccessToken } from "@/store/auth";
+import { getStoredAccessToken, useAuthStore } from "@/store/auth";
 import { Plus, Trash2, Shield, Users, Pencil } from "lucide-react";
 import { Modal } from "@/components/ui/Modal";
 import axios from "axios";
@@ -28,7 +28,11 @@ export default function RolesPage() {
   const me = getMe();
   const hasAccessToken = Boolean(getStoredAccessToken());
   const isTenantAdmin = !me?.superAdmin && !!me?.tenantId;
-  const [tab, setTab] = useState<"roles" | "users">("roles");
+  const { permissions } = useAuthStore();
+  const canManageRoles = me?.superAdmin || (permissions ?? []).includes("MANAGE_ROLES");
+  const canManageUsers = me?.superAdmin || canManageRoles || (permissions ?? []).includes("MANAGE_USERS");
+  // Users-only managers start on the users tab and cannot navigate to roles tab
+  const [tab, setTab] = useState<"roles" | "users">(canManageRoles ? "roles" : "users");
   const [showRoleModal, setShowRoleModal] = useState(false);
   const [showUserModal, setShowUserModal] = useState(false);
   const [editingRole, setEditingRole] = useState<Role | null>(null);
@@ -70,37 +74,43 @@ export default function RolesPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-semibold text-gray-900">Roles y Accesos</h1>
-          <p className="text-sm text-gray-500 mt-1">Control granular de permisos (RBAC)</p>
+          <p className="text-sm text-gray-500 mt-1">
+            {canManageRoles ? "Control granular de permisos (RBAC)" : "Gestión de usuarios admin"}
+          </p>
         </div>
-        <button
-          onClick={() => (tab === "roles" ? setShowRoleModal(true) : setShowUserModal(true))}
-          className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-blue-700 transition"
-        >
-          <Plus className="w-4 h-4" />
-          {tab === "roles" ? "Nuevo rol" : "Nuevo usuario"}
-        </button>
+        {(tab === "users" ? canManageUsers : canManageRoles) && (
+          <button
+            onClick={() => (tab === "roles" ? setShowRoleModal(true) : setShowUserModal(true))}
+            className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-blue-700 transition"
+          >
+            <Plus className="w-4 h-4" />
+            {tab === "roles" ? "Nuevo rol" : "Nuevo usuario"}
+          </button>
+        )}
       </div>
 
       {/* Tabs */}
-      <div className="flex border-b">
-        {(["roles", "users"] as const).map((t) => (
-          <button
-            key={t}
-            onClick={() => setTab(t)}
-            className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition ${
-              tab === t
-                ? "border-blue-600 text-blue-600"
-                : "border-transparent text-gray-500 hover:text-gray-700"
-            }`}
-          >
-            {t === "roles" ? (
-              <span className="flex items-center gap-2"><Shield className="w-4 h-4" />Roles</span>
-            ) : (
-              <span className="flex items-center gap-2"><Users className="w-4 h-4" />Usuarios admin</span>
-            )}
-          </button>
-        ))}
-      </div>
+      {canManageRoles && (
+        <div className="flex border-b">
+          {(["roles", "users"] as const).map((t) => (
+            <button
+              key={t}
+              onClick={() => setTab(t)}
+              className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition ${
+                tab === t
+                  ? "border-blue-600 text-blue-600"
+                  : "border-transparent text-gray-500 hover:text-gray-700"
+              }`}
+            >
+              {t === "roles" ? (
+                <span className="flex items-center gap-2"><Shield className="w-4 h-4" />Roles</span>
+              ) : (
+                <span className="flex items-center gap-2"><Users className="w-4 h-4" />Usuarios admin</span>
+              )}
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* Roles */}
       {tab === "roles" && (
@@ -255,6 +265,7 @@ export default function RolesPage() {
         tenants={tenants}
         isTenantAdmin={isTenantAdmin}
         callerTenantId={me?.tenantId ?? null}
+        canManageRoles={canManageRoles}
         onClose={() => setShowUserModal(false)}
         onCreated={() => { setShowUserModal(false); qc.invalidateQueries({ queryKey: ["adminUsers"] }); }}
       />
@@ -268,6 +279,7 @@ export default function RolesPage() {
           tenants={tenants}
           isTenantAdmin={isTenantAdmin}
           callerTenantId={me?.tenantId ?? null}
+          canManageRoles={canManageRoles}
           onClose={() => setEditingUser(null)}
           onSaved={() => { setEditingUser(null); qc.invalidateQueries({ queryKey: ["adminUsers"] }); }}
         />
@@ -347,13 +359,14 @@ function CreateRoleModal({
 }
 
 function CreateUserModal({
-  open, roles, tenants, isTenantAdmin, callerTenantId, onClose, onCreated,
+  open, roles, tenants, isTenantAdmin, callerTenantId, canManageRoles, onClose, onCreated,
 }: {
   open: boolean;
   roles: Role[];
   tenants: Tenant[];
   isTenantAdmin: boolean;
   callerTenantId: string | null;
+  canManageRoles: boolean;
   onClose: () => void;
   onCreated: () => void;
 }) {
@@ -395,12 +408,16 @@ function CreateUserModal({
     }
     setLoading(true); setError("");
     try {
-      if (selectedRoles.size === 0) {
+      if (canManageRoles && selectedRoles.size === 0) {
         setError("Selecciona al menos un rol");
         setLoading(false);
         return;
       }
-      await rbacApi.createUser({ ...form, tenantId: tenantId || null, roleIds: [...selectedRoles] });
+      await rbacApi.createUser({
+        ...form,
+        tenantId: tenantId || null,
+        roleIds: canManageRoles ? [...selectedRoles] : [],
+      });
       onCreated();
       setForm({ nombre: "", email: "", password: "" });
       setTenantId(callerTenantId ?? "");
@@ -453,23 +470,27 @@ function CreateUserModal({
           )}
         </div>
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">Roles</label>
-          <div className="space-y-1 max-h-32 overflow-y-auto">
-            {allowedRoles.map((r) => (
-              <label key={r.id} className="flex items-center gap-2 text-sm cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={selectedRoles.has(r.id)}
-                  onChange={() => toggleRole(r.id)}
-                  className="rounded"
-                />
-                {r.nombre}
-              </label>
-            ))}
-            {allowedRoles.length === 0 && (
-              <p className="text-xs text-gray-400">No hay roles disponibles para el tenant seleccionado.</p>
-            )}
-          </div>
+          {canManageRoles && (
+            <>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Roles</label>
+              <div className="space-y-1 max-h-32 overflow-y-auto">
+                {allowedRoles.map((r) => (
+                  <label key={r.id} className="flex items-center gap-2 text-sm cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={selectedRoles.has(r.id)}
+                      onChange={() => toggleRole(r.id)}
+                      className="rounded"
+                    />
+                    {r.nombre}
+                  </label>
+                ))}
+                {allowedRoles.length === 0 && (
+                  <p className="text-xs text-gray-400">No hay roles disponibles para el tenant seleccionado.</p>
+                )}
+              </div>
+            </>
+          )}
         </div>
         {error && <p className="text-sm text-red-500">{error}</p>}
         <button
@@ -564,7 +585,7 @@ function EditRoleModal({
 // ── Edit User ──────────────────────────────────────────────────────────────────
 
 function EditUserModal({
-  open, user, roles, tenants, isTenantAdmin, callerTenantId, onClose, onSaved,
+  open, user, roles, tenants, isTenantAdmin, callerTenantId, canManageRoles, onClose, onSaved,
 }: {
   open: boolean;
   user: AdminUser;
@@ -572,6 +593,7 @@ function EditUserModal({
   tenants: Tenant[];
   isTenantAdmin: boolean;
   callerTenantId: string | null;
+  canManageRoles: boolean;
   onClose: () => void;
   onSaved: () => void;
 }) {
@@ -615,7 +637,7 @@ function EditUserModal({
     }
     setLoading(true); setError("");
     try {
-      if (selectedRoles.size === 0) {
+      if (canManageRoles && selectedRoles.size === 0) {
         setError("Selecciona al menos un rol");
         setLoading(false);
         return;
@@ -624,7 +646,7 @@ function EditUserModal({
         nombre: form.nombre,
         email: form.email,
         tenantId: tenantId || null,
-        roleIds: [...selectedRoles],
+        ...(canManageRoles ? { roleIds: [...selectedRoles] } : {}),
       };
       if (form.password) payload.password = form.password;
       await rbacApi.updateUser(user.id, payload);
@@ -694,23 +716,39 @@ function EditUserModal({
           )}
         </div>
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">Roles</label>
-          <div className="space-y-1 max-h-32 overflow-y-auto">
-            {allowedRoles.map((r) => (
-              <label key={r.id} className="flex items-center gap-2 text-sm cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={selectedRoles.has(r.id)}
-                  onChange={() => toggleRole(r.id)}
-                  className="rounded"
-                />
-                {r.nombre}
-              </label>
-            ))}
-            {allowedRoles.length === 0 && (
-              <p className="text-xs text-gray-400">No hay roles disponibles para el tenant seleccionado.</p>
-            )}
-          </div>
+          {canManageRoles ? (
+            <>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Roles</label>
+              <div className="space-y-1 max-h-32 overflow-y-auto">
+                {allowedRoles.map((r) => (
+                  <label key={r.id} className="flex items-center gap-2 text-sm cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={selectedRoles.has(r.id)}
+                      onChange={() => toggleRole(r.id)}
+                      className="rounded"
+                    />
+                    {r.nombre}
+                  </label>
+                ))}
+                {allowedRoles.length === 0 && (
+                  <p className="text-xs text-gray-400">No hay roles disponibles para el tenant seleccionado.</p>
+                )}
+              </div>
+            </>
+          ) : (
+            <div>
+              <p className="text-xs text-gray-500 font-medium mb-1">Roles asignados</p>
+              <div className="space-y-1">
+                {user.roles.length === 0 ? (
+                  <p className="text-xs text-gray-400">Sin roles asignados</p>
+                ) : user.roles.map(({ role }) => (
+                  <span key={role.id} className="inline-block text-xs bg-blue-50 text-blue-700 px-2 py-1 rounded mr-1">{role.nombre}</span>
+                ))}
+              </div>
+              <p className="text-xs text-gray-400 mt-1">No tienes permiso para cambiar roles.</p>
+            </div>
+          )}
         </div>
         {error && <p className="text-sm text-red-500">{error}</p>}
         <button

@@ -15,8 +15,10 @@ export type Permission =
   | 'EDIT_FLUJOS'
   | 'VIEW_AUDITORIA'
   | 'MANAGE_ROLES'
+  | 'MANAGE_USERS'
   | 'MANAGE_TENANTS'
   | 'VIEW_NOTIFICATIONS'
+  | 'MANAGE_WEBHOOKS'
   | 'VIEW_METRICS';
 
 export interface AdminUser {

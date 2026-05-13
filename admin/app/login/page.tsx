@@ -30,6 +30,7 @@ const LOGIN_REDIRECT_ORDER: Array<{ href: string; permission: Permission }> = [
   { href: "/configuracion", permission: "MANAGE_TENANTS" },
   { href: "/auditoria", permission: "VIEW_AUDITORIA" },
   { href: "/roles", permission: "MANAGE_ROLES" },
+    { href: "/roles", permission: "MANAGE_USERS" },
   { href: "/tenants", permission: "MANAGE_TENANTS" },
   { href: "/integraciones", permission: "MANAGE_TENANTS" },
   { href: "/variables", permission: "EDIT_FLUJOS" },

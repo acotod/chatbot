@@ -3,6 +3,7 @@ import type { Permission } from "@/lib/permissions";
 export type SidebarNavItem = {
   href: string;
   permission?: Permission;
+  permissions?: Permission[]; // OR — user needs any one of these
   superAdminOnly?: boolean;
 };
 
@@ -17,6 +18,7 @@ export function canAccessNavItem<T extends SidebarNavItem>(
 ): boolean {
   if (context.superAdmin) return true;
   if (item.superAdminOnly) return false;
+  if (item.permissions?.length) return item.permissions.some((p) => context.permissionSet.has(p));
   if (!item.permission) return false;
   return context.permissionSet.has(item.permission);
 }

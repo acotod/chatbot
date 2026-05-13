@@ -75,7 +75,8 @@ async function validateRoleAssignmentScope(roleIds, targetTenantId, callerIsTena
 // ── Permisos ──────────────────────────────────────────────────────────────────
 
 // GET /rbac/permisos
-router.get('/permisos', requirePermiso('MANAGE_ROLES'), async (_req, res, next) => {
+// Accessible to both MANAGE_ROLES and MANAGE_USERS so users-only managers can see the list
+router.get('/permisos', requirePermiso(['MANAGE_ROLES', 'MANAGE_USERS']), async (_req, res, next) => {
   try {
     const permisos = await prisma.permiso.findMany({ orderBy: { clave: 'asc' } });
     res.json(permisos);
@@ -175,7 +176,7 @@ router.delete('/roles/:id', requirePermiso('MANAGE_ROLES'), async (req, res, nex
 // ── Admin Users ───────────────────────────────────────────────────────────────
 
 // GET /rbac/users
-router.get('/users', requirePermiso('MANAGE_ROLES'), async (req, res, next) => {
+router.get('/users', requirePermiso(['MANAGE_ROLES', 'MANAGE_USERS']), async (req, res, next) => {
   try {
     const tenant = callerTenant(req);
     // Tenant admins cannot see superAdmin users
@@ -191,7 +192,7 @@ router.get('/users', requirePermiso('MANAGE_ROLES'), async (req, res, next) => {
 });
 
 // POST /rbac/users
-router.post('/users', requirePermiso('MANAGE_ROLES'), async (req, res, next) => {
+router.post('/users', requirePermiso(['MANAGE_ROLES', 'MANAGE_USERS']), async (req, res, next) => {
   try {
     const { email, password, nombre, tenantId, roleIds, superAdmin } = req.body;
     if (!email || !password || !nombre) {
@@ -199,6 +200,10 @@ router.post('/users', requirePermiso('MANAGE_ROLES'), async (req, res, next) => 
     }
 
     const tenant = callerTenant(req);
+    // MANAGE_USERS callers (without MANAGE_ROLES and not superAdmin) cannot assign roles
+    const canManageRoles = req.admin?.superAdmin || (req.admin?.permissions ?? []).includes('MANAGE_ROLES');
+    const effectiveRoleIds = canManageRoles ? roleIds : undefined;
+
     if (tenant) {
       // Tenant admins can only create users in their own tenant and cannot elevate to superAdmin
       if (tenantId && tenantId !== tenant) {
@@ -210,7 +215,7 @@ router.post('/users', requirePermiso('MANAGE_ROLES'), async (req, res, next) => 
     }
 
     const effectiveTenantId = tenant ?? tenantId ?? null;
-    const roleScopeError = await validateRoleAssignmentScope(roleIds, effectiveTenantId, Boolean(tenant));
+    const roleScopeError = await validateRoleAssignmentScope(effectiveRoleIds, effectiveTenantId, Boolean(tenant));
     if (roleScopeError) {
       return res.status(400).json({ error: roleScopeError });
     }
@@ -221,7 +226,7 @@ router.post('/users', requirePermiso('MANAGE_ROLES'), async (req, res, next) => 
         email, passwordHash, nombre,
         tenantId: effectiveTenantId,
         superAdmin: tenant ? false : (superAdmin ?? false),
-        roles: roleIds?.length ? { create: roleIds.map((id) => ({ roleId: id })) } : undefined,
+        roles: effectiveRoleIds?.length ? { create: effectiveRoleIds.map((id) => ({ roleId: id })) } : undefined,
       },
       select: { id: true, email: true, nombre: true, superAdmin: true, tenantId: true, createdAt: true,
         roles: { include: { role: { select: { id: true, nombre: true } } } } },
@@ -235,10 +240,12 @@ router.post('/users', requirePermiso('MANAGE_ROLES'), async (req, res, next) => 
 });
 
 // PATCH /rbac/users/:id
-router.patch('/users/:id', requirePermiso('MANAGE_ROLES'), async (req, res, next) => {
+router.patch('/users/:id', requirePermiso(['MANAGE_ROLES', 'MANAGE_USERS']), async (req, res, next) => {
   try {
     const userId = Number(req.params.id);
     const { nombre, email, password, tenantId, roleIds } = req.body;
+    // MANAGE_USERS callers (without MANAGE_ROLES and not superAdmin) cannot change role assignments
+    const canManageRoles = req.admin?.superAdmin || (req.admin?.permissions ?? []).includes('MANAGE_ROLES');
 
     const existing = await prisma.adminUser.findUnique({ where: { id: userId }, select: { superAdmin: true, tenantId: true } });
     if (!existing) return res.status(404).json({ error: 'User not found' });
@@ -259,9 +266,11 @@ router.patch('/users/:id', requirePermiso('MANAGE_ROLES'), async (req, res, next
       ? tenant
       : (tenantId !== undefined ? (tenantId ?? null) : existing.tenantId);
 
-    const roleScopeError = await validateRoleAssignmentScope(roleIds, effectiveTenantId, Boolean(tenant));
-    if (roleScopeError) {
-      return res.status(400).json({ error: roleScopeError });
+    // Only allow role assignment changes if caller has MANAGE_ROLES (or superAdmin)
+    const effectiveRoleIds = canManageRoles ? roleIds : undefined;
+    const roleScopeError2 = await validateRoleAssignmentScope(effectiveRoleIds, effectiveTenantId, Boolean(tenant));
+    if (roleScopeError2) {
+      return res.status(400).json({ error: roleScopeError2 });
     }
 
     const data = {};
@@ -271,10 +280,10 @@ router.patch('/users/:id', requirePermiso('MANAGE_ROLES'), async (req, res, next
     // Only superAdmin callers can change tenantId
     if (tenantId !== undefined && !tenant) data.tenantId = tenantId ?? null;
 
-    if (roleIds !== undefined) {
+    if (effectiveRoleIds !== undefined) {
       await prisma.adminUserRole.deleteMany({ where: { adminUserId: userId } });
-      data.roles = roleIds?.length
-        ? { create: roleIds.map((id) => ({ roleId: id })) }
+      data.roles = effectiveRoleIds?.length
+        ? { create: effectiveRoleIds.map((id) => ({ roleId: id })) }
         : undefined;
     }
 
@@ -293,7 +302,7 @@ router.patch('/users/:id', requirePermiso('MANAGE_ROLES'), async (req, res, next
 });
 
 // DELETE /rbac/users/:id
-router.delete('/users/:id', requirePermiso('MANAGE_ROLES'), async (req, res, next) => {
+router.delete('/users/:id', requirePermiso(['MANAGE_ROLES', 'MANAGE_USERS']), async (req, res, next) => {
   try {
     const userId = Number(req.params.id);
     const tenant = callerTenant(req);

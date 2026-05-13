@@ -67,7 +67,7 @@ const NAV_ITEMS: Array<{
   { icon: ShieldCheck, label: "Seguridad", href: "/security" },
   { icon: CreditCard, label: "Facturación", href: "/facturacion", superAdminOnly: true },
   { icon: ScrollText, label: "Auditoría", href: "/auditoria", permission: "VIEW_AUDITORIA" },
-  { icon: ShieldCheck, label: "Roles", href: "/roles", permission: "MANAGE_ROLES" },
+  { icon: ShieldCheck, label: "Roles", href: "/roles", permissions: ["MANAGE_ROLES", "MANAGE_USERS"] },
   { icon: Building2, label: "Empresas", href: "/tenants", permission: "MANAGE_TENANTS" },
   { icon: Plug, label: "Integraciones", href: "/integraciones", permission: "MANAGE_TENANTS" },
   { icon: Variable, label: "Variables", href: "/variables", permission: "EDIT_FLUJOS" },
