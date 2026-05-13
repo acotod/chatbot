@@ -235,7 +235,7 @@ function ConvHistoryCard({ conv }: { conv: ConvRecord }) {
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 export default function ConversacionesPage() {
-  const { tenantSlug } = useAuthStore();
+  const { tenantSlug, setTenantSlug } = useAuthStore();
   const qc = useQueryClient();
   const router = useRouter();
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -261,12 +261,32 @@ export default function ConversacionesPage() {
     queryKey: ["tenant", tenantSlug],
     queryFn: () =>
       import("@/lib/api").then(({ apiClient }) =>
-        apiClient.get(`/admin/tenants/${tenantSlug}`).then((r) => r.data)
+        apiClient.get(`/admin/tenants/${tenantSlug}`).then((r) => r.data).catch(() => null)
       ),
     enabled: !!tenantSlug,
     staleTime: Infinity,
   });
-  const tenantId: string | null = tenantData?.id ?? null;
+
+  const { data: tenantsData } = useQuery({
+    queryKey: ["tenants", "conversaciones-fallback"],
+    queryFn: () => import("@/lib/api").then(({ tenantApi }) => tenantApi.list().then((r) => r.data)),
+    staleTime: 60_000,
+  });
+
+  const tenants = Array.isArray(tenantsData) ? tenantsData : [];
+  const fallbackTenant = tenants[0] ?? null;
+  const effectiveTenantSlug = tenantData?.slug ?? fallbackTenant?.slug ?? tenantSlug;
+  const tenantId: string | null = tenantData?.id ?? fallbackTenant?.id ?? null;
+
+  useEffect(() => {
+    if (!tenantSlug && effectiveTenantSlug) {
+      setTenantSlug(effectiveTenantSlug);
+      return;
+    }
+    if (tenantSlug && effectiveTenantSlug && tenantSlug !== effectiveTenantSlug) {
+      setTenantSlug(effectiveTenantSlug);
+    }
+  }, [tenantSlug, effectiveTenantSlug, setTenantSlug]);
 
   // Subscribe to WA real-time events — keeps cache up to date
   useWaSocket(tenantId);
@@ -314,19 +334,19 @@ export default function ConversacionesPage() {
 
   // Solicitudes for active contact
   const { data: solicitudesData, isLoading: solicitudesLoading, refetch: refetchSolicitudes } = useQuery({
-    queryKey: ["solicitudesContacto", tenantSlug, activeThread?.userId],
+    queryKey: ["solicitudesContacto", effectiveTenantSlug, activeThread?.userId],
     queryFn: () =>
-      solicitudesApi.list(tenantSlug!, { userId: activeThread!.userId, limit: 10 }).then((r) => r.data),
-    enabled: !!tenantSlug && !!activeThread?.userId,
+      solicitudesApi.list(effectiveTenantSlug!, { userId: activeThread!.userId, limit: 10 }).then((r) => r.data),
+    enabled: !!effectiveTenantSlug && !!activeThread?.userId,
     staleTime: 30_000,
   });
   const solicitudes: Solicitud[] = Array.isArray(solicitudesData) ? solicitudesData : (solicitudesData?.data ?? []);
 
   // Agentes list (for escalation picker)
   const { data: agentesData } = useQuery({
-    queryKey: ["agentes", tenantSlug],
-    queryFn: () => agentesApi.list(tenantSlug!).then((r) => r.data),
-    enabled: !!tenantSlug,
+    queryKey: ["agentes", effectiveTenantSlug],
+    queryFn: () => agentesApi.list(effectiveTenantSlug!).then((r) => r.data),
+    enabled: !!effectiveTenantSlug,
     staleTime: 60_000,
   });
   const agentes: Agente[] = Array.isArray(agentesData) ? agentesData : (agentesData?.data ?? []);
@@ -335,7 +355,7 @@ export default function ConversacionesPage() {
   const { data: convHistoryData } = useQuery({
     queryKey: ["convHistory", tenantId, activeThread?.user?.phone],
     queryFn: () =>
-      conversationsApi.list({ tenantSlug: tenantSlug ?? undefined, userKey: activeThread!.user!.phone!, limit: 10 }).then((r) => r.data),
+      conversationsApi.list({ tenantSlug: effectiveTenantSlug ?? undefined, userKey: activeThread!.user!.phone!, limit: 10 }).then((r) => r.data),
     enabled: !!tenantId && !!activeThread?.user?.phone && contextTab === "historial",
     staleTime: 30_000,
   });
@@ -388,9 +408,9 @@ export default function ConversacionesPage() {
 
   // Escalate: create solicitud and assign to agente
   async function handleEscalar() {
-    if (!tenantSlug || !activeThread?.userId || !escalarAgenteId) return;
+    if (!effectiveTenantSlug || !activeThread?.userId || !escalarAgenteId) return;
     try {
-      const r = await solicitudesApi.create(tenantSlug, {
+      const r = await solicitudesApi.create(effectiveTenantSlug, {
         userId: activeThread.userId,
         nombre: activeThread._contactName ?? undefined,
         telefonoContacto: activeThread.user?.phone ?? undefined,
@@ -399,7 +419,7 @@ export default function ConversacionesPage() {
       const newId: number = r.data?.id;
       if (newId && escalarAgenteId) {
         setEscalandoId(newId);
-        await solicitudesApi.assignAgente(tenantSlug, newId, Number(escalarAgenteId));
+        await solicitudesApi.assignAgente(effectiveTenantSlug, newId, Number(escalarAgenteId));
         setEscalandoId(null);
       }
       setShowEscalarForm(false);
@@ -412,8 +432,8 @@ export default function ConversacionesPage() {
 
   // Marcar urgente: create solicitud with canonical in_progress status
   async function handleMarcarUrgente() {
-    if (!tenantSlug || !activeThread?.userId) return;
-    await solicitudesApi.create(tenantSlug, {
+    if (!effectiveTenantSlug || !activeThread?.userId) return;
+    await solicitudesApi.create(effectiveTenantSlug, {
       userId: activeThread.userId,
       nombre: activeThread._contactName ?? undefined,
       telefonoContacto: activeThread.user?.phone ?? undefined,
@@ -425,7 +445,7 @@ export default function ConversacionesPage() {
   // Update solicitud estado
   const updateEstadoMutation = useMutation({
     mutationFn: ({ id, estado }: { id: number; estado: string }) =>
-      solicitudesApi.updateEstado(tenantSlug!, id, estado),
+      solicitudesApi.updateEstado(effectiveTenantSlug!, id, estado),
     onSuccess: () => refetchSolicitudes(),
   });
 
