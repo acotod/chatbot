@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { agentAuthApi, type AgentContacto } from "@/lib/agentApi";
@@ -161,6 +162,10 @@ export default function AgentContactosPage() {
 							</TableBody>
 						</Table>
 					</div>
+
+					<Link href="/agente/dashboard" className="inline-flex items-center gap-2 rounded-lg bg-cyan-600 px-4 py-2 text-sm font-medium text-white shadow hover:bg-cyan-700 active:bg-cyan-800">
+						← Volver al dashboard
+					</Link>
 				</div>
 			</main>
 		</div>
