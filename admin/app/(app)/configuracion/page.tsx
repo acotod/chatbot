@@ -8,7 +8,7 @@ import { Card, CardContent, CardHeader } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { CalendarDays, Check, Pencil, Trash2, X, Settings, MessageSquare, Lock, Briefcase, Palette } from "lucide-react";
+import { CalendarDays, Check, Pencil, Trash2, X, Settings, MessageSquare, Lock, Briefcase, Palette, RefreshCw } from "lucide-react";
 
 // ── LLM config types ──────────────────────────────────────────────────────────
 type LlmProvider = "openai" | "anthropic" | "custom";
@@ -526,6 +526,53 @@ export default function ConfiguracionPage() {
     },
   });
 
+  const [refreshingTab, setRefreshingTab] = useState<string | null>(null);
+
+  async function refreshTab(
+    tab: "comunicacion" | "email-ia" | "organizacion" | "modulos" | "branding"
+  ) {
+    if (!tenantSlug) return;
+    setRefreshingTab(tab);
+    try {
+      if (tab === "comunicacion") {
+        await Promise.all([
+          qc.invalidateQueries({ queryKey: ["config", tenantSlug, "horarios"] }),
+          qc.invalidateQueries({ queryKey: ["config", tenantSlug, "wa_credentials"] }),
+        ]);
+        return;
+      }
+
+      if (tab === "email-ia") {
+        await Promise.all([
+          qc.invalidateQueries({ queryKey: ["config", tenantSlug, "email_settings"] }),
+          qc.invalidateQueries({ queryKey: ["config", tenantSlug, "llm_config"] }),
+        ]);
+        return;
+      }
+
+      if (tab === "organizacion") {
+        await Promise.all([
+          qc.invalidateQueries({ queryKey: ["agente-puestos", tenantSlug] }),
+          qc.invalidateQueries({ queryKey: ["admin-users", tenantSlug] }),
+          qc.invalidateQueries({ queryKey: ["solicitudes-config", tenantSlug] }),
+        ]);
+        return;
+      }
+
+      if (tab === "modulos") {
+        await Promise.all([
+          qc.invalidateQueries({ queryKey: ["config", tenantSlug, "agenda_feature"] }),
+          qc.invalidateQueries({ queryKey: ["lockout-policy", tenantSlug] }),
+        ]);
+        return;
+      }
+
+      await qc.invalidateQueries({ queryKey: ["config", tenantSlug] });
+    } finally {
+      setRefreshingTab(null);
+    }
+  }
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between mb-2">
@@ -563,6 +610,18 @@ export default function ConfiguracionPage() {
         {/* COMUNICACIÓN */}
         {/* ═══════════════════════════════════════════════════════════ */}
         <TabsContent value="comunicacion" className="space-y-6 mt-4">
+          <div className="flex justify-end">
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => refreshTab("comunicacion")}
+              disabled={refreshingTab === "comunicacion"}
+            >
+              <RefreshCw size={14} className={refreshingTab === "comunicacion" ? "animate-spin" : ""} />
+              {refreshingTab === "comunicacion" ? "Actualizando..." : "Actualizar"}
+            </Button>
+          </div>
+
           {/* Horarios */}
           <ConfigSection
             title="Horarios de atención"
@@ -708,6 +767,18 @@ export default function ConfiguracionPage() {
         {/* EMAIL & IA */}
         {/* ═══════════════════════════════════════════════════════════ */}
         <TabsContent value="email-ia" className="space-y-6 mt-4">
+          <div className="flex justify-end">
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => refreshTab("email-ia")}
+              disabled={refreshingTab === "email-ia"}
+            >
+              <RefreshCw size={14} className={refreshingTab === "email-ia" ? "animate-spin" : ""} />
+              {refreshingTab === "email-ia" ? "Actualizando..." : "Actualizar"}
+            </Button>
+          </div>
+
           <ConfigSection
             title="Email transaccional"
             description="Configurá el SMTP del tenant para password reset y envíos desde flujos de conversación"
@@ -892,6 +963,18 @@ export default function ConfiguracionPage() {
         {/* ORGANIZACIÓN */}
         {/* ═══════════════════════════════════════════════════════════ */}
         <TabsContent value="organizacion" className="space-y-6 mt-4">
+          <div className="flex justify-end">
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => refreshTab("organizacion")}
+              disabled={refreshingTab === "organizacion"}
+            >
+              <RefreshCw size={14} className={refreshingTab === "organizacion" ? "animate-spin" : ""} />
+              {refreshingTab === "organizacion" ? "Actualizando..." : "Actualizar"}
+            </Button>
+          </div>
+
           {/* Catalogo de puestos */}
           <ConfigSection
             title="Catálogo de puestos"
@@ -1092,6 +1175,18 @@ export default function ConfiguracionPage() {
         {/* MÓDULOS & SEGURIDAD */}
         {/* ═══════════════════════════════════════════════════════════ */}
         <TabsContent value="modulos" className="space-y-6 mt-4">
+          <div className="flex justify-end">
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => refreshTab("modulos")}
+              disabled={refreshingTab === "modulos"}
+            >
+              <RefreshCw size={14} className={refreshingTab === "modulos" ? "animate-spin" : ""} />
+              {refreshingTab === "modulos" ? "Actualizando..." : "Actualizar"}
+            </Button>
+          </div>
+
           {/* Módulos opcionales */}
           <ConfigSection
             title="Módulos"
@@ -1182,6 +1277,18 @@ export default function ConfiguracionPage() {
         {/* BRANDING */}
         {/* ═══════════════════════════════════════════════════════════ */}
         <TabsContent value="branding" className="space-y-6 mt-4">
+          <div className="flex justify-end">
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => refreshTab("branding")}
+              disabled={refreshingTab === "branding"}
+            >
+              <RefreshCw size={14} className={refreshingTab === "branding" ? "animate-spin" : ""} />
+              {refreshingTab === "branding" ? "Actualizando..." : "Actualizar"}
+            </Button>
+          </div>
+
           {/* Branding */}
           <ConfigSection
             title="Branding"
