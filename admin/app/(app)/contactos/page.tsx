@@ -125,7 +125,7 @@ function LeadScoreBadge({ score }: { score: number | null }) {
 }
 
 export default function ContactosPage() {
-  const { tenantSlug } = useAuthStore();
+  const { tenantSlug, superAdmin } = useAuthStore();
   const qc = useQueryClient();
   const hasAccessToken = Boolean(getStoredAccessToken());
   const hasAgentAccessToken = Boolean(getStoredAgentAccessToken());
@@ -159,9 +159,9 @@ export default function ContactosPage() {
   });
 
   const { data: detail, isLoading: loadingDetail } = useQuery({
-    queryKey: ["crm-contact", selectedId],
+    queryKey: ["crm-contact", tenantSlug, selectedId],
     queryFn: () => crmApi.getContact(selectedId!, tenantSlug).then(r => r.data as ContactDetail),
-    enabled: selectedId != null,
+    enabled: selectedId != null && (!superAdmin || Boolean(tenantSlug)),
   });
 
   const deleteMutation = useMutation({
