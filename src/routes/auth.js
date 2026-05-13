@@ -280,6 +280,11 @@ router.post('/login', loginRateLimiter, async (req, res) => {
       audit({ accion: 'LOGIN', entidad: 'admin', ip, userAgent, metadata: { email: envAdminEmail, via: 'env', tabId } });
       return res.json({ accessToken: token, refreshToken, expiresIn: ACCESS_TTL, superAdmin: true });
     }
+
+    // If email matches env-admin but password is invalid, do not continue to DB auth.
+    // This avoids masking invalid credentials with downstream DB errors.
+    audit({ accion: 'LOGIN_FAILED', entidad: 'admin', ip, userAgent, metadata: { email } });
+    return res.status(401).json({ error: 'Invalid credentials' });
   }
 
   // 2. DB-backed admin user
@@ -347,6 +352,7 @@ router.post('/login', loginRateLimiter, async (req, res) => {
     audit({ adminUserId: user.id, tenantId: user.tenantId, accion: 'LOGIN', entidad: 'admin_user', entidadId: user.id, ip, userAgent, metadata: { tabId } });
     return res.json({ accessToken, refreshToken, expiresIn: ACCESS_TTL, superAdmin: effectiveSuperAdmin });
   } catch (err) {
+    console.error('[Auth] /login error', { message: err?.message });
     return res.status(500).json({ error: 'Auth error' });
   }
 });
