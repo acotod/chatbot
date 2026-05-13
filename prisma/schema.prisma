@@ -391,11 +391,13 @@ model Agente {
   whatsapp    String?     @db.VarChar(30)
   puestoId    Int?        @map("puesto_id")
   calendarLink String?    @map("calendar_link") @db.VarChar(500)
+  jefeAdminId Int?        @map("jefe_admin_id")
   estado      String      @default("activo") @db.VarChar(20)
   lastSeenAt  DateTime?   @map("last_seen_at")
   createdAt   DateTime    @default(now()) @map("created_at")
   tenant      Tenant      @relation(fields: [tenantId], references: [id])
   puesto      AgentePuesto? @relation(fields: [puestoId], references: [id], onDelete: SetNull)
+  jefeAdmin   AdminUser?  @relation("AgenteJefeAdmin", fields: [jefeAdminId], references: [id], onDelete: SetNull)
   solicitudes Solicitud[]
   agendaAssignments AgendaEventAssignment[]
   deals             Deal[]
@@ -410,6 +412,7 @@ model Agente {
 
   @@index([tenantId, puestoId])
   @@index([tenantId, email])
+  @@index([tenantId, jefeAdminId])
   @@map("agentes")
 }
 
@@ -481,6 +484,7 @@ model AdminUser {
   mfaRecoveryCodes    AdminMfaRecoveryCode[]
   suspiciousActivities SuspiciousActivity[]
   solicitudesEscaladas Solicitud[]        @relation("SolicitudEscaladaA")
+  agentesSupervised    Agente[]           @relation("AgenteJefeAdmin")
 
   @@index([tenantId, jefeId])
   @@map("admin_users")

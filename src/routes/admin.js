@@ -703,6 +703,8 @@ router.patch('/tenants/:slug/agentes/:id', requirePermiso('EDIT_AGENTES'), async
         }
 
         const puestoId = Number(req.body?.puestoId);
+        const rawJefeAdminId = req.body?.jefeAdminId;
+        const jefeAdminId = rawJefeAdminId != null && rawJefeAdminId !== '' ? Number(rawJefeAdminId) : null;
         const password = typeof req.body?.password === 'string' ? req.body.password.trim() : '';
 
         if (!Number.isInteger(id) || id <= 0) {
@@ -714,10 +716,20 @@ router.patch('/tenants/:slug/agentes/:id', requirePermiso('EDIT_AGENTES'), async
         if (password && password.length < 8) {
             return res.status(400).json({ error: 'password must contain at least 8 characters' });
         }
+        if (jefeAdminId !== null && (!Number.isInteger(jefeAdminId) || jefeAdminId <= 0)) {
+            return res.status(400).json({ error: 'jefeAdminId is invalid' });
+        }
 
         const puesto = await prisma.agentePuesto.findFirst({ where: { id: puestoId, tenantId: tenant.id, activo: true } });
         if (!puesto) {
             return res.status(400).json({ error: 'puestoId is invalid for this tenant' });
+        }
+
+        if (jefeAdminId !== null) {
+            const jefeAdmin = await prisma.adminUser.findFirst({ where: { id: jefeAdminId, tenantId: tenant.id } });
+            if (!jefeAdmin) {
+                return res.status(400).json({ error: 'jefeAdminId is invalid for this tenant' });
+            }
         }
 
         const passwordHash = password ? await bcrypt.hash(password, 12) : undefined;
@@ -730,6 +742,7 @@ router.patch('/tenants/:slug/agentes/:id', requirePermiso('EDIT_AGENTES'), async
             whatsapp,
             puestoId,
             calendarLink: calendarLinkValidation.value,
+            jefeAdminId,
             passwordHash,
         });
         if (!result || result.count === 0) {

@@ -510,10 +510,12 @@ const AGENTE_PUBLIC_SELECT = {
   whatsapp: true,
   puestoId: true,
   calendarLink: true,
+  jefeAdminId: true,
   estado: true,
   lastSeenAt: true,
   createdAt: true,
   puesto: { select: { id: true, nombre: true } },
+  jefeAdmin: { select: { id: true, nombre: true } },
 };
 
 function serializeAgente(agente) {
@@ -630,7 +632,7 @@ async function createAgente({ tenantId, nombre, email, whatsapp = null, puestoId
   return serializeAgente(agente);
 }
 
-async function updateAgente({ id, tenantId, nombre, email, whatsapp = null, puestoId = null, calendarLink = null, passwordHash }) {
+async function updateAgente({ id, tenantId, nombre, email, whatsapp = null, puestoId = null, calendarLink = null, jefeAdminId = null, passwordHash }) {
   const client = getPrismaClient();
   if (!client) return null;
   const data = {
@@ -639,6 +641,7 @@ async function updateAgente({ id, tenantId, nombre, email, whatsapp = null, pues
     whatsapp,
     puestoId,
     calendarLink,
+    jefeAdminId,
   };
 
   if (passwordHash !== undefined) {

@@ -1,6 +1,6 @@
 "use client";
 
-import { agentePuestosApi, agentesApi, calendarsApi } from "@/lib/api";
+import { agentePuestosApi, agentesApi, adminUsersApi, calendarsApi } from "@/lib/api";
 import { useAuthStore } from "@/store/auth";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
@@ -20,7 +20,15 @@ interface Agente {
   calendarLink?: string | null;
   puestoId?: number | null;
   puesto?: { id: number; nombre: string } | null;
+  jefeAdminId?: number | null;
+  jefeAdmin?: { id: number; nombre: string } | null;
   estado: string;
+}
+
+interface AdminUserItem {
+  id: number;
+  nombre: string;
+  email: string;
 }
 
 interface Calendar {
@@ -58,6 +66,7 @@ export default function AgentesPage() {
     puestoId: "",
     calendarLink: "",
     calendarId: "",
+    jefeAdminId: "",
   });
   const [editFormError, setEditFormError] = useState("");
 
@@ -76,6 +85,12 @@ export default function AgentesPage() {
   const { data: calendarsData } = useQuery({
     queryKey: ["calendars", tenantSlug],
     queryFn: () => calendarsApi.list(tenantSlug).then((r) => r.data),
+    enabled: !!tenantSlug,
+  });
+
+  const { data: adminUsersData } = useQuery({
+    queryKey: ["admin-users", tenantSlug],
+    queryFn: () => adminUsersApi.list(tenantSlug!).then((r) => r.data),
     enabled: !!tenantSlug,
   });
 
@@ -115,13 +130,14 @@ export default function AgentesPage() {
         puestoId: Number(editForm.puestoId),
         calendarLink: editForm.calendarLink,
         calendarId: editForm.calendarId || null,
+        jefeAdminId: editForm.jefeAdminId ? Number(editForm.jefeAdminId) : null,
       });
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["agentes"] });
       setEditModal(false);
       setEditingId(null);
-      setEditForm({ nombre: "", email: "", password: "", whatsapp: "", puestoId: "", calendarLink: "", calendarId: "" });
+      setEditForm({ nombre: "", email: "", password: "", whatsapp: "", puestoId: "", calendarLink: "", calendarId: "", jefeAdminId: "" });
     },
     onError: () => setEditFormError("No se pudo actualizar el agente."),
   });
@@ -129,6 +145,7 @@ export default function AgentesPage() {
   const agentes: Agente[] = data?.data ?? data ?? [];
   const puestos: AgentePuesto[] = puestosData?.data ?? puestosData ?? [];
   const calendars: Calendar[] = calendarsData?.data ?? calendarsData ?? [];
+  const adminUsers: AdminUserItem[] = adminUsersData?.data ?? adminUsersData ?? [];
   const usedCalendarIds = new Set(
     calendars
       .filter((c) => c.agenteId !== null)
@@ -175,6 +192,7 @@ export default function AgentesPage() {
       puestoId: agent.puestoId ? String(agent.puestoId) : "",
       calendarLink: agent.calendarLink ?? "",
       calendarId: calendars.find((c) => c.agenteId === agent.id)?.id ?? "",
+      jefeAdminId: agent.jefeAdminId ? String(agent.jefeAdminId) : "",
     });
     setEditModal(true);
   }
@@ -252,6 +270,7 @@ export default function AgentesPage() {
                     <p className="text-xs text-slate-500 mt-0.5">{a.email}</p>
                     {a.whatsapp && <p className="text-xs text-slate-500">WhatsApp: {a.whatsapp}</p>}
                     {a.puesto?.nombre && <p className="text-xs text-slate-500">Puesto: {a.puesto.nombre}</p>}
+                    {a.jefeAdmin?.nombre && <p className="text-xs text-slate-500">Jefe: {a.jefeAdmin.nombre}</p>}
                     <p className="text-xs text-slate-500">
                       Acceso agente: {a.passwordConfigured ? "habilitado" : "sin credenciales"}
                     </p>
@@ -435,6 +454,19 @@ export default function AgentesPage() {
               <option value="">Selecciona un puesto...</option>
               {puestos.map((p) => (
                 <option key={p.id} value={p.id}>{p.nombre}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">Jefe (supervisor admin)</label>
+            <select
+              value={editForm.jefeAdminId}
+              onChange={(e) => setEditForm((f) => ({ ...f, jefeAdminId: e.target.value }))}
+              className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-blue-500"
+            >
+              <option value="">Sin jefe asignado</option>
+              {adminUsers.map((u) => (
+                <option key={u.id} value={u.id}>{u.nombre} ({u.email})</option>
               ))}
             </select>
           </div>
