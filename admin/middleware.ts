@@ -19,9 +19,15 @@ export function middleware(request: NextRequest) {
       return NextResponse.redirect(new URL(`/agente${pathname.replace('/portal', '')}`, request.url));
     }
     
-    // Protect agent routes: if accessing /agente from agent domain, allow it
-    // Otherwise, route to /agente/login for non-public pages
-    if (!pathname.startsWith('/agente') && !pathname.startsWith('/facebook') && !pathname.startsWith('/_next')) {
+    // Protect agent routes: if accessing /agente from agent domain, allow it.
+    // Allow auth API paths so login requests don't get redirected.
+    // Otherwise, route to /agente/login for non-public pages.
+    if (
+      !pathname.startsWith('/agente') &&
+      !pathname.startsWith('/facebook') &&
+      !pathname.startsWith('/_next') &&
+      !pathname.startsWith('/auth')
+    ) {
       // This is an admin-only route accessed from agent domain, redirect to agent login
       return NextResponse.redirect(new URL('/agente/login', request.url));
     }
