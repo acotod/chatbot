@@ -335,7 +335,7 @@ export default function ConversacionesPage() {
   const { data: convHistoryData } = useQuery({
     queryKey: ["convHistory", tenantId, activeThread?.user?.phone],
     queryFn: () =>
-      conversationsApi.list({ userKey: activeThread!.user!.phone!, limit: 10 }).then((r) => r.data),
+      conversationsApi.list({ tenantSlug: tenantSlug ?? undefined, userKey: activeThread!.user!.phone!, limit: 10 }).then((r) => r.data),
     enabled: !!tenantId && !!activeThread?.user?.phone && contextTab === "historial",
     staleTime: 30_000,
   });
