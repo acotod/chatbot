@@ -209,6 +209,16 @@ async function _handleIncomingMessage({ msg, contacts, tenant, phoneNumberId, ac
   const user   = await db.findOrCreateUser(phone, tenant.id);
   const userId = user?.id ?? null;
 
+  // Fail early if we can't identify the user
+  if (userId === null) {
+    logger.error('Could not create or find user for incoming WhatsApp message', {
+      tenantId: tenant.id,
+      phone,
+      waMsgId,
+    });
+    return;
+  }
+
   // ── Build contenido + extract chatbot input ──────────────────────────────
   let contenido;
   let userInput = null;
@@ -734,11 +744,15 @@ router.post('/send', async (req, res, next) => {
     const { phoneNumberId, accessToken } = creds;
 
     const user    = await db.findOrCreateUser(to, tenantId);
+    if (!user) {
+      return res.status(500).json({ error: 'Failed to create or find user' });
+    }
+
     const waResp  = await wa.sendTextMessage(phoneNumberId, to, text, accessToken);
 
     const mensaje = await db.saveMensaje({
       tenantId,
-      userId:    user?.id ?? null,
+      userId:    user.id,
       waMsgId:   waResp.messages?.[0]?.id ?? null,
       direccion: 'salida',
       tipo:      'text',
@@ -756,7 +770,7 @@ router.post('/send', async (req, res, next) => {
         direction: 'outbound',
         occurredAt: mensaje.createdAt,
         payload: {
-          userId: user?.id ?? null,
+          userId: user.id,
           phone: to,
           waMsgId: mensaje.waMsgId,
           tipo: 'text',
@@ -772,7 +786,7 @@ router.post('/send', async (req, res, next) => {
 
     socketService.emit(tenantId, 'nuevo_mensaje', {
       id:        mensaje.id,
-      userId:    user?.id ?? null,
+      userId:    user.id,
       phone:     to,
       tipo:      'text',
       contenido: { text },

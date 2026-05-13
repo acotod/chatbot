@@ -1899,7 +1899,7 @@ async function listConversaciones(tenantId, { limit = 30 } = {}) {
   const seen = new Set();
   const threads = [];
   for (const msg of recent) {
-    const key = msg.userId ? `u:${msg.userId}` : `p:${msg.phone || 'unknown'}`;
+    const key = msg.userId ? `u:${msg.userId}` : `p:${msg.user?.phone || `msg_${msg.id}`}`;
     if (seen.has(key)) continue;
     seen.add(key);
     threads.push(msg);
