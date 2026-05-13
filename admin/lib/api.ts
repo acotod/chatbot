@@ -63,6 +63,9 @@ function resolveApiBase(): string {
     if (hostname.startsWith("admin.")) {
       return `${protocol}//api.${hostname.slice("admin.".length)}${port ? `:${port}` : ""}`;
     }
+    if (hostname.startsWith("agente.")) {
+      return `${protocol}//api.${hostname.slice("agente.".length)}${port ? `:${port}` : ""}`;
+    }
     // In production-like environments, prefer same-origin if explicit API URL is missing.
     return origin;
   }
