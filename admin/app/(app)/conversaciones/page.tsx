@@ -235,7 +235,7 @@ function ConvHistoryCard({ conv }: { conv: ConvRecord }) {
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 export default function ConversacionesPage() {
-  const { tenantSlug, setTenantSlug } = useAuthStore();
+  const { tenantSlug, setTenantSlug, superAdmin } = useAuthStore();
   const qc = useQueryClient();
   const router = useRouter();
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -303,6 +303,40 @@ export default function ConversacionesPage() {
     staleTime: 30_000,
   });
   const threads: Thread[] = threadsData?.data ?? [];
+
+  // For superadmins, if current tenant is empty, find a tenant that has conversations.
+  const { data: tenantWithThreads } = useQuery({
+    queryKey: ["conversaciones-tenant-fallback", tenantSlug, threads.length, tenants.map((t: { slug?: string }) => t.slug).join(",")],
+    queryFn: async () => {
+      const candidates = tenants.filter(
+        (t: { slug?: string; id?: string }) => t?.slug && t.slug !== effectiveTenantSlug
+      );
+      for (const tenant of candidates) {
+        const res = await whatsappApi.listConversaciones({
+          tenantSlug: tenant.slug,
+          tenantId: tenant.id,
+        });
+        const count = Array.isArray(res.data?.data) ? res.data.data.length : 0;
+        if (count > 0) {
+          return tenant.slug as string;
+        }
+      }
+      return null;
+    },
+    enabled:
+      superAdmin &&
+      !threadsLoading &&
+      threads.length === 0 &&
+      tenants.length > 1 &&
+      !!effectiveTenantSlug,
+    staleTime: 30_000,
+  });
+
+  useEffect(() => {
+    if (tenantWithThreads && tenantWithThreads !== tenantSlug) {
+      setTenantSlug(tenantWithThreads);
+    }
+  }, [tenantWithThreads, tenantSlug, setTenantSlug]);
 
   // Messages for active thread
   const { data: mensajesData, isLoading: mensajesLoading } = useQuery({
