@@ -13,12 +13,50 @@
 require('dotenv').config();
 const { getRedisClient } = require('../services/redis');
 const db = require('../services/database');
+const socketService = require('../services/socketService');
 const logger = require('../utils/logger');
 
 const QUEUE_KEY      = 'queue:wa_send';
 const BLOCK_TIMEOUT  = 5; // seconds
 const MAX_ATTEMPTS   = 3;
 const BACKOFF_BASE_S = 10; // seconds; doubles each retry
+
+function mapTipoFromPayload(messagePayload) {
+  const rawType = String(messagePayload?.type ?? '').trim().toLowerCase();
+  if (rawType === 'interactive') return 'interactive';
+  if (rawType === 'image') return 'image';
+  if (rawType === 'audio') return 'audio';
+  if (rawType === 'video') return 'video';
+  if (rawType === 'document') return 'document';
+  return 'text';
+}
+
+function mapContenidoFromPayload(messagePayload) {
+  const type = String(messagePayload?.type ?? '').trim().toLowerCase();
+
+  if (type === 'interactive') {
+    const bodyText = messagePayload?.interactive?.body?.text;
+    const buttons = messagePayload?.interactive?.action?.buttons;
+    return {
+      text: typeof bodyText === 'string' ? bodyText : '',
+      buttons: Array.isArray(buttons)
+        ? buttons.map((b) => ({
+          id: b?.reply?.id,
+          title: b?.reply?.title,
+        }))
+        : [],
+    };
+  }
+
+  if (type === 'text') {
+    return { text: messagePayload?.text?.body ?? '' };
+  }
+
+  return {
+    type,
+    payload: messagePayload?.[type] ?? null,
+  };
+}
 
 async function processSend(payload) {
   const { tenantId, phone, messagePayload, attempts = 0 } = payload;
@@ -55,6 +93,31 @@ async function processSend(payload) {
 
     if (!response.ok) {
       throw Object.assign(new Error(json?.error?.message || 'Meta API error'), { waError: json?.error });
+    }
+
+    const user = await db.findOrCreateUser(phone, tenantId);
+    const tipo = mapTipoFromPayload(messagePayload);
+    const contenido = mapContenidoFromPayload(messagePayload);
+    const mensaje = await db.saveMensaje({
+      tenantId,
+      userId: user?.id ?? null,
+      waMsgId: json?.messages?.[0]?.id ?? null,
+      direccion: 'salida',
+      tipo,
+      contenido,
+    });
+
+    if (mensaje) {
+      socketService.emit(tenantId, 'nuevo_mensaje', {
+        id: mensaje.id,
+        userId: mensaje.userId,
+        phone,
+        tipo: mensaje.tipo,
+        contenido: mensaje.contenido,
+        waMsgId: mensaje.waMsgId,
+        createdAt: mensaje.createdAt,
+        direccion: 'salida',
+      });
     }
 
     logger.info('waSendWorker: message sent', { tenantId, phone, waMsgId: json?.messages?.[0]?.id });
