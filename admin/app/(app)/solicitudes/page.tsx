@@ -305,6 +305,51 @@ export default function SolicitudesPage() {
     enabled: !!tenantSlug,
   });
 
+  function patchSolicitudAgenteInCache(solicitudId: number, agenteId: number | null) {
+    const agenteSnapshot = agenteId
+      ? (agentes.find((agente) => agente.id === agenteId) ?? { id: agenteId, nombre: "Asignado" })
+      : null;
+
+    qc.setQueriesData({ queryKey: ["solicitudes"] }, (old: any) => {
+      if (!old) return old;
+
+      const patchSolicitud = (solicitud: Solicitud) =>
+        solicitud.id === solicitudId
+          ? {
+              ...solicitud,
+              agenteId,
+              agente: agenteSnapshot ? { id: agenteSnapshot.id, nombre: agenteSnapshot.nombre } : null,
+            }
+          : solicitud;
+
+      if (Array.isArray(old)) {
+        return old.map(patchSolicitud);
+      }
+
+      if (Array.isArray(old.data)) {
+        return { ...old, data: old.data.map(patchSolicitud) };
+      }
+
+      if (Array.isArray(old.items)) {
+        return { ...old, items: old.items.map(patchSolicitud) };
+      }
+
+      return old;
+    });
+
+    setDetailModal((prev) => {
+      if (!prev.solicitud || prev.solicitud.id !== solicitudId) return prev;
+      return {
+        ...prev,
+        solicitud: {
+          ...prev.solicitud,
+          agenteId,
+          agente: agenteSnapshot ? { id: agenteSnapshot.id, nombre: agenteSnapshot.nombre } : null,
+        },
+      };
+    });
+  }
+
   const updateEstado = useMutation({
     mutationFn: ({
       id,
@@ -324,7 +369,8 @@ export default function SolicitudesPage() {
       id: number;
       agenteId: number;
     }) => solicitudesApi.assignAgente(tenantSlug, id, agenteId),
-    onSuccess: () => {
+    onSuccess: (_data, variables) => {
+      patchSolicitudAgenteInCache(variables.id, variables.agenteId);
       qc.invalidateQueries({ queryKey: ["solicitudes"] });
       setAssignModal({ open: false, solicitudId: null });
     },
@@ -1123,6 +1169,40 @@ export default function SolicitudesPage() {
             </div>
           )}
         </Card>
+
+    {isAgentSession && (
+      <Modal
+        open={detailModal.open}
+        onClose={() => setDetailModal({ open: false, solicitud: null })}
+        title="Detalle de solicitud"
+        className="max-w-2xl"
+      >
+        {detailModal.solicitud && (
+          <div className="space-y-4">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                <p className="text-xs uppercase tracking-wide text-slate-500">Cliente</p>
+                <p className="mt-1 text-sm font-medium text-slate-900">{detailModal.solicitud.nombre || "Sin nombre"}</p>
+                <p className="text-sm text-slate-600">{detailModal.solicitud.telefonoContacto || "Sin teléfono"}</p>
+              </div>
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                <p className="text-xs uppercase tracking-wide text-slate-500">Estado</p>
+                <p className="mt-1 text-sm font-medium text-slate-900">{(ESTADO_LABELS[detailModal.solicitud.estado || ""] ?? detailModal.solicitud.estado) || "-"}</p>
+                <p className="text-sm text-slate-600">Actualizada {formatDate(detailModal.solicitud.updatedAt || detailModal.solicitud.createdAt)}</p>
+              </div>
+            </div>
+            <div className="rounded-xl border border-dashed border-slate-200 bg-white p-4 text-sm text-slate-600">
+              La acción de conversaciones abre este detalle para revisar la solicitud seleccionada.
+            </div>
+            <div className="flex justify-end">
+              <Button variant="secondary" onClick={() => setDetailModal({ open: false, solicitud: null })}>
+                Cerrar
+              </Button>
+            </div>
+          </div>
+        )}
+      </Modal>
+    )}
 
         <Modal
           open={detailModal.open}
