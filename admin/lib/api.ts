@@ -39,6 +39,14 @@ function parseHostname(rawUrl: string): string | null {
   }
 }
 
+function mapAdminOrAgentHostToApi(hostname: string): string | null {
+  const labels = hostname.split(".");
+  const roleIndex = labels.findIndex((label) => label === "admin" || label === "agente");
+  if (roleIndex === -1) return null;
+  labels[roleIndex] = "api";
+  return labels.join(".");
+}
+
 function resolveApiBase(): string {
   const envBase = process.env.NEXT_PUBLIC_API_URL?.trim();
   if (envBase) {
@@ -60,11 +68,9 @@ function resolveApiBase(): string {
     if (hostname === "localhost" || hostname === "127.0.0.1") {
       return "http://127.0.0.1:3200";
     }
-    if (hostname.startsWith("admin.")) {
-      return `${protocol}//api.${hostname.slice("admin.".length)}${port ? `:${port}` : ""}`;
-    }
-    if (hostname.startsWith("agente.")) {
-      return `${protocol}//api.${hostname.slice("agente.".length)}${port ? `:${port}` : ""}`;
+    const mappedApiHost = mapAdminOrAgentHostToApi(hostname);
+    if (mappedApiHost) {
+      return `${protocol}//${mappedApiHost}${port ? `:${port}` : ""}`;
     }
     // In production-like environments, prefer same-origin if explicit API URL is missing.
     return origin;
