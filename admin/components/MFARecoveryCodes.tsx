@@ -17,6 +17,7 @@ export default function MFARecoveryCodes({
   showTitle = true,
 }: MFARecoveryCodesProps) {
   const [unusedCount, setUnusedCount] = useState(0);
+  const [isSuperAdminMfaUnsupported, setIsSuperAdminMfaUnsupported] = useState(false);
   const [loading, setLoading] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -36,6 +37,7 @@ export default function MFARecoveryCodes({
       );
       const response = await Promise.race([deviceSessionsApi.getRecoveryCodesCount(), timeout]);
       setUnusedCount(response.data.unusedCodeCount || 0);
+      setIsSuperAdminMfaUnsupported(response.data?.superAdmin === true);
     } catch (err: any) {
       if (err?.message === 'TIMEOUT') {
         setError('La solicitud tardó demasiado. Intenta recargar la página.');
@@ -49,6 +51,11 @@ export default function MFARecoveryCodes({
   };
 
   const handleGenerateNewCodes = async () => {
+    if (isSuperAdminMfaUnsupported) {
+      setError('Las cuentas super-admin no soportan códigos de recuperación MFA.');
+      return;
+    }
+
     if (!confirm('¿Seguro que quieres generar nuevos códigos de recuperación? Los códigos anteriores dejarán de ser válidos. Asegúrate de guardar los nuevos en un lugar seguro.')) {
       return;
     }
@@ -65,6 +72,8 @@ export default function MFARecoveryCodes({
     } catch (err: any) {
       if (err?.message === 'TIMEOUT') {
         setError('La solicitud tardó demasiado. Intenta de nuevo en unos momentos.');
+      } else if (err?.response?.status === 403) {
+        setError(err.response?.data?.error || 'Las cuentas super-admin no soportan códigos de recuperación MFA.');
       } else {
         console.error('Error generating recovery codes:', err);
         setError(err.response?.data?.error || 'No se pudieron generar los códigos de recuperación');
@@ -108,12 +117,17 @@ export default function MFARecoveryCodes({
         <p className="text-sm text-gray-700">
           <strong>Códigos de recuperación sin usar:</strong> {unusedCount}
         </p>
+        {isSuperAdminMfaUnsupported && (
+          <p className="text-sm text-slate-600 mt-1">
+            Esta cuenta super-admin no utiliza códigos de recuperación MFA.
+          </p>
+        )}
         {unusedCount < 3 && unusedCount > 0 && (
           <p className="text-sm text-orange-600 mt-1">
             ⚠️ Quedan pocos códigos de recuperación. Considera generar nuevos.
           </p>
         )}
-        {unusedCount === 0 && (
+        {unusedCount === 0 && !isSuperAdminMfaUnsupported && (
           <p className="text-sm text-red-600 mt-1">
             ⚠️ No hay códigos de recuperación disponibles. Genera nuevos ahora.
           </p>
@@ -149,14 +163,18 @@ export default function MFARecoveryCodes({
       {/* Generate New Codes Button */}
       <button
         onClick={handleGenerateNewCodes}
-        disabled={generating}
+        disabled={generating || isSuperAdminMfaUnsupported}
         className={`w-full px-4 py-2 rounded text-white transition ${
-          generating
+          generating || isSuperAdminMfaUnsupported
             ? 'bg-gray-400 cursor-not-allowed'
             : 'bg-blue-600 hover:bg-blue-700'
         }`}
       >
-        {generating ? 'Generando...' : 'Generar nuevos códigos de recuperación'}
+        {isSuperAdminMfaUnsupported
+          ? 'No disponible para super-admin'
+          : generating
+            ? 'Generando...'
+            : 'Generar nuevos códigos de recuperación'}
       </button>
 
       {/* Information Section */}
