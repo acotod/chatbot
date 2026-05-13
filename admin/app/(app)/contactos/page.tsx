@@ -73,18 +73,31 @@ interface ContactDetail extends Contact {
 }
 
 function getMessagePreview(contenido: unknown): string {
-  if (typeof contenido === "string") return contenido;
+  const pickText = (value: unknown): string | null => {
+    if (typeof value === "string") {
+      const trimmed = value.trim();
+      return trimmed || null;
+    }
+    if (!value || typeof value !== "object") return null;
+
+    const obj = value as Record<string, unknown>;
+    return (
+      pickText(obj.text) ??
+      pickText(obj.body) ??
+      pickText(obj.message) ??
+      pickText(obj.caption) ??
+      pickText(obj.title) ??
+      pickText(obj.payload) ??
+      null
+    );
+  };
+
+  const parsed = pickText(contenido);
+  if (parsed) return parsed;
   if (!contenido || typeof contenido !== "object") return "[mensaje no textual]";
 
-  const data = contenido as Record<string, unknown>;
-  if (typeof data.text === "string" && data.text.trim()) return data.text;
-
-  const interactive = data.interactive as Record<string, unknown> | undefined;
-  const reply = interactive?.reply as Record<string, unknown> | undefined;
-  if (typeof reply?.title === "string" && reply.title.trim()) return reply.title;
-
   try {
-    return JSON.stringify(data);
+    return JSON.stringify(contenido as Record<string, unknown>);
   } catch {
     return "[mensaje no textual]";
   }

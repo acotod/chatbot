@@ -97,9 +97,35 @@ const SOLICITUD_STATUS_LABEL: Record<string, string> = {
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function extractText(msg: Pick<Mensaje, "tipo" | "contenido">): string {
-  const c = msg.contenido;
-  if (c.text) return c.text;
-  if (c.interactive?.reply?.title) return c.interactive.reply.title;
+  const c = msg.contenido as Record<string, unknown>;
+
+  const pickText = (value: unknown): string | null => {
+    if (typeof value === "string") {
+      const trimmed = value.trim();
+      return trimmed || null;
+    }
+    if (!value || typeof value !== "object") return null;
+    const obj = value as Record<string, unknown>;
+    return (
+      pickText(obj.text) ??
+      pickText(obj.body) ??
+      pickText(obj.message) ??
+      pickText(obj.caption) ??
+      pickText(obj.title) ??
+      null
+    );
+  };
+
+  const direct =
+    pickText(c.text) ??
+    pickText(c.body) ??
+    pickText(c.message) ??
+    pickText(c.caption) ??
+    pickText(c.interactive) ??
+    pickText(c.payload) ??
+    pickText(c.raw);
+
+  if (direct) return direct;
   return `[${msg.tipo}]`;
 }
 
