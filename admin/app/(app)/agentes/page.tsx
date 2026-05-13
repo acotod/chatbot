@@ -42,6 +42,14 @@ interface AgentePuesto {
   nombre: string;
 }
 
+function getApiErrorMessage(error: unknown, fallback: string) {
+  const message = (error as { response?: { data?: { error?: unknown } } })?.response?.data?.error;
+  if (typeof message === "string" && message.trim()) {
+    return message;
+  }
+  return fallback;
+}
+
 export default function AgentesPage() {
   const { tenantSlug } = useAuthStore();
   const qc = useQueryClient();
@@ -110,7 +118,7 @@ export default function AgentesPage() {
       setModal(false);
       setForm({ nombre: "", email: "", password: "", whatsapp: "", puestoId: "", calendarLink: "", calendarId: "" });
     },
-    onError: () => setFormError("No se pudo crear el agente. Intentá de nuevo."),
+    onError: (error) => setFormError(getApiErrorMessage(error, "No se pudo crear el agente. Intenta de nuevo.")),
   });
 
   const toggle = useMutation({
@@ -139,7 +147,7 @@ export default function AgentesPage() {
       setEditingId(null);
       setEditForm({ nombre: "", email: "", password: "", whatsapp: "", puestoId: "", calendarLink: "", calendarId: "", jefeAdminId: "" });
     },
-    onError: () => setEditFormError("No se pudo actualizar el agente."),
+    onError: (error) => setEditFormError(getApiErrorMessage(error, "No se pudo actualizar el agente.")),
   });
 
   const agentes: Agente[] = data?.data ?? data ?? [];

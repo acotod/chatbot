@@ -596,6 +596,7 @@ router.post('/tenants/:slug/agentes', requirePermiso('EDIT_AGENTES'), async (req
     try {
         const tenant = await db.findTenantBySlug(req.params.slug);
         if (!tenant) return res.status(404).json({ error: 'Tenant not found' });
+        if (denyIfWrongTenant(req, res, tenant.id)) return;
         const nombre = String(req.body?.nombre ?? '').trim();
         const email = String(req.body?.email ?? '').trim();
         const whatsapp = String(req.body?.whatsapp ?? '').trim();
@@ -654,6 +655,15 @@ router.post('/tenants/:slug/agentes', requirePermiso('EDIT_AGENTES'), async (req
 
         res.status(201).json({ ...agente, assignedCalendarId });
     } catch (err) {
+        if (err?.code === 'P2002') {
+            return res.status(409).json({ error: 'Ya existe un registro con datos duplicados para este agente' });
+        }
+        if (err?.code === 'P2003') {
+            return res.status(400).json({ error: 'Referencia invalida al crear el agente (puesto, calendario o jefe)' });
+        }
+        if (err?.code === 'P2025') {
+            return res.status(404).json({ error: 'No se encontro el recurso relacionado para completar la creacion del agente' });
+        }
         next(err);
     }
 });
@@ -677,6 +687,7 @@ router.patch('/tenants/:slug/agentes/:id', requirePermiso('EDIT_AGENTES'), async
     try {
         const tenant = await db.findTenantBySlug(req.params.slug);
         if (!tenant) return res.status(404).json({ error: 'Tenant not found' });
+        if (denyIfWrongTenant(req, res, tenant.id)) return;
 
         const id = Number(req.params.id);
         const nombre = String(req.body?.nombre ?? '').trim();
@@ -764,6 +775,15 @@ router.patch('/tenants/:slug/agentes/:id', requirePermiso('EDIT_AGENTES'), async
         const agente = agentes.find((a) => a.id === id) ?? null;
         return res.json(agente);
     } catch (err) {
+        if (err?.code === 'P2002') {
+            return res.status(409).json({ error: 'Ya existe un registro con datos duplicados para este agente' });
+        }
+        if (err?.code === 'P2003') {
+            return res.status(400).json({ error: 'Referencia invalida al actualizar el agente (puesto, calendario o jefe)' });
+        }
+        if (err?.code === 'P2025') {
+            return res.status(404).json({ error: 'No se encontro el agente o un recurso relacionado para completar la actualizacion' });
+        }
         next(err);
     }
 });
