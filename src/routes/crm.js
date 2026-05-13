@@ -59,7 +59,7 @@ router.get('/contacts', [
   if (!validate(req, res)) return;
   try {
     const tenantId = await resolveBySlug(req, req.query.tenantSlug);
-    if (!tenantId) return res.status(400).json({ error: 'tenantSlug required' });
+    if (!tenantId && !req.admin.superAdmin) return res.status(400).json({ error: 'tenantSlug required' });
 
     const page  = req.query.page  ?? 1;
     const limit = req.query.limit ?? 30;
@@ -67,7 +67,7 @@ router.get('/contacts', [
     const q     = req.query.q?.trim();
 
     const where = {
-      tenantId,
+      ...(tenantId ? { tenantId } : {}),
       ...(q ? {
         OR: [
           { nombre: { contains: q, mode: 'insensitive' } },

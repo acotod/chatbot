@@ -154,14 +154,14 @@ export default function ContactosPage() {
   const { data, isLoading } = useQuery({
     queryKey: ["crm-contacts", tenantSlug, debouncedSearch, page],
     queryFn: () =>
-      crmApi.listContacts({ tenantSlug, q: debouncedSearch || undefined, page, limit: 50 }).then(r => r.data),
-    enabled: !!tenantSlug,
+      crmApi.listContacts({ ...(tenantSlug ? { tenantSlug } : {}), q: debouncedSearch || undefined, page, limit: 50 }).then(r => r.data),
+    enabled: superAdmin || !!tenantSlug,
   });
 
   const { data: detail, isLoading: loadingDetail } = useQuery({
     queryKey: ["crm-contact", tenantSlug, selectedId],
     queryFn: () => crmApi.getContact(selectedId!, tenantSlug).then(r => r.data as ContactDetail),
-    enabled: selectedId != null && (!superAdmin || Boolean(tenantSlug)),
+    enabled: selectedId != null,
   });
 
   const deleteMutation = useMutation({
