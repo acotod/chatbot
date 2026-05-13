@@ -31,7 +31,7 @@ function resolveSocketBase(): string {
   if (typeof window !== 'undefined') {
     const { hostname, origin, protocol } = window.location;
     if (isLocalHostname(hostname)) {
-      return 'http://127.0.0.1:3001';
+      return 'http://127.0.0.1:3200';
     }
     // Map admin.* or agente.* subdomains to api.* for socket connection
     if (hostname.startsWith('admin.') || hostname.startsWith('agente.')) {
@@ -41,7 +41,7 @@ function resolveSocketBase(): string {
     return origin;
   }
 
-  return 'http://127.0.0.1:3001';
+  return 'http://127.0.0.1:3200';
 }
 
 const API_URL = resolveSocketBase();
