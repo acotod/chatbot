@@ -317,8 +317,17 @@ async function createTenant({ nombre, slug, apiKey, plan }) {
 
 async function listTenants() {
   const client = getPrismaClient();
-  if (!client) return [];
-  return client.tenant.findMany({ orderBy: { createdAt: 'asc' } });
+  if (!client) {
+    logger.warn('Prisma client not available in listTenants');
+    return [];
+  }
+  try {
+    const tenants = await client.tenant.findMany({ orderBy: { createdAt: 'asc' } });
+    return tenants;
+  } catch (err) {
+    logger.error('Error in listTenants:', { message: err.message, code: err.code });
+    throw err;
+  }
 }
 
 async function setTenantActive(slug, activo) {
