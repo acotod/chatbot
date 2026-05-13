@@ -56,8 +56,8 @@ export default function AgentSolicitudesPage() {
 					)}
 				</div>
 
-				<Link href="/agente/dashboard" className="inline-block text-sm text-cyan-700 hover:text-cyan-800">
-					Volver al dashboard
+				<Link href="/agente/dashboard" className="inline-flex items-center gap-2 rounded-lg bg-cyan-600 px-4 py-2 text-sm font-medium text-white shadow hover:bg-cyan-700 active:bg-cyan-800">
+					← Volver al dashboard
 				</Link>
 			</div>
 		</div>
