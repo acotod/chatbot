@@ -36,13 +36,12 @@ function isLoginDiscoveryResponse(
 }
 
 function resolveAgentNextPath(next: string | undefined): string {
-  if (next === "/dashboard") return "/dashboard";
-  if (next === "/solicitudes") return "/solicitudes";
-  if (next === "/agenda") return "/agenda";
-  if (next === "/contactos") return "/contactos";
+  if (next === "/dashboard") return "/agente/dashboard";
+  if (next === "/agente") return "/agente/dashboard";
   if (next === "/agente/perfil") return "/agente/perfil";
   if (next === "/agente/dashboard") return "/agente/dashboard";
-  return "/dashboard";
+  if (next === "/agente/security") return "/agente/security";
+  return "/agente/dashboard";
 }
 
 function getAuthErrorMessage(error: unknown): string {
