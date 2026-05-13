@@ -1323,7 +1323,13 @@ async function getSolicitudesReport(tenantId, { from, to, groupBy = 'day' } = {}
   };
 }
 
-async function escalateSolicitud({ id, tenantId, actorUserId = null, reason = null }) {
+async function escalateSolicitud({
+  id,
+  tenantId,
+  actorUserId = null,
+  reason = null,
+  targetAgenteId = null,
+}) {
   const client = getPrismaClient();
   if (!client) return null;
 
@@ -1331,11 +1337,15 @@ async function escalateSolicitud({ id, tenantId, actorUserId = null, reason = nu
   if (!current) return null;
 
   const escalationLevel = Number(current.escalationLevel ?? 0) + 1;
+  const normalizedTargetAgenteId = Number.isInteger(Number(targetAgenteId))
+    ? Number(targetAgenteId)
+    : null;
   const updated = await client.solicitud.update({
     where: { id },
     data: {
       escalatedAt: new Date(),
       escalationLevel,
+      ...(normalizedTargetAgenteId ? { agenteId: normalizedTargetAgenteId } : {}),
       estado: current.estado === SOLICITUD_STATUS.OPEN ? SOLICITUD_STATUS.IN_PROGRESS : current.estado,
     },
   });
@@ -1346,7 +1356,12 @@ async function escalateSolicitud({ id, tenantId, actorUserId = null, reason = nu
       userId: actorUserId,
       field: 'escalation',
       oldValue: asHistoryValue({ level: current.escalationLevel ?? 0 }),
-      newValue: asHistoryValue({ level: escalationLevel, reason }),
+      newValue: asHistoryValue({
+        level: escalationLevel,
+        reason,
+        fromAgenteId: current.agenteId ?? null,
+        toAgenteId: normalizedTargetAgenteId,
+      }),
     },
   }).catch(() => {});
 

@@ -335,9 +335,14 @@ export const solicitudesApi = {
     apiClient.patch(`/admin/tenants/${slug}/solicitudes/${id}/agente`, {
       agenteId,
     }),
-  escalate: (slug: string, id: number, reason?: string) =>
+  escalate: (
+    slug: string,
+    id: number,
+    payload?: { reason?: string; targetAgenteId?: number }
+  ) =>
     apiClient.post(`/admin/tenants/${slug}/solicitudes/${id}/escalate`, {
-      reason,
+      reason: payload?.reason,
+      targetAgenteId: payload?.targetAgenteId,
     }),
   createPortalToken: (slug: string, id: number) =>
     apiClient.post(`/admin/tenants/${slug}/solicitudes/${id}/portal-token`),

@@ -135,6 +135,13 @@ interface Agente {
   id: number;
   nombre: string;
   estado: string;
+  puestoId?: number | null;
+  puesto?: { id: number; nombre: string } | null;
+}
+
+interface EscalationModalState {
+  open: boolean;
+  solicitud: Solicitud | null;
 }
 
 interface SolicitudesTenantConfig {
@@ -213,6 +220,12 @@ export default function SolicitudesPage() {
     conversation: ConversationItem | null;
   }>({ open: false, conversation: null });
   const [selectedAgente, setSelectedAgente] = useState("");
+  const [escalationModal, setEscalationModal] = useState<EscalationModalState>({
+    open: false,
+    solicitud: null,
+  });
+  const [escalationReason, setEscalationReason] = useState("");
+  const [escalationTargetAgenteId, setEscalationTargetAgenteId] = useState<string>("");
   const defaultDetailTab: "resumen" | "conversaciones" | "mensajes" = isAgentSession ? "mensajes" : "resumen";
   const detailModeLabel = isAgentSession ? "Vista de agente" : "Vista admin";
   const detailModeDescription = isAgentSession
@@ -310,10 +323,25 @@ export default function SolicitudesPage() {
   });
 
   const escalateSolicitud = useMutation({
-    mutationFn: (id: number) => solicitudesApi.escalate(tenantSlug, id),
+    mutationFn: ({
+      id,
+      reason,
+      targetAgenteId,
+    }: {
+      id: number;
+      reason?: string;
+      targetAgenteId?: number;
+    }) =>
+      solicitudesApi.escalate(tenantSlug, id, {
+        reason,
+        targetAgenteId,
+      }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["solicitudes"] });
       qc.invalidateQueries({ queryKey: ["solicitudes-stats"] });
+      setEscalationModal({ open: false, solicitud: null });
+      setEscalationReason("");
+      setEscalationTargetAgenteId("");
     },
   });
 
@@ -920,12 +948,36 @@ export default function SolicitudesPage() {
   const total: number = data?.total ?? 0;
   const agentes: Agente[] = agentesData?.data ?? agentesData ?? [];
   const stats = statsData ?? { total: 0, estado: {}, sla: { onTrack: 0, warning: 0, breached: 0 } };
+  const agentesActivos = agentes.filter((agente) => agente.estado === "activo");
+  const agentesByPuesto = agentesActivos.reduce<Record<string, Agente[]>>((acc, agente) => {
+    const puestoNombre = agente.puesto?.nombre?.trim() || "Sin puesto";
+    if (!acc[puestoNombre]) acc[puestoNombre] = [];
+    acc[puestoNombre].push(agente);
+    return acc;
+  }, {});
+  const puestoNames = Object.keys(agentesByPuesto).sort((a, b) => a.localeCompare(b, "es"));
 
   function handleAssign() {
     if (!assignModal.solicitudId || !selectedAgente) return;
     assignAgente.mutate({
       id: assignModal.solicitudId,
       agenteId: parseInt(selectedAgente),
+    });
+  }
+
+  function openEscalationModal(solicitud: Solicitud) {
+    setEscalationModal({ open: true, solicitud });
+    setEscalationReason("");
+    setEscalationTargetAgenteId("");
+  }
+
+  function handleEscalateSubmit() {
+    if (!escalationModal.solicitud) return;
+    if (!escalationTargetAgenteId) return;
+    escalateSolicitud.mutate({
+      id: escalationModal.solicitud.id,
+      reason: escalationReason.trim() || undefined,
+      targetAgenteId: Number(escalationTargetAgenteId),
     });
   }
 
@@ -1677,7 +1729,7 @@ export default function SolicitudesPage() {
                         )}
                         {tenantConfig.manualEscalationEnabled && (
                           <button
-                            onClick={() => escalateSolicitud.mutate(s.id)}
+                            onClick={() => openEscalationModal(s)}
                             disabled={escalateSolicitud.isPending}
                             className="text-xs text-rose-600 hover:text-rose-700 font-medium border border-rose-200 rounded-lg px-2 py-1 bg-rose-50 hover:bg-rose-100 transition"
                           >
@@ -1797,6 +1849,101 @@ export default function SolicitudesPage() {
               disabled={!selectedAgente || assignAgente.isPending}
             >
               {assignAgente.isPending ? "Asignando..." : "Asignar"}
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      <Modal
+        open={escalationModal.open}
+        onClose={() => {
+          if (escalateSolicitud.isPending) return;
+          setEscalationModal({ open: false, solicitud: null });
+          setEscalationReason("");
+          setEscalationTargetAgenteId("");
+        }}
+        title="Escalar por árbol jerárquico"
+      >
+        <div className="space-y-4">
+          <div>
+            <p className="text-sm font-medium text-slate-800">
+              Solicitud #{escalationModal.solicitud?.id}
+            </p>
+            <p className="text-xs text-slate-500 mt-1">
+              Seleccioná el agente destino dentro del árbol jerárquico (Puesto -&gt; Agente).
+            </p>
+          </div>
+
+          <div className="rounded-xl border border-slate-200 bg-slate-50 max-h-72 overflow-y-auto p-3 space-y-3">
+            {puestoNames.length === 0 ? (
+              <p className="text-sm text-slate-500">No hay agentes activos para escalar.</p>
+            ) : (
+              puestoNames.map((puestoName) => (
+                <div key={puestoName} className="space-y-2">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    {puestoName}
+                  </p>
+                  <div className="space-y-1.5 pl-3 border-l border-slate-200">
+                    {agentesByPuesto[puestoName]
+                      .slice()
+                      .sort((a, b) => a.nombre.localeCompare(b.nombre, "es"))
+                      .map((agente) => {
+                        const isSelected = escalationTargetAgenteId === String(agente.id);
+                        const isCurrentAssignee =
+                          escalationModal.solicitud?.agente?.id && escalationModal.solicitud.agente.id === agente.id;
+                        return (
+                          <button
+                            key={agente.id}
+                            type="button"
+                            onClick={() => setEscalationTargetAgenteId(String(agente.id))}
+                            className={cn(
+                              "w-full text-left rounded-lg border px-3 py-2 text-sm transition",
+                              isSelected
+                                ? "border-rose-300 bg-rose-50 text-rose-700"
+                                : "border-slate-200 bg-white text-slate-700 hover:border-slate-300"
+                            )}
+                          >
+                            <span className="font-medium">{agente.nombre}</span>
+                            {isCurrentAssignee ? (
+                              <span className="ml-2 text-[11px] text-slate-500">(asignado actual)</span>
+                            ) : null}
+                          </button>
+                        );
+                      })}
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <label className="text-sm font-medium text-slate-700">Motivo (opcional)</label>
+            <textarea
+              value={escalationReason}
+              onChange={(e) => setEscalationReason(e.target.value)}
+              rows={3}
+              placeholder="Ej: requiere validación de nivel 2"
+              className="px-3.5 py-2.5 rounded-xl border border-slate-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-rose-500/30"
+            />
+          </div>
+
+          <div className="flex justify-end gap-3 pt-2">
+            <Button
+              variant="secondary"
+              onClick={() => {
+                setEscalationModal({ open: false, solicitud: null });
+                setEscalationReason("");
+                setEscalationTargetAgenteId("");
+              }}
+              disabled={escalateSolicitud.isPending}
+            >
+              Cancelar
+            </Button>
+            <Button
+              onClick={handleEscalateSubmit}
+              disabled={!escalationTargetAgenteId || escalateSolicitud.isPending || puestoNames.length === 0}
+            >
+              {escalateSolicitud.isPending ? "Escalando..." : "Confirmar escalación"}
             </Button>
           </div>
         </div>

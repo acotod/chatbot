@@ -1401,11 +1401,30 @@ router.post('/tenants/:slug/solicitudes/:id/escalate', requirePermiso('EDIT_SOLI
         }
 
         const reason = req.body?.reason ? String(req.body.reason) : null;
+        const rawTargetAgenteId = req.body?.targetAgenteId;
+        const targetAgenteId = rawTargetAgenteId != null && rawTargetAgenteId !== ''
+            ? Number(rawTargetAgenteId)
+            : null;
+
+        if (targetAgenteId != null) {
+            if (!Number.isInteger(targetAgenteId) || targetAgenteId <= 0) {
+                return res.status(400).json({ error: 'targetAgenteId must be a positive integer' });
+            }
+            const targetAgente = await prisma.agente.findFirst({
+                where: { id: targetAgenteId, tenantId: tenant.id },
+                select: { id: true },
+            });
+            if (!targetAgente) {
+                return res.status(400).json({ error: 'targetAgenteId is not valid for this tenant' });
+            }
+        }
+
         const escalated = await db.escalateSolicitud({
             id: Number(req.params.id),
             tenantId: tenant.id,
             actorUserId: req.admin?.adminUserId ?? null,
             reason,
+            targetAgenteId,
         });
         if (!escalated) return res.status(404).json({ error: 'Solicitud not found' });
 
@@ -1417,13 +1436,14 @@ router.post('/tenants/:slug/solicitudes/:id/escalate', requirePermiso('EDIT_SOLI
             entidadId: req.params.id,
             ip: req.ip,
             userAgent: req.headers['user-agent'],
-            metadata: { reason, escalationLevel: escalated.escalationLevel },
+            metadata: { reason, escalationLevel: escalated.escalationLevel, targetAgenteId },
         });
 
         socketService.emit(tenant.id, 'SOLICITUD_ESCALATED', {
             solicitudId: Number(req.params.id),
             escalationLevel: escalated.escalationLevel,
             reason,
+            targetAgenteId,
         });
 
         queueSolicitudWebhook({
@@ -1435,6 +1455,7 @@ router.post('/tenants/:slug/solicitudes/:id/escalate', requirePermiso('EDIT_SOLI
                 id: Number(req.params.id),
                 escalationLevel: escalated.escalationLevel,
                 reason,
+                targetAgenteId,
             },
         });
 
