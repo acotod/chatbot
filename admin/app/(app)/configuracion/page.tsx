@@ -1,6 +1,6 @@
 "use client";
 
-import { adminUsersApi, agentePuestosApi, agendaApi, apiClient, configApi, solicitudesApi } from "@/lib/api";
+import { adminUsersApi, agentePuestosApi, agendaApi, apiClient, configApi, solicitudesApi, tenantApi } from "@/lib/api";
 import { useAuthStore } from "@/store/auth";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
@@ -8,7 +8,7 @@ import { Card, CardContent, CardHeader } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { CalendarDays, Check, Pencil, Trash2, X, Settings, MessageSquare, Lock, Briefcase, Palette, RefreshCw } from "lucide-react";
+import { CalendarDays, Check, Pencil, Trash2, X, Settings, MessageSquare, Lock, Briefcase, Palette, RefreshCw, Upload } from "lucide-react";
 
 // ── LLM config types ──────────────────────────────────────────────────────────
 type LlmProvider = "openai" | "anthropic" | "custom";
@@ -190,6 +190,19 @@ export default function ConfiguracionPage() {
   const [puestoError, setPuestoError] = useState("");
   const [editingPuestoId, setEditingPuestoId] = useState<number | null>(null);
   const [editingPuestoNombre, setEditingPuestoNombre] = useState("");
+
+  // Logo upload
+  const [logoPreview, setLogoPreview] = useState<string | null>(null);
+  const [logoFile, setLogoFile] = useState<File | null>(null);
+  const [logoSaved, setLogoSaved] = useState(false);
+  const uploadLogoMutation = useMutation({
+    mutationFn: (file: File) => tenantApi.uploadLogo(tenantSlug!, file),
+    onSuccess: () => {
+      setLogoSaved(true);
+      setLogoFile(null);
+      setTimeout(() => setLogoSaved(false), 2500);
+    },
+  });
 
   // LLM config
   const [llm, setLlm] = useState<{
@@ -1294,7 +1307,64 @@ export default function ConfiguracionPage() {
             title="Branding"
             description="Información visual de tu organización"
           >
-            <div className="space-y-4">
+            <div className="space-y-6">
+              {/* Logo upload */}
+              <div className="space-y-3">
+                <p className="text-sm font-medium text-slate-700">Logo del tenant</p>
+                <div className="flex items-center gap-4">
+                  {logoPreview ? (
+                    <img
+                      src={logoPreview}
+                      alt="Vista previa del logo"
+                      className="h-16 w-auto max-w-[160px] rounded-lg border border-slate-200 object-contain p-1"
+                    />
+                  ) : (
+                    <div className="flex h-16 w-16 items-center justify-center rounded-lg border-2 border-dashed border-slate-300 bg-slate-50 text-slate-400">
+                      <Upload size={20} />
+                    </div>
+                  )}
+                  <div className="space-y-2">
+                    <label className="cursor-pointer">
+                      <span className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50 transition-colors">
+                        <Upload size={14} />
+                        Seleccionar imagen
+                      </span>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="sr-only"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (!file) return;
+                          setLogoFile(file);
+                          setLogoPreview(URL.createObjectURL(file));
+                          setLogoSaved(false);
+                        }}
+                      />
+                    </label>
+                    {logoFile && (
+                      <Button
+                        type="button"
+                        onClick={() => uploadLogoMutation.mutate(logoFile)}
+                        disabled={uploadLogoMutation.isPending}
+                        className="text-sm"
+                      >
+                        {uploadLogoMutation.isPending ? "Subiendo..." : "Guardar logo"}
+                      </Button>
+                    )}
+                    {logoSaved && (
+                      <p className="text-xs text-green-600 flex items-center gap-1">
+                        <Check size={12} /> Logo actualizado
+                      </p>
+                    )}
+                    {uploadLogoMutation.isError && (
+                      <p className="text-xs text-red-600">Error al subir el logo. Intenta de nuevo.</p>
+                    )}
+                    <p className="text-xs text-slate-400">PNG, JPG o SVG. Recomendado: 200×60 px.</p>
+                  </div>
+                </div>
+              </div>
+
               <Input label="Nombre de la organización" placeholder="Clínica Esperanza" />
               <Input label="Color principal (hex)" placeholder="#2563eb" />
             </div>
