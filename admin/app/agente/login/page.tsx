@@ -189,6 +189,18 @@ function AgentLoginScreen({ reason, nextPath }: AgentLoginScreenProps) {
             Encontramos múltiples empresas vinculadas a tu cuenta. ¿Cuál usarás?
           </p>
 
+          {error && (
+            <div className="mb-4 px-4 py-3 bg-red-50 border border-red-200 rounded-xl text-red-600 text-sm">
+              {error}
+            </div>
+          )}
+
+          {tenantOptions.length === 0 && (
+            <div className="mb-4 px-4 py-3 bg-amber-50 border border-amber-200 rounded-xl text-amber-700 text-sm">
+              No encontramos empresas activas para este usuario. Contactá al administrador.
+            </div>
+          )}
+
           <div className="space-y-3">
             {tenantOptions.map((tenant) => (
               <button
