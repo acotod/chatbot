@@ -1629,6 +1629,11 @@ export default function SolicitudesPage() {
 
   return (
     <div className="space-y-5">
+      <div className="rounded-2xl border border-slate-200 bg-white p-5">
+        <h1 className="text-xl font-semibold text-slate-900">Solicitudes</h1>
+        <p className="mt-1 text-sm text-slate-600">Gestion y seguimiento de solicitudes del tenant.</p>
+      </div>
+
       <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 xl:grid-cols-4">
         <Card className="p-4">
           <p className="text-xs text-slate-500 uppercase tracking-wide">Total</p>
