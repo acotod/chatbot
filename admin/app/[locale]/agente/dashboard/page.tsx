@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 
 import { agentAuthApi, type AgentKpisResponse, type AgentSolicitud, type AgentAgendaEvent } from "@/lib/agentApi";
 import { Header } from "@/components/layout/Header";
+import { useCurrentLocale } from "@/lib/i18n/client";
 import { useAgentAuthStore } from "@/store/agentAuth";
 
 type AgentProfile = {
@@ -104,6 +105,8 @@ function agendaEstadoColor(e: string) {
 
 export default function AgentDashboardPage() {
   const router = useRouter();
+  const locale = useCurrentLocale();
+  const isEn = locale === "en";
   const { logout } = useAgentAuthStore();
   const [profile, setProfile] = useState<AgentProfile | null>(null);
   const [kpis, setKpis] = useState<AgentKpisResponse | null>(null);
@@ -137,7 +140,7 @@ export default function AgentDashboardPage() {
         }
       } catch {
         if (!cancelled) {
-          setError("No se pudo cargar el dashboard.");
+          setError(isEn ? "Could not load the dashboard." : "No se pudo cargar el dashboard.");
           logout();
           router.replace("/agente/login?reason=expired");
         }
@@ -167,7 +170,11 @@ export default function AgentDashboardPage() {
   }
 
   const today = new Date();
-  const dateLabel = today.toLocaleDateString("es-ES", { weekday: "long", day: "numeric", month: "long" });
+  const dateLabel = today.toLocaleDateString(isEn ? "en-US" : "es-ES", {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+  });
 
   return (
     <div className="min-h-screen bg-slate-100">
@@ -182,14 +189,16 @@ export default function AgentDashboardPage() {
               {profile ? (
                 <>
                   <h1 className="mt-1 text-2xl font-semibold tracking-tight text-slate-900">
-                    Hola, {profile.nombre.split(" ")[0]} 👋
+                    {isEn ? "Hi" : "Hola"}, {profile.nombre.split(" ")[0]} 👋
                   </h1>
                   <p className="mt-1 text-sm text-slate-500">
-                    {profile.puesto?.nombre ?? "Agente"} · {profile.tenantNombre || profile.tenantSlug}
+                    {profile.puesto?.nombre ?? (isEn ? "Agent" : "Agente")} · {profile.tenantNombre || profile.tenantSlug}
                   </p>
                 </>
               ) : (
-                <h1 className="mt-1 text-2xl font-semibold tracking-tight text-slate-900">Panel de agente</h1>
+                <h1 className="mt-1 text-2xl font-semibold tracking-tight text-slate-900">
+                  {isEn ? "Agent panel" : "Panel de agente"}
+                </h1>
               )}
             </div>
             <button
@@ -197,14 +206,14 @@ export default function AgentDashboardPage() {
               onClick={handleLogout}
               className="self-start rounded-xl border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 hover:border-red-200 hover:bg-red-50 hover:text-red-600 transition"
             >
-              Cerrar sesión
+              {isEn ? "Sign out" : "Cerrar sesión"}
             </button>
           </div>
         </div>
 
         {loading ? (
           <div className="rounded-3xl bg-white border border-slate-200 shadow-sm p-8 text-center text-sm text-slate-400">
-            Cargando datos...
+            {isEn ? "Loading data..." : "Cargando datos..."}
           </div>
         ) : error ? (
           <div className="rounded-3xl bg-white border border-red-200 shadow-sm p-6 text-sm text-red-600">
@@ -216,30 +225,34 @@ export default function AgentDashboardPage() {
             {kpis && (
               <div className="grid gap-4 grid-cols-2 sm:grid-cols-4">
                 <KpiCard
-                  label="Solicitudes activas"
+                  label={isEn ? "Active requests" : "Solicitudes activas"}
                   value={kpis.solicitudesActivas}
-                  sublabel="asignadas a ti"
+                  sublabel={isEn ? "assigned to you" : "asignadas a ti"}
                   accent="cyan"
                   href="/agente/solicitudes"
                 />
                 <KpiCard
-                  label="Completadas este mes"
+                  label={isEn ? "Completed this month" : "Completadas este mes"}
                   value={kpis.solicitudesCompletadasMes}
-                  sublabel="solicitudes cerradas"
+                  sublabel={isEn ? "closed requests" : "solicitudes cerradas"}
                   accent="emerald"
                   href="/agente/solicitudes?status=completed"
                 />
                 <KpiCard
-                  label="Agenda próximos 7 días"
+                  label={isEn ? "Agenda next 7 days" : "Agenda próximos 7 días"}
                   value={kpis.agendaProximos7Dias}
-                  sublabel="eventos programados"
+                  sublabel={isEn ? "scheduled events" : "eventos programados"}
                   accent="amber"
                   href="/agente/agenda"
                 />
                 <KpiCard
-                  label="Eventos vencidos"
+                  label={isEn ? "Overdue events" : "Eventos vencidos"}
                   value={kpis.agendaVencida}
-                  sublabel={kpis.agendaVencida > 0 ? "requieren atención" : "todo al día"}
+                  sublabel={
+                    kpis.agendaVencida > 0
+                      ? (isEn ? "require attention" : "requieren atención")
+                      : (isEn ? "all up to date" : "todo al día")
+                  }
                   accent={kpis.agendaVencida > 0 ? "rose" : "emerald"}
                   href="/agente/agenda"
                 />
@@ -250,16 +263,20 @@ export default function AgentDashboardPage() {
               {/* Solicitudes recientes */}
               <div className="rounded-3xl bg-white border border-slate-200 shadow-sm p-6 flex flex-col gap-4">
                 <div className="flex items-center justify-between">
-                  <p className="text-xs font-semibold uppercase tracking-widest text-slate-400">Solicitudes asignadas</p>
+                  <p className="text-xs font-semibold uppercase tracking-widest text-slate-400">
+                    {isEn ? "Assigned requests" : "Solicitudes asignadas"}
+                  </p>
                   <Link
                     href="/agente/solicitudes"
                     className="text-xs font-medium text-cyan-600 hover:text-cyan-700 transition"
                   >
-                    Ver todas →
+                    {isEn ? "View all" : "Ver todas"} →
                   </Link>
                 </div>
                 {solicitudes.length === 0 ? (
-                  <p className="text-sm text-slate-400 py-4 text-center">Sin solicitudes activas</p>
+                  <p className="text-sm text-slate-400 py-4 text-center">
+                    {isEn ? "No active requests" : "Sin solicitudes activas"}
+                  </p>
                 ) : (
                   <ul className="divide-y divide-slate-100">
                     {solicitudes.map((s) => (
@@ -289,7 +306,7 @@ export default function AgentDashboardPage() {
                             </div>
                           </div>
                           <span className="shrink-0 text-[11px] text-slate-400 pt-0.5">
-                            {new Date(s.updatedAt).toLocaleDateString("es-ES", { day: "numeric", month: "short" })}
+                            {new Date(s.updatedAt).toLocaleDateString(isEn ? "en-US" : "es-ES", { day: "numeric", month: "short" })}
                           </span>
                         </Link>
                       </li>
@@ -301,16 +318,20 @@ export default function AgentDashboardPage() {
               {/* Próximos eventos */}
               <div className="rounded-3xl bg-white border border-slate-200 shadow-sm p-6 flex flex-col gap-4">
                 <div className="flex items-center justify-between">
-                  <p className="text-xs font-semibold uppercase tracking-widest text-slate-400">Próximos eventos</p>
+                  <p className="text-xs font-semibold uppercase tracking-widest text-slate-400">
+                    {isEn ? "Upcoming events" : "Próximos eventos"}
+                  </p>
                   <Link
                     href="/agente/agenda"
                     className="text-xs font-medium text-cyan-600 hover:text-cyan-700 transition"
                   >
-                    Ver agenda →
+                    {isEn ? "View agenda" : "Ver agenda"} →
                   </Link>
                 </div>
                 {agenda.length === 0 ? (
-                  <p className="text-sm text-slate-400 py-4 text-center">Sin eventos próximos</p>
+                  <p className="text-sm text-slate-400 py-4 text-center">
+                    {isEn ? "No upcoming events" : "Sin eventos próximos"}
+                  </p>
                 ) : (
                   <ul className="divide-y divide-slate-100">
                     {agenda.map((e) => {
@@ -339,10 +360,10 @@ export default function AgentDashboardPage() {
                             </div>
                             <div className="shrink-0 text-right">
                               <p className={`text-[11px] font-semibold ${isToday ? "text-cyan-600" : "text-slate-500"}`}>
-                                {isToday ? "Hoy" : start.toLocaleDateString("es-ES", { day: "numeric", month: "short" })}
+                                {isToday ? (isEn ? "Today" : "Hoy") : start.toLocaleDateString(isEn ? "en-US" : "es-ES", { day: "numeric", month: "short" })}
                               </p>
                               <p className="text-[11px] text-slate-400">
-                                {start.toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" })}
+                                {start.toLocaleTimeString(isEn ? "en-US" : "es-ES", { hour: "2-digit", minute: "2-digit" })}
                               </p>
                             </div>
                           </div>
@@ -362,8 +383,10 @@ export default function AgentDashboardPage() {
               >
                 <span className="text-2xl">💬</span>
                 <div>
-                  <p className="text-sm font-semibold text-slate-800 group-hover:text-blue-700">Conversaciones</p>
-                  <p className="text-xs text-slate-400">Chat en tiempo real</p>
+                  <p className="text-sm font-semibold text-slate-800 group-hover:text-blue-700">
+                    {isEn ? "Conversations" : "Conversaciones"}
+                  </p>
+                  <p className="text-xs text-slate-400">{isEn ? "Real-time chat" : "Chat en tiempo real"}</p>
                 </div>
               </Link>
               <Link
@@ -372,8 +395,10 @@ export default function AgentDashboardPage() {
               >
                 <span className="text-2xl">📋</span>
                 <div>
-                  <p className="text-sm font-semibold text-slate-800 group-hover:text-cyan-700">Mis solicitudes</p>
-                  <p className="text-xs text-slate-400">Gestionar y responder</p>
+                  <p className="text-sm font-semibold text-slate-800 group-hover:text-cyan-700">
+                    {isEn ? "My requests" : "Mis solicitudes"}
+                  </p>
+                  <p className="text-xs text-slate-400">{isEn ? "Manage and respond" : "Gestionar y responder"}</p>
                 </div>
               </Link>
               <Link
@@ -382,8 +407,8 @@ export default function AgentDashboardPage() {
               >
                 <span className="text-2xl">📅</span>
                 <div>
-                  <p className="text-sm font-semibold text-slate-800 group-hover:text-amber-700">Agenda</p>
-                  <p className="text-xs text-slate-400">Citas y eventos</p>
+                  <p className="text-sm font-semibold text-slate-800 group-hover:text-amber-700">{isEn ? "Agenda" : "Agenda"}</p>
+                  <p className="text-xs text-slate-400">{isEn ? "Appointments and events" : "Citas y eventos"}</p>
                 </div>
               </Link>
               <Link
@@ -392,8 +417,10 @@ export default function AgentDashboardPage() {
               >
                 <span className="text-2xl">👥</span>
                 <div>
-                  <p className="text-sm font-semibold text-slate-800 group-hover:text-emerald-700">Contactos</p>
-                  <p className="text-xs text-slate-400">Clientes y leads</p>
+                  <p className="text-sm font-semibold text-slate-800 group-hover:text-emerald-700">
+                    {isEn ? "Contacts" : "Contactos"}
+                  </p>
+                  <p className="text-xs text-slate-400">{isEn ? "Customers and leads" : "Clientes y leads"}</p>
                 </div>
               </Link>
             </div>
