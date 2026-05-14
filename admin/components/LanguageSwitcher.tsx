@@ -25,13 +25,13 @@ export default function LanguageSwitcher() {
     }
 
     const basePath = pathname.replace(/^\/(en|es)(?=\/|$)/, '') || '/';
-    const normalizedBasePath = basePath === '/' ? '' : basePath;
 
-    // Force a full navigation with an explicit locale prefix so middleware
-    // sets NEXT_LOCALE server-side reliably on every environment.
+    // Keep middleware locale detection and the next request in sync.
+    document.cookie = `NEXT_LOCALE=${newLocale}; path=/; max-age=31536000; samesite=lax`;
+
     const search = typeof window !== 'undefined' ? window.location.search : '';
     const hash = typeof window !== 'undefined' ? window.location.hash : '';
-    const targetPath = `/${newLocale}${normalizedBasePath}${search}${hash}`;
+    const targetPath = newLocale === 'es' ? basePath : `/${newLocale}${basePath}`;
     window.location.assign(targetPath);
 
     try {
