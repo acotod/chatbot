@@ -10,6 +10,7 @@ import {
   resolveBlockedPathRedirect,
 } from "@/lib/sidebarAccess";
 import { cn } from "@/lib/utils";
+import { useTranslations } from "@/lib/i18n/client";
 import { getStoredAccessToken, getStoredRefreshToken, useAuthStore } from "@/store/auth";
 import { getStoredAgentAccessToken, useAgentAuthStore } from "@/store/agentAuth";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -51,46 +52,56 @@ function getServerSnapshot() {
 
 const NAV_ITEMS: Array<{
   icon: React.ComponentType<{ size?: number; className?: string }>;
-  label: string;
+  labelKey: string;
   href: string;
   permission?: Permission;
   permissions?: Permission[];
   superAdminOnly?: boolean;
 }> = [
-  { icon: LayoutDashboard, label: "Panel", href: "/dashboard", permission: "VIEW_DASHBOARD" },
-  { icon: MessageCircle, label: "Conversaciones", href: "/conversaciones", permission: "VIEW_CONVERSACIONES" },
-  { icon: ClipboardList, label: "Solicitudes", href: "/solicitudes", permission: "VIEW_SOLICITUDES" },
-  { icon: BarChart3, label: "Reportes", href: "/reportes", permission: "VIEW_METRICS" },
-  { icon: CalendarDays, label: "Agenda", href: "/agenda", permission: "VIEW_AGENDA" },
-  { icon: Users, label: "Agentes", href: "/agentes", permission: "VIEW_AGENTES" },
-  { icon: UserCircle2, label: "Contactos", href: "/contactos", permission: "VIEW_CRM" },
-  { icon: Settings, label: "Configuración", href: "/configuracion", permission: "MANAGE_TENANTS" },
-  { icon: ShieldCheck, label: "Seguridad", href: "/security" },
-  { icon: CreditCard, label: "Facturación", href: "/facturacion", superAdminOnly: true },
-  { icon: ScrollText, label: "Auditoría", href: "/auditoria", permission: "VIEW_AUDITORIA" },
-  { icon: ShieldCheck, label: "Roles", href: "/roles", permissions: ["MANAGE_ROLES", "MANAGE_USERS"] },
-  { icon: Building2, label: "Empresas", href: "/tenants", permission: "MANAGE_TENANTS" },
-  { icon: Plug, label: "Integraciones", href: "/integraciones", permission: "MANAGE_TENANTS" },
-  { icon: Variable, label: "Variables", href: "/variables", permission: "EDIT_FLUJOS" },
-  { icon: Webhook, label: "WABA Flujos", href: "/waba-flujos", permission: "VIEW_FLUJOS" },
-  { icon: Webhook, label: "Webhooks", href: "/webhooks", permission: "MANAGE_WEBHOOKS" },
-  { icon: TestTube2, label: "Sandbox", href: "/sandbox", permission: "VIEW_SANDBOX" },
+  { icon: LayoutDashboard, labelKey: "nav.dashboard", href: "/dashboard", permission: "VIEW_DASHBOARD" },
+  { icon: MessageCircle, labelKey: "nav.conversations", href: "/conversaciones", permission: "VIEW_CONVERSACIONES" },
+  { icon: ClipboardList, labelKey: "nav.requests", href: "/solicitudes", permission: "VIEW_SOLICITUDES" },
+  { icon: BarChart3, labelKey: "nav.reports", href: "/reportes", permission: "VIEW_METRICS" },
+  { icon: CalendarDays, labelKey: "nav.agenda", href: "/agenda", permission: "VIEW_AGENDA" },
+  { icon: Users, labelKey: "nav.agents", href: "/agentes", permission: "VIEW_AGENTES" },
+  { icon: UserCircle2, labelKey: "nav.contacts", href: "/contactos", permission: "VIEW_CRM" },
+  { icon: Settings, labelKey: "nav.settings", href: "/configuracion", permission: "MANAGE_TENANTS" },
+  { icon: ShieldCheck, labelKey: "nav.security", href: "/security" },
+  { icon: CreditCard, labelKey: "nav.billing", href: "/facturacion", superAdminOnly: true },
+  { icon: ScrollText, labelKey: "nav.audit", href: "/auditoria", permission: "VIEW_AUDITORIA" },
+  { icon: ShieldCheck, labelKey: "nav.roles", href: "/roles", permissions: ["MANAGE_ROLES", "MANAGE_USERS"] },
+  { icon: Building2, labelKey: "nav.companies", href: "/tenants", permission: "MANAGE_TENANTS" },
+  { icon: Plug, labelKey: "nav.integrations", href: "/integraciones", permission: "MANAGE_TENANTS" },
+  { icon: Variable, labelKey: "nav.variables", href: "/variables", permission: "EDIT_FLUJOS" },
+  { icon: Webhook, labelKey: "nav.flows", href: "/waba-flujos", permission: "VIEW_FLUJOS" },
+  { icon: Webhook, labelKey: "nav.webhooks", href: "/webhooks", permission: "MANAGE_WEBHOOKS" },
+  { icon: TestTube2, labelKey: "nav.sandbox", href: "/sandbox", permission: "VIEW_SANDBOX" },
 ];
 
 const AGENT_NAV_ITEMS: Array<{
   icon: React.ComponentType<{ size?: number; className?: string }>;
-  label: string;
+  labelKey: string;
   href: string;
 }> = [
-  { icon: LayoutDashboard, label: "Panel", href: "/dashboard" },
-  { icon: ClipboardList, label: "Solicitudes", href: "/solicitudes" },
-  { icon: CalendarDays, label: "Agenda", href: "/agenda" },
-  { icon: UserCircle2, label: "Contactos", href: "/contactos" },
-  { icon: ShieldCheck, label: "Seguridad", href: "/agente/security" },
+  { icon: LayoutDashboard, labelKey: "nav.dashboard", href: "/dashboard" },
+  { icon: ClipboardList, labelKey: "nav.requests", href: "/solicitudes" },
+  { icon: CalendarDays, labelKey: "nav.agenda", href: "/agenda" },
+  { icon: UserCircle2, labelKey: "nav.contacts", href: "/contactos" },
+  { icon: ShieldCheck, labelKey: "nav.security", href: "/agente/security" },
 ];
 
+function stripLocalePrefix(pathname: string): string {
+  if (pathname === "/en") return "/";
+  if (pathname.startsWith("/en/")) return pathname.slice(3);
+  if (pathname === "/es") return "/";
+  if (pathname.startsWith("/es/")) return pathname.slice(3);
+  return pathname;
+}
+
 export function Sidebar() {
+  const t = useTranslations("common");
   const pathname = usePathname();
+  const normalizedPathname = stripLocalePrefix(pathname);
   const router = useRouter();
   const { logout, tenantSlug, superAdmin, permissions, setTenantSlug, setPermissions } = useAuthStore();
   const { logout: logoutAgent } = useAgentAuthStore();
@@ -196,7 +207,7 @@ export function Sidebar() {
 
     const onlyManageUsers = !superAdmin && permissionSet.has("MANAGE_USERS") && !permissionSet.has("MANAGE_ROLES");
     const navItems = onlyManageUsers
-      ? NAV_ITEMS.map((item) => (item.href === "/roles" ? { ...item, label: "Usuarios admin" } : item))
+      ? NAV_ITEMS.map((item) => (item.href === "/roles" ? { ...item, labelKey: "nav.adminUsers" } : item))
       : NAV_ITEMS;
 
     return filterAuthorizedNavItems(navItems, accessContext);
@@ -214,7 +225,7 @@ export function Sidebar() {
 
     const blockedRoute = resolveBlockedPathRedirect(
       NAV_ITEMS,
-      pathname,
+      normalizedPathname,
       accessContext,
       "/dashboard"
     );
@@ -234,11 +245,12 @@ export function Sidebar() {
         },
       });
     }
-    if (pathname !== fallback) {
+    if (normalizedPathname !== fallback) {
       router.replace(fallback);
     }
   }, [
     isAgentSession,
+    normalizedPathname,
     pathname,
     superAdmin,
     authMeLoading,
@@ -287,14 +299,14 @@ export function Sidebar() {
           >
             <span className="flex items-center gap-2 min-w-0">
               <Building2 size={14} className="text-slate-400 shrink-0" />
-              <span className="truncate">{tenantSlug || "Seleccionar empresa"}</span>
+              <span className="truncate">{tenantSlug || t("common.selectCompany")}</span>
             </span>
             <ChevronDown size={14} className={cn("text-slate-400 shrink-0 transition-transform", dropdownOpen && "rotate-180")} />
           </button>
           {dropdownOpen && (
             <div className="mt-1 bg-white border border-slate-200 rounded-lg shadow-md overflow-hidden z-50">
               {tenants.length === 0 && (
-                <p className="px-3 py-2 text-xs text-slate-400">Sin empresas</p>
+                <p className="px-3 py-2 text-xs text-slate-400">{t("common.noCompanies")}</p>
               )}
               {tenants.map((t) => (
                 <button
@@ -314,7 +326,7 @@ export function Sidebar() {
       )}
       <nav className="flex-1 min-h-0 px-3 py-4 overflow-y-auto space-y-0.5">
         {filteredNavItems.map((item) => {
-          const active = pathname.startsWith(item.href);
+          const active = normalizedPathname.startsWith(item.href);
           return (
             <Link
               key={item.href}
@@ -333,8 +345,8 @@ export function Sidebar() {
                 )}
                 size={18}
               />
-              {item.label}
-              {item.label === "Solicitudes" && !isAgentSession && solicitudesPendientes > 0 && (
+              {t(item.labelKey)}
+              {item.href === "/solicitudes" && !isAgentSession && solicitudesPendientes > 0 && (
                 <span className="ml-auto bg-red-100 text-red-600 text-xs font-semibold px-2 py-0.5 rounded-full">
                   {solicitudesPendientes > 99 ? "99+" : solicitudesPendientes}
                 </span>
@@ -352,7 +364,7 @@ export function Sidebar() {
           className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-slate-500 hover:bg-red-50 hover:text-red-600 transition"
         >
           <LogOut size={18} className="text-slate-400" />
-          Cerrar sesión
+          {t("header.logout")}
         </button>
       </div>
     </aside>

@@ -1,0 +1,14 @@
+{
+  "pageTitle": "Conversations",
+  "searchPlaceholder": "Search conversations...",
+  "empty": "No conversations yet",
+  "typing": "Typing...",
+  "lastMessage": "Last message",
+  "unread": "Unread",
+  "assignedTo": "Assigned to",
+  "filters": {
+    "all": "All",
+    "open": "Open",
+    "closed": "Closed"
+  }
+}

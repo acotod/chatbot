@@ -1,0 +1,20 @@
+{
+  "pageTitle": "Agenda",
+  "newEvent": "Nuevo evento",
+  "editEvent": "Editar evento",
+  "deleteEvent": "Eliminar evento",
+  "title": "Título",
+  "description": "Descripción",
+  "date": "Fecha",
+  "time": "Hora",
+  "status": {
+    "scheduled": "Programado",
+    "confirmed": "Confirmado",
+    "completed": "Completado",
+    "canceled": "Cancelado"
+  },
+  "messages": {
+    "titleRequired": "El título es obligatorio",
+    "invalidRange": "Rango de tiempo inválido"
+  }
+}

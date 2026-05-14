@@ -3,20 +3,24 @@
 import { useRouter, usePathname } from 'next/navigation';
 import { useCurrentLocale } from '@/lib/i18n/client';
 import { locales, localeNames } from '@/lib/i18n/config';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
 
 export default function LanguageSwitcher() {
   const router = useRouter();
   const pathname = usePathname();
   const locale = useCurrentLocale();
 
-  const handleChange = (newLocale: string) => {
+  const handleChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const newLocaleValue = e.target.value;
+    const newLocale = String(newLocaleValue ?? '').trim();
+    if (!newLocale || !locales.includes(newLocale as (typeof locales)[number])) 
+    {
+      return;
+    }
+
+    if (newLocale === locale) {
+      return;
+    }
+
     // Remove the current locale prefix and add the new one
     let newPathname = pathname;
     
@@ -40,17 +44,19 @@ export default function LanguageSwitcher() {
   };
 
   return (
-    <Select value={locale} onValueChange={handleChange}>
-      <SelectTrigger className="w-[140px]">
-        <SelectValue />
-      </SelectTrigger>
-      <SelectContent>
+    <div className="relative">
+      <select
+        value={locale}
+        onChange={handleChange}
+        className="w-[140px] px-3 py-2 bg-white border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 text-sm"
+        aria-label="Language selector"
+      >
         {locales.map((loc) => (
-          <SelectItem key={loc} value={loc}>
+          <option key={loc} value={loc}>
             {localeNames[loc]}
-          </SelectItem>
+          </option>
         ))}
-      </SelectContent>
-    </Select>
+      </select>
+    </div>
   );
 }

@@ -1,0 +1,14 @@
+{
+  "pageTitle": "Conversaciones",
+  "searchPlaceholder": "Buscar conversaciones...",
+  "empty": "Aún no hay conversaciones",
+  "typing": "Escribiendo...",
+  "lastMessage": "Último mensaje",
+  "unread": "Sin leer",
+  "assignedTo": "Asignado a",
+  "filters": {
+    "all": "Todas",
+    "open": "Abiertas",
+    "closed": "Cerradas"
+  }
+}

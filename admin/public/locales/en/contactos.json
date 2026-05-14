@@ -1,0 +1,14 @@
+{
+  "pageTitle": "Contacts",
+  "searchPlaceholder": "Search by name, phone or email",
+  "newContact": "New contact",
+  "editContact": "Edit contact",
+  "fields": {
+    "name": "Name",
+    "phone": "Phone",
+    "email": "Email",
+    "company": "Company",
+    "notes": "Notes"
+  },
+  "empty": "No contacts found"
+}

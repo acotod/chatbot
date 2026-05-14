@@ -2,6 +2,8 @@
 
 import { API_BASE, tenantApi } from "@/lib/api";
 import { agentAuthApi } from "@/lib/agentApi";
+import LanguageSwitcher from "@/components/LanguageSwitcher";
+import { useTranslations } from "@/lib/i18n/client";
 import { useNotifications } from "@/hooks/useNotifications";
 import { getMe } from "@/lib/useMe";
 import { getStoredAgentAccessToken } from "@/store/agentAuth";
@@ -40,23 +42,33 @@ function normalizeTenantName(nombre: unknown, slug: string): string {
 }
 
 const TITLES: Record<string, string> = {
-  "/dashboard": "Panel",
-  "/conversaciones": "Conversaciones",
-  "/solicitudes": "Solicitudes",
-  "/agenda": "Agenda",
-  "/agente/dashboard": "Panel",
-  "/agente/conversaciones": "Conversaciones",
-  "/agente/solicitudes": "Solicitudes",
-  "/agente/agenda": "Agenda",
-  "/agente/contactos": "Contactos",
-  "/agentes": "Agentes",
-  "/configuracion": "Configuración",
-  "/facturacion": "Facturación",
-  "/tenants": "Empresas",
+  "/dashboard": "nav.dashboard",
+  "/conversaciones": "nav.conversations",
+  "/solicitudes": "nav.requests",
+  "/agenda": "nav.agenda",
+  "/agente/dashboard": "nav.dashboard",
+  "/agente/conversaciones": "nav.conversations",
+  "/agente/solicitudes": "nav.requests",
+  "/agente/agenda": "nav.agenda",
+  "/agente/contactos": "nav.contacts",
+  "/agentes": "nav.agents",
+  "/configuracion": "nav.settings",
+  "/facturacion": "nav.billing",
+  "/tenants": "nav.companies",
 };
 
+function stripLocalePrefix(pathname: string): string {
+  if (pathname === "/en") return "/";
+  if (pathname.startsWith("/en/")) return pathname.slice(3);
+  if (pathname === "/es") return "/";
+  if (pathname.startsWith("/es/")) return pathname.slice(3);
+  return pathname;
+}
+
 export function Header() {
+  const t = useTranslations("common");
   const pathname = usePathname();
+  const normalizedPathname = stripLocalePrefix(pathname);
   const { tenantSlug, setTenantSlug } = useAuthStore();
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const notificationsRef = useRef<HTMLDivElement | null>(null);
@@ -67,7 +79,7 @@ export function Header() {
   );
   const hasAccessToken = isClient && Boolean(getStoredAccessToken());
   const hasAgentAccessToken = isClient && Boolean(getStoredAgentAccessToken());
-  const isAgentSharedRoute = ["/dashboard", "/conversaciones", "/solicitudes", "/agenda", "/contactos", "/agente/conversaciones"].includes(pathname);
+  const isAgentSharedRoute = ["/dashboard", "/conversaciones", "/solicitudes", "/agenda", "/contactos", "/agente/conversaciones"].includes(normalizedPathname);
   const isAgentSession = hasAgentAccessToken && (isAgentSharedRoute || !hasAccessToken);
   const sessionEmail = isClient ? (getMe()?.email ?? null) : null;
 
@@ -101,16 +113,15 @@ export function Header() {
   }, [tenantSlug, tenants]);
 
   const title =
-    Object.entries(TITLES).find(([k]) => pathname.startsWith(k))?.[1] ??
-    "Zentra Bot";
+    t(Object.entries(TITLES).find(([k]) => normalizedPathname.startsWith(k))?.[1] ?? "header.title");
 
   const selectedTenant = tenants.find((tenant) => tenant.slug === tenantSlug);
   const selectedTenantName = selectedTenant
     ? normalizeTenantName(selectedTenant.nombre, selectedTenant.slug)
     : null;
   const tenantDisplayName = isAgentSession
-    ? (agentProfile?.tenantNombre || agentProfile?.tenantSlug || "Agente")
-    : (selectedTenantName || selectedTenant?.slug || tenantSlug || "Admin");
+    ? (agentProfile?.tenantNombre || agentProfile?.tenantSlug || t("common.roleAgent"))
+    : (selectedTenantName || selectedTenant?.slug || tenantSlug || t("common.roleAdmin"));
   const rawTenantLogo = isAgentSession
     ? (agentProfile?.tenantLogoUrl ?? null)
     : (selectedTenant?.logoUrl ?? null);
@@ -120,8 +131,8 @@ export function Header() {
       : `${API_BASE}${rawTenantLogo}`
     : null;
   const identityEmail = isAgentSession
-    ? (agentProfile?.email ?? "Sesion de agente")
-    : (sessionEmail ?? "Sin sesión");
+    ? (agentProfile?.email ?? t("common.agentSession"))
+    : (sessionEmail ?? t("common.noSession"));
   const identityInitial = isAgentSession
     ? ((agentProfile?.nombre || "Agente").charAt(0).toUpperCase())
     : tenantDisplayName.charAt(0).toUpperCase();
@@ -159,7 +170,7 @@ export function Header() {
             onChange={(e) => setTenantSlug(e.target.value)}
             className="px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30 min-w-44"
           >
-            {tenants.length === 0 && <option value="">Sin empresas</option>}
+            {tenants.length === 0 && <option value="">{t("common.noCompanies")}</option>}
             {tenants.map((tenant) => (
               <option key={tenant.id} value={tenant.slug}>
                 {`${normalizeTenantName(tenant.nombre, tenant.slug)} (${tenant.slug})`}
@@ -174,11 +185,13 @@ export function Header() {
         <div className="relative hidden md:block">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
           <input
-            placeholder="Buscar..."
+            placeholder={t("buttons.search")}
             className="pl-9 pr-4 py-2 rounded-xl bg-slate-50 border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30 w-56"
           />
         </div>
         )}
+
+        <LanguageSwitcher />
 
         {/* Notifications */}
         {!isAgentSession && (
@@ -186,7 +199,7 @@ export function Header() {
           <button
             type="button"
             onClick={() => setNotificationsOpen((v) => !v)}
-            title="Notificaciones"
+            title={t("header.notifications")}
             className="relative p-2 rounded-xl bg-slate-50 border border-slate-200 hover:bg-slate-100"
           >
             <Bell className="w-5 h-5 text-slate-600" />
@@ -195,7 +208,7 @@ export function Header() {
                 {unreadCount > 99 ? "99+" : unreadCount}
               </span>
             )}
-            <span className="sr-only">Notificaciones</span>
+            <span className="sr-only">{t("header.notifications")}</span>
           </button>
 
           {notificationsOpen && (
@@ -203,7 +216,7 @@ export function Header() {
               <div className="px-4 py-3 border-b border-slate-200 flex items-center justify-between">
                 <div>
                   <p className="text-sm font-semibold text-slate-900">Notificaciones</p>
-                  <p className="text-xs text-slate-500">{unreadCount} sin leer</p>
+                  <p className="text-xs text-slate-500">{t("header.unreadCount", { count: unreadCount })}</p>
                 </div>
                 <button
                   type="button"
@@ -211,17 +224,17 @@ export function Header() {
                   disabled={isMarkingAll || unreadCount === 0}
                   className="text-xs text-blue-700 disabled:text-slate-400"
                 >
-                  Marcar todas
+                  {t("header.markAll")}
                 </button>
               </div>
 
               <div className="max-h-96 overflow-y-auto">
                 {isLoadingNotifications && (
-                  <div className="px-4 py-6 text-sm text-slate-500">Cargando notificaciones...</div>
+                  <div className="px-4 py-6 text-sm text-slate-500">{t("header.loadingNotifications")}</div>
                 )}
 
                 {!isLoadingNotifications && notifications.length === 0 && (
-                  <div className="px-4 py-6 text-sm text-slate-500">No hay notificaciones.</div>
+                  <div className="px-4 py-6 text-sm text-slate-500">{t("header.noNotifications")}</div>
                 )}
 
                 {!isLoadingNotifications && notifications.map((item) => (
@@ -243,7 +256,7 @@ export function Header() {
                           onClick={() => markAsRead(item.id)}
                           className="text-xs text-blue-700 whitespace-nowrap"
                         >
-                          Marcar leída
+                          {t("header.markRead")}
                         </button>
                       )}
                     </div>

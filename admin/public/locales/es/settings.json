@@ -1,0 +1,13 @@
+{
+  "pageTitle": "Configuración",
+  "tabs": {
+    "general": "General",
+    "security": "Seguridad",
+    "branding": "Branding",
+    "integrations": "Integraciones"
+  },
+  "saveChanges": "Guardar cambios",
+  "saved": "Cambios guardados",
+  "uploadLogo": "Subir logo",
+  "removeLogo": "Eliminar logo"
+}

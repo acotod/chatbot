@@ -4,7 +4,13 @@
     "logout": "Cerrar sesión",
     "settings": "Configuración",
     "profile": "Perfil",
-    "language": "Idioma"
+    "language": "Idioma",
+    "notifications": "Notificaciones",
+    "markAll": "Marcar todas",
+    "markRead": "Marcar leída",
+    "loadingNotifications": "Cargando notificaciones...",
+    "noNotifications": "No hay notificaciones",
+    "unreadCount": "{count} sin leer"
   },
   "buttons": {
     "save": "Guardar",
@@ -54,7 +60,13 @@
     "updatedAt": "Actualizado",
     "description": "Descripción",
     "language": "Español",
-    "selectLanguage": "Seleccionar idioma"
+    "selectLanguage": "Seleccionar idioma",
+    "selectCompany": "Seleccionar empresa",
+    "noCompanies": "Sin empresas",
+    "roleAgent": "Agente",
+    "roleAdmin": "Admin",
+    "agentSession": "Sesión de agente",
+    "noSession": "Sin sesión"
   },
   "nav": {
     "dashboard": "Panel",
@@ -70,6 +82,7 @@
     "billing": "Facturación",
     "audit": "Auditoría",
     "roles": "Roles",
+    "adminUsers": "Usuarios admin",
     "integrations": "Integraciones",
     "variables": "Variables",
     "flows": "Flujos",

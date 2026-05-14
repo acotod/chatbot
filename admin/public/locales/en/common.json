@@ -4,7 +4,13 @@
     "logout": "Sign out",
     "settings": "Settings",
     "profile": "Profile",
-    "language": "Language"
+    "language": "Language",
+    "notifications": "Notifications",
+    "markAll": "Mark all",
+    "markRead": "Mark as read",
+    "loadingNotifications": "Loading notifications...",
+    "noNotifications": "No notifications",
+    "unreadCount": "{count} unread"
   },
   "buttons": {
     "save": "Save",
@@ -54,7 +60,13 @@
     "updatedAt": "Updated",
     "description": "Description",
     "language": "English",
-    "selectLanguage": "Select language"
+    "selectLanguage": "Select language",
+    "selectCompany": "Select company",
+    "noCompanies": "No companies",
+    "roleAgent": "Agent",
+    "roleAdmin": "Admin",
+    "agentSession": "Agent session",
+    "noSession": "No session"
   },
   "nav": {
     "dashboard": "Dashboard",
@@ -70,6 +82,7 @@
     "billing": "Billing",
     "audit": "Audit",
     "roles": "Roles",
+    "adminUsers": "Admin users",
     "integrations": "Integrations",
     "variables": "Variables",
     "flows": "Workflows",
