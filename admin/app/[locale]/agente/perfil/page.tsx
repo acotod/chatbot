@@ -2,6 +2,7 @@
 
 import { agentAuthApi } from "@/lib/agentApi";
 import { Header } from "@/components/layout/Header";
+import { useCurrentLocale } from "@/lib/i18n/client";
 import { useAgentAuthStore } from "@/store/agentAuth";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -20,8 +21,19 @@ type AgentProfile = {
   lastSeenAt: string | null;
 };
 
+function agentStatusLabel(status: string, isEn: boolean) {
+  const normalized = status.toLowerCase();
+  const map: Record<string, string> = isEn
+    ? { activo: "Active", inactivo: "Inactive", active: "Active", inactive: "Inactive" }
+    : { activo: "Activo", inactivo: "Inactivo", active: "Activo", inactive: "Inactivo" };
+
+  return map[normalized] ?? status;
+}
+
 export default function AgentProfilePage() {
   const router = useRouter();
+  const locale = useCurrentLocale();
+  const isEn = locale === "en";
   const { logout } = useAgentAuthStore();
   const [profile, setProfile] = useState<AgentProfile | null>(null);
   const [loading, setLoading] = useState(true);
@@ -47,7 +59,7 @@ export default function AgentProfilePage() {
           return;
         }
         if (!cancelled) {
-          setError("No se pudo cargar el perfil del agente.");
+          setError(isEn ? "Could not load the agent profile." : "No se pudo cargar el perfil del agente.");
           logout();
           router.replace("/agente/login?reason=expired");
         }
@@ -63,7 +75,7 @@ export default function AgentProfilePage() {
     return () => {
       cancelled = true;
     };
-  }, [logout, router]);
+  }, [isEn, logout, router]);
 
   async function handleLogout() {
     try {
@@ -83,10 +95,12 @@ export default function AgentProfilePage() {
         <div className="rounded-3xl bg-white border border-slate-200 shadow-sm p-6 sm:p-8">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
             <div>
-              <p className="text-sm font-medium uppercase tracking-[0.2em] text-cyan-600">Perfil único</p>
-              <h1 className="mt-2 text-3xl font-semibold tracking-tight text-slate-900">Portal de agente</h1>
+              <p className="text-sm font-medium uppercase tracking-[0.2em] text-cyan-600">{isEn ? "Single profile" : "Perfil único"}</p>
+              <h1 className="mt-2 text-3xl font-semibold tracking-tight text-slate-900">{isEn ? "Agent portal" : "Portal de agente"}</h1>
               <p className="mt-2 text-slate-600">
-                Este acceso dedicado no incluye módulos del panel admin. Solo muestra tu identidad operativa y datos asociados.
+                {isEn
+                  ? "This dedicated access does not include admin panel modules. It only shows your operating identity and related information."
+                  : "Este acceso dedicado no incluye módulos del panel admin. Solo muestra tu identidad operativa y datos asociados."}
               </p>
             </div>
             <button
@@ -94,14 +108,14 @@ export default function AgentProfilePage() {
               onClick={handleLogout}
               className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 hover:border-red-200 hover:bg-red-50 hover:text-red-600 transition"
             >
-              Cerrar sesión
+              {isEn ? "Sign out" : "Cerrar sesión"}
             </button>
           </div>
         </div>
 
         {loading ? (
           <div className="rounded-3xl bg-white border border-slate-200 shadow-sm p-6 text-sm text-slate-500">
-            Cargando perfil...
+            {isEn ? "Loading profile..." : "Cargando perfil..."}
           </div>
         ) : error ? (
           <div className="rounded-3xl bg-white border border-red-200 shadow-sm p-6 text-sm text-red-600">
@@ -110,30 +124,30 @@ export default function AgentProfilePage() {
         ) : profile ? (
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="rounded-3xl bg-white border border-slate-200 shadow-sm p-6">
-              <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Identidad</p>
+              <p className="text-xs uppercase tracking-[0.2em] text-slate-400">{isEn ? "Identity" : "Identidad"}</p>
               <h2 className="mt-2 text-2xl font-semibold text-slate-900">{profile.nombre}</h2>
               <div className="mt-4 space-y-2 text-sm text-slate-600">
-                <p><span className="font-medium text-slate-900">Correo electrónico:</span> {profile.email}</p>
-                <p><span className="font-medium text-slate-900">WhatsApp:</span> {profile.whatsapp || "No definido"}</p>
-                <p><span className="font-medium text-slate-900">Estado:</span> {profile.estado}</p>
-                <p><span className="font-medium text-slate-900">Puesto:</span> {profile.puesto?.nombre || "Sin puesto"}</p>
+                <p><span className="font-medium text-slate-900">{isEn ? "Email:" : "Correo electrónico:"}</span> {profile.email}</p>
+                <p><span className="font-medium text-slate-900">WhatsApp:</span> {profile.whatsapp || (isEn ? "Not set" : "No definido")}</p>
+                <p><span className="font-medium text-slate-900">{isEn ? "Status:" : "Estado:"}</span> {agentStatusLabel(profile.estado, isEn)}</p>
+                <p><span className="font-medium text-slate-900">{isEn ? "Role:" : "Puesto:"}</span> {profile.puesto?.nombre || (isEn ? "No role" : "Sin puesto")}</p>
               </div>
             </div>
 
             <div className="rounded-3xl bg-white border border-slate-200 shadow-sm p-6">
-              <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Empresa</p>
+              <p className="text-xs uppercase tracking-[0.2em] text-slate-400">{isEn ? "Company" : "Empresa"}</p>
               <h2 className="mt-2 text-2xl font-semibold text-slate-900">{profile.tenantNombre || profile.tenantSlug}</h2>
               <div className="mt-4 space-y-2 text-sm text-slate-600">
                 <p><span className="font-medium text-slate-900">Slug:</span> {profile.tenantSlug}</p>
-                <p><span className="font-medium text-slate-900">Último acceso:</span> {profile.lastSeenAt ? new Date(profile.lastSeenAt).toLocaleString("es-ES") : "Sin registro"}</p>
+                <p><span className="font-medium text-slate-900">{isEn ? "Last access:" : "Último acceso:"}</span> {profile.lastSeenAt ? new Date(profile.lastSeenAt).toLocaleString(isEn ? "en-US" : "es-ES") : (isEn ? "No record" : "Sin registro")}</p>
                 <p>
-                  <span className="font-medium text-slate-900">Calendario:</span>{" "}
+                  <span className="font-medium text-slate-900">{isEn ? "Calendar:" : "Calendario:"}</span>{" "}
                   {profile.calendarLink ? (
                     <a href={profile.calendarLink} target="_blank" rel="noreferrer" className="text-cyan-700 hover:text-cyan-800">
-                      Abrir enlace
+                      {isEn ? "Open link" : "Abrir enlace"}
                     </a>
                   ) : (
-                    "No configurado"
+                    isEn ? "Not configured" : "No configurado"
                   )}
                 </p>
               </div>

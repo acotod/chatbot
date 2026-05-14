@@ -26,10 +26,24 @@ const ESTADO_LABELS: Record<string, string> = {
 	rejected: "Rechazada",
 };
 
+const ESTADO_LABELS_EN: Record<string, string> = {
+	open: "Open",
+	in_progress: "In progress",
+	pending_info: "Pending info",
+	completed: "Completed",
+	rejected: "Rejected",
+};
+
 const PRIORIDAD_LABELS: Record<string, string> = {
 	baja: "Baja",
 	media: "Media",
 	alta: "Alta",
+};
+
+const PRIORIDAD_LABELS_EN: Record<string, string> = {
+	baja: "Low",
+	media: "Medium",
+	alta: "High",
 };
 
 const CATEGORIA_LABELS: Record<string, string> = {
@@ -38,6 +52,14 @@ const CATEGORIA_LABELS: Record<string, string> = {
 	comercial: "Comercial",
 	soporte: "Soporte",
 	otro: "Otro",
+};
+
+const CATEGORIA_LABELS_EN: Record<string, string> = {
+	tecnico: "Technical",
+	facturacion: "Billing",
+	comercial: "Sales",
+	soporte: "Support",
+	otro: "Other",
 };
 
 type DetailTab = "resumen" | "conversaciones" | "mensajes";
@@ -58,6 +80,7 @@ function getMessageText(message: AgentSolicitudMessage): string {
 export default function AgentSolicitudesPage() {
 	const t = useTranslations("solicitudes");
 	const locale = useCurrentLocale();
+	const isEn = locale === "en";
 	const qc = useQueryClient();
 	const [status, setStatus] = useState<"assigned" | "completed">("assigned");
 	const [detailModal, setDetailModal] = useState<{ open: boolean; solicitud: DetailSolicitud | null }>({
@@ -267,9 +290,9 @@ export default function AgentSolicitudesPage() {
 												<td className="px-4 py-3 text-slate-700">#{item.id}</td>
 												<td className="px-4 py-3 text-slate-700">{item.titulo || item.nombre || t("withoutTitle")}</td>
 												<td className="px-4 py-3 text-slate-600">{item.nombre || item.telefonoContacto || "-"}</td>
-												<td className="px-4 py-3 text-slate-700">{CATEGORIA_LABELS[item.categoria || ""] ?? item.categoria ?? "-"}</td>
-												<td className="px-4 py-3 text-slate-700">{ESTADO_LABELS[item.estado || ""] ?? item.estado ?? "-"}</td>
-												<td className="px-4 py-3 text-slate-700">{PRIORIDAD_LABELS[item.prioridad || ""] ?? item.prioridad ?? "-"}</td>
+												<td className="px-4 py-3 text-slate-700">{(isEn ? CATEGORIA_LABELS_EN : CATEGORIA_LABELS)[item.categoria || ""] ?? item.categoria ?? "-"}</td>
+												<td className="px-4 py-3 text-slate-700">{(isEn ? ESTADO_LABELS_EN : ESTADO_LABELS)[item.estado || ""] ?? item.estado ?? "-"}</td>
+												<td className="px-4 py-3 text-slate-700">{(isEn ? PRIORIDAD_LABELS_EN : PRIORIDAD_LABELS)[item.prioridad || ""] ?? item.prioridad ?? "-"}</td>
 												<td className="px-4 py-3 text-slate-500">{item.dueAt ? formatDate(item.dueAt) : "-"}</td>
 												<td className="px-4 py-3 text-slate-500">{formatDate(item.updatedAt)}</td>
 												<td className="px-4 py-3">
@@ -318,7 +341,7 @@ export default function AgentSolicitudesPage() {
 			<Modal
 				open={detailModal.open}
 				onClose={() => setDetailModal({ open: false, solicitud: null })}
-				title="Detalle de solicitud"
+				title={isEn ? "Request details" : "Detalle de solicitud"}
 				className="max-w-4xl"
 			>
 				{detailModal.solicitud && (
@@ -328,111 +351,111 @@ export default function AgentSolicitudesPage() {
 								<div className="min-w-0">
 									<div className="flex flex-wrap items-center gap-2">
 										<span className="rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-amber-700">
-											Vista de agente
+											{isEn ? "Agent view" : "Vista de agente"}
 										</span>
 										<span className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-600">
-											Solicitud #{detailModal.solicitud.id}
+											{isEn ? "Request" : "Solicitud"} #{detailModal.solicitud.id}
 										</span>
 									</div>
 									<h3 className="mt-3 truncate text-xl font-semibold text-slate-900">
-										{detailModal.solicitud.nombre || detailModal.solicitud.titulo || "Sin nombre"}
+										{detailModal.solicitud.nombre || detailModal.solicitud.titulo || (isEn ? "Unnamed" : "Sin nombre")}
 									</h3>
 									<p className="mt-1 text-sm text-slate-600">
-										{detailModal.solicitud.telefonoContacto || "Sin teléfono"}
-										{detailModal.solicitud.createdAt ? ` · Creada ${formatDate(detailModal.solicitud.createdAt)}` : ""}
+										{detailModal.solicitud.telefonoContacto || (isEn ? "No phone" : "Sin teléfono")}
+										{detailModal.solicitud.createdAt ? ` · ${isEn ? "Created" : "Creada"} ${formatDate(detailModal.solicitud.createdAt)}` : ""}
 									</p>
 								</div>
 								<div className="flex flex-col gap-2 lg:items-end">
 									<StatusBadge status={detailModal.solicitud.estado} />
-									<p className="text-xs text-slate-500">Sin agente asignado</p>
+									<p className="text-xs text-slate-500">{isEn ? "No assigned agent" : "Sin agente asignado"}</p>
 									<p className="text-xs text-slate-500">
-										{detailModal.solicitud.dueAt ? `Vence ${formatDate(detailModal.solicitud.dueAt)}` : "Sin vencimiento"}
+										{detailModal.solicitud.dueAt ? `${isEn ? "Due" : "Vence"} ${formatDate(detailModal.solicitud.dueAt)}` : (isEn ? "No due date" : "Sin vencimiento")}
 									</p>
 								</div>
 							</div>
 							<p className="mt-3 text-sm text-slate-600">
-								Esta solicitud se está viendo con sesión de agente; el detalle técnico queda limitado.
+								{isEn ? "This request is being viewed in an agent session; technical detail is limited." : "Esta solicitud se está viendo con sesión de agente; el detalle técnico queda limitado."}
 							</p>
 						</div>
 
 						<Tabs value={detailTab} className="space-y-4">
 							<TabsList className="w-full justify-start overflow-x-auto">
-								<TabsTrigger value="resumen" onClick={() => setDetailTab("resumen")}>Resumen</TabsTrigger>
-								<TabsTrigger value="conversaciones" onClick={() => setDetailTab("conversaciones")}>Conversaciones del cliente</TabsTrigger>
-								<TabsTrigger value="mensajes" onClick={() => setDetailTab("mensajes")}>Mensajes WhatsApp</TabsTrigger>
+								<TabsTrigger value="resumen" onClick={() => setDetailTab("resumen")}>{isEn ? "Summary" : "Resumen"}</TabsTrigger>
+								<TabsTrigger value="conversaciones" onClick={() => setDetailTab("conversaciones")}>{isEn ? "Customer conversations" : "Conversaciones del cliente"}</TabsTrigger>
+								<TabsTrigger value="mensajes" onClick={() => setDetailTab("mensajes")}>{isEn ? "WhatsApp messages" : "Mensajes WhatsApp"}</TabsTrigger>
 							</TabsList>
 
 							<TabsContent value="resumen" className="space-y-4">
 								<div className="grid gap-3 sm:grid-cols-2">
 									<div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-										<p className="text-xs uppercase tracking-wide text-slate-500">Cliente</p>
-										<p className="mt-1 font-medium text-slate-900">{detailModal.solicitud.nombre || "Sin nombre"}</p>
-										<p className="text-sm text-slate-600">{detailModal.solicitud.telefonoContacto || "Sin teléfono"}</p>
+										<p className="text-xs uppercase tracking-wide text-slate-500">{isEn ? "Customer" : "Cliente"}</p>
+										<p className="mt-1 font-medium text-slate-900">{detailModal.solicitud.nombre || (isEn ? "Unnamed" : "Sin nombre")}</p>
+										<p className="text-sm text-slate-600">{detailModal.solicitud.telefonoContacto || (isEn ? "No phone" : "Sin teléfono")}</p>
 									</div>
 									<div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-										<p className="text-xs uppercase tracking-wide text-slate-500">Estado</p>
+										<p className="text-xs uppercase tracking-wide text-slate-500">{isEn ? "Status" : "Estado"}</p>
 										<div className="mt-1"><StatusBadge status={detailModal.solicitud.estado} /></div>
-										<p className="mt-2 text-sm text-slate-600">Creada: {formatDate(detailModal.solicitud.createdAt)}</p>
+										<p className="mt-2 text-sm text-slate-600">{isEn ? "Created:" : "Creada:"} {formatDate(detailModal.solicitud.createdAt)}</p>
 									</div>
 									<div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-										<p className="text-xs uppercase tracking-wide text-slate-500">Conexión</p>
-										<p className="mt-1 text-sm text-slate-700">{detailClientKey || "Sin identificador de cliente"}</p>
+										<p className="text-xs uppercase tracking-wide text-slate-500">{isEn ? "Connection" : "Conexión"}</p>
+										<p className="mt-1 text-sm text-slate-700">{detailClientKey || (isEn ? "No customer identifier" : "Sin identificador de cliente")}</p>
 									</div>
 									<div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-										<p className="text-xs uppercase tracking-wide text-slate-500">Vencimiento</p>
-										<p className="mt-1 text-sm text-slate-700">{detailModal.solicitud.dueAt ? formatDate(detailModal.solicitud.dueAt) : "Sin fecha"}</p>
+										<p className="text-xs uppercase tracking-wide text-slate-500">{isEn ? "Due date" : "Vencimiento"}</p>
+										<p className="mt-1 text-sm text-slate-700">{detailModal.solicitud.dueAt ? formatDate(detailModal.solicitud.dueAt) : (isEn ? "No date" : "Sin fecha")}</p>
 									</div>
 								</div>
 								<div className="space-y-3 rounded-xl border border-slate-200 bg-white p-4">
-									<p className="text-sm font-medium text-slate-900">Gestionar solicitud</p>
+									<p className="text-sm font-medium text-slate-900">{isEn ? "Manage request" : "Gestionar solicitud"}</p>
 									<div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
 										<div className="space-y-1.5">
-											<label className="text-xs font-medium uppercase tracking-wide text-slate-500">Estado</label>
+											<label className="text-xs font-medium uppercase tracking-wide text-slate-500">{isEn ? "Status" : "Estado"}</label>
 											<select
 												value={detailDraft.estado}
 												onChange={(e) => setDetailDraft((prev) => ({ ...prev, estado: e.target.value }))}
 												className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm"
 											>
 												{ESTADOS.map((estado) => (
-													<option key={estado} value={estado}>{ESTADO_LABELS[estado] ?? estado}</option>
+													<option key={estado} value={estado}>{(isEn ? ESTADO_LABELS_EN : ESTADO_LABELS)[estado] ?? estado}</option>
 												))}
 											</select>
 										</div>
 										<div className="space-y-1.5">
-											<label className="text-xs font-medium uppercase tracking-wide text-slate-500">Prioridad</label>
+											<label className="text-xs font-medium uppercase tracking-wide text-slate-500">{isEn ? "Priority" : "Prioridad"}</label>
 											<select
 												value={detailDraft.prioridad}
 												onChange={(e) => setDetailDraft((prev) => ({ ...prev, prioridad: e.target.value }))}
 												className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm"
 											>
 												{PRIORIDADES.map((prioridad) => (
-													<option key={prioridad || "empty"} value={prioridad}>{PRIORIDAD_LABELS[prioridad] ?? "Sin prioridad"}</option>
+													<option key={prioridad || "empty"} value={prioridad}>{(isEn ? PRIORIDAD_LABELS_EN : PRIORIDAD_LABELS)[prioridad] ?? (isEn ? "No priority" : "Sin prioridad")}</option>
 												))}
 											</select>
 										</div>
 										<div className="space-y-1.5">
-											<label className="text-xs font-medium uppercase tracking-wide text-slate-500">Categoria</label>
+											<label className="text-xs font-medium uppercase tracking-wide text-slate-500">{isEn ? "Category" : "Categoria"}</label>
 											<select
 												value={detailDraft.categoria}
 												onChange={(e) => setDetailDraft((prev) => ({ ...prev, categoria: e.target.value }))}
 												className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm"
 											>
 												{CATEGORIAS.map((categoria) => (
-													<option key={categoria || "empty"} value={categoria}>{CATEGORIA_LABELS[categoria] ?? "Sin categoria"}</option>
+													<option key={categoria || "empty"} value={categoria}>{(isEn ? CATEGORIA_LABELS_EN : CATEGORIA_LABELS)[categoria] ?? (isEn ? "No category" : "Sin categoria")}</option>
 												))}
 											</select>
 										</div>
 										<div className="space-y-1.5">
-											<label className="text-xs font-medium uppercase tracking-wide text-slate-500">Subcategoria</label>
+											<label className="text-xs font-medium uppercase tracking-wide text-slate-500">{isEn ? "Subcategory" : "Subcategoria"}</label>
 											<input
 												value={detailDraft.subcategoria}
 												onChange={(e) => setDetailDraft((prev) => ({ ...prev, subcategoria: e.target.value }))}
 												className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm"
-												placeholder="Subcategoria"
+												placeholder={isEn ? "Subcategory" : "Subcategoria"}
 											/>
 										</div>
 										<div className="space-y-1.5">
-											<label className="text-xs font-medium uppercase tracking-wide text-slate-500">Vence</label>
+											<label className="text-xs font-medium uppercase tracking-wide text-slate-500">{isEn ? "Due" : "Vence"}</label>
 											<input
 												type="datetime-local"
 												value={detailDraft.dueAt}
@@ -443,7 +466,7 @@ export default function AgentSolicitudesPage() {
 									</div>
 									<div className="flex justify-end gap-3">
 										<Button variant="secondary" onClick={() => setDetailModal({ open: false, solicitud: null })}>
-											Cerrar
+											{isEn ? "Close" : "Cerrar"}
 										</Button>
 										<Button
 											onClick={() => {
@@ -461,7 +484,7 @@ export default function AgentSolicitudesPage() {
 											}}
 											disabled={updateAgentSolicitud.isPending}
 										>
-											{updateAgentSolicitud.isPending ? "Guardando..." : "Guardar cambios"}
+											{updateAgentSolicitud.isPending ? (isEn ? "Saving..." : "Guardando...") : (isEn ? "Save changes" : "Guardar cambios")}
 										</Button>
 									</div>
 								</div>
@@ -470,15 +493,15 @@ export default function AgentSolicitudesPage() {
 							<TabsContent value="conversaciones" className="space-y-4">
 								{!detailClientKey ? (
 									<div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 p-6 text-sm text-slate-500">
-										Esta solicitud no tiene teléfono de cliente para buscar conversaciones del tenant.
+										{isEn ? "This request does not have a customer phone number to search tenant conversations." : "Esta solicitud no tiene teléfono de cliente para buscar conversaciones del tenant."}
 									</div>
 								) : conversationsLoading ? (
 									<div className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-500">
-										Cargando conversaciones del cliente...
+										{isEn ? "Loading customer conversations..." : "Cargando conversaciones del cliente..."}
 									</div>
 								) : conversations.length === 0 ? (
 									<div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 p-6 text-sm text-slate-500">
-										No hay conversaciones registradas para este cliente en este tenant.
+										{isEn ? "There are no recorded conversations for this customer in this tenant." : "No hay conversaciones registradas para este cliente en este tenant."}
 									</div>
 								) : (
 									<div className="max-h-[55vh] space-y-3 overflow-auto pr-1">
@@ -492,21 +515,21 @@ export default function AgentSolicitudesPage() {
 													<div className="flex items-start justify-between gap-3">
 														<div>
 															<div className="flex flex-wrap items-center gap-2">
-																<p className="font-medium text-slate-900">{conversation.flow?.nombre ?? "Flujo sin nombre"}</p>
+																<p className="font-medium text-slate-900">{conversation.flow?.nombre ?? (isEn ? "Unnamed flow" : "Flujo sin nombre")}</p>
 																{isCurrentConversation && (
 																	<span className="rounded-full bg-blue-100 px-2 py-0.5 text-[11px] font-semibold text-blue-700">
-																		Conversación actual
+																		{isEn ? "Current conversation" : "Conversación actual"}
 																	</span>
 																)}
 															</div>
-															<p className="mt-1 text-sm text-slate-500">ID {conversation.id} · Estado {conversation.status}</p>
+															<p className="mt-1 text-sm text-slate-500">ID {conversation.id} · {isEn ? "Status" : "Estado"} {conversation.status}</p>
 															<p className="text-sm text-slate-500">
-																Inicio {formatDate(conversation.startedAt)}
-																{conversation.endedAt ? ` · Fin ${formatDate(conversation.endedAt)}` : ""}
+																{isEn ? "Start" : "Inicio"} {formatDate(conversation.startedAt)}
+																{conversation.endedAt ? ` · ${isEn ? "End" : "Fin"} ${formatDate(conversation.endedAt)}` : ""}
 															</p>
 														</div>
 														<div className="text-right text-xs text-slate-500">
-															<p>{conversation.solicitudes?.length ?? 0} solicitud(es) vinculada(s)</p>
+															<p>{conversation.solicitudes?.length ?? 0} {isEn ? "linked request(s)" : "solicitud(es) vinculada(s)"}</p>
 															<p className="max-w-[12rem] truncate">{conversation.userKey}</p>
 														</div>
 													</div>
@@ -514,7 +537,7 @@ export default function AgentSolicitudesPage() {
 														<div className="mt-3 flex flex-wrap gap-2">
 															{conversation.solicitudes.map((solicitud) => (
 																<span key={solicitud.id} className="rounded-full bg-slate-100 px-2 py-1 text-[11px] font-medium text-slate-600">
-																	Solicitud #{solicitud.id} · {ESTADO_LABELS[solicitud.estado] ?? solicitud.estado}
+																	{isEn ? "Request" : "Solicitud"} #{solicitud.id} · {((isEn ? ESTADO_LABELS_EN : ESTADO_LABELS)[solicitud.estado] ?? solicitud.estado)}
 																</span>
 															))}
 														</div>
@@ -532,67 +555,67 @@ export default function AgentSolicitudesPage() {
 										<div>
 											<div className="flex items-center gap-2 text-sm font-medium text-slate-800">
 												<Filter size={16} className="text-slate-500" />
-												Filtros de mensajes
+												{isEn ? "Message filters" : "Filtros de mensajes"}
 											</div>
 											<p className="mt-1 text-xs text-slate-500">
-												Encontrá rápido mensajes por texto, dirección, lectura o fecha sin perder espacio del chat.
+												{isEn ? "Quickly find messages by text, direction, read status, or date without losing chat space." : "Encontrá rápido mensajes por texto, dirección, lectura o fecha sin perder espacio del chat."}
 											</p>
 										</div>
 										<div className="flex items-center gap-2 self-start">
 											{activeMessageFilterCount > 0 ? (
 												<span className="rounded-full border border-blue-200 bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-700">
-													{activeMessageFilterCount} activos
+													{activeMessageFilterCount} {isEn ? "active" : "activos"}
 												</span>
 											) : null}
 											<Button variant="secondary" size="sm" onClick={clearMessageFilters} disabled={!hasActiveMessageFilters} className="shrink-0">
-												Limpiar filtros
+												{isEn ? "Clear filters" : "Limpiar filtros"}
 											</Button>
 										</div>
 									</div>
 
 									<div className="mt-4 grid gap-3 lg:grid-cols-12">
 										<label className="space-y-1.5 lg:col-span-4">
-											<span className="text-xs font-medium uppercase tracking-wide text-slate-500">Buscar texto</span>
+											<span className="text-xs font-medium uppercase tracking-wide text-slate-500">{isEn ? "Search text" : "Buscar texto"}</span>
 											<div className="relative">
 												<Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
 												<input
 													type="text"
 													value={messageSearch}
 													onChange={(e) => setMessageSearch(e.target.value)}
-													placeholder="Texto del mensaje"
+													placeholder={isEn ? "Message text" : "Texto del mensaje"}
 													className="w-full rounded-lg border border-slate-200 bg-white py-2 pl-9 pr-3 text-sm placeholder-slate-400 focus:border-blue-500 focus:outline-none"
 												/>
 											</div>
 										</label>
 
 										<label className="space-y-1.5 lg:col-span-2">
-											<span className="text-xs font-medium uppercase tracking-wide text-slate-500">Dirección</span>
+											<span className="text-xs font-medium uppercase tracking-wide text-slate-500">{isEn ? "Direction" : "Dirección"}</span>
 											<select
 												value={messageDirection}
 												onChange={(e) => setMessageDirection((e.target.value as "" | "entrada" | "salida") || "")}
 												className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
 											>
-												<option value="">Todas</option>
-												<option value="entrada">Recibidos</option>
-												<option value="salida">Enviados</option>
+													<option value="">{isEn ? "All" : "Todas"}</option>
+													<option value="entrada">{isEn ? "Received" : "Recibidos"}</option>
+													<option value="salida">{isEn ? "Sent" : "Enviados"}</option>
 											</select>
 										</label>
 
 										<label className="space-y-1.5 lg:col-span-2">
-											<span className="text-xs font-medium uppercase tracking-wide text-slate-500">Lectura</span>
+											<span className="text-xs font-medium uppercase tracking-wide text-slate-500">{isEn ? "Read status" : "Lectura"}</span>
 											<select
 												value={messageReadStatus}
 												onChange={(e) => setMessageReadStatus((e.target.value as "" | "leido" | "no_leido") || "")}
 												className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
 											>
-												<option value="">Todos</option>
-												<option value="leido">Leidos</option>
-												<option value="no_leido">No leidos</option>
+													<option value="">{isEn ? "All" : "Todos"}</option>
+													<option value="leido">{isEn ? "Read" : "Leidos"}</option>
+													<option value="no_leido">{isEn ? "Unread" : "No leidos"}</option>
 											</select>
 										</label>
 
 										<label className="space-y-1.5 lg:col-span-2">
-											<span className="text-xs font-medium uppercase tracking-wide text-slate-500">Desde</span>
+											<span className="text-xs font-medium uppercase tracking-wide text-slate-500">{isEn ? "From" : "Desde"}</span>
 											<input
 												type="date"
 												value={messageStartDate}
@@ -602,7 +625,7 @@ export default function AgentSolicitudesPage() {
 										</label>
 
 										<label className="space-y-1.5 lg:col-span-2">
-											<span className="text-xs font-medium uppercase tracking-wide text-slate-500">Hasta</span>
+											<span className="text-xs font-medium uppercase tracking-wide text-slate-500">{isEn ? "To" : "Hasta"}</span>
 											<input
 												type="date"
 												value={messageEndDate}
@@ -613,8 +636,8 @@ export default function AgentSolicitudesPage() {
 									</div>
 
 									<div className="mt-3 flex flex-wrap items-center gap-2">
-										<span className="text-[11px] font-medium uppercase tracking-wide text-slate-400">Rangos rápidos</span>
-										<Button variant="secondary" size="sm" onClick={() => applyMessageDatePreset(1)}>Hoy</Button>
+										<span className="text-[11px] font-medium uppercase tracking-wide text-slate-400">{isEn ? "Quick ranges" : "Rangos rápidos"}</span>
+										<Button variant="secondary" size="sm" onClick={() => applyMessageDatePreset(1)}>{isEn ? "Today" : "Hoy"}</Button>
 										<Button variant="secondary" size="sm" onClick={() => applyMessageDatePreset(7)}>7d</Button>
 										<Button variant="secondary" size="sm" onClick={() => applyMessageDatePreset(30)}>30d</Button>
 									</div>
@@ -622,12 +645,12 @@ export default function AgentSolicitudesPage() {
 
 								{messagesLoading ? (
 									<div className="flex items-center justify-center py-8">
-										<div className="text-slate-500">Cargando mensajes...</div>
+										<div className="text-slate-500">{isEn ? "Loading messages..." : "Cargando mensajes..."}</div>
 									</div>
 								) : messageRows.length === 0 ? (
 									<div className="rounded-lg border border-dashed border-slate-200 bg-slate-50 px-4 py-8 text-center">
 										<MessageCircleMore className="mx-auto mb-2 h-6 w-6 text-slate-400" />
-										<p className="text-sm text-slate-600">No hay mensajes aún</p>
+										<p className="text-sm text-slate-600">{isEn ? "No messages yet" : "No hay mensajes aún"}</p>
 									</div>
 								) : (
 									<div className="max-h-96 space-y-3 overflow-y-auto">
@@ -639,7 +662,7 @@ export default function AgentSolicitudesPage() {
 													msg.direccion === "salida" ? "ml-auto bg-blue-100 text-blue-900" : "mr-auto bg-slate-100 text-slate-900",
 												)}
 											>
-												<div className="mb-1 text-xs font-medium">{msg.direccion === "salida" ? "Enviado" : "Recibido"}</div>
+													<div className="mb-1 text-xs font-medium">{msg.direccion === "salida" ? (isEn ? "Sent" : "Enviado") : (isEn ? "Received" : "Recibido")}</div>
 												<p className="break-words text-sm">{getMessageText(msg)}</p>
 												<div className="mt-1 text-xs opacity-70">
 													{formatDate(msg.createdAt)}
@@ -656,7 +679,7 @@ export default function AgentSolicitudesPage() {
 											type="text"
 											value={messageInput}
 											onChange={(e) => setMessageInput(e.target.value)}
-											placeholder="Escribe un mensaje..."
+											placeholder={isEn ? "Write a message..." : "Escribe un mensaje..."}
 											onKeyDown={(e) => {
 												if (e.key === "Enter" && !e.shiftKey && messageInput.trim()) {
 													sendMessageMutation.mutate({ text: messageInput });
@@ -674,10 +697,10 @@ export default function AgentSolicitudesPage() {
 											disabled={sendMessageMutation.isPending || !messageInput.trim()}
 											size="sm"
 										>
-											{sendMessageMutation.isPending ? "Enviando..." : "Enviar"}
+											{sendMessageMutation.isPending ? (isEn ? "Sending..." : "Enviando...") : (isEn ? "Send" : "Enviar")}
 										</Button>
 									</div>
-									{sendMessageMutation.isError && <p className="text-xs text-red-600">Error al enviar mensaje</p>}
+									{sendMessageMutation.isError && <p className="text-xs text-red-600">{isEn ? "Error sending message" : "Error al enviar mensaje"}</p>}
 								</div>
 							</TabsContent>
 						</Tabs>

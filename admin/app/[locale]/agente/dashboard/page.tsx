@@ -65,9 +65,11 @@ function KpiCard({
   return inner;
 }
 
-function priorityLabel(p: string | null) {
+function priorityLabel(p: string | null, isEn: boolean) {
   if (!p) return null;
-  const map: Record<string, string> = { alta: "Alta", media: "Media", baja: "Baja" };
+  const map: Record<string, string> = isEn
+    ? { alta: "High", media: "Medium", baja: "Low" }
+    : { alta: "Alta", media: "Media", baja: "Baja" };
   return map[p.toLowerCase()] ?? p;
 }
 
@@ -91,6 +93,79 @@ function estadoColor(e: string | null) {
     cancelado: "bg-rose-100 text-rose-700",
   };
   return map[e.toLowerCase()] ?? "bg-slate-100 text-slate-600";
+}
+
+function requestStatusLabel(status: string | null, isEn: boolean) {
+  if (!status) return "";
+  const normalized = status.toLowerCase();
+  const map: Record<string, string> = isEn
+    ? {
+        asignado: "Assigned",
+        en_progreso: "In progress",
+        pendiente: "Pending",
+        completado: "Completed",
+        cancelado: "Cancelled",
+        open: "Open",
+        in_progress: "In progress",
+        pending_info: "Pending info",
+        completed: "Completed",
+        rejected: "Rejected",
+      }
+    : {
+        asignado: "Asignado",
+        en_progreso: "En progreso",
+        pendiente: "Pendiente",
+        completado: "Completado",
+        cancelado: "Cancelado",
+        open: "Abierta",
+        in_progress: "En progreso",
+        pending_info: "Pendiente info",
+        completed: "Completada",
+        rejected: "Rechazada",
+      };
+
+  return map[normalized] ?? status.replace(/_/g, " ");
+}
+
+function agendaStatusLabel(status: string, isEn: boolean) {
+  const normalized = status.toLowerCase();
+  const map: Record<string, string> = isEn
+    ? {
+        programado: "Scheduled",
+        confirmado: "Confirmed",
+        cancelado: "Cancelled",
+        completado: "Completed",
+      }
+    : {
+        programado: "Programado",
+        confirmado: "Confirmado",
+        cancelado: "Cancelado",
+        completado: "Completado",
+      };
+
+  return map[normalized] ?? status;
+}
+
+function agendaTypeLabel(type: string | null | undefined, isEn: boolean) {
+  if (!type) return "";
+  const normalized = type.toLowerCase();
+  const map: Record<string, string> = isEn
+    ? {
+        llamada: "Call",
+        reunion: "Meeting",
+        visita: "Visit",
+        seguimiento: "Follow-up",
+        recordatorio: "Reminder",
+      }
+    : {
+        llamada: "Llamada",
+        reunion: "Reunion",
+        visita: "Visita",
+        seguimiento: "Seguimiento",
+        recordatorio: "Recordatorio",
+      };
+
+  return map[normalized] ?? type;
 }
 
 function agendaEstadoColor(e: string) {
@@ -287,17 +362,17 @@ export default function AgentDashboardPage() {
                         >
                           <div className="min-w-0">
                             <p className="text-sm font-medium text-slate-800 truncate group-hover:text-cyan-700 transition">
-                              {s.titulo || s.nombre || `Solicitud #${s.id}`}
+                              {s.titulo || s.nombre || `${isEn ? "Request" : "Solicitud"} #${s.id}`}
                             </p>
                             <div className="flex items-center gap-2 mt-1 flex-wrap">
                               {s.estado && (
                                 <span className={`inline-block rounded-full px-2 py-0.5 text-[11px] font-semibold ${estadoColor(s.estado)}`}>
-                                  {s.estado.replace(/_/g, " ")}
+                                  {requestStatusLabel(s.estado, isEn)}
                                 </span>
                               )}
                               {s.prioridad && (
                                 <span className={`text-[11px] font-medium ${priorityColor(s.prioridad)}`}>
-                                  {priorityLabel(s.prioridad)}
+                                  {priorityLabel(s.prioridad, isEn)}
                                 </span>
                               )}
                               {s.categoria && (
@@ -352,9 +427,9 @@ export default function AgentDashboardPage() {
                                 <p className="text-sm font-medium text-slate-800 truncate">{e.titulo}</p>
                                 <div className="flex items-center gap-2 mt-1 flex-wrap">
                                   <span className={`inline-block rounded-full px-2 py-0.5 text-[11px] font-semibold ${agendaEstadoColor(e.estado)}`}>
-                                    {e.estado}
+                                    {agendaStatusLabel(e.estado, isEn)}
                                   </span>
-                                  <span className="text-[11px] text-slate-400">{e.tipo}</span>
+                                  <span className="text-[11px] text-slate-400">{agendaTypeLabel(e.tipo, isEn)}</span>
                                 </div>
                               </div>
                             </div>

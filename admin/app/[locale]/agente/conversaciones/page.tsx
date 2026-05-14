@@ -6,6 +6,7 @@ import {
   type AgentConversationMessage,
   type AgentConversationThread,
 } from "@/lib/agentApi";
+import { useCurrentLocale } from "@/lib/i18n/client";
 import { cn, formatDate } from "@/lib/utils";
 import { Search, Send } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
@@ -44,13 +45,15 @@ function extractText(msg: Pick<AgentConversationMessage | AgentConversationThrea
   return `[${msg.tipo}]`;
 }
 
-function getDisplayName(thread: AgentConversationThread): string {
-  return thread._contactName ?? thread.user?.phone ?? `Usuario ${thread.userId}`;
+function getDisplayName(thread: AgentConversationThread, isEn: boolean): string {
+  return thread._contactName ?? thread.user?.phone ?? `${isEn ? "User" : "Usuario"} ${thread.userId}`;
 }
 
 export default function AgentConversacionesPage() {
   const qc = useQueryClient();
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const locale = useCurrentLocale();
+  const isEn = locale === "en";
 
   const [activeThread, setActiveThread] = useState<AgentConversationThread | null>(null);
   const [input, setInput] = useState("");
@@ -162,12 +165,12 @@ export default function AgentConversacionesPage() {
             <div className="space-y-2 border-b border-slate-100 p-4">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Conversaciones</span>
-                <span className="rounded-full bg-cyan-50 px-2 py-0.5 text-xs text-cyan-700">Asignadas</span>
+                <span className="rounded-full bg-cyan-50 px-2 py-0.5 text-xs text-cyan-700">{isEn ? "Assigned" : "Asignadas"}</span>
               </div>
               <div className="relative">
                 <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
                 <input
-                  placeholder="Buscar..."
+                  placeholder={isEn ? "Search..." : "Buscar..."}
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                   className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2 pl-9 pr-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30"
@@ -192,13 +195,13 @@ export default function AgentConversacionesPage() {
 
               {!threadsLoading && threads.length === 0 && (
                 <div className="flex h-40 flex-col items-center justify-center gap-2 px-4 text-center text-sm text-slate-400">
-                  <p>No hay conversaciones de tus contactos asignados</p>
-                  <p className="text-xs text-slate-300">Los mensajes aparecerán aquí en tiempo real</p>
+                  <p>{isEn ? "There are no conversations for your assigned contacts" : "No hay conversaciones de tus contactos asignados"}</p>
+                  <p className="text-xs text-slate-300">{isEn ? "Messages will appear here in real time" : "Los mensajes aparecerán aquí en tiempo real"}</p>
                 </div>
               )}
 
               {threads.map((thread) => {
-                const name = getDisplayName(thread);
+                const name = getDisplayName(thread, isEn);
                 const lastText = extractText({ tipo: thread.tipo, contenido: thread.contenido });
                 const isActive = activeThread?.id === thread.id;
 
@@ -237,18 +240,18 @@ export default function AgentConversacionesPage() {
           {!activeThread ? (
             <div className="flex flex-1 flex-col items-center justify-center gap-3 text-slate-400">
               <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-slate-100 text-3xl">💬</div>
-              <p className="font-medium text-slate-600">Seleccioná una conversación</p>
-              <p className="text-sm text-slate-400">Solo verás contactos asignados a tus solicitudes</p>
+              <p className="font-medium text-slate-600">{isEn ? "Select a conversation" : "Seleccioná una conversación"}</p>
+              <p className="text-sm text-slate-400">{isEn ? "You will only see contacts assigned to your requests" : "Solo verás contactos asignados a tus solicitudes"}</p>
             </div>
           ) : (
             <div className="flex min-w-0 flex-1 flex-col">
               <div className="flex h-16 items-center border-b border-slate-200 bg-white px-5">
                 <div className="flex items-center gap-3">
                   <div className="flex h-9 w-9 items-center justify-center rounded-full bg-slate-200 text-sm font-semibold text-slate-600">
-                    {getDisplayName(activeThread).charAt(0).toUpperCase()}
+                    {getDisplayName(activeThread, isEn).charAt(0).toUpperCase()}
                   </div>
                   <div>
-                    <p className="text-sm font-semibold text-slate-900">{getDisplayName(activeThread)}</p>
+                    <p className="text-sm font-semibold text-slate-900">{getDisplayName(activeThread, isEn)}</p>
                     <p className="text-xs text-slate-400">{activeThread.user?.phone ?? ""}</p>
                   </div>
                 </div>
@@ -266,7 +269,7 @@ export default function AgentConversacionesPage() {
                 )}
 
                 {!mensajesLoading && messages.length === 0 && (
-                  <div className="flex h-32 items-center justify-center text-sm text-slate-400">No hay mensajes aún</div>
+                  <div className="flex h-32 items-center justify-center text-sm text-slate-400">{isEn ? "No messages yet" : "No hay mensajes aún"}</div>
                 )}
 
                 {messages.map((msg) => {
@@ -283,7 +286,7 @@ export default function AgentConversacionesPage() {
                       >
                         <p className="whitespace-pre-wrap">{extractText(msg)}</p>
                         <p className={cn("mt-1 text-xs", isOutbound ? "text-blue-200" : "text-slate-400")}>
-                          {new Date(msg.createdAt).toLocaleTimeString("es", { hour: "2-digit", minute: "2-digit" })}
+                          {new Date(msg.createdAt).toLocaleTimeString(isEn ? "en-US" : "es-ES", { hour: "2-digit", minute: "2-digit" })}
                         </p>
                       </div>
                     </div>
@@ -297,7 +300,7 @@ export default function AgentConversacionesPage() {
                       disabled={loadingMore}
                       className="rounded-full border border-blue-200 bg-blue-50 px-4 py-1.5 text-xs text-blue-600 transition hover:bg-blue-100 hover:text-blue-800 disabled:opacity-50"
                     >
-                      {loadingMore ? "Cargando..." : "Cargar mensajes anteriores"}
+                      {loadingMore ? (isEn ? "Loading..." : "Cargando...") : (isEn ? "Load earlier messages" : "Cargar mensajes anteriores")}
                     </button>
                   </div>
                 )}
@@ -306,14 +309,14 @@ export default function AgentConversacionesPage() {
 
               <div className="border-t border-slate-200 bg-white px-4 py-3">
                 {!activeThread.user?.phone ? (
-                  <p className="py-1 text-center text-xs text-slate-400">Este contacto no tiene número de teléfono registrado</p>
+                  <p className="py-1 text-center text-xs text-slate-400">{isEn ? "This contact does not have a registered phone number" : "Este contacto no tiene número de teléfono registrado"}</p>
                 ) : (
                   <div className="flex items-center gap-3">
                     <input
                       value={input}
                       onChange={(e) => setInput(e.target.value)}
                       onKeyDown={(e) => e.key === "Enter" && handleSend()}
-                      placeholder="Escribí un mensaje..."
+                      placeholder={isEn ? "Write a message..." : "Escribí un mensaje..."}
                       disabled={sendMutation.isPending}
                       className="flex-1 rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30 disabled:opacity-60"
                     />

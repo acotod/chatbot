@@ -1,4 +1,7 @@
+"use client";
+
 import { cn } from "@/lib/utils";
+import { useCurrentLocale } from "@/lib/i18n/client";
 
 interface BadgeProps {
   status: string;
@@ -25,9 +28,29 @@ const STATUS_LABELS: Record<string, string> = {
   inactivo: "Inactivo",
 };
 
+const STATUS_LABELS_EN: Record<string, string> = {
+  pendiente: "Pending",
+  atendida: "Handled",
+  urgente: "Urgent",
+  cancelada: "Cancelled",
+  confirmado: "Confirmed",
+  activo: "Active",
+  inactivo: "Inactive",
+  open: "Open",
+  in_progress: "In progress",
+  pending_info: "Pending info",
+  completed: "Completed",
+  rejected: "Rejected",
+  asignado: "Assigned",
+  en_progreso: "In progress",
+  completado: "Completed",
+  cancelado: "Cancelled",
+};
+
 export function StatusBadge({ status, className }: BadgeProps) {
+  const locale = useCurrentLocale();
   const style = STATUS_STYLES[status] ?? "bg-slate-100 text-slate-600 border border-slate-200";
-  const label = STATUS_LABELS[status] ?? status;
+  const label = (locale === "en" ? STATUS_LABELS_EN[status] : STATUS_LABELS[status]) ?? status;
 
   return (
     <span

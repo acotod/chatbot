@@ -1,6 +1,7 @@
 "use client";
 
 import { agentAuthApi } from "@/lib/agentApi";
+import { useCurrentLocale } from "@/lib/i18n/client";
 import axios from "axios";
 import { MessageCircle } from "lucide-react";
 import { useRouter } from "next/navigation";
@@ -10,20 +11,20 @@ type AgentResetPasswordPageProps = {
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
 };
 
-function getResetErrorMessage(error: unknown): string {
+function getResetErrorMessage(error: unknown, isEn: boolean): string {
   if (!axios.isAxiosError(error)) {
-    return "No se pudo restablecer la contraseña. Intenta nuevamente.";
+    return isEn ? "Could not reset the password. Try again." : "No se pudo restablecer la contraseña. Intenta nuevamente.";
   }
 
   const status = error.response?.status;
   if (status === 400) {
-    return String(error.response?.data?.error || "El enlace ya no es válido o expiró.");
+    return String(error.response?.data?.error || (isEn ? "The link is no longer valid or has expired." : "El enlace ya no es válido o expiró."));
   }
   if (status === 403) {
-    return "Tu acceso de agente está inactivo. Contactá al administrador.";
+    return isEn ? "Your agent access is inactive. Contact the administrator." : "Tu acceso de agente está inactivo. Contactá al administrador.";
   }
 
-  return String(error.response?.data?.error || "No se pudo restablecer la contraseña. Intenta nuevamente.");
+  return String(error.response?.data?.error || (isEn ? "Could not reset the password. Try again." : "No se pudo restablecer la contraseña. Intenta nuevamente."));
 }
 
 export default async function AgentResetPasswordPage({ searchParams }: AgentResetPasswordPageProps) {
@@ -36,6 +37,8 @@ export default async function AgentResetPasswordPage({ searchParams }: AgentRese
 
 function AgentResetPasswordScreen({ token }: { token: string }) {
   const router = useRouter();
+  const locale = useCurrentLocale();
+  const isEn = locale === "en";
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState("");
@@ -48,15 +51,15 @@ function AgentResetPasswordScreen({ token }: { token: string }) {
     setSuccess("");
 
     if (!token) {
-      setError("Falta el token de recuperación.");
+      setError(isEn ? "Recovery token is missing." : "Falta el token de recuperación.");
       return;
     }
     if (password.trim().length < 8) {
-      setError("La nueva contraseña debe tener al menos 8 caracteres.");
+      setError(isEn ? "The new password must be at least 8 characters long." : "La nueva contraseña debe tener al menos 8 caracteres.");
       return;
     }
     if (password !== confirmPassword) {
-      setError("La confirmación no coincide con la contraseña.");
+      setError(isEn ? "The confirmation does not match the password." : "La confirmación no coincide con la contraseña.");
       return;
     }
 
@@ -68,7 +71,7 @@ function AgentResetPasswordScreen({ token }: { token: string }) {
         router.push("/agente/login");
       }, 1200);
     } catch (err) {
-      setError(getResetErrorMessage(err));
+      setError(getResetErrorMessage(err, isEn));
     } finally {
       setLoading(false);
     }
@@ -86,37 +89,37 @@ function AgentResetPasswordScreen({ token }: { token: string }) {
           </div>
           <div>
             <h1 className="text-xl font-bold tracking-tight text-slate-900">Zentra Bot</h1>
-            <p className="text-xs text-slate-500">Recuperación de agente</p>
+            <p className="text-xs text-slate-500">{isEn ? "Agent recovery" : "Recuperación de agente"}</p>
           </div>
         </div>
 
         <h2 className="text-3xl font-semibold tracking-tight text-slate-900 mb-2">
-          Restablecer contraseña
+          {isEn ? "Reset password" : "Restablecer contraseña"}
         </h2>
         <p className="text-slate-600 text-base mb-7">
-          Definí una nueva contraseña para volver a entrar a tu perfil operativo.
+          {isEn ? "Set a new password to access your operating profile again." : "Definí una nueva contraseña para volver a entrar a tu perfil operativo."}
         </p>
 
         <form onSubmit={handleSubmit} className="space-y-4.5">
           <div className="flex flex-col gap-1.5">
-            <label className="text-sm font-medium text-slate-700">Nueva contraseña</label>
+            <label className="text-sm font-medium text-slate-700">{isEn ? "New password" : "Nueva contraseña"}</label>
             <input
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              placeholder="Mínimo 8 caracteres"
+              placeholder={isEn ? "Minimum 8 characters" : "Mínimo 8 caracteres"}
               required
               className="px-4 py-3 rounded-xl border border-slate-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-cyan-500/30 focus:border-cyan-500 transition-all"
             />
           </div>
 
           <div className="flex flex-col gap-1.5">
-            <label className="text-sm font-medium text-slate-700">Confirmar contraseña</label>
+            <label className="text-sm font-medium text-slate-700">{isEn ? "Confirm password" : "Confirmar contraseña"}</label>
             <input
               type="password"
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
-              placeholder="Repetí la contraseña"
+              placeholder={isEn ? "Repeat the password" : "Repetí la contraseña"}
               required
               className="px-4 py-3 rounded-xl border border-slate-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-cyan-500/30 focus:border-cyan-500 transition-all"
             />
@@ -139,7 +142,7 @@ function AgentResetPasswordScreen({ token }: { token: string }) {
             disabled={loading}
             className="w-full py-3.5 bg-cyan-600 hover:bg-cyan-700 text-white font-medium rounded-xl transition-all shadow-sm shadow-cyan-100 disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {loading ? "Actualizando..." : "Guardar nueva contraseña"}
+            {loading ? (isEn ? "Updating..." : "Actualizando...") : (isEn ? "Save new password" : "Guardar nueva contraseña")}
           </button>
         </form>
       </div>
