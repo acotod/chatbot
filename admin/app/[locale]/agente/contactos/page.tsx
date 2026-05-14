@@ -7,6 +7,7 @@ import { agentAuthApi, type AgentContacto } from "@/lib/agentApi";
 import { Header } from "@/components/layout/Header";
 import { Input } from "@/components/ui/Input";
 import { Badge } from "@/components/ui/badge";
+import { useCurrentLocale, useTranslations } from "@/lib/i18n/client";
 import {
   Table,
   TableBody,
@@ -17,6 +18,7 @@ import {
 } from "@/components/ui/table";
 import { Building2, Mail, Phone, Search, Star, Tag, UserCircle2 } from "lucide-react";
 import { format } from "date-fns";
+import { enUS } from "date-fns/locale";
 import { es } from "date-fns/locale";
 
 function LeadScoreBadge({ score }: { score: number | null }) {
@@ -31,6 +33,8 @@ function LeadScoreBadge({ score }: { score: number | null }) {
 }
 
 export default function AgentContactosPage() {
+	const t = useTranslations("contactos");
+	const locale = useCurrentLocale();
 	const [q, setQ] = useState("");
 	const [debouncedQ, setDebouncedQ] = useState("");
 
@@ -56,8 +60,8 @@ export default function AgentContactosPage() {
 							<div className="flex items-center gap-3">
 								<UserCircle2 className="h-7 w-7 text-cyan-600" />
 								<div>
-									<h1 className="text-2xl font-semibold tracking-tight text-slate-900">Contactos</h1>
-									<p className="mt-1 text-sm text-slate-500">{data?.total ?? 0} contactos asociados a tus solicitudes</p>
+									<h1 className="text-2xl font-semibold tracking-tight text-slate-900">{t("pageTitle")}</h1>
+									<p className="mt-1 text-sm text-slate-500">{t("agentContacts", { count: data?.total ?? 0 })}</p>
 								</div>
 							</div>
 						</div>
@@ -68,7 +72,7 @@ export default function AgentContactosPage() {
 								className="pl-10"
 								value={q}
 								onChange={(e) => setQ(e.target.value)}
-								placeholder="Buscar por nombre, telefono, email o empresa"
+								placeholder={t("searchPlaceholder")}
 							/>
 						</div>
 					</div>
@@ -77,31 +81,31 @@ export default function AgentContactosPage() {
 						<Table>
 							<TableHeader>
 								<TableRow>
-									<TableHead>Contacto</TableHead>
-									<TableHead>Canal</TableHead>
-									<TableHead>Etiquetas</TableHead>
-									<TableHead>Lead Score</TableHead>
-									<TableHead>Solicitudes</TableHead>
-									<TableHead>Ultimo contacto</TableHead>
+									<TableHead>{t("contact")}</TableHead>
+									<TableHead>{t("channel")}</TableHead>
+									<TableHead>{t("tags")}</TableHead>
+									<TableHead>{t("leadScore")}</TableHead>
+									<TableHead>{t("requests")}</TableHead>
+									<TableHead>{t("lastContact")}</TableHead>
 								</TableRow>
 							</TableHeader>
 							<TableBody>
 								{isLoading ? (
 									<TableRow>
 										<TableCell colSpan={6} className="py-12 text-center text-sm text-slate-400">
-											Cargando contactos...
+											{locale === "en" ? "Loading contacts..." : "Cargando contactos..."}
 										</TableCell>
 									</TableRow>
 								) : isError ? (
 									<TableRow>
 										<TableCell colSpan={6} className="py-12 text-center text-sm text-rose-600">
-											No se pudieron cargar los contactos.
+											{locale === "en" ? "Could not load contacts." : "No se pudieron cargar los contactos."}
 										</TableCell>
 									</TableRow>
 								) : contacts.length === 0 ? (
 									<TableRow>
 										<TableCell colSpan={6} className="py-12 text-center text-sm text-slate-400">
-											No hay contactos para mostrar.
+											{t("empty")}
 										</TableCell>
 									</TableRow>
 								) : (
@@ -109,7 +113,7 @@ export default function AgentContactosPage() {
 										<TableRow key={contact.id} className="transition-colors hover:bg-cyan-50/40">
 											<TableCell>
 												<div>
-													<p className="font-medium text-slate-900">{contact.nombre || contact.phone || "Sin nombre"}</p>
+													<p className="font-medium text-slate-900">{contact.nombre || contact.phone || (locale === "en" ? "No name" : "Sin nombre")}</p>
 													<div className="mt-0.5 flex flex-wrap items-center gap-3">
 														{contact.phone && (
 															<span className="flex items-center gap-1 text-xs text-slate-500">
@@ -154,7 +158,7 @@ export default function AgentContactosPage() {
 												{contact._count?.solicitudes ?? 0}
 											</TableCell>
 											<TableCell className="text-xs text-slate-500">
-												{contact.ultimoContacto ? format(new Date(contact.ultimoContacto), "dd MMM yyyy", { locale: es }) : "-"}
+												{contact.ultimoContacto ? format(new Date(contact.ultimoContacto), "dd MMM yyyy", { locale: locale === "en" ? enUS : es }) : "-"}
 											</TableCell>
 										</TableRow>
 									)))
@@ -164,7 +168,7 @@ export default function AgentContactosPage() {
 					</div>
 
 					<Link href="/agente/dashboard" className="inline-flex items-center gap-2 rounded-lg bg-cyan-600 px-4 py-2 text-sm font-medium text-white shadow hover:bg-cyan-700 active:bg-cyan-800">
-						← Volver al dashboard
+						← {locale === "en" ? "Back to dashboard" : "Volver al dashboard"}
 					</Link>
 				</div>
 			</main>

@@ -10,6 +10,7 @@ import { Card } from "@/components/ui/Card";
 import { Modal } from "@/components/ui/Modal";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useCurrentLocale, useTranslations } from "@/lib/i18n/client";
 import { cn, formatDate } from "@/lib/utils";
 import { Filter, MessageCircleMore, Search } from "lucide-react";
 
@@ -55,6 +56,8 @@ function getMessageText(message: AgentSolicitudMessage): string {
 }
 
 export default function AgentSolicitudesPage() {
+	const t = useTranslations("solicitudes");
+	const locale = useCurrentLocale();
 	const qc = useQueryClient();
 	const [status, setStatus] = useState<"assigned" | "completed">("assigned");
 	const [detailModal, setDetailModal] = useState<{ open: boolean; solicitud: DetailSolicitud | null }>({
@@ -213,56 +216,56 @@ export default function AgentSolicitudesPage() {
 			<Header />
 			<div className="mx-auto max-w-5xl space-y-4 p-4 sm:p-6">
 				<div className="rounded-2xl border bg-white p-5">
-					<h1 className="text-xl font-semibold text-slate-900">Solicitudes asignadas</h1>
-					<p className="mt-1 text-sm text-slate-500">Vista del agente sobre sus solicitudes.</p>
+					<h1 className="text-xl font-semibold text-slate-900">{status === "assigned" ? t("assignedTitle") : t("completedTitle")}</h1>
+					<p className="mt-1 text-sm text-slate-500">{t("agentViewSubtitle")}</p>
 					<div className="mt-4 flex gap-2">
 						<button
 							onClick={() => setStatus("assigned")}
 							className={`rounded-lg px-3 py-1.5 text-sm ${status === "assigned" ? "bg-cyan-600 text-white" : "bg-slate-100 text-slate-700"}`}
 						>
-							Asignadas
+							{t("assignedTitle")}
 						</button>
 						<button
 							onClick={() => setStatus("completed")}
 							className={`rounded-lg px-3 py-1.5 text-sm ${status === "completed" ? "bg-cyan-600 text-white" : "bg-slate-100 text-slate-700"}`}
 						>
-							Finalizadas
+							{t("completedTitle")}
 						</button>
 					</div>
-					<p className="mt-4 text-sm text-slate-500">{total} resultados</p>
+					<p className="mt-4 text-sm text-slate-500">{t("resultsCount", { count: total })}</p>
 				</div>
 
 				<Card>
-					{isLoading && <div className="py-16 text-center text-sm text-slate-400">Cargando solicitudes...</div>}
-					{isError && <div className="py-16 text-center text-sm text-rose-600">No se pudieron cargar las solicitudes.</div>}
+					{isLoading && <div className="py-16 text-center text-sm text-slate-400">{t("loading")}</div>}
+					{isError && <div className="py-16 text-center text-sm text-rose-600">{locale === "en" ? "Could not load requests." : "No se pudieron cargar las solicitudes."}</div>}
 					{!isLoading && !isError && (
 						<div className="overflow-x-auto">
 							<table className="min-w-full text-sm">
 								<thead className="bg-slate-50 text-slate-600">
 									<tr>
-										<th className="px-4 py-3 text-left font-medium">ID</th>
-										<th className="px-4 py-3 text-left font-medium">Titulo</th>
-										<th className="px-4 py-3 text-left font-medium">Contacto</th>
-										<th className="px-4 py-3 text-left font-medium">Categoria</th>
-										<th className="px-4 py-3 text-left font-medium">Estado</th>
-										<th className="px-4 py-3 text-left font-medium">Prioridad</th>
-										<th className="px-4 py-3 text-left font-medium">Vence</th>
-										<th className="px-4 py-3 text-left font-medium">Actualizada</th>
-										<th className="px-4 py-3 text-left font-medium">Acciones</th>
+										<th className="px-4 py-3 text-left font-medium">{t("idLabel")}</th>
+										<th className="px-4 py-3 text-left font-medium">{t("tableHeaders.title")}</th>
+										<th className="px-4 py-3 text-left font-medium">{t("tableHeaders.contact")}</th>
+										<th className="px-4 py-3 text-left font-medium">{t("tableHeaders.category")}</th>
+										<th className="px-4 py-3 text-left font-medium">{t("tableHeaders.status")}</th>
+										<th className="px-4 py-3 text-left font-medium">{t("tableHeaders.priority")}</th>
+										<th className="px-4 py-3 text-left font-medium">{t("tableHeaders.due")}</th>
+										<th className="px-4 py-3 text-left font-medium">{t("tableHeaders.updated")}</th>
+										<th className="px-4 py-3 text-left font-medium">{t("tableHeaders.actions")}</th>
 									</tr>
 								</thead>
 								<tbody>
 									{rows.length === 0 ? (
 										<tr className="border-t border-slate-100">
 											<td colSpan={9} className="px-4 py-10 text-center text-sm text-slate-400">
-												No hay solicitudes para este filtro.
+												{t("emptyFilter")}
 											</td>
 										</tr>
 									) : (
 										rows.map((item) => (
 											<tr key={item.id} className="border-t border-slate-100">
 												<td className="px-4 py-3 text-slate-700">#{item.id}</td>
-												<td className="px-4 py-3 text-slate-700">{item.titulo || item.nombre || "Sin titulo"}</td>
+												<td className="px-4 py-3 text-slate-700">{item.titulo || item.nombre || t("withoutTitle")}</td>
 												<td className="px-4 py-3 text-slate-600">{item.nombre || item.telefonoContacto || "-"}</td>
 												<td className="px-4 py-3 text-slate-700">{CATEGORIA_LABELS[item.categoria || ""] ?? item.categoria ?? "-"}</td>
 												<td className="px-4 py-3 text-slate-700">{ESTADO_LABELS[item.estado || ""] ?? item.estado ?? "-"}</td>
@@ -277,7 +280,7 @@ export default function AgentSolicitudesPage() {
 																onClick={() => updateAgentSolicitud.mutate({ id: item.id, data: { estado: "in_progress" } })}
 																className="rounded-lg border border-blue-200 bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700"
 															>
-																Tomar
+																{t("take")}
 															</button>
 														)}
 														{item.estado !== "completed" && item.estado !== "rejected" && (
@@ -286,7 +289,7 @@ export default function AgentSolicitudesPage() {
 																onClick={() => updateAgentSolicitud.mutate({ id: item.id, data: { estado: "completed" } })}
 																className="rounded-lg border border-emerald-200 bg-emerald-50 px-2 py-1 text-xs font-medium text-emerald-700"
 															>
-																Completar
+																{t("complete")}
 															</button>
 														)}
 														<button
@@ -294,7 +297,7 @@ export default function AgentSolicitudesPage() {
 															onClick={() => openSolicitudDetail(item)}
 															className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs font-medium text-slate-700"
 														>
-															Conversaciones
+															{t("viewConversations")}
 														</button>
 													</div>
 												</td>
@@ -308,7 +311,7 @@ export default function AgentSolicitudesPage() {
 				</Card>
 
 				<Link href="/agente/dashboard" className="inline-flex items-center gap-2 rounded-lg bg-cyan-600 px-4 py-2 text-sm font-medium text-white shadow hover:bg-cyan-700 active:bg-cyan-800">
-					← Volver al dashboard
+					← {locale === "en" ? "Back to dashboard" : "Volver al dashboard"}
 				</Link>
 			</div>
 
