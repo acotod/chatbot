@@ -1,0 +1,67 @@
+{
+  "header": {
+    "stats": "{active} activos · {total} en total",
+    "newAgent": "Nuevo agente"
+  },
+  "list": {
+    "loading": "Cargando agentes...",
+    "empty": "No hay agentes registrados.",
+    "createFirst": "Crear el primero ->"
+  },
+  "card": {
+    "whatsapp": "WhatsApp: {value}",
+    "position": "Puesto: {value}",
+    "manager": "Jefe: {value}",
+    "agentAccess": "Acceso agente: {status}",
+    "accessEnabled": "habilitado",
+    "accessMissing": "sin credenciales",
+    "viewCalendar": "Ver calendario"
+  },
+  "fields": {
+    "fullName": "Nombre completo",
+    "fullNamePlaceholder": "Ej: Maria Gonzalez",
+    "email": "Email",
+    "emailPlaceholder": "maria@clinica.com",
+    "accessPassword": "Contrasena de acceso",
+    "newAccessPassword": "Nueva contrasena de acceso",
+    "passwordPlaceholder": "Minimo 8 caracteres",
+    "newPasswordPlaceholder": "Dejala vacia para conservar la actual",
+    "whatsapp": "WhatsApp",
+    "position": "Puesto",
+    "selectPosition": "Selecciona un puesto...",
+    "manager": "Jefe (supervisor admin)",
+    "noManagerAssigned": "Sin jefe asignado",
+    "calendarLink": "Liga de calendario",
+    "internalCalendarOptional": "Calendario interno (opcional)",
+    "noInternalCalendar": "Sin calendario interno",
+    "assignedSuffix": " (asignado)"
+  },
+  "modalCreate": {
+    "title": "Nuevo agente",
+    "passwordHint": "Si la definis, el agente podra entrar por /agente/login con su tenant, email y contrasena.",
+    "positionHint": "Administra el catalogo en Configuracion."
+  },
+  "modalEdit": {
+    "title": "Editar agente",
+    "profileHint": "Este perfil usa un acceso unico sin modulos adicionales: solo login y perfil de agente."
+  },
+  "actions": {
+    "activate": "Activar",
+    "deactivate": "Desactivar",
+    "edit": "Editar",
+    "editAgent": "Editar agente",
+    "cancel": "Cancelar",
+    "createAgent": "Crear agente",
+    "creating": "Creando...",
+    "saveChanges": "Guardar cambios",
+    "saving": "Guardando..."
+  },
+  "errors": {
+    "requiredFields": "Completa nombre, email, WhatsApp y puesto.",
+    "passwordMin": "La contrasena del agente debe tener al menos 8 caracteres.",
+    "calendarProtocol": "La liga del calendario debe iniciar con http:// o https://",
+    "calendarInvalid": "La liga del calendario no es valida.",
+    "createFailed": "No se pudo crear el agente. Intenta de nuevo.",
+    "updateFailed": "No se pudo actualizar el agente."
+  }
+}

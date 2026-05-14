@@ -4,6 +4,7 @@ import { agentePuestosApi, agentesApi, adminUsersApi, calendarsApi } from "@/lib
 import { useAuthStore } from "@/store/auth";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
+import { useTranslations } from "next-intl";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { StatusBadge } from "@/components/ui/StatusBadge";
@@ -51,6 +52,7 @@ function getApiErrorMessage(error: unknown, fallback: string) {
 }
 
 export default function AgentesPage() {
+  const t = useTranslations("agentes");
   const { tenantSlug } = useAuthStore();
   const qc = useQueryClient();
   const [modal, setModal] = useState(false);
@@ -118,7 +120,7 @@ export default function AgentesPage() {
       setModal(false);
       setForm({ nombre: "", email: "", password: "", whatsapp: "", puestoId: "", calendarLink: "", calendarId: "" });
     },
-    onError: (error) => setFormError(getApiErrorMessage(error, "No se pudo crear el agente. Intenta de nuevo.")),
+    onError: (error) => setFormError(getApiErrorMessage(error, t("errors.createFailed"))),
   });
 
   const toggle = useMutation({
@@ -147,7 +149,7 @@ export default function AgentesPage() {
       setEditingId(null);
       setEditForm({ nombre: "", email: "", password: "", whatsapp: "", puestoId: "", calendarLink: "", calendarId: "", jefeAdminId: "" });
     },
-    onError: (error) => setEditFormError(getApiErrorMessage(error, "No se pudo actualizar el agente.")),
+    onError: (error) => setEditFormError(getApiErrorMessage(error, t("errors.updateFailed"))),
   });
 
   const agentes: Agente[] = data?.data ?? data ?? [];
@@ -165,11 +167,11 @@ export default function AgentesPage() {
     e.preventDefault();
     setFormError("");
     if (!form.nombre.trim() || !form.email.trim() || !form.whatsapp.trim() || !form.puestoId) {
-      setFormError("Completá nombre, email, WhatsApp y puesto.");
+      setFormError(t("errors.requiredFields"));
       return;
     }
     if (form.password.trim() && form.password.trim().length < 8) {
-      setFormError("La contraseña del agente debe tener al menos 8 caracteres.");
+      setFormError(t("errors.passwordMin"));
       return;
     }
 
@@ -177,11 +179,11 @@ export default function AgentesPage() {
       try {
         const parsed = new URL(form.calendarLink);
         if (!["http:", "https:"].includes(parsed.protocol)) {
-          setFormError("La liga del calendario debe iniciar con http:// o https://");
+          setFormError(t("errors.calendarProtocol"));
           return;
         }
       } catch {
-        setFormError("La liga del calendario no es valida.");
+        setFormError(t("errors.calendarInvalid"));
         return;
       }
     }
@@ -209,11 +211,11 @@ export default function AgentesPage() {
     e.preventDefault();
     setEditFormError("");
     if (!editForm.nombre.trim() || !editForm.email.trim() || !editForm.whatsapp.trim() || !editForm.puestoId) {
-      setEditFormError("Completá nombre, email, WhatsApp y puesto.");
+      setEditFormError(t("errors.requiredFields"));
       return;
     }
     if (editForm.password.trim() && editForm.password.trim().length < 8) {
-      setEditFormError("La contraseña del agente debe tener al menos 8 caracteres.");
+      setEditFormError(t("errors.passwordMin"));
       return;
     }
 
@@ -221,11 +223,11 @@ export default function AgentesPage() {
       try {
         const parsed = new URL(editForm.calendarLink);
         if (!["http:", "https:"].includes(parsed.protocol)) {
-          setEditFormError("La liga del calendario debe iniciar con http:// o https://");
+          setEditFormError(t("errors.calendarProtocol"));
           return;
         }
       } catch {
-        setEditFormError("La liga del calendario no es valida.");
+        setEditFormError(t("errors.calendarInvalid"));
         return;
       }
     }
@@ -239,27 +241,27 @@ export default function AgentesPage() {
       <div className="flex items-center justify-between">
         <div>
           <p className="text-sm text-slate-500">
-            {activos} activos · {agentes.length} en total
+            {t("header.stats", { active: activos, total: agentes.length })}
           </p>
         </div>
         <Button onClick={() => setModal(true)}>
           <Plus size={16} />
-          Nuevo agente
+          {t("header.newAgent")}
         </Button>
       </div>
 
       {/* Cards grid */}
       {isLoading ? (
-        <p className="text-slate-400 text-sm">Cargando agentes...</p>
+        <p className="text-slate-400 text-sm">{t("list.loading")}</p>
       ) : agentes.length === 0 ? (
         <Card>
           <div className="py-16 text-center">
-            <p className="text-slate-400 text-sm">No hay agentes registrados.</p>
+            <p className="text-slate-400 text-sm">{t("list.empty")}</p>
             <button
               onClick={() => setModal(true)}
               className="mt-3 text-blue-600 text-sm font-medium hover:text-blue-700"
             >
-              Crear el primero →
+              {t("list.createFirst")}
             </button>
           </div>
         </Card>
@@ -276,11 +278,13 @@ export default function AgentesPage() {
                   <div>
                     <p className="font-medium text-slate-900">{a.nombre}</p>
                     <p className="text-xs text-slate-500 mt-0.5">{a.email}</p>
-                    {a.whatsapp && <p className="text-xs text-slate-500">WhatsApp: {a.whatsapp}</p>}
-                    {a.puesto?.nombre && <p className="text-xs text-slate-500">Puesto: {a.puesto.nombre}</p>}
-                    {a.jefeAdmin?.nombre && <p className="text-xs text-slate-500">Jefe: {a.jefeAdmin.nombre}</p>}
+                    {a.whatsapp && <p className="text-xs text-slate-500">{t("card.whatsapp", { value: a.whatsapp })}</p>}
+                    {a.puesto?.nombre && <p className="text-xs text-slate-500">{t("card.position", { value: a.puesto.nombre })}</p>}
+                    {a.jefeAdmin?.nombre && <p className="text-xs text-slate-500">{t("card.manager", { value: a.jefeAdmin.nombre })}</p>}
                     <p className="text-xs text-slate-500">
-                      Acceso agente: {a.passwordConfigured ? "habilitado" : "sin credenciales"}
+                      {t("card.agentAccess", {
+                        status: a.passwordConfigured ? t("card.accessEnabled") : t("card.accessMissing"),
+                      })}
                     </p>
                     {a.calendarLink && (
                       <a
@@ -289,7 +293,7 @@ export default function AgentesPage() {
                         rel="noreferrer"
                         className="mt-1 inline-flex items-center gap-1 text-xs text-blue-600 hover:text-blue-700"
                       >
-                        Ver calendario <ExternalLink size={12} />
+                        {t("card.viewCalendar")} <ExternalLink size={12} />
                       </a>
                     )}
                     <StatusBadge status={a.estado} className="mt-2" />
@@ -303,7 +307,7 @@ export default function AgentesPage() {
                     })
                   }
                   className="mt-0.5 text-slate-400 hover:text-blue-600 transition"
-                  title={a.estado === "activo" ? "Desactivar" : "Activar"}
+                  title={a.estado === "activo" ? t("actions.deactivate") : t("actions.activate")}
                 >
                   {a.estado === "activo" ? (
                     <ToggleRight size={24} className="text-blue-600" />
@@ -314,9 +318,9 @@ export default function AgentesPage() {
                 <button
                   onClick={() => openEdit(a)}
                   className="mt-0.5 text-slate-400 hover:text-blue-600 transition text-xs"
-                  title="Editar agente"
+                  title={t("actions.editAgent")}
                 >
-                  Editar
+                  {t("actions.edit")}
                 </button>
               </div>
             </Card>
@@ -331,69 +335,69 @@ export default function AgentesPage() {
           setModal(false);
           setFormError("");
         }}
-        title="Nuevo agente"
+        title={t("modalCreate.title")}
       >
         <form onSubmit={handleCreate} className="space-y-4">
           <Input
-            label="Nombre completo"
+            label={t("fields.fullName")}
             value={form.nombre}
             onChange={(e) => setForm((f) => ({ ...f, nombre: e.target.value }))}
-            placeholder="Ej: María González"
+            placeholder={t("fields.fullNamePlaceholder")}
           />
           <Input
-            label="Email"
+            label={t("fields.email")}
             type="email"
             value={form.email}
             onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
-            placeholder="maria@clinica.com"
+            placeholder={t("fields.emailPlaceholder")}
           />
           <Input
-            label="Contraseña de acceso"
+            label={t("fields.accessPassword")}
             type="password"
             value={form.password}
             onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))}
-            placeholder="Mínimo 8 caracteres"
+            placeholder={t("fields.passwordPlaceholder")}
           />
-          <p className="-mt-2 text-xs text-slate-500">Si la definís, el agente podrá entrar por /agente/login con su tenant, email y contraseña.</p>
+          <p className="-mt-2 text-xs text-slate-500">{t("modalCreate.passwordHint")}</p>
           <Input
-            label="WhatsApp"
+            label={t("fields.whatsapp")}
             value={form.whatsapp}
             onChange={(e) => setForm((f) => ({ ...f, whatsapp: e.target.value }))}
             placeholder="+5215512345678"
           />
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Puesto</label>
+            <label className="block text-sm font-medium text-slate-700 mb-1">{t("fields.position")}</label>
             <div className="flex gap-2">
               <select
                 value={form.puestoId}
                 onChange={(e) => setForm((f) => ({ ...f, puestoId: e.target.value }))}
                 className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-blue-500"
               >
-                <option value="">Selecciona un puesto...</option>
+                <option value="">{t("fields.selectPosition")}</option>
                 {puestos.map((p) => (
                   <option key={p.id} value={p.id}>{p.nombre}</option>
                 ))}
               </select>
             </div>
-            <p className="mt-2 text-xs text-slate-500">Administrá el catálogo en Configuración.</p>
+            <p className="mt-2 text-xs text-slate-500">{t("modalCreate.positionHint")}</p>
           </div>
           <Input
-            label="Liga de calendario"
+            label={t("fields.calendarLink")}
             value={form.calendarLink}
             onChange={(e) => setForm((f) => ({ ...f, calendarLink: e.target.value }))}
             placeholder="https://calendar.google.com/..."
           />
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Calendario interno (opcional)</label>
+            <label className="block text-sm font-medium text-slate-700 mb-1">{t("fields.internalCalendarOptional")}</label>
             <select
               value={form.calendarId}
               onChange={(e) => setForm((f) => ({ ...f, calendarId: e.target.value }))}
               className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-blue-500"
             >
-              <option value="">Sin calendario interno</option>
+              <option value="">{t("fields.noInternalCalendar")}</option>
               {calendars.map((c) => (
                 <option key={c.id} value={c.id} disabled={usedCalendarIds.has(c.id)}>
-                  {c.name}{usedCalendarIds.has(c.id) ? " (asignado)" : ""}
+                  {c.name}{usedCalendarIds.has(c.id) ? t("fields.assignedSuffix") : ""}
                 </option>
               ))}
             </select>
@@ -405,10 +409,10 @@ export default function AgentesPage() {
               variant="secondary"
               onClick={() => setModal(false)}
             >
-              Cancelar
+              {t("actions.cancel")}
             </Button>
             <Button type="submit" disabled={create.isPending}>
-              {create.isPending ? "Creando..." : "Crear agente 💙"}
+              {create.isPending ? t("actions.creating") : t("actions.createAgent")}
             </Button>
           </div>
         </form>
@@ -422,82 +426,82 @@ export default function AgentesPage() {
           setEditingId(null);
           setEditFormError("");
         }}
-        title="Editar agente"
+        title={t("modalEdit.title")}
       >
         <form onSubmit={handleUpdate} className="space-y-4">
           <Input
-            label="Nombre completo"
+            label={t("fields.fullName")}
             value={editForm.nombre}
             onChange={(e) => setEditForm((f) => ({ ...f, nombre: e.target.value }))}
-            placeholder="Ej: María González"
+            placeholder={t("fields.fullNamePlaceholder")}
           />
           <Input
-            label="Email"
+            label={t("fields.email")}
             type="email"
             value={editForm.email}
             onChange={(e) => setEditForm((f) => ({ ...f, email: e.target.value }))}
-            placeholder="maria@clinica.com"
+            placeholder={t("fields.emailPlaceholder")}
           />
           <Input
-            label="Nueva contraseña de acceso"
+            label={t("fields.newAccessPassword")}
             type="password"
             value={editForm.password}
             onChange={(e) => setEditForm((f) => ({ ...f, password: e.target.value }))}
-            placeholder="Dejala vacía para conservar la actual"
+            placeholder={t("fields.newPasswordPlaceholder")}
           />
-          <p className="-mt-2 text-xs text-slate-500">Este perfil usa un acceso único sin módulos adicionales: solo login y perfil de agente.</p>
+          <p className="-mt-2 text-xs text-slate-500">{t("modalEdit.profileHint")}</p>
           <Input
-            label="WhatsApp"
+            label={t("fields.whatsapp")}
             value={editForm.whatsapp}
             onChange={(e) => setEditForm((f) => ({ ...f, whatsapp: e.target.value }))}
             placeholder="+5215512345678"
           />
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Puesto</label>
+            <label className="block text-sm font-medium text-slate-700 mb-1">{t("fields.position")}</label>
             <select
               value={editForm.puestoId}
               onChange={(e) => setEditForm((f) => ({ ...f, puestoId: e.target.value }))}
               className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-blue-500"
             >
-              <option value="">Selecciona un puesto...</option>
+              <option value="">{t("fields.selectPosition")}</option>
               {puestos.map((p) => (
                 <option key={p.id} value={p.id}>{p.nombre}</option>
               ))}
             </select>
           </div>
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Jefe (supervisor admin)</label>
+            <label className="block text-sm font-medium text-slate-700 mb-1">{t("fields.manager")}</label>
             <select
               value={editForm.jefeAdminId}
               onChange={(e) => setEditForm((f) => ({ ...f, jefeAdminId: e.target.value }))}
               className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-blue-500"
             >
-              <option value="">Sin jefe asignado</option>
+              <option value="">{t("fields.noManagerAssigned")}</option>
               {adminUsers.map((u) => (
                 <option key={u.id} value={u.id}>{u.nombre} ({u.email})</option>
               ))}
             </select>
           </div>
           <Input
-            label="Liga de calendario"
+            label={t("fields.calendarLink")}
             value={editForm.calendarLink}
             onChange={(e) => setEditForm((f) => ({ ...f, calendarLink: e.target.value }))}
             placeholder="https://calendar.google.com/..."
           />
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Calendario interno (opcional)</label>
+            <label className="block text-sm font-medium text-slate-700 mb-1">{t("fields.internalCalendarOptional")}</label>
             <select
               value={editForm.calendarId}
               onChange={(e) => setEditForm((f) => ({ ...f, calendarId: e.target.value }))}
               className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-blue-500"
             >
-              <option value="">Sin calendario interno</option>
+              <option value="">{t("fields.noInternalCalendar")}</option>
               {calendars.map((c) => {
                 const currentlyAssigned = c.agenteId === editingId;
                 const disabled = !!c.agenteId && !currentlyAssigned;
                 return (
                   <option key={c.id} value={c.id} disabled={disabled}>
-                    {c.name}{disabled ? " (asignado)" : ""}
+                    {c.name}{disabled ? t("fields.assignedSuffix") : ""}
                   </option>
                 );
               })}
@@ -510,10 +514,10 @@ export default function AgentesPage() {
               variant="secondary"
               onClick={() => setEditModal(false)}
             >
-              Cancelar
+              {t("actions.cancel")}
             </Button>
             <Button type="submit" disabled={update.isPending}>
-              {update.isPending ? "Guardando..." : "Guardar cambios"}
+              {update.isPending ? t("actions.saving") : t("actions.saveChanges")}
             </Button>
           </div>
         </form>

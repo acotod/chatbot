@@ -1,0 +1,67 @@
+{
+  "header": {
+    "stats": "{active} active · {total} total",
+    "newAgent": "New agent"
+  },
+  "list": {
+    "loading": "Loading agents...",
+    "empty": "No agents registered.",
+    "createFirst": "Create the first one ->"
+  },
+  "card": {
+    "whatsapp": "WhatsApp: {value}",
+    "position": "Position: {value}",
+    "manager": "Manager: {value}",
+    "agentAccess": "Agent access: {status}",
+    "accessEnabled": "enabled",
+    "accessMissing": "no credentials",
+    "viewCalendar": "View calendar"
+  },
+  "fields": {
+    "fullName": "Full name",
+    "fullNamePlaceholder": "Ex: Maria Gonzalez",
+    "email": "Email",
+    "emailPlaceholder": "maria@clinic.com",
+    "accessPassword": "Access password",
+    "newAccessPassword": "New access password",
+    "passwordPlaceholder": "Minimum 8 characters",
+    "newPasswordPlaceholder": "Leave empty to keep current one",
+    "whatsapp": "WhatsApp",
+    "position": "Position",
+    "selectPosition": "Select a position...",
+    "manager": "Manager (admin supervisor)",
+    "noManagerAssigned": "No manager assigned",
+    "calendarLink": "Calendar link",
+    "internalCalendarOptional": "Internal calendar (optional)",
+    "noInternalCalendar": "No internal calendar",
+    "assignedSuffix": " (assigned)"
+  },
+  "modalCreate": {
+    "title": "New agent",
+    "passwordHint": "If you set it, the agent can log in through /agente/login with tenant, email, and password.",
+    "positionHint": "Manage this catalog in Settings."
+  },
+  "modalEdit": {
+    "title": "Edit agent",
+    "profileHint": "This profile uses a single access without extra modules: only agent login and profile."
+  },
+  "actions": {
+    "activate": "Activate",
+    "deactivate": "Deactivate",
+    "edit": "Edit",
+    "editAgent": "Edit agent",
+    "cancel": "Cancel",
+    "createAgent": "Create agent",
+    "creating": "Creating...",
+    "saveChanges": "Save changes",
+    "saving": "Saving..."
+  },
+  "errors": {
+    "requiredFields": "Complete full name, email, WhatsApp, and position.",
+    "passwordMin": "Agent password must be at least 8 characters.",
+    "calendarProtocol": "Calendar link must start with http:// or https://",
+    "calendarInvalid": "Calendar link is not valid.",
+    "createFailed": "Could not create the agent. Try again.",
+    "updateFailed": "Could not update the agent."
+  }
+}
