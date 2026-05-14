@@ -56,12 +56,12 @@ function RolesAccessPage({ initialTab = "roles", lockToUsers = false }: RolesAcc
   });
 
   useEffect(() => {
-    if (lockToUsers || !canManageRoles || initialTab === "users") {
+    if (lockToUsers || initialTab === "users") {
       setTab("users");
       return;
     }
     setTab("roles");
-  }, [canManageRoles, initialTab, lockToUsers]);
+  }, [initialTab, lockToUsers]);
 
   const { data: users = [], isLoading: loadingUsers } = useQuery<AdminUser[]>({
     queryKey: ["adminUsers"],
@@ -84,7 +84,7 @@ function RolesAccessPage({ initialTab = "roles", lockToUsers = false }: RolesAcc
     onSuccess: () => qc.invalidateQueries({ queryKey: ["adminUsers"] }),
   });
 
-  const isUsersView = tab === "users" || lockToUsers || !canManageRoles;
+  const isUsersView = tab === "users" || lockToUsers;
 
   return (
     <div className="space-y-6">
