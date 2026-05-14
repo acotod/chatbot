@@ -93,6 +93,7 @@
   "subcategoryPlaceholder": "Ej: integracion-whatsapp",
   "dueDate": "Fecha límite",
   "firstResponse": "Primera respuesta",
+  "idLabel": "ID",
   "connection": "Conexión",
   "client": "Cliente",
   "manageRequest": "Gestionar solicitud",

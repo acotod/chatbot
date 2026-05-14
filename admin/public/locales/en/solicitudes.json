@@ -93,6 +93,7 @@
   "subcategoryPlaceholder": "Ex: whatsapp-integration",
   "dueDate": "Due date",
   "firstResponse": "First response",
+  "idLabel": "ID",
   "connection": "Connection",
   "client": "Customer",
   "manageRequest": "Manage request",

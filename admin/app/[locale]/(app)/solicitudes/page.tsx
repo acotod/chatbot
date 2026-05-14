@@ -888,8 +888,8 @@ export default function SolicitudesPage() {
         const actorLabel = m.agente?.nombre
           ? m.agente.nombre
           : isOutbound
-            ? "Agente"
-            : "Cliente";
+            ? t("tableHeaders.agent")
+            : t("client");
         return {
           id: `msg-${m.id}`,
           text,
@@ -1280,7 +1280,7 @@ export default function SolicitudesPage() {
                     </h3>
                     <p className="mt-1 text-sm text-slate-600">
                       {detailModal.solicitud.telefonoContacto || t("withoutPhone")}
-                      {detailModal.solicitud.createdAt ? ` · Creada ${formatDate(detailModal.solicitud.createdAt)}` : ""}
+                      {detailModal.solicitud.createdAt ? ` · ${t("createdAtLabel")} ${formatDate(detailModal.solicitud.createdAt)}` : ""}
                     </p>
                   </div>
                   <div className="flex flex-col gap-2 lg:items-end">
@@ -1483,7 +1483,7 @@ export default function SolicitudesPage() {
                                   </span>
                                 )}
                               </div>
-                              <p className="text-sm text-slate-500 mt-1">ID {conversation.id} · {t("state")} {conversation.status}</p>
+                              <p className="text-sm text-slate-500 mt-1">{t("idLabel")} {conversation.id} · {t("state")} {conversation.status}</p>
                               <p className="text-sm text-slate-500">
                                 {t("startLabel")} {formatDate(conversation.startedAt)}
                                 {conversation.endedAt ? ` · ${t("endLabel")} ${formatDate(conversation.endedAt)}` : ""}
@@ -2343,7 +2343,7 @@ export default function SolicitudesPage() {
                                 </span>
                               )}
                             </div>
-                            <p className="text-sm text-slate-500 mt-1">ID {conversation.id} · {t("state")} {conversation.status}</p>
+                            <p className="text-sm text-slate-500 mt-1">{t("idLabel")} {conversation.id} · {t("state")} {conversation.status}</p>
                             <p className="text-sm text-slate-500">
                               {t("startLabel")} {formatDate(conversation.startedAt)}
                               {conversation.endedAt ? ` · ${t("endLabel")} ${formatDate(conversation.endedAt)}` : ""}
