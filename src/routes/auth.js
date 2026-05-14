@@ -1880,6 +1880,57 @@ router.get('/agent/contactos', requireAgentJwt, async (req, res, next) => {
   }
 });
 
+// ── GET /auth/agent/contactos/:id ─────────────────────────────────────────────
+router.get('/agent/contactos/:id', requireAgentJwt, async (req, res, next) => {
+  try {
+    const tenantId = req.agent?.tenantId;
+    const agenteId = Number(req.agent?.agenteId);
+    if (!tenantId || !Number.isInteger(agenteId) || agenteId <= 0) {
+      return res.status(400).json({ error: 'Invalid agent context' });
+    }
+
+    const contactId = Number.parseInt(req.params.id, 10);
+    if (!Number.isInteger(contactId) || contactId <= 0) {
+      return res.status(400).json({ error: 'Invalid contact id' });
+    }
+
+    const contact = await prisma.user.findFirst({
+      where: {
+        id: contactId,
+        tenantId,
+        solicitudes: { some: { agenteId } },
+      },
+      include: {
+        solicitudes: {
+          orderBy: { createdAt: 'desc' },
+          take: 10,
+          include: { agente: { select: { id: true, nombre: true } } },
+        },
+        deals: {
+          orderBy: { createdAt: 'desc' },
+          include: { agente: { select: { id: true, nombre: true } } },
+        },
+        tasks: {
+          orderBy: { createdAt: 'desc' },
+          take: 20,
+          include: { agente: { select: { id: true, nombre: true } } },
+        },
+        mensajes: {
+          orderBy: { createdAt: 'desc' },
+          take: 5,
+          select: { id: true, tipo: true, contenido: true, createdAt: true },
+        },
+      },
+    });
+
+    if (!contact) return res.status(404).json({ error: 'Contact not found' });
+
+    return res.json(contact);
+  } catch (err) {
+    return next(err);
+  }
+});
+
 // ── POST /auth/logout ─────────────────────────────────────────────────────────
 router.post('/logout', requireJwt, async (req, res) => {
   const { refreshToken } = req.body;

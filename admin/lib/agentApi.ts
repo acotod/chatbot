@@ -277,6 +277,15 @@ export type AgentContacto = {
   _count?: { solicitudes: number };
 };
 
+export type AgentContactoDetail = AgentContacto & {
+  notas: string | null;
+  customFields: Record<string, unknown>;
+  solicitudes: Array<{ id: number; estado: string; createdAt: string; agente?: { nombre: string } }>;
+  deals: Array<{ id: number; titulo: string; etapa: string; valor: string | null; agente?: { nombre: string } }>;
+  tasks: Array<{ id: number; titulo: string; tipo: string; estado: string; venceEn: string | null; agente?: { nombre: string } }>;
+  mensajes: Array<{ id: number; tipo: string; contenido: unknown; createdAt: string }>;
+};
+
 export type AgentContactosResponse = {
   page: number;
   limit: number;
@@ -375,6 +384,8 @@ export const agentAuthApi = {
     agentApiClient.get<AgentAgendaResponse>("/auth/agent/agenda", { params }),
   contactos: (params?: { q?: string; page?: number; limit?: number }) =>
     agentApiClient.get<AgentContactosResponse>("/auth/agent/contactos", { params }),
+  contactoDetail: (id: number) =>
+    agentApiClient.get<AgentContactoDetail>(`/auth/agent/contactos/${id}`),
   conversationThreads: (params?: { q?: string; limit?: number }) =>
     agentApiClient.get<AgentConversationThreadsResponse>("/auth/agent/conversation-threads", { params }),
   conversationMessages: (params: { userId: number; page?: number; limit?: number }) =>
