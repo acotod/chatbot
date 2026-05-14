@@ -4,6 +4,7 @@ import { agentAuthApi, type AgentLoginResponse } from "@/lib/agentApi";
 import { useAgentAuthStore } from "@/store/agentAuth";
 import axios from "axios";
 import { MessageCircle } from "lucide-react";
+import { useTranslations } from "next-intl";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
@@ -44,23 +45,13 @@ function resolveAgentNextPath(next: string | undefined): string {
   return "/agente/dashboard";
 }
 
-function getAuthErrorMessage(error: unknown): string {
-  if (!axios.isAxiosError(error)) {
-    return "No se pudo iniciar sesión. Intenta nuevamente.";
-  }
-
+function getAuthErrorKey(error: unknown): string {
+  if (!axios.isAxiosError(error)) return "errors.generic";
   const status = error.response?.status;
-  if (status === 400 || status === 401) {
-    return "Email o contraseña incorrectos.";
-  }
-  if (status === 403) {
-    return "Tu acceso de agente está inactivo. Contactá al administrador.";
-  }
-  if (status === 429) {
-    return "Demasiados intentos seguidos. Esperá unos minutos antes de volver a intentar.";
-  }
-
-  return String(error.response?.data?.error || "No se pudo iniciar sesión. Intenta nuevamente.");
+  if (status === 400 || status === 401) return "errors.invalidCredentials";
+  if (status === 403) return "errors.inactive";
+  if (status === 429) return "errors.tooManyAttempts";
+  return "errors.generic";
 }
 
 function clearAdminAuthPreserveTabSession() {
@@ -86,6 +77,7 @@ export default async function AgentLoginPage({ searchParams }: AgentLoginPagePro
 }
 
 function AgentLoginScreen({ reason, nextPath }: AgentLoginScreenProps) {
+  const t = useTranslations("agentLogin");
   const router = useRouter();
   const { setToken } = useAgentAuthStore();
   const [email, setEmail] = useState("");
@@ -118,7 +110,7 @@ function AgentLoginScreen({ reason, nextPath }: AgentLoginScreenProps) {
       setToken(payload.accessToken);
       router.replace(nextPath);
     } catch (err) {
-      setError(getAuthErrorMessage(err));
+      setError(t(getAuthErrorKey(err)));
     } finally {
       setLoading(false);
     }
@@ -134,7 +126,7 @@ function AgentLoginScreen({ reason, nextPath }: AgentLoginScreenProps) {
       setToken(res.data.accessToken);
       router.replace(nextPath);
     } catch (err) {
-      setError(getAuthErrorMessage(err));
+      setError(t(getAuthErrorKey(err)));
     } finally {
       setLoading(false);
     }
@@ -147,17 +139,15 @@ function AgentLoginScreen({ reason, nextPath }: AgentLoginScreenProps) {
     setResetPreview(null);
 
     if (!email.trim()) {
-      setError("Ingresá tu email para solicitar el restablecimiento.");
+      setError(t("forgotPasswordNoEmail"));
       return;
     }
 
     setForgotLoading(true);
     try {
-      // Note: forgot password endpoint may still require tenantSlug if showing multiple options
-      // For now, we'll need to handle this scenario - user needs to select tenant first or we show an info message
-      setInfoMessage("Por favor, selecciona tu empresa primero, o contactá al administrador.");
+      setInfoMessage(t("forgotPasswordInfo"));
     } catch (err) {
-      setError(getAuthErrorMessage(err));
+      setError(t(getAuthErrorKey(err)));
     } finally {
       setForgotLoading(false);
     }
@@ -176,16 +166,16 @@ function AgentLoginScreen({ reason, nextPath }: AgentLoginScreenProps) {
               <MessageCircle className="w-5 h-5 text-white" />
             </div>
             <div>
-              <h1 className="text-xl font-bold tracking-tight text-slate-900">Zentra Bot</h1>
-              <p className="text-xs text-slate-500">Acceso de agente</p>
+              <h1 className="text-xl font-bold tracking-tight text-slate-900">{t("title")}</h1>
+              <p className="text-xs text-slate-500">{t("subtitle")}</p>
             </div>
           </div>
 
           <h2 className="text-3xl font-semibold tracking-tight text-slate-900 mb-2">
-            Seleccioná tu empresa
+            {t("tenantSelectHeading")}
           </h2>
           <p className="text-slate-600 text-base mb-7">
-            Encontramos múltiples empresas vinculadas a tu cuenta. ¿Cuál usarás?
+            {t("tenantSelectDescription")}
           </p>
 
           {error && (
@@ -196,7 +186,7 @@ function AgentLoginScreen({ reason, nextPath }: AgentLoginScreenProps) {
 
           {tenantOptions.length === 0 && (
             <div className="mb-4 px-4 py-3 bg-amber-50 border border-amber-200 rounded-xl text-amber-700 text-sm">
-              No encontramos empresas activas para este usuario. Contactá al administrador.
+              {t("noTenantsError")}
             </div>
           )}
 
@@ -223,7 +213,7 @@ function AgentLoginScreen({ reason, nextPath }: AgentLoginScreenProps) {
             }}
             className="w-full mt-6 py-2 text-sm text-cyan-700 hover:text-cyan-800 transition font-medium"
           >
-            Volver al login
+            {t("backToLogin")}
           </button>
         </div>
       </div>
@@ -241,44 +231,44 @@ function AgentLoginScreen({ reason, nextPath }: AgentLoginScreenProps) {
             <MessageCircle className="w-5 h-5 text-white" />
           </div>
           <div>
-            <h1 className="text-xl font-bold tracking-tight text-slate-900">Zentra Bot</h1>
-            <p className="text-xs text-slate-500">Acceso de agente</p>
+            <h1 className="text-xl font-bold tracking-tight text-slate-900">{t("title")}</h1>
+            <p className="text-xs text-slate-500">{t("subtitle")}</p>
           </div>
         </div>
 
         <h2 className="text-3xl font-semibold tracking-tight text-slate-900 mb-2">
-          Ingreso operativo
+          {t("heading")}
         </h2>
         <p className="text-slate-600 text-base mb-7">
-          Entrá con tu email y contraseña para ver tu perfil.
+          {t("description")}
         </p>
 
         {reason === "expired" && (
           <div className="mb-4 px-4 py-3 bg-amber-50 border border-amber-200 rounded-xl text-amber-700 text-sm">
-            Tu sesión de agente expiró. Iniciá sesión nuevamente.
+            {t("sessionExpired")}
           </div>
         )}
 
         <form onSubmit={handleSubmit} className="space-y-4.5">
           <div className="flex flex-col gap-1.5">
-            <label className="text-sm font-medium text-slate-700">Email</label>
+            <label className="text-sm font-medium text-slate-700">{t("emailLabel")}</label>
             <input
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              placeholder="agente@empresa.com"
+              placeholder={t("emailPlaceholder")}
               required
               className="px-4 py-3 rounded-xl border border-slate-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-cyan-500/30 focus:border-cyan-500 transition-all"
             />
           </div>
 
           <div className="flex flex-col gap-1.5">
-            <label className="text-sm font-medium text-slate-700">Contraseña</label>
+            <label className="text-sm font-medium text-slate-700">{t("passwordLabel")}</label>
             <input
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              placeholder="••••••••"
+              placeholder={t("passwordPlaceholder")}
               required
               className="px-4 py-3 rounded-xl border border-slate-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-cyan-500/30 focus:border-cyan-500 transition-all"
             />
@@ -295,7 +285,7 @@ function AgentLoginScreen({ reason, nextPath }: AgentLoginScreenProps) {
               <p>{infoMessage}</p>
               {deliveryChannels.length > 0 && (
                 <p className="mt-2 text-xs text-cyan-700/80">
-                  Enviado por: {deliveryChannels.join(", ")}
+                  {t("sentBy")} {deliveryChannels.join(", ")}
                 </p>
               )}
               {resetPreview?.resetUrl && (
@@ -305,11 +295,11 @@ function AgentLoginScreen({ reason, nextPath }: AgentLoginScreenProps) {
                     onClick={() => router.push(resetPreview.resetUrl!)}
                     className="font-medium underline underline-offset-2"
                   >
-                    Abrir enlace de restablecimiento
+                    {t("resetLinkButton")}
                   </button>
                   {resetPreview.expiresAt && (
                     <p className="text-xs text-cyan-700/80">
-                      Expira: {new Date(resetPreview.expiresAt).toLocaleString("es-ES")}
+                      {t("resetExpires")} {new Date(resetPreview.expiresAt).toLocaleString()}
                     </p>
                   )}
                 </div>
@@ -322,7 +312,7 @@ function AgentLoginScreen({ reason, nextPath }: AgentLoginScreenProps) {
             disabled={loading}
             className="w-full py-3.5 bg-cyan-600 hover:bg-cyan-700 text-white font-medium rounded-xl transition-all shadow-sm shadow-cyan-100 disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {loading ? "Ingresando..." : "Entrar como agente"}
+            {loading ? t("submitting") : t("submit")}
           </button>
 
           <button
@@ -331,7 +321,7 @@ function AgentLoginScreen({ reason, nextPath }: AgentLoginScreenProps) {
             disabled={forgotLoading}
             className="w-full text-sm font-medium text-cyan-700 hover:text-cyan-800 transition disabled:opacity-50"
           >
-            {forgotLoading ? "Generando enlace..." : "Olvidé mi contraseña"}
+            {forgotLoading ? t("forgotPasswordLoading") : t("forgotPassword")}
           </button>
         </form>
       </div>

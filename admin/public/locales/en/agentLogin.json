@@ -1,0 +1,30 @@
+{
+  "title": "Zentra Bot",
+  "subtitle": "Agent access",
+  "heading": "Operative sign-in",
+  "description": "Sign in with your email and password to view your profile.",
+  "emailLabel": "Email",
+  "emailPlaceholder": "agent@company.com",
+  "passwordLabel": "Password",
+  "passwordPlaceholder": "••••••••",
+  "submit": "Sign in as agent",
+  "submitting": "Signing in...",
+  "forgotPassword": "Forgot my password",
+  "forgotPasswordLoading": "Generating link...",
+  "forgotPasswordNoEmail": "Enter your email to request a password reset.",
+  "forgotPasswordInfo": "Please select your company first, or contact your administrator.",
+  "resetLinkButton": "Open reset link",
+  "resetExpires": "Expires:",
+  "sentBy": "Sent by:",
+  "sessionExpired": "Your agent session expired. Please sign in again.",
+  "tenantSelectHeading": "Select your company",
+  "tenantSelectDescription": "We found multiple companies linked to your account. Which one will you use?",
+  "noTenantsError": "No active companies found for this user. Contact your administrator.",
+  "backToLogin": "Back to login",
+  "errors": {
+    "generic": "Could not sign in. Please try again.",
+    "invalidCredentials": "Incorrect email or password.",
+    "inactive": "Your agent access is inactive. Contact your administrator.",
+    "tooManyAttempts": "Too many attempts. Please wait a few minutes before trying again."
+  }
+}

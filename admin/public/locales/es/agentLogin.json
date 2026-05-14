@@ -1,0 +1,30 @@
+{
+  "title": "Zentra Bot",
+  "subtitle": "Acceso de agente",
+  "heading": "Ingreso operativo",
+  "description": "Entrá con tu email y contraseña para ver tu perfil.",
+  "emailLabel": "Email",
+  "emailPlaceholder": "agente@empresa.com",
+  "passwordLabel": "Contraseña",
+  "passwordPlaceholder": "••••••••",
+  "submit": "Entrar como agente",
+  "submitting": "Ingresando...",
+  "forgotPassword": "Olvidé mi contraseña",
+  "forgotPasswordLoading": "Generando enlace...",
+  "forgotPasswordNoEmail": "Ingresá tu email para solicitar el restablecimiento.",
+  "forgotPasswordInfo": "Por favor, selecciona tu empresa primero, o contactá al administrador.",
+  "resetLinkButton": "Abrir enlace de restablecimiento",
+  "resetExpires": "Expira:",
+  "sentBy": "Enviado por:",
+  "sessionExpired": "Tu sesión de agente expiró. Iniciá sesión nuevamente.",
+  "tenantSelectHeading": "Seleccioná tu empresa",
+  "tenantSelectDescription": "Encontramos múltiples empresas vinculadas a tu cuenta. ¿Cuál usarás?",
+  "noTenantsError": "No encontramos empresas activas para este usuario. Contactá al administrador.",
+  "backToLogin": "Volver al login",
+  "errors": {
+    "generic": "No se pudo iniciar sesión. Intenta nuevamente.",
+    "invalidCredentials": "Email o contraseña incorrectos.",
+    "inactive": "Tu acceso de agente está inactivo. Contactá al administrador.",
+    "tooManyAttempts": "Demasiados intentos seguidos. Esperá unos minutos antes de volver a intentar."
+  }
+}
