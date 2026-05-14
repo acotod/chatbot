@@ -1,0 +1,336 @@
+"use client";
+
+import { Header } from "@/components/layout/Header";
+import {
+  agentAuthApi,
+  type AgentConversationMessage,
+  type AgentConversationThread,
+} from "@/lib/agentApi";
+import { cn, formatDate } from "@/lib/utils";
+import { Search, Send } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+
+function extractText(msg: Pick<AgentConversationMessage | AgentConversationThread, "tipo" | "contenido">): string {
+  const c = (msg.contenido ?? {}) as Record<string, unknown>;
+
+  const pickText = (value: unknown): string | null => {
+    if (typeof value === "string") {
+      const trimmed = value.trim();
+      return trimmed || null;
+    }
+    if (!value || typeof value !== "object") return null;
+    const obj = value as Record<string, unknown>;
+    return (
+      pickText(obj.text) ??
+      pickText(obj.body) ??
+      pickText(obj.message) ??
+      pickText(obj.caption) ??
+      pickText(obj.title) ??
+      null
+    );
+  };
+
+  const direct =
+    pickText(c.text) ??
+    pickText(c.body) ??
+    pickText(c.message) ??
+    pickText(c.caption) ??
+    pickText(c.interactive) ??
+    pickText(c.payload) ??
+    pickText(c.raw);
+
+  if (direct) return direct;
+  return `[${msg.tipo}]`;
+}
+
+function getDisplayName(thread: AgentConversationThread): string {
+  return thread._contactName ?? thread.user?.phone ?? `Usuario ${thread.userId}`;
+}
+
+export default function AgentConversacionesPage() {
+  const qc = useQueryClient();
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  const [activeThread, setActiveThread] = useState<AgentConversationThread | null>(null);
+  const [input, setInput] = useState("");
+  const [search, setSearch] = useState("");
+  const [msgPage, setMsgPage] = useState(1);
+  const [olderMessages, setOlderMessages] = useState<AgentConversationMessage[]>([]);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(false);
+
+  const { data: threadsData, isLoading: threadsLoading } = useQuery({
+    queryKey: ["agent-conversation-threads", search],
+    queryFn: () =>
+      agentAuthApi
+        .conversationThreads({ q: search || undefined, limit: 50 })
+        .then((r) => r.data),
+    staleTime: 30_000,
+  });
+  const threads: AgentConversationThread[] = threadsData?.data ?? [];
+
+  const { data: mensajesData, isLoading: mensajesLoading } = useQuery({
+    queryKey: ["agent-conversation-messages", activeThread?.userId],
+    queryFn: () =>
+      agentAuthApi
+        .conversationMessages({ userId: activeThread!.userId!, page: 1, limit: 100 })
+        .then((r) => {
+          setHasMore((r.data?.count ?? r.data?.data?.length ?? 0) >= 100);
+          setOlderMessages([]);
+          setMsgPage(1);
+          return r.data;
+        }),
+    enabled: !!activeThread?.userId,
+    staleTime: 0,
+  });
+  const latestMessages: AgentConversationMessage[] = mensajesData?.data ?? [];
+  const messages: AgentConversationMessage[] = [...latestMessages, ...olderMessages];
+
+  async function loadMoreMessages() {
+    if (!activeThread?.userId || loadingMore) return;
+    setLoadingMore(true);
+    try {
+      const nextPage = msgPage + 1;
+      const r = await agentAuthApi.conversationMessages({
+        userId: activeThread.userId,
+        page: nextPage,
+        limit: 100,
+      });
+      const older: AgentConversationMessage[] = r.data?.data ?? [];
+      setOlderMessages((prev) => [...prev, ...older]);
+      setMsgPage(nextPage);
+      setHasMore((r.data?.count ?? older.length) >= 100);
+    } finally {
+      setLoadingMore(false);
+    }
+  }
+
+  useEffect(() => {
+    if (messages.length > 0) {
+      const container = messagesEndRef.current?.parentElement;
+      if (container) container.scrollTop = 0;
+    }
+  }, [activeThread?.userId, messages.length]);
+
+  const sendMutation = useMutation({
+    mutationFn: (text: string) =>
+      agentAuthApi.sendConversationMessage({
+        userId: activeThread!.userId!,
+        text,
+        solicitudId: activeThread?._assignedSolicitudId ?? undefined,
+      }),
+    onMutate: async (text) => {
+      const optimistic: AgentConversationMessage = {
+        id: Date.now(),
+        userId: activeThread?.userId ?? null,
+        waMsgId: null,
+        direccion: "salida",
+        tipo: "text",
+        contenido: { text },
+        createdAt: new Date().toISOString(),
+      };
+      qc.setQueryData(
+        ["agent-conversation-messages", activeThread?.userId],
+        (old: { data: AgentConversationMessage[] } | undefined) =>
+          old ? { ...old, data: [...old.data, optimistic] } : { data: [optimistic], count: 1, page: 1, limit: 100 },
+      );
+      return { optimistic };
+    },
+    onError: (_err, _vars, ctx) => {
+      qc.setQueryData(
+        ["agent-conversation-messages", activeThread?.userId],
+        (old: { data: AgentConversationMessage[] } | undefined) =>
+          old ? { ...old, data: old.data.filter((m) => m.id !== ctx?.optimistic.id) } : old,
+      );
+    },
+  });
+
+  function handleSend() {
+    const text = input.trim();
+    if (!text || !activeThread?.userId) return;
+    setInput("");
+    sendMutation.mutate(text);
+  }
+
+  return (
+    <div className="min-h-screen bg-slate-50">
+      <Header />
+      <main className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
+        <div className="flex h-[calc(100vh-10rem)] gap-0 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+          <div className="flex w-80 shrink-0 flex-col border-r border-slate-200">
+            <div className="space-y-2 border-b border-slate-100 p-4">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Conversaciones</span>
+                <span className="rounded-full bg-cyan-50 px-2 py-0.5 text-xs text-cyan-700">Asignadas</span>
+              </div>
+              <div className="relative">
+                <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                <input
+                  placeholder="Buscar..."
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2 pl-9 pr-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+                />
+              </div>
+            </div>
+
+            <div className="flex-1 overflow-y-auto">
+              {threadsLoading && (
+                <div className="flex flex-col gap-2 p-4">
+                  {[1, 2, 3].map((i) => (
+                    <div key={i} className="flex animate-pulse gap-3 p-1">
+                      <div className="h-10 w-10 shrink-0 rounded-full bg-slate-200" />
+                      <div className="flex-1 space-y-2 py-1">
+                        <div className="h-3 w-3/4 rounded bg-slate-200" />
+                        <div className="h-2 w-full rounded bg-slate-100" />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {!threadsLoading && threads.length === 0 && (
+                <div className="flex h-40 flex-col items-center justify-center gap-2 px-4 text-center text-sm text-slate-400">
+                  <p>No hay conversaciones de tus contactos asignados</p>
+                  <p className="text-xs text-slate-300">Los mensajes aparecerán aquí en tiempo real</p>
+                </div>
+              )}
+
+              {threads.map((thread) => {
+                const name = getDisplayName(thread);
+                const lastText = extractText({ tipo: thread.tipo, contenido: thread.contenido });
+                const isActive = activeThread?.id === thread.id;
+
+                return (
+                  <button
+                    key={thread.id}
+                    onClick={() => {
+                      setActiveThread(thread);
+                      setOlderMessages([]);
+                      setMsgPage(1);
+                      setHasMore(false);
+                    }}
+                    className={cn(
+                      "w-full border-b border-slate-50 px-4 py-3.5 text-left transition hover:bg-slate-50",
+                      isActive && "bg-blue-50 hover:bg-blue-50",
+                    )}
+                  >
+                    <div className="flex items-start gap-3">
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-slate-200 text-sm font-semibold text-slate-600">
+                        {name.charAt(0).toUpperCase()}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center justify-between">
+                          <span className={cn("truncate text-sm font-medium", isActive ? "text-blue-700" : "text-slate-900")}>{name}</span>
+                          <span className="ml-2 shrink-0 text-xs text-slate-400">{formatDate(thread.createdAt)}</span>
+                        </div>
+                        <p className="mt-0.5 truncate text-xs text-slate-500">{lastText}</p>
+                      </div>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {!activeThread ? (
+            <div className="flex flex-1 flex-col items-center justify-center gap-3 text-slate-400">
+              <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-slate-100 text-3xl">💬</div>
+              <p className="font-medium text-slate-600">Seleccioná una conversación</p>
+              <p className="text-sm text-slate-400">Solo verás contactos asignados a tus solicitudes</p>
+            </div>
+          ) : (
+            <div className="flex min-w-0 flex-1 flex-col">
+              <div className="flex h-16 items-center border-b border-slate-200 bg-white px-5">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-9 w-9 items-center justify-center rounded-full bg-slate-200 text-sm font-semibold text-slate-600">
+                    {getDisplayName(activeThread).charAt(0).toUpperCase()}
+                  </div>
+                  <div>
+                    <p className="text-sm font-semibold text-slate-900">{getDisplayName(activeThread)}</p>
+                    <p className="text-xs text-slate-400">{activeThread.user?.phone ?? ""}</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex-1 space-y-3 overflow-y-auto bg-slate-50 p-5">
+                {mensajesLoading && (
+                  <div className="flex flex-col gap-3">
+                    {[1, 2, 3].map((i) => (
+                      <div key={i} className={cn("flex animate-pulse", i % 2 === 0 ? "justify-end" : "justify-start")}>
+                        <div className="h-10 w-48 rounded-2xl bg-slate-200" />
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {!mensajesLoading && messages.length === 0 && (
+                  <div className="flex h-32 items-center justify-center text-sm text-slate-400">No hay mensajes aún</div>
+                )}
+
+                {messages.map((msg) => {
+                  const isOutbound = msg.direccion === "salida";
+                  return (
+                    <div key={msg.id} className={cn("flex", isOutbound ? "justify-end" : "justify-start")}>
+                      <div
+                        className={cn(
+                          "max-w-xs rounded-2xl px-4 py-2.5 text-sm shadow-sm lg:max-w-md",
+                          isOutbound
+                            ? "rounded-tr-sm bg-blue-600 text-white"
+                            : "rounded-tl-sm border border-slate-200 bg-white text-slate-800",
+                        )}
+                      >
+                        <p className="whitespace-pre-wrap">{extractText(msg)}</p>
+                        <p className={cn("mt-1 text-xs", isOutbound ? "text-blue-200" : "text-slate-400")}>
+                          {new Date(msg.createdAt).toLocaleTimeString("es", { hour: "2-digit", minute: "2-digit" })}
+                        </p>
+                      </div>
+                    </div>
+                  );
+                })}
+
+                {!mensajesLoading && hasMore && (
+                  <div className="flex justify-center pt-2">
+                    <button
+                      onClick={loadMoreMessages}
+                      disabled={loadingMore}
+                      className="rounded-full border border-blue-200 bg-blue-50 px-4 py-1.5 text-xs text-blue-600 transition hover:bg-blue-100 hover:text-blue-800 disabled:opacity-50"
+                    >
+                      {loadingMore ? "Cargando..." : "Cargar mensajes anteriores"}
+                    </button>
+                  </div>
+                )}
+                <div ref={messagesEndRef} />
+              </div>
+
+              <div className="border-t border-slate-200 bg-white px-4 py-3">
+                {!activeThread.user?.phone ? (
+                  <p className="py-1 text-center text-xs text-slate-400">Este contacto no tiene número de teléfono registrado</p>
+                ) : (
+                  <div className="flex items-center gap-3">
+                    <input
+                      value={input}
+                      onChange={(e) => setInput(e.target.value)}
+                      onKeyDown={(e) => e.key === "Enter" && handleSend()}
+                      placeholder="Escribí un mensaje..."
+                      disabled={sendMutation.isPending}
+                      className="flex-1 rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30 disabled:opacity-60"
+                    />
+                    <button
+                      onClick={handleSend}
+                      disabled={!input.trim() || sendMutation.isPending}
+                      className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-600 text-white transition hover:bg-blue-700 disabled:opacity-50"
+                    >
+                      <Send size={16} />
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      </main>
+    </div>
+  );
+}

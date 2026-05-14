@@ -1,8 +1,16 @@
+import createIntlMiddleware from 'next-intl/middleware';
 import { NextRequest, NextResponse } from 'next/server';
+import { locales, defaultLocale } from './lib/i18n/config';
+
+const intlMiddleware = createIntlMiddleware({
+  locales,
+  defaultLocale,
+  localePrefix: 'as-needed',
+});
 
 export function middleware(request: NextRequest) {
   const host = request.headers.get('host') || '';
-  const pathname = request.nextUrl.pathname;
+  let pathname = request.nextUrl.pathname;
   
   // Check if this is an agent-specific domain
   const isAgentDomain = host.includes('agente');
@@ -39,7 +47,8 @@ export function middleware(request: NextRequest) {
     }
   }
   
-  return NextResponse.next();
+  // Apply i18n middleware
+  return intlMiddleware(request);
 }
 
 export const config = {

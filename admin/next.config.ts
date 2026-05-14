@@ -1,4 +1,7 @@
 import type { NextConfig } from "next";
+import createNextIntlPlugin from "next-intl/plugin";
+
+const withNextIntl = createNextIntlPlugin('./lib/i18n/request.ts');
 
 const apiProxyTarget = process.env.API_PROXY_TARGET?.trim() || "http://api:3000";
 
@@ -17,4 +20,4 @@ const nextConfig: NextConfig = {
   },
 };
 
-export default nextConfig;
+export default withNextIntl(nextConfig);

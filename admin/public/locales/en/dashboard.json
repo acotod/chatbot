@@ -1,0 +1,30 @@
+{
+  "pageTitle": "Dashboard",
+  "overview": "Overview",
+  "metrics": "Metrics",
+  "recentActivity": "Recent Activity",
+  "activeConversations": "Active Conversations",
+  "totalRequests": "Total Requests",
+  "completedRequests": "Completed Requests",
+  "averageResponseTime": "Avg Response Time",
+  "satisfactionRate": "Satisfaction Rate",
+  "kpis": {
+    "conversations": "Conversations",
+    "messages": "Messages",
+    "users": "Users",
+    "agents": "Agents",
+    "requests": "Requests"
+  },
+  "charts": {
+    "conversationsTrend": "Conversations Trend",
+    "messageVolume": "Message Volume",
+    "requestStatus": "Request Status",
+    "agentPerformance": "Agent Performance"
+  },
+  "period": {
+    "today": "Today",
+    "thisWeek": "This Week",
+    "thisMonth": "This Month",
+    "custom": "Custom"
+  }
+}

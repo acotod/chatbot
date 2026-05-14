@@ -1,0 +1,24 @@
+{
+  "title": "Error",
+  "generic": "Algo salió mal. Por favor, intenta de nuevo.",
+  "notFound": "No se encontró el recurso solicitado.",
+  "unauthorized": "No estás autorizado para realizar esta acción.",
+  "forbidden": "Acceso denegado.",
+  "badRequest": "Solicitud inválida. Por favor, verifica tu entrada.",
+  "conflict": "Este recurso ya existe.",
+  "tooManyRequests": "Demasiadas solicitudes. Por favor, intenta más tarde.",
+  "serverError": "Error interno del servidor. Por favor, intenta más tarde.",
+  "networkError": "Error de red. Por favor, verifica tu conexión.",
+  "timeoutError": "La solicitud expiró. Por favor, intenta de nuevo.",
+  "validation": {
+    "emailRequired": "El correo electrónico es obligatorio",
+    "emailInvalid": "El correo electrónico es inválido",
+    "passwordRequired": "La contraseña es obligatoria",
+    "passwordTooShort": "La contraseña debe tener al menos 8 caracteres",
+    "passwordMismatch": "Las contraseñas no coinciden",
+    "nameRequired": "El nombre es obligatorio",
+    "titleRequired": "El título es obligatorio",
+    "invalidTimeRange": "Rango de tiempo inválido",
+    "jsonInvalid": "Formato JSON inválido"
+  }
+}

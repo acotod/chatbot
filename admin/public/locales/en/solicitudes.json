@@ -1,0 +1,48 @@
+{
+  "pageTitle": "Requests",
+  "create": "Create Request",
+  "edit": "Edit Request",
+  "detail": "Request Details",
+  "table": {
+    "id": "ID",
+    "title": "Title",
+    "description": "Description",
+    "status": "Status",
+    "priority": "Priority",
+    "assignee": "Assigned to",
+    "createdAt": "Created",
+    "updatedAt": "Updated",
+    "dueDate": "Due Date"
+  },
+  "status": {
+    "pending": "Pending",
+    "assigned": "Assigned",
+    "in_progress": "In Progress",
+    "completed": "Completed",
+    "canceled": "Canceled"
+  },
+  "priority": {
+    "low": "Low",
+    "medium": "Medium",
+    "high": "High"
+  },
+  "filters": {
+    "byStatus": "Filter by status",
+    "byPriority": "Filter by priority",
+    "byAssignee": "Filter by assignee"
+  },
+  "actions": {
+    "assign": "Assign",
+    "reassign": "Reassign",
+    "markComplete": "Mark Complete",
+    "cancel": "Cancel",
+    "delete": "Delete"
+  },
+  "messages": {
+    "noRequests": "No requests found",
+    "created": "Request created successfully",
+    "updated": "Request updated successfully",
+    "deleted": "Request deleted successfully",
+    "assigned": "Request assigned successfully"
+  }
+}

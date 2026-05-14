@@ -1,0 +1,24 @@
+{
+  "title": "Error",
+  "generic": "Something went wrong. Please try again.",
+  "notFound": "The requested resource was not found.",
+  "unauthorized": "You are not authorized to perform this action.",
+  "forbidden": "Access denied.",
+  "badRequest": "Invalid request. Please check your input.",
+  "conflict": "This resource already exists.",
+  "tooManyRequests": "Too many requests. Please try again later.",
+  "serverError": "Internal server error. Please try again later.",
+  "networkError": "Network error. Please check your connection.",
+  "timeoutError": "Request timed out. Please try again.",
+  "validation": {
+    "emailRequired": "Email is required",
+    "emailInvalid": "Email is invalid",
+    "passwordRequired": "Password is required",
+    "passwordTooShort": "Password must be at least 8 characters",
+    "passwordMismatch": "Passwords do not match",
+    "nameRequired": "Name is required",
+    "titleRequired": "Title is required",
+    "invalidTimeRange": "Invalid time range",
+    "jsonInvalid": "Invalid JSON format"
+  }
+}
