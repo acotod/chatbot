@@ -1,0 +1,97 @@
+{
+  "defaults": {
+    "phone": "+5215550000000",
+    "text": "Hi, I want to test the emulator.",
+    "contactName": "Test user"
+  },
+  "errors": {
+    "simulateFailed": "The test emulator simulation could not be executed.",
+    "forbidden": "You do not have permission to access the test environment.",
+    "capabilitiesLoad": "The test emulator capabilities could not be loaded.",
+    "updateSettings": "outboundMetaMock could not be updated.",
+    "runDetail": "The run details could not be loaded."
+  },
+  "hero": {
+    "description": "First operational cut of the enterprise environment. This panel already triggers an input by reusing the real webhook runtime, the chatbot router, the flow engine, and the node executors.",
+    "status": "Initial state: real runtime + input simulation."
+  },
+  "appliedChanges": {
+    "title": "Applied changes",
+    "description": "This emulator already includes the operational outboundMetaMock toggle in both backend and UI.",
+    "items": [
+      "Real per-company outboundMetaMock activation.",
+      "PATCH /sandbox/settings endpoint to change outboundMetaMock.",
+      "Capabilities returns the real value per company.",
+      "The emulator runtime uses the flag to avoid outbound calls to Meta when enabled.",
+      "The emulator UI allows enabling and disabling outboundMetaMock.",
+      "The admin API client already supports per-company capabilities and settings updates."
+    ]
+  },
+  "simulate": {
+    "title": "Simulate input",
+    "phone": "Phone",
+    "contact": "Contact",
+    "message": "Message",
+    "contactPlaceholder": "Test user",
+    "messagePlaceholder": "Write the content to inject into the real runtime",
+    "superAdminTenant": "Active company from the global selector:",
+    "noTenantSelected": "none selected",
+    "sessionTenant": "The company is resolved from your JWT session.",
+    "submit": "Simulate inbound",
+    "submitting": "Running...",
+    "payload": "Sent payload",
+    "runtimeLaunched": "Execution launched against the real runtime.",
+    "messageId": "Message:",
+    "correlationId": "Correlation ID:",
+    "outboundMetaMock": "outboundMetaMock:",
+    "enabled": "enabled",
+    "disabled": "disabled",
+    "run": "Run:",
+    "status": "Status:",
+    "activeFallback": "active"
+  },
+  "runs": {
+    "title": "Recent runs",
+    "empty": "There are no runs for this phone in the active company yet.",
+    "runtimeFallback": "Flow runtime",
+    "startedAt": "Started:",
+    "events": "Events:"
+  },
+  "capabilities": {
+    "title": "Capabilities",
+    "outboundMetaMockTitle": "outboundMetaMock",
+    "outboundMetaMockDescription": "When enabled, the emulator does not call Meta for outbound messages.",
+    "save": "Saving...",
+    "activate": "Enable",
+    "deactivate": "Disable",
+    "active": "active",
+    "pending": "pending"
+  },
+  "timeline": {
+    "title": "Timeline",
+    "replayTitle": "Replay",
+    "replayDescription": "Replays the selected run using the stored input events.",
+    "replayUnavailable": "This run does not have replayable user inputs.",
+    "replayButton": "Simulate replay",
+    "replayPending": "Replaying...",
+    "complianceTitle": "Compliance",
+    "complianceDescription": "Evaluates whether the run meets the minimum traceability and response checks.",
+    "complianceButton": "Simulate compliance",
+    "compliancePending": "Evaluating...",
+    "verdict": "Compliance verdict:",
+    "score": "Score:",
+    "selectRun": "Select a run to inspect its timeline.",
+    "run": "Run:",
+    "status": "Status:",
+    "start": "Started:",
+    "end": "Ended:",
+    "node": "Node:",
+    "checkOk": "ok",
+    "checkPending": "pending",
+    "verdicts": {
+      "pass": "passed",
+      "warning": "warning",
+      "fail": "failed"
+    }
+  }
+}

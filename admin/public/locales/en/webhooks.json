@@ -1,0 +1,50 @@
+{
+  "title": "Request webhooks",
+  "description": "Outbound integrations with HMAC signature and compliance logging",
+  "form": {
+    "event": "Event",
+    "url": "URL",
+    "active": "Active",
+    "urlPlaceholder": "https://example.com/webhook",
+    "save": "Add webhook",
+    "saving": "Saving..."
+  },
+  "config": {
+    "title": "Active configuration",
+    "loading": "Loading...",
+    "empty": "No webhooks configured",
+    "headers": {
+      "event": "Event",
+      "url": "URL",
+      "status": "Status",
+      "actions": "Actions"
+    },
+    "statusActive": "Active",
+    "statusInactive": "Inactive",
+    "failures": "Failures:",
+    "last": "Last:",
+    "disable": "Disable",
+    "enable": "Enable",
+    "test": "Test",
+    "delete": "Delete"
+  },
+  "deliveries": {
+    "title": "Delivery log (compliance)",
+    "filters": {
+      "all": "All",
+      "ok": "Successful",
+      "failed": "Failed"
+    },
+    "refreshing": "Refreshing...",
+    "empty": "No deliveries recorded",
+    "headers": {
+      "date": "Date",
+      "event": "Event",
+      "result": "Result",
+      "detail": "Detail"
+    },
+    "resultFailed": "FAILED",
+    "detailStatus": "status=",
+    "detailDuration": "ms"
+  }
+}

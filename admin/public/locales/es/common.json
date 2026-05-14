@@ -73,18 +73,18 @@
     "agenda": "Agenda",
     "contacts": "Contactos",
     "settings": "Configuración",
-    "security": "Seguridad",
-    "reports": "Reportes",
+    "security": "Ajustes de seguridad",
+    "reports": "Reportes de Solicitudes",
     "agents": "Agentes",
-    "companies": "Empresas",
+    "companies": "Nueva empresa",
     "billing": "Facturación",
     "audit": "Auditoría",
     "roles": "Roles",
     "adminUsers": "Usuarios admin",
     "integrations": "Integraciones",
-    "variables": "Variables",
-    "flows": "Flujos",
-    "webhooks": "Webhooks",
-    "sandbox": "Sandbox"
+    "variables": "Gestor de variables",
+    "flows": "WABA Flujos",
+    "webhooks": "Webhooks de Solicitudes",
+    "sandbox": "Emulador de pruebas"
   }
 }

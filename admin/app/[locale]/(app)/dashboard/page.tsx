@@ -24,6 +24,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useTranslations } from "@/lib/i18n/client";
+import { useCurrentLocale } from "@/lib/i18n/client";
 
 type AgentProfile = {
   agenteId: number;
@@ -72,6 +73,7 @@ function KpiCard({
 
 export default function DashboardPage() {
   const t = useTranslations("dashboard");
+  const locale = useCurrentLocale();
   const router = useRouter();
   const { logout: logoutAgent } = useAgentAuthStore();
   const hasAdminAccessToken = Boolean(getStoredAccessToken());
@@ -256,6 +258,7 @@ export default function DashboardPage() {
   const urgencias = porEstado.urgente ?? 0;
   const pendientes = porEstado.pendiente ?? 0;
   const atendidas = porEstado.atendida ?? 0;
+  const requestsHref = locale === "es" ? "/solicitudes" : `/${locale}/solicitudes`;
 
   return (
     <div className="space-y-6">
@@ -343,7 +346,7 @@ export default function DashboardPage() {
           <CardHeader className="flex items-center justify-between">
             <h2 className="font-semibold text-slate-800">{t("recentRequests.title")}</h2>
             <a
-              href="/solicitudes"
+              href={requestsHref}
               className="text-sm text-blue-600 hover:text-blue-700 font-medium"
             >
               {t("recentRequests.viewAll")}

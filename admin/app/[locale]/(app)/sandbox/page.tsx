@@ -6,6 +6,7 @@ import { useAuthStore } from "@/store/auth";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import axios from "axios";
 import { Clock3, Play, ShieldCheck, TestTube2, Webhook } from "lucide-react";
+import { useLocale, useTranslations } from "next-intl";
 import { useEffect, useMemo, useState } from "react";
 
 type CapabilitiesResponse = {
@@ -16,15 +17,6 @@ type CapabilitiesResponse = {
     tenantScope: string | null;
   };
 };
-
-const APPLIED_CHANGES = [
-  "Activacion real por empresa de outboundMetaMock.",
-  "Endpoint PATCH /sandbox/settings para cambiar outboundMetaMock.",
-  "Capabilities devuelve el valor real por empresa.",
-  "El runtime sandbox usa el flag para evitar llamadas salientes a Meta cuando esta activo.",
-  "La UI del Sandbox permite activar y desactivar outboundMetaMock.",
-  "El cliente API admin ya soporta capabilities por empresa y actualizacion de settings.",
-];
 
 type SimulationResponse = {
   ok: boolean;
@@ -95,32 +87,41 @@ type ComplianceResponse = {
   };
 };
 
-function formatDateTime(value: string | null): string {
+function formatDateTime(value: string | null, locale: string): string {
   if (!value) return "-";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleString();
+  return date.toLocaleString(locale);
 }
 
-function getErrorMessage(error: unknown): string {
+function getErrorMessage(error: unknown, fallback: string): string {
   if (axios.isAxiosError(error)) {
     const detail = error.response?.data?.detail;
     const message = error.response?.data?.error;
     if (typeof detail === "string" && detail) return detail;
     if (typeof message === "string" && message) return message;
   }
-  return "No se pudo ejecutar la simulación sandbox.";
+  return fallback;
 }
 
 export default function SandboxPage() {
+  const tCommon = useTranslations("common");
+  const tSandbox = useTranslations("sandbox");
+  const locale = useLocale();
   const { tenantSlug, superAdmin, permissions } = useAuthStore();
   const queryClient = useQueryClient();
-  const [phone, setPhone] = useState("+5215550000000");
-  const [text, setText] = useState("Hola, quiero probar el sandbox.");
-  const [contactName, setContactName] = useState("Sandbox User");
+  const [phone, setPhone] = useState(tSandbox("defaults.phone"));
+  const [text, setText] = useState(tSandbox("defaults.text"));
+  const [contactName, setContactName] = useState(tSandbox("defaults.contactName"));
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
   const [complianceReport, setComplianceReport] = useState<ComplianceResponse["compliance"] | null>(null);
   const trimmedPhone = phone.trim();
+  const appliedChanges = tSandbox.raw("appliedChanges.items") as string[];
+  const verdictLabels = {
+    pass: tSandbox("timeline.verdicts.pass"),
+    warning: tSandbox("timeline.verdicts.warning"),
+    fail: tSandbox("timeline.verdicts.fail"),
+  } as const;
 
   const permissionSet = useMemo(() => buildPermissionSet(permissions), [permissions]);
   const canAccessSandbox = superAdmin || permissionSet.has("VIEW_SANDBOX");
@@ -242,7 +243,7 @@ export default function SandboxPage() {
   if (!canAccessSandbox) {
     return (
       <div className="rounded-3xl border border-red-200 bg-red-50 px-6 py-5 text-sm text-red-700">
-        No tienes permisos para acceder al entorno de pruebas.
+        {tSandbox("errors.forbidden")}
       </div>
     );
   }
@@ -251,27 +252,26 @@ export default function SandboxPage() {
     <div className="space-y-6">
       <div className="flex flex-col gap-4 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm lg:flex-row lg:items-start lg:justify-between">
         <div>
-          <h1 className="text-2xl font-semibold text-slate-900">Emulador de pruebas</h1>
+          <h1 className="text-2xl font-semibold text-slate-900">{tCommon("nav.sandbox")}</h1>
           <p className="mt-2 max-w-3xl text-sm text-slate-500">
-            Primer corte operativo del entorno enterprise. Este panel ya dispara una entrada reutilizando el runtime real de
-            webhook, el router del chatbot, el motor de flujos y los ejecutores de nodos.
+            {tSandbox("hero.description")}
           </p>
         </div>
         <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-          Estado inicial: runtime real + simulación de entrada.
+          {tSandbox("hero.status")}
         </div>
       </div>
 
       <section className="rounded-3xl border border-blue-200 bg-blue-50 p-6 shadow-sm">
         <div className="flex items-center gap-2 text-slate-900">
           <ShieldCheck className="h-5 w-5 text-blue-600" />
-          <h2 className="text-lg font-semibold">Cambios aplicados</h2>
+          <h2 className="text-lg font-semibold">{tSandbox("appliedChanges.title")}</h2>
         </div>
         <p className="mt-2 text-sm text-slate-600">
-          Este sandbox ya incluye la activacion operativa de outboundMetaMock tanto en backend como en la interfaz.
+          {tSandbox("appliedChanges.description")}
         </p>
         <div className="mt-4 grid gap-3 md:grid-cols-2">
-          {APPLIED_CHANGES.map((item) => (
+          {appliedChanges.map((item) => (
             <div key={item} className="rounded-2xl border border-blue-200 bg-white px-4 py-3 text-sm text-slate-700">
               {item}
             </div>
@@ -283,36 +283,36 @@ export default function SandboxPage() {
         <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
           <div className="mb-5 flex items-center gap-2 text-slate-900">
             <Webhook className="h-5 w-5 text-blue-600" />
-            <h2 className="text-lg font-semibold">Simular entrada</h2>
+            <h2 className="text-lg font-semibold">{tSandbox("simulate.title")}</h2>
           </div>
 
           <div className="grid gap-4 md:grid-cols-2">
             <label className="space-y-2 text-sm text-slate-600">
-              <span>Teléfono</span>
+              <span>{tSandbox("simulate.phone")}</span>
               <input
                 value={phone}
                 onChange={(e) => setPhone(e.target.value)}
                 className="w-full rounded-2xl border border-slate-200 px-3 py-2.5 text-sm text-slate-900 transition focus:border-blue-500 focus:outline-none"
-                placeholder="+5215550000000"
+                placeholder={tSandbox("defaults.phone")}
               />
             </label>
             <label className="space-y-2 text-sm text-slate-600">
-              <span>Contacto</span>
+              <span>{tSandbox("simulate.contact")}</span>
               <input
                 value={contactName}
                 onChange={(e) => setContactName(e.target.value)}
                 className="w-full rounded-2xl border border-slate-200 px-3 py-2.5 text-sm text-slate-900 transition focus:border-blue-500 focus:outline-none"
-                placeholder="Usuario de pruebas"
+                placeholder={tSandbox("simulate.contactPlaceholder")}
               />
             </label>
             <label className="space-y-2 text-sm text-slate-600 md:col-span-2">
-              <span>Mensaje</span>
+              <span>{tSandbox("simulate.message")}</span>
               <textarea
                 value={text}
                 onChange={(e) => setText(e.target.value)}
                 rows={6}
                 className="w-full rounded-2xl border border-slate-200 px-3 py-2.5 text-sm text-slate-900 transition focus:border-blue-500 focus:outline-none"
-                placeholder="Escribe el contenido a inyectar al runtime real"
+                placeholder={tSandbox("simulate.messagePlaceholder")}
               />
             </label>
           </div>
@@ -321,10 +321,10 @@ export default function SandboxPage() {
             <div>
               {superAdmin ? (
                 <span>
-                  Empresa activa desde selector global: <strong>{tenantSlug || "sin seleccionar"}</strong>
+                  {tSandbox("simulate.superAdminTenant")} <strong>{tenantSlug || tSandbox("simulate.noTenantSelected")}</strong>
                 </span>
               ) : (
-                <span>La empresa se resuelve desde tu sesión JWT.</span>
+                <span>{tSandbox("simulate.sessionTenant")}</span>
               )}
             </div>
             <button
@@ -334,12 +334,12 @@ export default function SandboxPage() {
               className="inline-flex items-center justify-center gap-2 rounded-2xl bg-blue-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-300"
             >
               <Play className="h-4 w-4" />
-              {simulateMutation.isPending ? "Ejecutando..." : "Simular inbound"}
+              {simulateMutation.isPending ? tSandbox("simulate.submitting") : tSandbox("simulate.submit")}
             </button>
           </div>
 
           <div className="mt-4 rounded-2xl bg-slate-950 p-4 text-xs text-slate-100">
-            <div className="mb-2 font-semibold text-slate-300">Payload enviado</div>
+            <div className="mb-2 font-semibold text-slate-300">{tSandbox("simulate.payload")}</div>
             <pre className="overflow-auto whitespace-pre-wrap break-all">
               {JSON.stringify(
                 {
@@ -356,21 +356,21 @@ export default function SandboxPage() {
 
           {simulateMutation.isError && (
             <div className="mt-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-              {getErrorMessage(simulateMutation.error)}
+              {getErrorMessage(simulateMutation.error, tSandbox("errors.simulateFailed"))}
             </div>
           )}
 
           {simulateMutation.data && (
             <div className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
-              <p className="font-medium">Ejecución lanzada sobre el runtime real.</p>
-              <p className="mt-1">Mensaje: <strong>{simulateMutation.data.simulated.msgId}</strong></p>
-              <p>Correlation ID: <strong>{simulateMutation.data.simulated.correlationId}</strong></p>
+              <p className="font-medium">{tSandbox("simulate.runtimeLaunched")}</p>
+              <p className="mt-1">{tSandbox("simulate.messageId")} <strong>{simulateMutation.data.simulated.msgId}</strong></p>
+              <p>{tSandbox("simulate.correlationId")} <strong>{simulateMutation.data.simulated.correlationId}</strong></p>
               <p>
-                outboundMetaMock: <strong>{simulateMutation.data.simulated.outboundMetaMock ? "activo" : "desactivado"}</strong>
+                {tSandbox("simulate.outboundMetaMock")} <strong>{simulateMutation.data.simulated.outboundMetaMock ? tSandbox("simulate.enabled") : tSandbox("simulate.disabled")}</strong>
               </p>
               {simulateMutation.data.simulated.conversationId && (
                 <p>
-                  Ejecución: <strong>{simulateMutation.data.simulated.conversationId}</strong> · Estado: <strong>{simulateMutation.data.simulated.conversationStatus ?? "active"}</strong>
+                  {tSandbox("simulate.run")} <strong>{simulateMutation.data.simulated.conversationId}</strong> · {tSandbox("simulate.status")} <strong>{simulateMutation.data.simulated.conversationStatus ?? tSandbox("simulate.activeFallback")}</strong>
                 </p>
               )}
             </div>
@@ -378,11 +378,11 @@ export default function SandboxPage() {
 
           {replayMutation.data && (
             <div className="mt-4 rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-800">
-              <p className="font-medium">Replay ejecutado.</p>
-              <p>Pasos reproducidos: <strong>{replayMutation.data.replay.replayedSteps}</strong></p>
+              <p className="font-medium">{tSandbox("timeline.replayTitle")}</p>
+              <p>{tSandbox("timeline.run")} <strong>{replayMutation.data.replay.replayedSteps}</strong></p>
               {replayMutation.data.replay.conversationId && (
                 <p>
-                  Nueva ejecución: <strong>{replayMutation.data.replay.conversationId}</strong> · Estado: <strong>{replayMutation.data.replay.conversationStatus ?? "active"}</strong>
+                  {tSandbox("simulate.run")} <strong>{replayMutation.data.replay.conversationId}</strong> · {tSandbox("simulate.status")} <strong>{replayMutation.data.replay.conversationStatus ?? tSandbox("simulate.activeFallback")}</strong>
                 </p>
               )}
             </div>
@@ -391,7 +391,7 @@ export default function SandboxPage() {
           <div className="mt-6 rounded-3xl border border-slate-200 bg-slate-50 p-5">
             <div className="mb-4 flex items-center gap-2 text-slate-900">
               <Clock3 className="h-5 w-5 text-slate-600" />
-              <h2 className="text-lg font-semibold">Ejecuciones recientes</h2>
+              <h2 className="text-lg font-semibold">{tSandbox("runs.title")}</h2>
             </div>
 
             {runsLoading ? (
@@ -402,7 +402,7 @@ export default function SandboxPage() {
               </div>
             ) : runs.length === 0 ? (
               <div className="rounded-2xl border border-dashed border-slate-300 bg-white px-4 py-6 text-sm text-slate-500">
-                Aún no hay ejecuciones para este teléfono en la empresa activa.
+                {tSandbox("runs.empty")}
               </div>
             ) : (
               <div className="space-y-3">
@@ -422,7 +422,7 @@ export default function SandboxPage() {
                     >
                       <div className="flex items-center justify-between gap-3">
                         <div>
-                          <div className="font-medium text-slate-900">{run.flow?.nombre ?? "Flow runtime"}</div>
+                          <div className="font-medium text-slate-900">{run.flow?.nombre ?? tSandbox("runs.runtimeFallback")}</div>
                           <div className="mt-1 text-xs text-slate-500">{run.id}</div>
                         </div>
                         <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-700">
@@ -430,8 +430,8 @@ export default function SandboxPage() {
                         </span>
                       </div>
                       <div className="mt-2 flex flex-wrap gap-4 text-xs text-slate-500">
-                        <span>Inicio: {formatDateTime(run.startedAt)}</span>
-                        <span>Eventos: {run.eventCount}</span>
+                        <span>{tSandbox("runs.startedAt")} {formatDateTime(run.startedAt, locale)}</span>
+                        <span>{tSandbox("runs.events")} {run.eventCount}</span>
                       </div>
                     </button>
                   );
@@ -445,7 +445,7 @@ export default function SandboxPage() {
           <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
             <div className="mb-4 flex items-center gap-2 text-slate-900">
               <ShieldCheck className="h-5 w-5 text-emerald-600" />
-              <h2 className="text-lg font-semibold">Capacidades</h2>
+              <h2 className="text-lg font-semibold">{tSandbox("capabilities.title")}</h2>
             </div>
 
             {isLoading ? (
@@ -456,15 +456,15 @@ export default function SandboxPage() {
               </div>
             ) : isError ? (
               <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-                No se pudieron cargar las capacidades del sandbox.
+                {tSandbox("errors.capabilitiesLoad")}
               </div>
             ) : (
               <div className="space-y-3">
                 <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm">
                   <div className="flex items-center justify-between gap-3">
                     <div>
-                      <p className="font-medium text-slate-900">outboundMetaMock</p>
-                      <p className="text-xs text-slate-500">Cuando está activo, el sandbox no llama a Meta para mensajes salientes.</p>
+                      <p className="font-medium text-slate-900">{tSandbox("capabilities.outboundMetaMockTitle")}</p>
+                      <p className="text-xs text-slate-500">{tSandbox("capabilities.outboundMetaMockDescription")}</p>
                     </div>
                     <button
                       type="button"
@@ -485,10 +485,10 @@ export default function SandboxPage() {
                       ].join(" ")}
                     >
                       {updateSettingsMutation.isPending
-                        ? "Guardando..."
+                        ? tSandbox("capabilities.save")
                         : outboundMetaMockEnabled
-                          ? "Desactivar"
-                          : "Activar"}
+                          ? tSandbox("capabilities.deactivate")
+                          : tSandbox("capabilities.activate")}
                     </button>
                   </div>
                 </div>
@@ -496,13 +496,13 @@ export default function SandboxPage() {
                   <div key={key} className="flex items-center justify-between rounded-2xl border border-slate-200 px-4 py-3 text-sm">
                     <span className="font-medium text-slate-700">{key}</span>
                     <span className={enabled ? "text-emerald-700" : "text-amber-700"}>
-                      {enabled ? "activo" : "pendiente"}
+                      {enabled ? tSandbox("capabilities.active") : tSandbox("capabilities.pending")}
                     </span>
                   </div>
                 ))}
                 {updateSettingsMutation.isError && (
                   <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-xs text-red-700">
-                    No se pudo actualizar outboundMetaMock.
+                    {tSandbox("errors.updateSettings")}
                   </div>
                 )}
               </div>
@@ -512,17 +512,17 @@ export default function SandboxPage() {
           <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
             <div className="mb-4 flex items-center gap-2 text-slate-900">
               <TestTube2 className="h-5 w-5 text-violet-600" />
-              <h2 className="text-lg font-semibold">Línea de tiempo</h2>
+              <h2 className="text-lg font-semibold">{tSandbox("timeline.title")}</h2>
             </div>
 
             <div className="mb-4 grid gap-3 md:grid-cols-2">
               <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
                 <div className="flex items-center justify-between gap-3">
                   <div>
-                    <p className="font-medium text-slate-900">Replay</p>
-                    <p className="mt-1 text-xs text-slate-500">Reproduce la corrida seleccionada usando los eventos de entrada guardados.</p>
+                    <p className="font-medium text-slate-900">{tSandbox("timeline.replayTitle")}</p>
+                    <p className="mt-1 text-xs text-slate-500">{tSandbox("timeline.replayDescription")}</p>
                     {selectedRun && !canReplay && (
-                      <p className="mt-1 text-xs text-amber-600">Esta corrida no tiene entradas de usuario replicables.</p>
+                      <p className="mt-1 text-xs text-amber-600">{tSandbox("timeline.replayUnavailable")}</p>
                     )}
                   </div>
                   <button
@@ -531,7 +531,7 @@ export default function SandboxPage() {
                     disabled={!selectedRunId || replayMutation.isPending || (superAdmin && !tenantSlug) || !canReplay}
                     className="rounded-xl bg-sky-600 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-sky-700 disabled:cursor-not-allowed disabled:bg-slate-300"
                   >
-                    {replayMutation.isPending ? "Reproduciendo..." : "Simular replay"}
+                    {replayMutation.isPending ? tSandbox("timeline.replayPending") : tSandbox("timeline.replayButton")}
                   </button>
                 </div>
               </div>
@@ -539,8 +539,8 @@ export default function SandboxPage() {
               <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
                 <div className="flex items-center justify-between gap-3">
                   <div>
-                    <p className="font-medium text-slate-900">Compliance</p>
-                    <p className="mt-1 text-xs text-slate-500">Evalúa si la corrida cumple los checks mínimos de trazabilidad y respuesta.</p>
+                    <p className="font-medium text-slate-900">{tSandbox("timeline.complianceTitle")}</p>
+                    <p className="mt-1 text-xs text-slate-500">{tSandbox("timeline.complianceDescription")}</p>
                   </div>
                   <button
                     type="button"
@@ -548,7 +548,7 @@ export default function SandboxPage() {
                     disabled={!selectedRunId || complianceMutation.isPending || (superAdmin && !tenantSlug)}
                     className="rounded-xl bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-slate-300"
                   >
-                    {complianceMutation.isPending ? "Evaluando..." : "Simular compliance"}
+                    {complianceMutation.isPending ? tSandbox("timeline.compliancePending") : tSandbox("timeline.complianceButton")}
                   </button>
                 </div>
               </div>
@@ -556,13 +556,13 @@ export default function SandboxPage() {
 
             {replayMutation.isError && (
               <div className="mb-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-                {getErrorMessage(replayMutation.error)}
+                {getErrorMessage(replayMutation.error, tSandbox("errors.simulateFailed"))}
               </div>
             )}
 
             {complianceMutation.isError && (
               <div className="mb-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-                {getErrorMessage(complianceMutation.error)}
+                {getErrorMessage(complianceMutation.error, tSandbox("errors.simulateFailed"))}
               </div>
             )}
 
@@ -570,11 +570,11 @@ export default function SandboxPage() {
               <div className="mb-4 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900">
                 <div className="flex items-center justify-between gap-3">
                   <div>
-                    <p className="font-medium">Compliance verdict: {complianceReport.verdict}</p>
-                    <p className="text-xs text-emerald-800">Score: {complianceReport.score}</p>
+                    <p className="font-medium">{tSandbox("timeline.verdict")} {verdictLabels[complianceReport.verdict]}</p>
+                    <p className="text-xs text-emerald-800">{tSandbox("timeline.score")} {complianceReport.score}</p>
                   </div>
                   <span className="rounded-full bg-white px-2.5 py-1 text-xs font-medium text-emerald-800">
-                    {complianceReport.verdict}
+                    {verdictLabels[complianceReport.verdict]}
                   </span>
                 </div>
                 <p className="mt-2 text-xs text-emerald-800">{complianceReport.summary}</p>
@@ -583,7 +583,7 @@ export default function SandboxPage() {
                     <div key={check.key} className="flex items-center justify-between rounded-xl border border-emerald-200 bg-white px-3 py-2 text-xs text-slate-700">
                       <span>{check.label}</span>
                       <span className={check.passed ? "text-emerald-700" : "text-amber-700"}>
-                        {check.passed ? "ok" : "pendiente"}
+                        {check.passed ? tSandbox("timeline.checkOk") : tSandbox("timeline.checkPending")}
                       </span>
                     </div>
                   ))}
@@ -593,7 +593,7 @@ export default function SandboxPage() {
 
             {!selectedRunId ? (
               <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-6 text-sm text-slate-500">
-                Selecciona una ejecución para inspeccionar su línea de tiempo.
+                {tSandbox("timeline.selectRun")}
               </div>
             ) : runDetailLoading ? (
               <div className="space-y-3">
@@ -604,10 +604,10 @@ export default function SandboxPage() {
             ) : selectedRun ? (
               <div className="space-y-4">
                 <div className="rounded-2xl bg-slate-50 p-4 text-sm text-slate-600">
-                  <p><strong className="text-slate-900">Ejecución:</strong> {selectedRun.id}</p>
-                  <p><strong className="text-slate-900">Estado:</strong> {selectedRun.status}</p>
-                  <p><strong className="text-slate-900">Inicio:</strong> {formatDateTime(selectedRun.startedAt)}</p>
-                  <p><strong className="text-slate-900">Fin:</strong> {formatDateTime(selectedRun.endedAt)}</p>
+                  <p><strong className="text-slate-900">{tSandbox("timeline.run")}</strong> {selectedRun.id}</p>
+                  <p><strong className="text-slate-900">{tSandbox("timeline.status")}</strong> {selectedRun.status}</p>
+                  <p><strong className="text-slate-900">{tSandbox("timeline.start")}</strong> {formatDateTime(selectedRun.startedAt, locale)}</p>
+                  <p><strong className="text-slate-900">{tSandbox("timeline.end")}</strong> {formatDateTime(selectedRun.endedAt, locale)}</p>
                 </div>
 
                 <div className="space-y-3">
@@ -616,9 +616,9 @@ export default function SandboxPage() {
                       <div className="flex items-start justify-between gap-3">
                         <div>
                           <div className="font-medium text-slate-900">{event.eventType}</div>
-                          <div className="mt-1 text-xs text-slate-500">Nodo: {event.nodeRef ?? "-"}</div>
+                          <div className="mt-1 text-xs text-slate-500">{tSandbox("timeline.node")} {event.nodeRef ?? "-"}</div>
                         </div>
-                        <div className="text-xs text-slate-500">{formatDateTime(event.createdAt)}</div>
+                        <div className="text-xs text-slate-500">{formatDateTime(event.createdAt, locale)}</div>
                       </div>
                       <pre className="mt-3 overflow-auto rounded-xl bg-slate-950 p-3 text-[11px] text-slate-100">
                         {JSON.stringify(event.payload ?? {}, null, 2)}
@@ -629,7 +629,7 @@ export default function SandboxPage() {
               </div>
             ) : (
               <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-                No se pudo cargar el detalle de la ejecución.
+                {tSandbox("errors.runDetail")}
               </div>
             )}
           </section>

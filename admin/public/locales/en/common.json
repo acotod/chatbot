@@ -73,18 +73,18 @@
     "agenda": "Agenda",
     "contacts": "Contacts",
     "settings": "Settings",
-    "security": "Security",
-    "reports": "Reports",
+    "security": "Security settings",
+    "reports": "Request Reports",
     "agents": "Agents",
-    "companies": "Companies",
+    "companies": "New company",
     "billing": "Billing",
     "audit": "Audit",
     "roles": "Roles",
     "adminUsers": "Admin users",
     "integrations": "Integrations",
-    "variables": "Variables",
+    "variables": "Variable manager",
     "flows": "Workflows",
-    "webhooks": "Webhooks",
-    "sandbox": "Sandbox"
+    "webhooks": "Request webhooks",
+    "sandbox": "Test emulator"
   }
 }

@@ -6,6 +6,7 @@ import { formatDate } from "@/lib/utils";
 import { useAuthStore } from "@/store/auth";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { BellRing, Plus, Send, Trash2 } from "lucide-react";
+import { useTranslations } from "next-intl";
 import { useMemo, useState } from "react";
 
 type WebhookConfig = {
@@ -41,6 +42,7 @@ const EVENT_OPTIONS = [
 ];
 
 export default function WebhooksPage() {
+  const t = useTranslations("webhooks");
   const { tenantSlug } = useAuthStore();
   const qc = useQueryClient();
 
@@ -109,15 +111,15 @@ export default function WebhooksPage() {
     <div className="space-y-6">
       <Card>
         <CardHeader>
-          <h1 className="text-lg font-semibold text-slate-900">Webhooks de Solicitudes</h1>
+          <h1 className="text-lg font-semibold text-slate-900">{t("title")}</h1>
           <p className="text-sm text-slate-500 mt-1">
-            Integraciones salientes con firma HMAC y bitacora de cumplimiento
+            {t("description")}
           </p>
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
             <label className="text-sm md:col-span-2">
-              <span className="text-slate-500">Evento</span>
+              <span className="text-slate-500">{t("form.event")}</span>
               <select
                 value={event}
                 onChange={(e) => setEvent(e.target.value)}
@@ -131,12 +133,12 @@ export default function WebhooksPage() {
               </select>
             </label>
             <label className="text-sm md:col-span-2">
-              <span className="text-slate-500">URL</span>
+              <span className="text-slate-500">{t("form.url")}</span>
               <input
                 type="url"
                 value={url}
                 onChange={(e) => setUrl(e.target.value)}
-                placeholder="https://example.com/webhook"
+                placeholder={t("form.urlPlaceholder")}
                 className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
               />
             </label>
@@ -147,7 +149,7 @@ export default function WebhooksPage() {
                   checked={active}
                   onChange={(e) => setActive(e.target.checked)}
                 />
-                Activo
+                {t("form.active")}
               </span>
             </label>
           </div>
@@ -159,7 +161,7 @@ export default function WebhooksPage() {
               className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
             >
               <Plus size={16} />
-              {createWebhook.isPending ? "Guardando..." : "Agregar webhook"}
+              {createWebhook.isPending ? t("form.saving") : t("form.save")}
             </button>
           </div>
         </CardContent>
@@ -167,21 +169,21 @@ export default function WebhooksPage() {
 
       <Card>
         <CardHeader>
-          <h2 className="font-semibold text-slate-900">Configuracion activa</h2>
+          <h2 className="font-semibold text-slate-900">{t("config.title")}</h2>
         </CardHeader>
         <CardContent className="p-0">
           {isLoading ? (
-            <p className="text-sm text-slate-400 py-10 text-center">Cargando...</p>
+            <p className="text-sm text-slate-400 py-10 text-center">{t("config.loading")}</p>
           ) : hooks.length === 0 ? (
-            <p className="text-sm text-slate-400 py-10 text-center">No hay webhooks configurados</p>
+            <p className="text-sm text-slate-400 py-10 text-center">{t("config.empty")}</p>
           ) : (
             <table className="w-full text-sm">
               <thead className="bg-slate-50">
                 <tr>
-                  <th className="text-left px-6 py-3 text-xs font-medium text-slate-500 uppercase">Evento</th>
-                  <th className="text-left px-6 py-3 text-xs font-medium text-slate-500 uppercase">URL</th>
-                  <th className="text-right px-6 py-3 text-xs font-medium text-slate-500 uppercase">Estado</th>
-                  <th className="text-right px-6 py-3 text-xs font-medium text-slate-500 uppercase">Acciones</th>
+                  <th className="text-left px-6 py-3 text-xs font-medium text-slate-500 uppercase">{t("config.headers.event")}</th>
+                  <th className="text-left px-6 py-3 text-xs font-medium text-slate-500 uppercase">{t("config.headers.url")}</th>
+                  <th className="text-right px-6 py-3 text-xs font-medium text-slate-500 uppercase">{t("config.headers.status")}</th>
+                  <th className="text-right px-6 py-3 text-xs font-medium text-slate-500 uppercase">{t("config.headers.actions")}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -195,10 +197,10 @@ export default function WebhooksPage() {
                           hook.active ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-600"
                         }`}
                       >
-                        {hook.active ? "Activo" : "Inactivo"}
+                        {hook.active ? t("config.statusActive") : t("config.statusInactive")}
                       </span>
                       <p className="text-xs text-slate-400 mt-1">
-                        Fallos: {hook.failureCount} · Ultimo: {hook.lastTriggeredAt ? formatDate(hook.lastTriggeredAt) : "-"}
+                        {t("config.failures")} {hook.failureCount} · {t("config.last")} {hook.lastTriggeredAt ? formatDate(hook.lastTriggeredAt) : "-"}
                       </p>
                     </td>
                     <td className="px-6 py-3">
@@ -208,21 +210,21 @@ export default function WebhooksPage() {
                           className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-2 py-1 text-xs text-slate-700 hover:bg-slate-50"
                         >
                           <BellRing size={14} />
-                          {hook.active ? "Desactivar" : "Activar"}
+                          {hook.active ? t("config.disable") : t("config.enable")}
                         </button>
                         <button
                           onClick={() => testWebhook.mutate(hook.event)}
                           className="inline-flex items-center gap-1 rounded-lg border border-indigo-200 bg-indigo-50 px-2 py-1 text-xs text-indigo-700 hover:bg-indigo-100"
                         >
                           <Send size={14} />
-                          Test
+                          {t("config.test")}
                         </button>
                         <button
                           onClick={() => removeWebhook.mutate(hook.id)}
                           className="inline-flex items-center gap-1 rounded-lg border border-rose-200 bg-rose-50 px-2 py-1 text-xs text-rose-700 hover:bg-rose-100"
                         >
                           <Trash2 size={14} />
-                          Eliminar
+                          {t("config.delete")}
                         </button>
                       </div>
                     </td>
@@ -236,31 +238,31 @@ export default function WebhooksPage() {
 
       <Card>
         <CardHeader className="flex items-center justify-between">
-          <h2 className="font-semibold text-slate-900">Bitacora de entregas (compliance)</h2>
+          <h2 className="font-semibold text-slate-900">{t("deliveries.title")}</h2>
           <div className="flex items-center gap-2">
             <select
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
               className="rounded-lg border border-slate-200 px-2 py-1 text-sm"
             >
-              <option value="all">Todos</option>
-              <option value="ok">Exitosos</option>
-              <option value="failed">Fallidos</option>
+              <option value="all">{t("deliveries.filters.all")}</option>
+              <option value="ok">{t("deliveries.filters.ok")}</option>
+              <option value="failed">{t("deliveries.filters.failed")}</option>
             </select>
-            {deliveriesFetching && <span className="text-xs text-slate-400">Actualizando...</span>}
+            {deliveriesFetching && <span className="text-xs text-slate-400">{t("deliveries.refreshing")}</span>}
           </div>
         </CardHeader>
         <CardContent className="p-0">
           {deliveries.length === 0 ? (
-            <p className="text-sm text-slate-400 py-10 text-center">Sin entregas registradas</p>
+            <p className="text-sm text-slate-400 py-10 text-center">{t("deliveries.empty")}</p>
           ) : (
             <table className="w-full text-sm">
               <thead className="bg-slate-50">
                 <tr>
-                  <th className="text-left px-6 py-3 text-xs font-medium text-slate-500 uppercase">Fecha</th>
-                  <th className="text-left px-6 py-3 text-xs font-medium text-slate-500 uppercase">Evento</th>
-                  <th className="text-left px-6 py-3 text-xs font-medium text-slate-500 uppercase">Resultado</th>
-                  <th className="text-left px-6 py-3 text-xs font-medium text-slate-500 uppercase">Detalle</th>
+                  <th className="text-left px-6 py-3 text-xs font-medium text-slate-500 uppercase">{t("deliveries.headers.date")}</th>
+                  <th className="text-left px-6 py-3 text-xs font-medium text-slate-500 uppercase">{t("deliveries.headers.event")}</th>
+                  <th className="text-left px-6 py-3 text-xs font-medium text-slate-500 uppercase">{t("deliveries.headers.result")}</th>
+                  <th className="text-left px-6 py-3 text-xs font-medium text-slate-500 uppercase">{t("deliveries.headers.detail")}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -276,11 +278,11 @@ export default function WebhooksPage() {
                             ok ? "bg-emerald-100 text-emerald-700" : "bg-rose-100 text-rose-700"
                           }`}
                         >
-                          {ok ? "OK" : "FAILED"}
+                            {ok ? "OK" : t("deliveries.resultFailed")}
                         </span>
                       </td>
                       <td className="px-6 py-3 text-xs text-slate-500">
-                        status={row.metadata?.status ?? "-"} · {row.metadata?.durationMs ?? "-"}ms
+                          {t("deliveries.detailStatus")}{row.metadata?.status ?? "-"} · {row.metadata?.durationMs ?? "-"}{t("deliveries.detailDuration")}
                         {row.metadata?.error ? ` · ${row.metadata.error}` : ""}
                       </td>
                     </tr>

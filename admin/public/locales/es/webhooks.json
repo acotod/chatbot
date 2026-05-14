@@ -1,0 +1,50 @@
+{
+  "title": "Webhooks de Solicitudes",
+  "description": "Integraciones salientes con firma HMAC y bitácora de cumplimiento",
+  "form": {
+    "event": "Evento",
+    "url": "URL",
+    "active": "Activo",
+    "urlPlaceholder": "https://example.com/webhook",
+    "save": "Agregar webhook",
+    "saving": "Guardando..."
+  },
+  "config": {
+    "title": "Configuración activa",
+    "loading": "Cargando...",
+    "empty": "No hay webhooks configurados",
+    "headers": {
+      "event": "Evento",
+      "url": "URL",
+      "status": "Estado",
+      "actions": "Acciones"
+    },
+    "statusActive": "Activo",
+    "statusInactive": "Inactivo",
+    "failures": "Fallos:",
+    "last": "Último:",
+    "disable": "Desactivar",
+    "enable": "Activar",
+    "test": "Probar",
+    "delete": "Eliminar"
+  },
+  "deliveries": {
+    "title": "Bitácora de entregas (compliance)",
+    "filters": {
+      "all": "Todos",
+      "ok": "Exitosos",
+      "failed": "Fallidos"
+    },
+    "refreshing": "Actualizando...",
+    "empty": "Sin entregas registradas",
+    "headers": {
+      "date": "Fecha",
+      "event": "Evento",
+      "result": "Resultado",
+      "detail": "Detalle"
+    },
+    "resultFailed": "FALLIDO",
+    "detailStatus": "status=",
+    "detailDuration": "ms"
+  }
+}

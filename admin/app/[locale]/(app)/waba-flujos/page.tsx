@@ -33,6 +33,7 @@ import { useAuthStore } from "@/store/auth";
 import MenuOptionsEditor from "@/components/flujos/MenuOptionsEditor";
 import CanvasEditor from "@/components/FlowBuilder/CanvasEditor";
 import { layoutAsHierarchy } from "@/lib/autoLayout";
+import { useTranslations } from "next-intl";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
@@ -645,6 +646,7 @@ function fmtDate(iso?: string) {
 // Sub-component: ImportModal
 // ─────────────────────────────────────────────────────────────────────────────
 function ImportModal({ onClose, onImported, tenantSlug }: { onClose: () => void; onImported: () => void; tenantSlug: string }) {
+  const t = useTranslations("wabaFlows");
   const [json, setJson]     = useState("");
   const [nombre, setNombre] = useState("");
   const [error, setError]   = useState("");
@@ -654,14 +656,14 @@ function ImportModal({ onClose, onImported, tenantSlug }: { onClose: () => void;
   async function handleImport() {
     setError("");
     if (!tenantSlug) {
-      setError("Selecciona una empresa antes de importar.");
+      setError(t("importModal.missingTenant"));
       return;
     }
     let parsed: unknown;
     try {
       parsed = parseJsonLenient(json);
     } catch {
-      setError("JSON inválido — verifica el formato.");
+      setError(t("importModal.invalidJson"));
       return;
     }
     setLoading(true);
@@ -673,7 +675,7 @@ function ImportModal({ onClose, onImported, tenantSlug }: { onClose: () => void;
       const responseData = (e as { response?: { data?: { error?: string; validation?: { errors?: string[] } } } })?.response?.data;
       const validationErrors = Array.isArray(responseData?.validation?.errors) ? responseData.validation.errors : [];
       const msg = responseData?.error;
-      setError(validationErrors.length > 0 ? `${msg ?? "Error al importar el flujo."} ${validationErrors.join(" | ")}` : (msg ?? "Error al importar el flujo."));
+      setError(validationErrors.length > 0 ? `${msg ?? t("importModal.importError")} ${validationErrors.join(" | ")}` : (msg ?? t("importModal.importError")));
     } finally {
       setLoading(false);
     }
@@ -693,7 +695,7 @@ function ImportModal({ onClose, onImported, tenantSlug }: { onClose: () => void;
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
           <div className="flex items-center gap-2">
             <Upload className="w-5 h-5 text-blue-600" />
-            <h2 className="font-semibold text-slate-800">Importar WABA Flow JSON</h2>
+            <h2 className="font-semibold text-slate-800">{t("importModal.title")}</h2>
           </div>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-600"><X className="w-5 h-5" /></button>
         </div>
@@ -703,27 +705,27 @@ function ImportModal({ onClose, onImported, tenantSlug }: { onClose: () => void;
             <div className="space-y-3">
               <div className="flex items-center gap-2 text-green-700 bg-green-50 rounded-xl px-4 py-3">
                 <CheckCircle2 className="w-5 h-5" />
-                <span className="font-medium">Flujo importado exitosamente</span>
+                <span className="font-medium">{t("importModal.success")}</span>
               </div>
               <div className="rounded-xl border border-slate-200 p-4 bg-slate-50 text-xs font-mono overflow-auto max-h-60">
                 {JSON.stringify(result, null, 2)}
               </div>
-              <button onClick={onClose} className="w-full btn-primary py-2.5">Cerrar</button>
+              <button onClick={onClose} className="w-full btn-primary py-2.5">{t("importModal.close")}</button>
             </div>
           ) : (
             <>
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Nombre del flujo (opcional)</label>
+                <label className="block text-sm font-medium text-slate-700 mb-1">{t("importModal.flowNameOptional")}</label>
                 <input
                   value={nombre}
                   onChange={(e) => setNombre(e.target.value)}
-                  placeholder="Mi flujo de atención"
+                  placeholder={t("importModal.flowNamePlaceholder")}
                   className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Subir archivo JSON</label>
+                <label className="block text-sm font-medium text-slate-700 mb-1">{t("importModal.uploadFile")}</label>
                 <input
                   type="file"
                   accept=".json,application/json"
@@ -733,7 +735,7 @@ function ImportModal({ onClose, onImported, tenantSlug }: { onClose: () => void;
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">O pegar WABA JSON</label>
+                <label className="block text-sm font-medium text-slate-700 mb-1">{t("importModal.pasteJson")}</label>
                 <textarea
                   value={json}
                   onChange={(e) => setJson(e.target.value)}
@@ -755,14 +757,14 @@ function ImportModal({ onClose, onImported, tenantSlug }: { onClose: () => void;
 
         {!result && (
           <div className="px-6 py-4 border-t border-slate-100 flex justify-end gap-3">
-            <button onClick={onClose} className="px-4 py-2 text-sm text-slate-600 hover:text-slate-800">Cancelar</button>
+            <button onClick={onClose} className="px-4 py-2 text-sm text-slate-600 hover:text-slate-800">{t("importModal.cancel")}</button>
             <button
               onClick={handleImport}
               disabled={loading || !json.trim()}
               className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 disabled:opacity-50"
             >
               {loading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
-              Importar
+              {t("importModal.import")}
             </button>
           </div>
         )}
@@ -775,13 +777,14 @@ function ImportModal({ onClose, onImported, tenantSlug }: { onClose: () => void;
 // Sub-component: CreateFlowModal
 // ─────────────────────────────────────────────────────────────────────────────
 function CreateFlowModal({ onClose, onCreated, tenantSlug }: { onClose: () => void; onCreated: () => void; tenantSlug: string }) {
+  const t = useTranslations("wabaFlows");
   const [nombre, setNombre] = useState("");
   const [error, setError]   = useState("");
   const [loading, setLoading] = useState(false);
 
   async function handleCreate() {
-    if (!nombre.trim()) { setError("El nombre es obligatorio"); return; }
-    if (!tenantSlug) { setError("Selecciona una empresa antes de crear el flujo."); return; }
+    if (!nombre.trim()) { setError(t("createModal.nameRequired")); return; }
+    if (!tenantSlug) { setError(t("createModal.missingTenant")); return; }
     setError("");
     setLoading(true);
     try {
@@ -790,7 +793,7 @@ function CreateFlowModal({ onClose, onCreated, tenantSlug }: { onClose: () => vo
       onClose();
     } catch (e: unknown) {
       const msg = (e as { response?: { data?: { error?: string } } })?.response?.data?.error;
-      setError(msg ?? "Error al crear el flujo.");
+      setError(msg ?? t("createModal.createError"));
     } finally {
       setLoading(false);
     }
@@ -802,18 +805,18 @@ function CreateFlowModal({ onClose, onCreated, tenantSlug }: { onClose: () => vo
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
           <div className="flex items-center gap-2">
             <Plus className="w-5 h-5 text-blue-600" />
-            <h2 className="font-semibold text-slate-800">Nuevo WABA Flow</h2>
+            <h2 className="font-semibold text-slate-800">{t("createModal.title")}</h2>
           </div>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-600"><X className="w-5 h-5" /></button>
         </div>
         <div className="px-6 py-4 space-y-4">
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Nombre del flujo</label>
+            <label className="block text-sm font-medium text-slate-700 mb-1">{t("createModal.flowName")}</label>
             <input
               value={nombre}
               onChange={(e) => setNombre(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && handleCreate()}
-              placeholder="Flujo de bienvenida"
+              placeholder={t("createModal.flowNamePlaceholder")}
               className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               autoFocus
             />
@@ -821,14 +824,14 @@ function CreateFlowModal({ onClose, onCreated, tenantSlug }: { onClose: () => vo
           {error && <p className="text-sm text-red-600">{error}</p>}
         </div>
         <div className="px-6 py-4 border-t border-slate-100 flex justify-end gap-3">
-          <button onClick={onClose} className="px-4 py-2 text-sm text-slate-600 hover:text-slate-800">Cancelar</button>
+          <button onClick={onClose} className="px-4 py-2 text-sm text-slate-600 hover:text-slate-800">{t("createModal.cancel")}</button>
           <button
             onClick={handleCreate}
             disabled={loading}
             className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 disabled:opacity-50"
           >
             {loading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
-            Crear
+            {t("createModal.create")}
           </button>
         </div>
       </div>
@@ -1022,6 +1025,7 @@ function NodeEditModal({
   onSave: (n: NodeDef) => void;
   onClose: () => void;
 }) {
+  const t = useTranslations("wabaFlows");
   const cfg = (node.config ?? {}) as Record<string, unknown>;
   const initialBranches = (node.branches ?? {}) as Record<string, string>;
 
@@ -1221,9 +1225,9 @@ function NodeEditModal({
   }
 
   function handleSave() {
-    if (!id.trim()) { setErr("El ID del nodo es obligatorio"); return; }
+    if (!id.trim()) { setErr(t("nodeModal.idRequired")); return; }
     if (type === "menu" && !showJson && hasMenuValidationErrors) {
-      setErr("Corrige las opciones del menú antes de guardar (IDs únicos y sin duplicados).");
+      setErr(t("nodeModal.menuValidation"));
       return;
     }
     let branches: Record<string, string>;
@@ -1233,18 +1237,18 @@ function NodeEditModal({
       try {
         const parsed = JSON.parse(branchesJson);
         if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-          setErr("branches JSON inválido");
+          setErr(t("nodeModal.invalidBranches"));
           return;
         }
         branches = parsed as Record<string, string>;
       } catch {
-        setErr("branches JSON inválido");
+        setErr(t("nodeModal.invalidBranches"));
         return;
       }
     }
     let config: Record<string, unknown>;
     if (showJson) {
-      try { config = JSON.parse(rawJson); } catch { setErr("config JSON inválido"); return; }
+      try { config = JSON.parse(rawJson); } catch { setErr(t("nodeModal.invalidConfig")); return; }
     } else {
       config = buildConfig();
     }
@@ -1261,7 +1265,7 @@ function NodeEditModal({
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl flex flex-col max-h-[92vh]">
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
-          <h2 className="font-semibold text-slate-800">{node.id ? "Editar nodo" : "Nuevo nodo"}</h2>
+          <h2 className="font-semibold text-slate-800">{node.id ? t("nodeModal.titleEdit") : t("nodeModal.titleNew")}</h2>
           <div className="flex items-center gap-2">
             <button
               onClick={() => { setRawJson(JSON.stringify(buildConfig(), null, 2)); setShowJson((v) => !v); }}
@@ -1269,7 +1273,7 @@ function NodeEditModal({
                 showJson ? "bg-slate-800 text-white border-slate-700" : "border-slate-200 text-slate-500 hover:bg-slate-50"
               }`}
             >
-              {showJson ? "Formulario" : "JSON"}
+              {showJson ? t("nodeModal.toggleForm") : t("nodeModal.toggleJson")}
             </button>
             <button onClick={onClose} className="text-slate-400 hover:text-slate-600"><X className="w-5 h-5" /></button>
           </div>
@@ -1380,12 +1384,12 @@ function NodeEditModal({
                         });
                       }}
                       showNextSelector
-                      title="Opciones del menú"
-                      addLabel="Agregar"
-                      emptyText="Este menú aún no tiene opciones."
+                      title={t("nodeModal.menuOptionsTitle")}
+                      addLabel={t("nodeModal.add")}
+                      emptyText={t("nodeModal.menuOptionsEmpty")}
                       idPlaceholder="id_opcion"
-                      titlePlaceholder="Título visible"
-                      nextPlaceholder="Siguiente nodo (opcional)"
+                      titlePlaceholder={t("nodeModal.menuOptionTitlePlaceholder")}
+                      nextPlaceholder={t("nodeModal.nextPlaceholder")}
                     />
                   </div>
                   {hasMenuValidationErrors && (
@@ -1669,11 +1673,11 @@ function NodeEditModal({
           {err && <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-lg"><p className="text-xs text-red-700 font-medium">{err}</p></div>}
         </div>
         <div className="px-6 py-4 border-t border-slate-100 flex justify-end gap-3">
-          <button onClick={onClose} className="px-4 py-2 text-sm text-slate-600 hover:text-slate-800">Cancelar</button>
+          <button onClick={onClose} className="px-4 py-2 text-sm text-slate-600 hover:text-slate-800">{t("nodeModal.cancel")}</button>
           <button onClick={handleSave}
             disabled={type === "menu" && !showJson && hasMenuValidationErrors}
             className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed">
-            Guardar nodo
+            {t("nodeModal.saveNode")}
           </button>
         </div>
       </div>
@@ -1693,6 +1697,7 @@ function FlowBuilder({
   onBack: () => void;
   onRefresh: () => void;
 }) {
+  const t = useTranslations("wabaFlows");
   const { tenantSlug } = useAuthStore();
   const [activeVersion, setActiveVersion] = useState<(FlowVersion & { definition?: FlowDefinition }) | null>(null);
   const [definition, setDefinition] = useState<FlowDefinition | null>(null);
@@ -1835,7 +1840,7 @@ function FlowBuilder({
       setJsonText(JSON.stringify(normalizedDefinition, null, 2));
       setJsonError("");
     } catch {
-      setJsonError("JSON inválido o formato no soportado (se espera definición interna o WABA JSON)");
+      setJsonError(t("importModal.invalidJson"));
     }
   }
 
@@ -1879,7 +1884,7 @@ function FlowBuilder({
       onRefresh();
     } catch (error: unknown) {
       const msg = (error as { response?: { data?: { error?: string } } })?.response?.data?.error;
-      setSaveError(msg ?? "No se pudo guardar la versión");
+      setSaveError(msg ?? t("builder.saveVersionError"));
     } finally { setSaving(false); }
   }
 
@@ -1915,7 +1920,7 @@ function FlowBuilder({
             }`}
           >
             <FileJson className="w-3.5 h-3.5" />
-            {jsonView ? "Vista visual" : "JSON"}
+            {jsonView ? t("builder.toggleVisual") : t("builder.toggleJson")}
           </button>
           <button
             onClick={handleValidate}
@@ -1923,14 +1928,14 @@ function FlowBuilder({
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-200"
           >
             {validating ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Zap className="w-3.5 h-3.5" />}
-            Validar
+            {t("builder.validate")}
           </button>
           <button
             onClick={handleExport}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200"
           >
             <Download className="w-3.5 h-3.5" />
-            Exportar
+            {t("builder.export")}
           </button>
         </div>
       </div>
@@ -1943,7 +1948,7 @@ function FlowBuilder({
               ? <CheckCircle2 className="w-4 h-4 text-green-600" />
               : <XCircle className="w-4 h-4 text-red-600" />}
             <span className={validation.internal.valid ? "text-green-700" : "text-red-700"}>
-              {validation.internal.valid ? "Flujo válido" : `${validationErrors.length} error(es) encontrados`}
+              {validation.internal.valid ? t("builder.flowValid") : t("builder.errorsFound", { count: validationErrors.length })}
             </span>
           </div>
           {validationErrors.map((e, i) => (
@@ -1973,13 +1978,13 @@ function FlowBuilder({
                 onClick={handleJsonApply}
                 className="self-end px-4 py-2 rounded-xl bg-slate-800 text-white text-sm font-medium hover:bg-slate-700"
               >
-                Aplicar JSON
+                {t("builder.applyJson")}
               </button>
             </div>
           ) : (
             <div className="flex flex-col flex-1 gap-3 min-h-0">
               <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-xs text-slate-500">
-                El canvas visual usa esta misma definición interna. Si pegas un JSON como el que compartiste y aplicas cambios, se diagrama automáticamente en esta vista.
+                {t("builder.visualHint")}
               </div>
               <div className="flex-1 min-h-0 rounded-2xl border border-slate-200 bg-white overflow-hidden">
                 {definition ? (
@@ -2009,11 +2014,11 @@ function FlowBuilder({
             {flatNodesList.length === 0 && (
               <div className="flex flex-col items-center justify-center py-12 text-slate-400 gap-3 border-2 border-dashed border-slate-200 rounded-2xl">
                 <Layers className="w-10 h-10" />
-                <p className="text-sm">No hay nodos todavía</p>
+                <p className="text-sm">{t("builder.noNodes")}</p>
                 <button
                   onClick={handleAddNode}
                   className="text-sm text-blue-600 hover:underline"
-                >Añadir primer nodo</button>
+                >{t("builder.addFirstNode")}</button>
               </div>
             )}
             {flatNodesList.map((node, index) => (
@@ -2035,7 +2040,7 @@ function FlowBuilder({
                 className="flex items-center justify-center gap-2 py-3 rounded-xl border-2 border-dashed border-slate-200 text-sm text-slate-400 hover:border-blue-300 hover:text-blue-500 transition"
               >
                 <Plus className="w-4 h-4" />
-                Añadir nodo
+                {t("builder.addNode")}
               </button>
             )}
           </div>
@@ -2045,7 +2050,7 @@ function FlowBuilder({
         <div className="w-64 flex flex-col gap-4 shrink-0">
           {/* Entry point selector */}
           <div className="bg-slate-50 rounded-2xl p-4 border border-slate-100">
-            <label className="block text-xs font-medium text-slate-600 mb-2">Punto de entrada</label>
+            <label className="block text-xs font-medium text-slate-600 mb-2">{t("builder.entryPoint")}</label>
             <select
               value={definition?.entry_point ?? ""}
               onChange={(e) => handleEntryPointChange(e.target.value)}
@@ -2059,11 +2064,11 @@ function FlowBuilder({
 
           {/* Save new version */}
           <div className="bg-slate-50 rounded-2xl p-4 border border-slate-100 space-y-3">
-            <p className="text-xs font-medium text-slate-600">Guardar versión</p>
+            <p className="text-xs font-medium text-slate-600">{t("builder.saveVersion")}</p>
             <input
               value={changelog}
               onChange={(e) => setChangelog(e.target.value)}
-              placeholder="Descripción del cambio..."
+              placeholder={t("builder.changelogPlaceholder")}
               className="w-full rounded-xl border border-slate-200 px-3 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
             <button
@@ -2072,7 +2077,7 @@ function FlowBuilder({
               className="w-full flex items-center justify-center gap-2 py-2 rounded-xl bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 disabled:opacity-50"
             >
               {saving ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Layers className="w-4 h-4" />}
-              Guardar versión
+              {t("builder.saveVersion")}
             </button>
             {saveError && <p className="text-xs text-red-600">{saveError}</p>}
           </div>
@@ -2080,12 +2085,12 @@ function FlowBuilder({
           {/* Quick stats */}
           {definition && (
             <div className="bg-slate-50 rounded-2xl p-4 border border-slate-100 space-y-2">
-              <p className="text-xs font-medium text-slate-600">Estadísticas</p>
+              <p className="text-xs font-medium text-slate-600">{t("builder.stats")}</p>
               <div className="space-y-1 text-xs text-slate-500">
-                <div className="flex justify-between"><span>Nodos totales</span><span className="font-medium text-slate-700">{flatNodesList.length}</span></div>
-                <div className="flex justify-between"><span>Menu</span><span className="font-medium text-slate-700">{flatNodesList.filter((n) => n.type === "menu").length}</span></div>
-                <div className="flex justify-between"><span>Acción</span><span className="font-medium text-slate-700">{flatNodesList.filter((n) => n.type === "action").length}</span></div>
-                <div className="flex justify-between"><span>Fin</span><span className="font-medium text-slate-700">{flatNodesList.filter((n) => n.type === "end").length}</span></div>
+                <div className="flex justify-between"><span>{t("builder.totalNodes")}</span><span className="font-medium text-slate-700">{flatNodesList.length}</span></div>
+                <div className="flex justify-between"><span>{t("builder.menu")}</span><span className="font-medium text-slate-700">{flatNodesList.filter((n) => n.type === "menu").length}</span></div>
+                <div className="flex justify-between"><span>{t("builder.action")}</span><span className="font-medium text-slate-700">{flatNodesList.filter((n) => n.type === "action").length}</span></div>
+                <div className="flex justify-between"><span>{t("builder.end")}</span><span className="font-medium text-slate-700">{flatNodesList.filter((n) => n.type === "end").length}</span></div>
               </div>
             </div>
           )}
@@ -2113,6 +2118,7 @@ function FlowBuilder({
 // Sub-component: VersionsPanel
 // ─────────────────────────────────────────────────────────────────────────────
 function VersionsPanel({ flow, onRefresh, tenantSlug }: { flow: WabaFlow; onRefresh: () => void; tenantSlug?: string }) {
+  const t = useTranslations("wabaFlows");
   const [versions, setVersions] = useState<FlowVersion[]>([]);
   const [loading, setLoading]   = useState(true);
   const [publishing, setPublishing] = useState<number | null>(null);
@@ -2144,7 +2150,7 @@ function VersionsPanel({ flow, onRefresh, tenantSlug }: { flow: WabaFlow; onRefr
     } catch (error: unknown) {
       const msg = (error as { response?: { data?: { error?: string } }; message?: string })?.response?.data?.error
         ?? (error as { message?: string })?.message
-        ?? "No se pudo cambiar el estado de publicación.";
+        ?? t("versions.publishError");
       setActionError(msg);
     } finally { setPublishing(null); }
   }
@@ -2158,7 +2164,7 @@ function VersionsPanel({ flow, onRefresh, tenantSlug }: { flow: WabaFlow; onRefr
     } catch (error: unknown) {
       const msg = (error as { response?: { data?: { error?: string } }; message?: string })?.response?.data?.error
         ?? (error as { message?: string })?.message
-        ?? "No se pudo hacer rollback de la versión.";
+        ?? t("versions.rollbackError");
       setActionError(msg);
     } finally { setRollingBack(null); }
   }
@@ -2168,7 +2174,7 @@ function VersionsPanel({ flow, onRefresh, tenantSlug }: { flow: WabaFlow; onRefr
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
-        <h3 className="font-semibold text-slate-700">Historial de versiones — {flow.nombre}</h3>
+        <h3 className="font-semibold text-slate-700">{t("versions.title", { flowName: flow.nombre })}</h3>
         <button onClick={reload} className="text-slate-400 hover:text-slate-600"><RefreshCw className="w-4 h-4" /></button>
       </div>
       {actionError && (
@@ -2177,7 +2183,7 @@ function VersionsPanel({ flow, onRefresh, tenantSlug }: { flow: WabaFlow; onRefr
         </div>
       )}
       {versions.length === 0 && (
-        <div className="text-center py-10 text-slate-400 text-sm">Sin versiones guardadas</div>
+        <div className="text-center py-10 text-slate-400 text-sm">{t("versions.empty")}</div>
       )}
       {versions.map((v) => (
         <div key={v.id} className="flex items-center justify-between gap-4 p-4 bg-white rounded-2xl border border-slate-200 hover:border-slate-300 transition">
@@ -2186,13 +2192,13 @@ function VersionsPanel({ flow, onRefresh, tenantSlug }: { flow: WabaFlow; onRefr
               v{v.versionNumber}
             </div>
             <div>
-              <p className="text-sm font-medium text-slate-700">{v.changelog ?? `Versión ${v.versionNumber}`}</p>
+              <p className="text-sm font-medium text-slate-700">{v.changelog ?? t("versions.versionFallback", { number: v.versionNumber })}</p>
               <p className="text-xs text-slate-400 mt-0.5">{fmtDate(v.createdAt)}</p>
               {v.published && v.publishedAt && (
-                <p className="text-xs text-green-600 mt-0.5">Publicado {fmtDate(v.publishedAt)}</p>
+                <p className="text-xs text-green-600 mt-0.5">{t("versions.publishedOn", { date: fmtDate(v.publishedAt) })}</p>
               )}
               {v.wabaValidationErrors && v.wabaValidationErrors.length > 0 && (
-                <p className="text-xs text-red-500 mt-0.5">⚠ {v.wabaValidationErrors.length} error(es)</p>
+                <p className="text-xs text-red-500 mt-0.5">⚠ {t("versions.validationErrors", { count: v.wabaValidationErrors.length })}</p>
               )}
             </div>
           </div>
@@ -2203,7 +2209,7 @@ function VersionsPanel({ flow, onRefresh, tenantSlug }: { flow: WabaFlow; onRefr
             <button
               onClick={() => rollback(v)}
               disabled={v.published || rollingBack === v.id}
-              title="Rollback a esta versión"
+              title={t("versions.rollback")}
               className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-700 disabled:opacity-30"
             >
               {rollingBack === v.id ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <RotateCcw className="w-3.5 h-3.5" />}
@@ -2218,7 +2224,7 @@ function VersionsPanel({ flow, onRefresh, tenantSlug }: { flow: WabaFlow; onRefr
               }`}
             >
               {publishing === v.id ? <RefreshCw className="w-3 h-3 animate-spin" /> : null}
-              {v.published ? "Publicado" : "Publicar"}
+              {v.published ? t("versions.published") : t("versions.publish")}
             </button>
           </div>
         </div>
@@ -2231,6 +2237,7 @@ function VersionsPanel({ flow, onRefresh, tenantSlug }: { flow: WabaFlow; onRefr
 // Sub-component: SimulatePanel
 // ─────────────────────────────────────────────────────────────────────────────
 function SimulatePanel({ flow }: { flow: WabaFlow }) {
+  const t = useTranslations("wabaFlows");
   const { tenantSlug } = useAuthStore();
   const [inputs, setInputs]     = useState<string[]>([]);
   const [inputVal, setInputVal] = useState("");
@@ -2252,7 +2259,7 @@ function SimulatePanel({ flow }: { flow: WabaFlow }) {
     } catch (e: unknown) {
       const msg = (e as { response?: { data?: { error?: string } }; message?: string })?.response?.data?.error
         ?? (e as { message?: string })?.message
-        ?? "No se pudo ejecutar la simulación.";
+        ?? t("simulate.runError");
       setError(msg);
       setResult(null);
     } finally { setRunning(false); }
@@ -2267,17 +2274,17 @@ function SimulatePanel({ flow }: { flow: WabaFlow }) {
 
   return (
     <div className="space-y-4">
-      <h3 className="font-semibold text-slate-700">Testing Sandbox — {flow.nombre}</h3>
+      <h3 className="font-semibold text-slate-700">{t("simulate.title", { flowName: flow.nombre })}</h3>
 
       {/* Input sequence builder */}
       <div className="bg-slate-50 rounded-2xl p-4 border border-slate-100 space-y-3">
-        <p className="text-xs font-medium text-slate-600">Secuencia de entradas del usuario</p>
+        <p className="text-xs font-medium text-slate-600">{t("simulate.inputSequence")}</p>
         <div className="flex gap-2">
           <input
             value={inputVal}
             onChange={(e) => setInputVal(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && addInput()}
-            placeholder="Respuesta del usuario..."
+            placeholder={t("simulate.inputPlaceholder")}
             className="flex-1 rounded-xl border border-slate-200 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
           <button
@@ -2307,7 +2314,7 @@ function SimulatePanel({ flow }: { flow: WabaFlow }) {
             className="flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 disabled:opacity-50"
           >
             {running ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
-            Ejecutar simulación
+            {t("simulate.run")}
           </button>
           <button
             onClick={() => runSimulation("exhaustive")}
@@ -2315,11 +2322,11 @@ function SimulatePanel({ flow }: { flow: WabaFlow }) {
             className="flex items-center gap-2 px-4 py-2 rounded-xl bg-violet-600 text-white text-sm font-medium hover:bg-violet-700 disabled:opacity-50"
           >
             {running ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Zap className="w-4 h-4" />}
-            Explorar todas las vías con IA
+            {t("simulate.exploreAll")}
           </button>
         </div>
         <p className="text-xs text-slate-500">
-          El modo con IA usa el LLM configurado de la empresa para proponer entradas realistas, recorrer ramas y emitir un veredicto.
+          {t("simulate.aiHint")}
         </p>
       </div>
 
@@ -2339,7 +2346,7 @@ function SimulatePanel({ flow }: { flow: WabaFlow }) {
         }`}>
           <div className="flex items-start justify-between gap-3">
             <div>
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Veredicto</p>
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">{t("simulate.verdict")}</p>
               <p className="mt-1 text-sm font-medium text-slate-800">{result.verdict.summary}</p>
             </div>
             <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${
@@ -2349,7 +2356,7 @@ function SimulatePanel({ flow }: { flow: WabaFlow }) {
                   ? "bg-amber-100 text-amber-700"
                   : "bg-red-100 text-red-700"
             }`}>
-              {result.verdict.status === "pass" ? "Aprobado" : result.verdict.status === "warn" ? "Con observaciones" : "Fallido"}
+              {result.verdict.status === "pass" ? t("simulate.passed") : result.verdict.status === "warn" ? t("simulate.withNotes") : t("simulate.failed")}
             </span>
           </div>
 
@@ -2365,7 +2372,7 @@ function SimulatePanel({ flow }: { flow: WabaFlow }) {
 
           {result.verdict.llm?.summary && (
             <div className="mt-3 rounded-xl bg-white/70 border border-white/60 p-3">
-              <p className="text-xs font-medium text-slate-600">Lectura IA</p>
+              <p className="text-xs font-medium text-slate-600">{t("simulate.aiReading")}</p>
               <p className="mt-1 text-xs text-slate-700">{result.verdict.llm.summary}</p>
               {Array.isArray(result.verdict.llm.risks) && result.verdict.llm.risks.length > 0 && (
                 <div className="mt-2 flex flex-wrap gap-2">
@@ -2381,9 +2388,9 @@ function SimulatePanel({ flow }: { flow: WabaFlow }) {
 
       {Array.isArray(result?.conversationIds) && result.conversationIds.length > 0 && (
         <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Guardado en Conversaciones</p>
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">{t("simulate.savedInConversations")}</p>
           <p className="mt-1 text-sm text-slate-700">
-            Se guardaron {result.conversationIds.length} conversaci{result.conversationIds.length === 1 ? "ón" : "ones"} para esta simulación.
+            {t("simulate.savedCount", { count: result.conversationIds.length })}
           </p>
           <div className="mt-3 flex flex-wrap gap-2">
             {result.conversationIds.slice(0, 6).map((conversationId) => (
@@ -2393,7 +2400,7 @@ function SimulatePanel({ flow }: { flow: WabaFlow }) {
             ))}
             {result.conversationIds.length > 6 && (
               <span className="rounded-lg bg-white border border-slate-200 px-2 py-1 text-xs text-slate-500">
-                +{result.conversationIds.length - 6} más
+                {t("simulate.more", { count: result.conversationIds.length - 6 })}
               </span>
             )}
           </div>
@@ -2403,7 +2410,7 @@ function SimulatePanel({ flow }: { flow: WabaFlow }) {
       {/* Trace */}
       {Array.isArray(result?.trace) && result.trace.length > 0 && (
         <div className="space-y-2">
-          <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">Traza de ejecución ({result.trace.length} pasos)</p>
+          <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">{t("simulate.traceTitle", { count: result.trace.length })}</p>
           {result.trace.map((step, i) => (
             <div key={i} className={`rounded-xl border p-3 text-sm ${step.error ? "border-red-200 bg-red-50" : "border-slate-200 bg-white"}`}>
               {step.error ? (
@@ -2421,7 +2428,7 @@ function SimulatePanel({ flow }: { flow: WabaFlow }) {
                       </span>
                     </div>
                     {step.input !== null && step.input !== undefined && (
-                      <p className="text-xs text-blue-600">↳ Input: <span className="font-medium">"{step.input}"</span></p>
+                      <p className="text-xs text-blue-600">↳ {t("simulate.input")} <span className="font-medium">"{step.input}"</span></p>
                     )}
                     {step.output && (
                       <div className="text-xs text-slate-600 mt-1">
@@ -2434,7 +2441,7 @@ function SimulatePanel({ flow }: { flow: WabaFlow }) {
                           </div>
                         )}
                         {(step.output as { type?: string }).type === "end" && (
-                          <span className="text-rose-600 font-medium">✓ Conversación finalizada</span>
+                          <span className="text-rose-600 font-medium">✓ {t("simulate.conversationFinished")}</span>
                         )}
                         {(step.output as { type?: string }).type === "api_call_simulated" && (
                           <p className="font-mono text-green-600">{(step.output as { method?: string; endpoint?: string }).method} {(step.output as { endpoint?: string }).endpoint}</p>
@@ -2442,7 +2449,7 @@ function SimulatePanel({ flow }: { flow: WabaFlow }) {
                       </div>
                     )}
                     {step.waiting_for_input && (
-                      <p className="text-amber-600 text-xs mt-1">⏸ Esperando entrada del usuario</p>
+                      <p className="text-amber-600 text-xs mt-1">⏸ {t("simulate.waitingInput")}</p>
                     )}
                   </div>
                 </div>
@@ -2456,23 +2463,23 @@ function SimulatePanel({ flow }: { flow: WabaFlow }) {
         <div className="space-y-3">
           <div className="flex items-center justify-between gap-3">
             <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">
-              Rutas exploradas ({result.paths.length})
+              {t("simulate.routesTitle", { count: result.paths.length })}
             </p>
             <span className="text-xs text-slate-400">
-              {result.strategy === "llm-assisted" ? "Modo IA" : "Modo determinista"}
+              {result.strategy === "llm-assisted" ? t("simulate.aiMode") : t("simulate.deterministicMode")}
             </span>
           </div>
           {result.paths.map((path, pathIndex) => (
             <details key={path.pathId} className="rounded-2xl border border-slate-200 bg-white p-4" open={pathIndex === 0}>
               <summary className="cursor-pointer list-none flex items-center justify-between gap-3">
                 <div>
-                  <p className="text-sm font-medium text-slate-800">Ruta {pathIndex + 1}</p>
-                  <p className="text-xs text-slate-500">{path.stepCount ?? path.trace.length} paso(s) · {path.endedBy ?? "completed"}</p>
+                  <p className="text-sm font-medium text-slate-800">{t("simulate.route", { index: pathIndex + 1 })}</p>
+                  <p className="text-xs text-slate-500">{t("simulate.stepsSummary", { count: path.stepCount ?? path.trace.length, endedBy: path.endedBy ?? t("simulate.completed") })}</p>
                 </div>
                 <span className={`text-xs px-2 py-1 rounded-full ${path.trace.some((step) => step.error)
                   ? "bg-red-100 text-red-700"
                   : "bg-slate-100 text-slate-600"}`}>
-                  {path.trace.some((step) => step.error) ? "Con error" : "Explorada"}
+                  {path.trace.some((step) => step.error) ? t("simulate.withError") : t("simulate.explored")}
                 </span>
               </summary>
               <div className="mt-4 space-y-2">
@@ -2486,10 +2493,10 @@ function SimulatePanel({ flow }: { flow: WabaFlow }) {
                           <span className="w-6 h-6 rounded-full bg-white text-xs font-bold flex items-center justify-center text-slate-600 border border-slate-200 shrink-0">{i + 1}</span>
                           <span className="font-mono text-xs text-slate-500">{step.nodeId}</span>
                           <span className={`text-xs px-1.5 py-0.5 rounded ${NODE_TYPE_COLOR[step.nodeType ?? ""] ?? "bg-slate-100 text-slate-600"}`}>{step.nodeType}</span>
-                          {step.llm_intent && <span className="text-xs px-1.5 py-0.5 rounded bg-violet-100 text-violet-700">intent {step.llm_intent}</span>}
+                          {step.llm_intent && <span className="text-xs px-1.5 py-0.5 rounded bg-violet-100 text-violet-700">{t("simulate.intent")} {step.llm_intent}</span>}
                         </div>
                         {step.input !== null && step.input !== undefined && (
-                          <p className="text-xs text-blue-600">↳ Input: <span className="font-medium">"{step.input}"</span></p>
+                          <p className="text-xs text-blue-600">↳ {t("simulate.input")} <span className="font-medium">"{step.input}"</span></p>
                         )}
                         {step.output && (
                           <div className="text-xs text-slate-600 mt-1">
@@ -2505,7 +2512,7 @@ function SimulatePanel({ flow }: { flow: WabaFlow }) {
                               <p className="text-orange-700 font-mono">{String((step.output as { expression?: string }).expression ?? "")}</p>
                             )}
                             {(step.output as { type?: string }).type === "end" && (
-                              <span className="text-rose-600 font-medium">✓ Conversación finalizada</span>
+                              <span className="text-rose-600 font-medium">✓ {t("simulate.conversationFinished")}</span>
                             )}
                             {(step.output as { type?: string }).type === "api_call_simulated" && (
                               <p className="font-mono text-green-600">{(step.output as { method?: string; endpoint?: string }).method} {(step.output as { endpoint?: string }).endpoint}</p>
@@ -2529,6 +2536,7 @@ function SimulatePanel({ flow }: { flow: WabaFlow }) {
 // Main page
 // ─────────────────────────────────────────────────────────────────────────────
 export default function WabaFlujos() {
+  const t = useTranslations("wabaFlows");
   const { tenantSlug } = useAuthStore();
   const [flows, setFlows]           = useState<WabaFlow[]>([]);
   const [loading, setLoading]       = useState(true);
@@ -2559,7 +2567,7 @@ export default function WabaFlujos() {
     } catch (e: unknown) {
       const msg = (e as { response?: { data?: { error?: string } }; message?: string })?.response?.data?.error
         ?? (e as { message?: string })?.message
-        ?? "Error al cargar los flujos WABA.";
+        ?? t("page.loadError");
       setLoadError(msg);
     } finally { setLoading(false); }
   }, [tenantSlug]);
@@ -2593,10 +2601,19 @@ export default function WabaFlujos() {
   }, [tab, loadImportLogs]);
 
   async function handleDelete(id: number) {
-    if (!confirm("¿Desactivar este flujo?")) return;
+    if (!confirm(t("page.confirmDeactivate"))) return;
     await wabaFlowsApi.remove(id);
     loadFlows();
   }
+
+  const statusLabels = {
+    draft: t("page.status.draft"),
+    valid: t("page.status.valid"),
+    invalid: t("page.status.invalid"),
+    exported: t("page.status.exported"),
+    validated: t("page.status.validated"),
+    failed: t("page.status.failed"),
+  } as const;
 
   function openFlow(flow: WabaFlow, dest: "builder" | "versions" | "simulate") {
     setSelectedFlow(flow);
@@ -2609,15 +2626,15 @@ export default function WabaFlujos() {
       <div className="p-6 h-full flex flex-col gap-4">
         {/* Sub-tab bar */}
         <div className="flex items-center gap-1 bg-slate-100 rounded-xl p-1 w-fit">
-          {(["builder", "versions", "simulate"] as const).map((t) => (
+          {(["builder", "versions", "simulate"] as const).map((tabKey) => (
             <button
-              key={t}
-              onClick={() => setTab(t)}
+              key={tabKey}
+              onClick={() => setTab(tabKey)}
               className={`px-4 py-1.5 rounded-lg text-sm font-medium transition ${
-                tab === t ? "bg-white text-slate-800 shadow-sm" : "text-slate-500 hover:text-slate-700"
+                tab === tabKey ? "bg-white text-slate-800 shadow-sm" : "text-slate-500 hover:text-slate-700"
               }`}
             >
-              {t === "builder" ? "Editor" : t === "versions" ? "Versiones" : "Sandbox"}
+                {tabKey === "builder" ? t("page.tabs.builder") : tabKey === "versions" ? t("page.tabs.versions") : t("page.tabs.simulate")}
             </button>
           ))}
           <button
@@ -2651,8 +2668,8 @@ export default function WabaFlujos() {
             <Webhook className="w-5 h-5 text-white" />
           </div>
           <div>
-            <h1 className="text-xl font-bold text-slate-900">WABA Flujos</h1>
-            <p className="text-sm text-slate-500">Gestión, enriquecimiento y exportación de flujos WhatsApp Business</p>
+            <h1 className="text-xl font-bold text-slate-900">{t("page.title")}</h1>
+            <p className="text-sm text-slate-500">{t("page.subtitle")}</p>
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -2667,42 +2684,42 @@ export default function WabaFlujos() {
             className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-800 text-white text-sm font-medium hover:bg-slate-700"
           >
             <Upload className="w-4 h-4" />
-            Importar JSON
+            {t("page.importJson")}
           </button>
           <button
             onClick={() => setShowCreate(true)}
             className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-blue-600 text-white text-sm font-medium hover:bg-blue-700"
           >
             <Plus className="w-4 h-4" />
-            Nuevo flujo
+            {t("page.newFlow")}
           </button>
         </div>
       </div>
 
       {!tenantSlug && (
         <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-          Selecciona una empresa en el encabezado para listar o importar flujos WABA.
+          {t("page.selectCompany")}
         </div>
       )}
 
       {loadError && (
         <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 flex items-center justify-between gap-3">
           <span>{loadError}</span>
-          <button onClick={loadFlows} className="text-xs underline hover:no-underline shrink-0">Reintentar</button>
+          <button onClick={loadFlows} className="text-xs underline hover:no-underline shrink-0">{t("page.retry")}</button>
         </div>
       )}
 
       {/* Tab bar */}
       <div className="flex items-center gap-1 bg-slate-100 rounded-xl p-1 w-fit">
-        {(["list", "import-logs"] as const).map((t) => (
+        {(["list", "import-logs"] as const).map((tabKey) => (
           <button
-            key={t}
-            onClick={() => setTab(t)}
+            key={tabKey}
+            onClick={() => setTab(tabKey)}
             className={`px-4 py-1.5 rounded-lg text-sm font-medium transition ${
-              tab === t ? "bg-white text-slate-800 shadow-sm" : "text-slate-500 hover:text-slate-700"
+              tab === tabKey ? "bg-white text-slate-800 shadow-sm" : "text-slate-500 hover:text-slate-700"
             }`}
           >
-            {t === "list" ? "Flujos" : "Historial importaciones"}
+            {tabKey === "list" ? t("page.tabs.list") : t("page.tabs.importLogs")}
           </button>
         ))}
       </div>
@@ -2718,20 +2735,20 @@ export default function WabaFlujos() {
           {!loading && flows.length === 0 && (
             <div className="flex flex-col items-center justify-center py-16 text-slate-400 gap-4 bg-slate-50 rounded-3xl border-2 border-dashed border-slate-200">
               <Webhook className="w-12 h-12" />
-              <p className="text-sm font-medium">No hay flujos WABA todavía</p>
-              <p className="text-xs text-slate-400">Importa un JSON de WABA o crea uno nuevo desde cero</p>
+              <p className="text-sm font-medium">{t("page.empty.title")}</p>
+              <p className="text-xs text-slate-400">{t("page.empty.subtitle")}</p>
               <div className="flex gap-3">
                 <button
                   onClick={() => setShowImport(true)}
                   className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-800 text-white text-sm font-medium hover:bg-slate-700"
                 >
-                  <Upload className="w-4 h-4" /> Importar JSON
+                  <Upload className="w-4 h-4" /> {t("page.importJson")}
                 </button>
                 <button
                   onClick={() => setShowCreate(true)}
                   className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-blue-600 text-white text-sm font-medium hover:bg-blue-700"
                 >
-                  <Plus className="w-4 h-4" /> Nuevo flujo
+                  <Plus className="w-4 h-4" /> {t("page.newFlow")}
                 </button>
               </div>
             </div>
@@ -2760,13 +2777,13 @@ export default function WabaFlujos() {
                             <span className="text-xs text-slate-400 font-mono">#{flow.id}</span>
                             {isPublished && (
                               <span className="text-xs font-medium text-green-700 bg-green-50 px-2 py-0.5 rounded-full flex items-center gap-1">
-                                <CheckCircle2 className="w-3 h-3" /> Live
+                                <CheckCircle2 className="w-3 h-3" /> {t("page.live")}
                               </span>
                             )}
                           </div>
                           <div className="flex items-center gap-3 mt-1.5 flex-wrap">
                             <span className={`text-xs px-2 py-0.5 rounded-full ${STATUS_BADGE[valStatus]}`}>
-                              {valStatus}
+                              {statusLabels[valStatus as keyof typeof statusLabels] ?? valStatus}
                             </span>
                             {latestVersion && (
                               <span className="text-xs text-slate-400">
@@ -2774,13 +2791,13 @@ export default function WabaFlujos() {
                               </span>
                             )}
                             <span className="text-xs text-slate-400">
-                              {flow._count?.flowVersions ?? 0} versiones · {flow._count?.executions ?? 0} ejecuciones
+                              {flow._count?.flowVersions ?? 0} {t("page.counts.versions")} · {flow._count?.executions ?? 0} {t("page.counts.executions")}
                             </span>
                           </div>
                           {latestVersion?.wabaValidationErrors && latestVersion.wabaValidationErrors.length > 0 && (
                             <div className="mt-2 flex items-center gap-1 text-xs text-red-500">
                               <AlertTriangle className="w-3 h-3" />
-                              {latestVersion.wabaValidationErrors.length} error(es) de validación
+                              {latestVersion.wabaValidationErrors.length} {t("page.counts.validationErrors")}
                             </div>
                           )}
                         </div>
@@ -2790,21 +2807,21 @@ export default function WabaFlujos() {
                       <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                         <button
                           onClick={() => openFlow(flow, "builder")}
-                          title="Editor"
+                          title={t("page.actions.editor")}
                           className="p-2 rounded-xl hover:bg-blue-50 text-slate-400 hover:text-blue-600"
                         >
                           <Edit3 className="w-4 h-4" />
                         </button>
                         <button
                           onClick={() => openFlow(flow, "versions")}
-                          title="Historial"
+                          title={t("page.actions.history")}
                           className="p-2 rounded-xl hover:bg-purple-50 text-slate-400 hover:text-purple-600"
                         >
                           <History className="w-4 h-4" />
                         </button>
                         <button
                           onClick={() => openFlow(flow, "simulate")}
-                          title="Sandbox"
+                          title={t("page.actions.simulate")}
                           className="p-2 rounded-xl hover:bg-green-50 text-slate-400 hover:text-green-600"
                         >
                           <Play className="w-4 h-4" />
@@ -2820,14 +2837,14 @@ export default function WabaFlujos() {
                             a.click();
                             URL.revokeObjectURL(url);
                           }}
-                          title="Exportar WABA JSON"
+                          title={t("page.actions.export")}
                           className="p-2 rounded-xl hover:bg-amber-50 text-slate-400 hover:text-amber-600"
                         >
                           <Download className="w-4 h-4" />
                         </button>
                         <button
                           onClick={() => handleDelete(flow.id)}
-                          title="Desactivar"
+                          title={t("page.actions.deactivate")}
                           className="p-2 rounded-xl hover:bg-red-50 text-slate-400 hover:text-red-600"
                         >
                           <Trash2 className="w-4 h-4" />
@@ -2840,13 +2857,13 @@ export default function WabaFlujos() {
                           onClick={() => openFlow(flow, "builder")}
                           className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-50 text-blue-700 text-xs font-medium hover:bg-blue-100"
                         >
-                          <Edit3 className="w-3.5 h-3.5" /> Editar
+                          <Edit3 className="w-3.5 h-3.5" /> {t("page.actions.edit")}
                         </button>
                         <button
                           onClick={() => openFlow(flow, "simulate")}
                           className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-green-50 text-green-700 text-xs font-medium hover:bg-green-100"
                         >
-                          <Play className="w-3.5 h-3.5" /> Probar
+                          <Play className="w-3.5 h-3.5" /> {t("page.actions.test")}
                         </button>
                       </div>
                     </div>
@@ -2863,7 +2880,7 @@ export default function WabaFlujos() {
         <div className="space-y-3">
           {logsLoading && <div className="flex justify-center py-8"><RefreshCw className="w-6 h-6 animate-spin text-slate-400" /></div>}
           {!logsLoading && safeImportLogs.length === 0 && (
-            <div className="text-center py-10 text-slate-400 text-sm">Sin registros de importación</div>
+            <div className="text-center py-10 text-slate-400 text-sm">{t("page.importLogsEmpty")}</div>
           )}
           {(safeImportLogs as Array<{ id: number; flowId?: number; source: string; parsedNodes: number; status: string; createdAt: string; validationErrors?: string[] }>).map((log) => (
             <div key={log.id} className="bg-white rounded-2xl border border-slate-200 p-4 flex items-center justify-between gap-4">
@@ -2877,7 +2894,7 @@ export default function WabaFlujos() {
                 </div>
                 <div>
                   <p className="text-sm font-medium text-slate-700">
-                    Flujo #{log.flowId ?? "—"} — {log.parsedNodes} nodos — <span className="text-slate-500">{log.source}</span>
+                    {t("page.importLogSummary", { flowId: log.flowId ?? "—", parsedNodes: log.parsedNodes, source: log.source })}
                   </p>
                   <p className="text-xs text-slate-400">{fmtDate(log.createdAt)}</p>
                   {log.validationErrors && log.validationErrors.length > 0 && (
@@ -2890,7 +2907,7 @@ export default function WabaFlujos() {
                 : log.status === "failed" ? "bg-red-50 text-red-700"
                 : "bg-slate-100 text-slate-600"
               }`}>
-                {log.status}
+                {statusLabels[log.status as keyof typeof statusLabels] ?? log.status}
               </span>
             </div>
           ))}

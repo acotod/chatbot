@@ -1,0 +1,49 @@
+{
+  "plans": {
+    "free": "Free",
+    "pro": "Pro",
+    "enterprise": "Enterprise"
+  },
+  "create": {
+    "title": "New company",
+    "name": "Name",
+    "slug": "Slug",
+    "plan": "Plan",
+    "namePlaceholder": "Eg: North Clinic",
+    "slugPlaceholder": "north-clinic",
+    "creating": "Creating...",
+    "submit": "Create company",
+    "nameSlugRequired": "Name and slug are required.",
+    "created": "Company created successfully.",
+    "createError": "Could not create the company. Check name/slug or permissions."
+  },
+  "manage": {
+    "title": "Manage companies",
+    "loading": "Loading companies...",
+    "loadError": "Could not load companies. Verify your user is super admin and has permissions.",
+    "empty": "There are no companies created.",
+    "headers": {
+      "logo": "Logo",
+      "name": "Name",
+      "slug": "Slug",
+      "plan": "Plan",
+      "status": "Status",
+      "actions": "Actions"
+    },
+    "uploadLogo": "Upload logo",
+    "change": "Change",
+    "upload": "Upload",
+    "defaultPlan": "Free",
+    "active": "Active",
+    "inactive": "Inactive",
+    "deactivate": "Deactivate",
+    "activate": "Activate",
+    "rotateKey": "Rotate key",
+    "statusUpdated": "Company status updated.",
+    "statusUpdateError": "Could not update company status.",
+    "keyRotated": "API key rotated successfully.",
+    "keyRotateError": "Could not rotate company API key.",
+    "logoUpdated": "Logo updated.",
+    "logoUpdateError": "Could not upload logo."
+  }
+}

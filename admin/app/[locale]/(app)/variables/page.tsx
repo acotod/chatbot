@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { variablesApi, flowsApi } from "@/lib/api";
 import { useAuthStore } from "@/store/auth";
+import { useTranslations } from "next-intl";
 
 interface FlowVariable {
   id: number;
@@ -37,9 +38,9 @@ const SCOPES = ["global", "flow", "session"] as const;
 const TIPOS = ["string", "number", "boolean", "object", "array"] as const;
 
 const SCOPE_CONFIG = {
-  global: { label: "Global", color: "bg-blue-100 text-blue-700", icon: Globe },
-  flow: { label: "Flow", color: "bg-purple-100 text-purple-700", icon: Layers },
-  session: { label: "Session", color: "bg-amber-100 text-amber-700", icon: Timer },
+  global: { color: "bg-blue-100 text-blue-700", icon: Globe },
+  flow: { color: "bg-purple-100 text-purple-700", icon: Layers },
+  session: { color: "bg-amber-100 text-amber-700", icon: Timer },
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -60,6 +61,7 @@ function VariableModal({
   onClose: () => void;
   onSaved: (v: FlowVariable) => void;
 }) {
+  const t = useTranslations("variables");
   const [nombre, setNombre] = useState(initial?.nombre ?? "");
   const [tipo, setTipo] = useState(initial?.tipo ?? "string");
   const [scope, setScope] = useState(initial?.scope ?? "global");
@@ -72,9 +74,9 @@ function VariableModal({
   const [loading, setLoading] = useState(false);
 
   async function handleSave() {
-    if (!nombre.trim()) return setError("Name is required");
+    if (!nombre.trim()) return setError(t("modal.nameRequired"));
     if (superAdmin && !tenantSlug) {
-      return setError("Selecciona un tenant antes de guardar variables.");
+      return setError(t("modal.missingTenant"));
     }
     let parsedDefault: unknown = null;
     if (valorDefault.trim()) {
@@ -100,7 +102,7 @@ function VariableModal({
       }
       onSaved(res.data);
     } catch (e: unknown) {
-      const msg = (e as { response?: { data?: { error?: string } } })?.response?.data?.error ?? "No se pudo guardar";
+      const msg = (e as { response?: { data?: { error?: string } } })?.response?.data?.error ?? t("modal.saveError");
       setError(msg);
     } finally {
       setLoading(false);
@@ -112,14 +114,14 @@ function VariableModal({
       <div className="bg-white rounded-xl shadow-xl w-full max-w-md flex flex-col gap-4 p-6">
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-semibold text-slate-900">
-            {initial ? "Editar variable" : "Nueva variable"}
+            {initial ? t("modal.titleEdit") : t("modal.titleNew")}
           </h2>
           <button onClick={onClose} className="text-slate-400 text-xl leading-none">×</button>
         </div>
 
         <div className="grid grid-cols-2 gap-3">
           <div className="col-span-2">
-            <label className="text-xs font-medium text-slate-600 mb-1 block">Nombre</label>
+            <label className="text-xs font-medium text-slate-600 mb-1 block">{t("modal.name")}</label>
             <input
               autoFocus
               value={nombre}
@@ -130,7 +132,7 @@ function VariableModal({
           </div>
 
           <div>
-            <label className="text-xs font-medium text-slate-600 mb-1 block">Tipo</label>
+            <label className="text-xs font-medium text-slate-600 mb-1 block">{t("modal.type")}</label>
             <select
               value={tipo}
               onChange={(e) => setTipo(e.target.value)}
@@ -141,25 +143,25 @@ function VariableModal({
           </div>
 
           <div>
-            <label className="text-xs font-medium text-slate-600 mb-1 block">Ámbito</label>
+            <label className="text-xs font-medium text-slate-600 mb-1 block">{t("modal.scope")}</label>
             <select
               value={scope}
               onChange={(e) => setScope(e.target.value)}
               className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
-              {SCOPES.map((s) => <option key={s} value={s}>{s}</option>)}
+              {SCOPES.map((s) => <option key={s} value={s}>{t(`scopes.${s}`)}</option>)}
             </select>
           </div>
 
           {scope === "flow" && (
             <div className="col-span-2">
-              <label className="text-xs font-medium text-slate-600 mb-1 block">Flow</label>
+              <label className="text-xs font-medium text-slate-600 mb-1 block">{t("modal.flow")}</label>
               <select
                 value={flowId}
                 onChange={(e) => setFlowId(e.target.value)}
                 className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
-                <option value="">— Selecciona un flujo —</option>
+                <option value="">{t("modal.selectFlow")}</option>
                 {flows.map((f) => (
                   <option key={f.id} value={f.id}>{f.nombre}</option>
                 ))}
@@ -168,21 +170,21 @@ function VariableModal({
           )}
 
           <div className="col-span-2">
-            <label className="text-xs font-medium text-slate-600 mb-1 block">Valor predeterminado</label>
+            <label className="text-xs font-medium text-slate-600 mb-1 block">{t("modal.defaultValue")}</label>
             <input
               value={valorDefault}
               onChange={(e) => setValorDefault(e.target.value)}
-              placeholder='e.g. "hello", 42, true, {"key": "val"}'
+              placeholder={t("modal.defaultValuePlaceholder")}
               className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
 
           <div className="col-span-2">
-            <label className="text-xs font-medium text-slate-600 mb-1 block">Descripción</label>
+            <label className="text-xs font-medium text-slate-600 mb-1 block">{t("modal.description")}</label>
             <input
               value={descripcion}
               onChange={(e) => setDescripcion(e.target.value)}
-              placeholder="Descripción opcional"
+              placeholder={t("modal.descriptionPlaceholder")}
               className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
@@ -191,13 +193,13 @@ function VariableModal({
         {error && <p className="text-sm text-red-600">{error}</p>}
 
         <div className="flex justify-end gap-3">
-          <button onClick={onClose} className="px-4 py-2 text-sm text-slate-600">Cancelar</button>
+          <button onClick={onClose} className="px-4 py-2 text-sm text-slate-600">{t("modal.cancel")}</button>
           <button
             onClick={handleSave}
             disabled={loading}
             className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
           >
-            {loading ? "Guardando…" : "Guardar"}
+            {loading ? t("modal.saving") : t("modal.save")}
           </button>
         </div>
       </div>
@@ -209,6 +211,7 @@ function VariableModal({
 // Main Page
 // ─────────────────────────────────────────────────────────────────────────────
 export default function VariablesPage() {
+  const t = useTranslations("variables");
   const { tenantSlug, superAdmin } = useAuthStore();
   const [variables, setVariables] = useState<FlowVariable[]>([]);
   const [flows, setFlows] = useState<FlowOption[]>([]);
@@ -251,7 +254,7 @@ export default function VariablesPage() {
 
   async function handleSeedDefaults() {
     if (superAdmin && !tenantSlug) {
-      setSeedMsg("Selecciona un tenant antes de cargar variables predeterminadas");
+      setSeedMsg(t("page.seedMissingTenant"));
       return;
     }
     setSeeding(true);
@@ -259,10 +262,10 @@ export default function VariablesPage() {
     try {
       const res = await variablesApi.seedDefaults(tenantSlug || undefined);
       const { created, skipped } = res.data as { created: number; skipped: number };
-      setSeedMsg(`✓ ${created} variables creadas, ${skipped} ya existían`);
+      setSeedMsg(t("page.seedSuccess", { created, skipped }));
       await load();
     } catch {
-      setSeedMsg("Error al crear variables predeterminadas");
+      setSeedMsg(t("page.seedError"));
     } finally {
       setSeeding(false);
       setTimeout(() => setSeedMsg(""), 5000);
@@ -309,10 +312,10 @@ export default function VariablesPage() {
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
-            <Variable className="w-6 h-6 text-purple-600" /> Gestor de variables
+            <Variable className="w-6 h-6 text-purple-600" /> {t("page.title")}
           </h1>
           <p className="text-sm text-slate-500 mt-0.5">
-            {variables.length} variable{variables.length !== 1 ? "s" : ""} · Variables globales, por flujo y de sesión
+            {t("page.subtitle", { count: variables.length })}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -323,10 +326,10 @@ export default function VariablesPage() {
             onClick={handleSeedDefaults}
             disabled={seeding}
             className="flex items-center gap-2 px-3 py-2 text-sm border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 disabled:opacity-50"
-            title="Crea las variables estándar del chatbot (conversaciones, solicitudes, agenda, agentes, horarios)"
+            title={t("page.seedDefaultsTitle")}
           >
             {seeding ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Layers className="w-4 h-4" />}
-            Cargar predeterminadas
+            {t("page.seedDefaults")}
           </button>
           <button onClick={load} className="p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg">
             <RefreshCw className="w-4 h-4" />
@@ -335,7 +338,7 @@ export default function VariablesPage() {
             onClick={() => { setEditing(null); setShowModal(true); }}
             className="flex items-center gap-2 px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700"
           >
-            <Plus className="w-4 h-4" /> Nueva variable
+            <Plus className="w-4 h-4" /> {t("page.newVariable")}
           </button>
         </div>
       </div>
@@ -347,7 +350,7 @@ export default function VariablesPage() {
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Buscar variables…"
+            placeholder={t("page.searchPlaceholder")}
             className="pl-9 pr-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
         </div>
@@ -356,27 +359,27 @@ export default function VariablesPage() {
           onChange={(e) => setFilterScope(e.target.value)}
           className="text-sm border border-slate-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
         >
-          <option value="all">Todos los ámbitos</option>
-          {SCOPES.map((s) => <option key={s} value={s}>{s}</option>)}
+          <option value="all">{t("page.allScopes")}</option>
+          {SCOPES.map((s) => <option key={s} value={s}>{t(`scopes.${s}`)}</option>)}
         </select>
         <select
           value={filterFlowId}
           onChange={(e) => setFilterFlowId(e.target.value)}
           className="text-sm border border-slate-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
         >
-          <option value="">Todos los flujos</option>
+          <option value="">{t("page.allFlows")}</option>
           {flows.map((f) => <option key={f.id} value={f.id}>{f.nombre}</option>)}
         </select>
       </div>
 
       {loading ? (
         <div className="flex items-center justify-center py-16 text-slate-400">
-          <RefreshCw className="w-5 h-5 animate-spin mr-2" /> Cargando…
+          <RefreshCw className="w-5 h-5 animate-spin mr-2" /> {t("page.loading")}
         </div>
       ) : filtered.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-20 text-slate-400">
           <Variable className="w-12 h-12 mb-3 opacity-30" />
-          <p className="text-sm">No se encontraron variables. Crea una variable global o asignada a un flujo.</p>
+          <p className="text-sm">{t("page.empty")}</p>
         </div>
       ) : (
         <div className="flex flex-col gap-6">
@@ -389,20 +392,20 @@ export default function VariablesPage() {
                 <div className="flex items-center gap-2 mb-3">
                   <Icon className="w-4 h-4 text-slate-500" />
                   <h2 className="text-sm font-semibold text-slate-700 uppercase tracking-wide">
-                    {cfg.label} ({grouped[s].length})
+                    {t(`scopes.${s}`)} ({grouped[s].length})
                   </h2>
                 </div>
                 <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="border-b border-slate-200 bg-slate-50">
-                        <th className="text-left px-4 py-3 text-xs font-semibold text-slate-600">Nombre</th>
-                        <th className="text-left px-4 py-3 text-xs font-semibold text-slate-600">Tipo</th>
-                        <th className="text-left px-4 py-3 text-xs font-semibold text-slate-600">Valor predeterminado</th>
+                        <th className="text-left px-4 py-3 text-xs font-semibold text-slate-600">{t("table.name")}</th>
+                        <th className="text-left px-4 py-3 text-xs font-semibold text-slate-600">{t("table.type")}</th>
+                        <th className="text-left px-4 py-3 text-xs font-semibold text-slate-600">{t("table.defaultValue")}</th>
                         {s !== "global" && (
-                          <th className="text-left px-4 py-3 text-xs font-semibold text-slate-600">Flow</th>
+                          <th className="text-left px-4 py-3 text-xs font-semibold text-slate-600">{t("table.flow")}</th>
                         )}
-                          <th className="text-left px-4 py-3 text-xs font-semibold text-slate-600">Descripción</th>
+                          <th className="text-left px-4 py-3 text-xs font-semibold text-slate-600">{t("table.description")}</th>
                         <th className="px-4 py-3" />
                       </tr>
                     </thead>
@@ -468,16 +471,16 @@ export default function VariablesPage() {
           <div className="bg-white rounded-xl shadow-xl w-full max-w-sm p-6 flex flex-col gap-4">
             <h2 className="text-lg font-semibold text-slate-900">¿Eliminar variable?</h2>
             <p className="text-sm text-slate-600">
-              <strong className="font-mono">{toDelete.nombre}</strong> se eliminará de forma permanente.
+              {t("delete.description", { name: toDelete.nombre })}
             </p>
             <div className="flex justify-end gap-3">
-              <button onClick={() => setToDelete(null)} className="px-4 py-2 text-sm text-slate-600">Cancelar</button>
+              <button onClick={() => setToDelete(null)} className="px-4 py-2 text-sm text-slate-600">{t("delete.cancel")}</button>
               <button
                 onClick={handleDelete}
                 disabled={deleting}
                 className="px-4 py-2 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50"
               >
-                {deleting ? "Eliminando…" : "Eliminar"}
+                {deleting ? t("delete.deleting") : t("delete.delete")}
               </button>
             </div>
           </div>

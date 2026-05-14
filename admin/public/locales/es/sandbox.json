@@ -1,0 +1,97 @@
+{
+  "defaults": {
+    "phone": "+5215550000000",
+    "text": "Hola, quiero probar el sandbox.",
+    "contactName": "Usuario de pruebas"
+  },
+  "errors": {
+    "simulateFailed": "No se pudo ejecutar la simulación del emulador.",
+    "forbidden": "No tienes permisos para acceder al entorno de pruebas.",
+    "capabilitiesLoad": "No se pudieron cargar las capacidades del emulador.",
+    "updateSettings": "No se pudo actualizar outboundMetaMock.",
+    "runDetail": "No se pudo cargar el detalle de la ejecución."
+  },
+  "hero": {
+    "description": "Primer corte operativo del entorno enterprise. Este panel ya dispara una entrada reutilizando el runtime real de webhook, el router del chatbot, el motor de flujos y los ejecutores de nodos.",
+    "status": "Estado inicial: runtime real + simulación de entrada."
+  },
+  "appliedChanges": {
+    "title": "Cambios aplicados",
+    "description": "Este emulador ya incluye la activación operativa de outboundMetaMock tanto en backend como en la interfaz.",
+    "items": [
+      "Activación real por empresa de outboundMetaMock.",
+      "Endpoint PATCH /sandbox/settings para cambiar outboundMetaMock.",
+      "Capabilities devuelve el valor real por empresa.",
+      "El runtime del emulador usa el flag para evitar llamadas salientes a Meta cuando está activo.",
+      "La UI del emulador permite activar y desactivar outboundMetaMock.",
+      "El cliente API admin ya soporta capabilities por empresa y actualización de settings."
+    ]
+  },
+  "simulate": {
+    "title": "Simular entrada",
+    "phone": "Teléfono",
+    "contact": "Contacto",
+    "message": "Mensaje",
+    "contactPlaceholder": "Usuario de pruebas",
+    "messagePlaceholder": "Escribe el contenido a inyectar al runtime real",
+    "superAdminTenant": "Empresa activa desde selector global:",
+    "noTenantSelected": "sin seleccionar",
+    "sessionTenant": "La empresa se resuelve desde tu sesión JWT.",
+    "submit": "Simular inbound",
+    "submitting": "Ejecutando...",
+    "payload": "Payload enviado",
+    "runtimeLaunched": "Ejecución lanzada sobre el runtime real.",
+    "messageId": "Mensaje:",
+    "correlationId": "Correlation ID:",
+    "outboundMetaMock": "outboundMetaMock:",
+    "enabled": "activo",
+    "disabled": "desactivado",
+    "run": "Ejecución:",
+    "status": "Estado:",
+    "activeFallback": "activa"
+  },
+  "runs": {
+    "title": "Ejecuciones recientes",
+    "empty": "Aún no hay ejecuciones para este teléfono en la empresa activa.",
+    "runtimeFallback": "Runtime del flujo",
+    "startedAt": "Inicio:",
+    "events": "Eventos:"
+  },
+  "capabilities": {
+    "title": "Capacidades",
+    "outboundMetaMockTitle": "outboundMetaMock",
+    "outboundMetaMockDescription": "Cuando está activo, el emulador no llama a Meta para mensajes salientes.",
+    "save": "Guardando...",
+    "activate": "Activar",
+    "deactivate": "Desactivar",
+    "active": "activo",
+    "pending": "pendiente"
+  },
+  "timeline": {
+    "title": "Línea de tiempo",
+    "replayTitle": "Replay",
+    "replayDescription": "Reproduce la corrida seleccionada usando los eventos de entrada guardados.",
+    "replayUnavailable": "Esta corrida no tiene entradas de usuario replicables.",
+    "replayButton": "Simular replay",
+    "replayPending": "Reproduciendo...",
+    "complianceTitle": "Compliance",
+    "complianceDescription": "Evalúa si la corrida cumple los checks mínimos de trazabilidad y respuesta.",
+    "complianceButton": "Simular compliance",
+    "compliancePending": "Evaluando...",
+    "verdict": "Veredicto de compliance:",
+    "score": "Puntaje:",
+    "selectRun": "Selecciona una ejecución para inspeccionar su línea de tiempo.",
+    "run": "Ejecución:",
+    "status": "Estado:",
+    "start": "Inicio:",
+    "end": "Fin:",
+    "node": "Nodo:",
+    "checkOk": "ok",
+    "checkPending": "pendiente",
+    "verdicts": {
+      "pass": "aprobado",
+      "warning": "con observaciones",
+      "fail": "fallido"
+    }
+  }
+}

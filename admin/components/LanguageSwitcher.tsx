@@ -21,26 +21,17 @@ export default function LanguageSwitcher() {
       return;
     }
 
-    // Remove the current locale prefix and add the new one
-    let newPathname = pathname;
-    
-    // Remove current locale prefix if it exists
-    if (pathname.startsWith(`/${locale}`)) {
-      newPathname = pathname.slice(locale.length + 1);
+    const basePath = pathname.replace(/^\/(en|es)(?=\/|$)/, '') || '/';
+    const newPathname = newLocale === 'es' ? basePath : `/${newLocale}${basePath}`;
+
+    // Keep middleware locale detection in sync across navigations.
+    document.cookie = `NEXT_LOCALE=${newLocale}; path=/; max-age=31536000`;
+    router.replace(newPathname);
+    try {
+      localStorage.setItem('preferredLocale', newLocale);
+    } catch {
+      // Ignore storage failures in restricted browser contexts.
     }
-    
-    // Add new locale prefix (skip if it's the default locale 'es')
-    if (newLocale === 'es') {
-      newPathname = `/${newPathname}`;
-    } else {
-      newPathname = `/${newLocale}${newPathname}`;
-    }
-    
-    // Clean up double slashes
-    newPathname = newPathname.replace(/\/+/g, '/');
-    
-    router.push(newPathname);
-    localStorage.setItem('preferredLocale', newLocale);
   };
 
   return (

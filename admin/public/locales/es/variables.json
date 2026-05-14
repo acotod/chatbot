@@ -1,0 +1,55 @@
+{
+  "scopes": {
+    "global": "Global",
+    "flow": "Flujo",
+    "session": "Sesión"
+  },
+  "modal": {
+    "titleEdit": "Editar variable",
+    "titleNew": "Nueva variable",
+    "name": "Nombre",
+    "type": "Tipo",
+    "scope": "Ámbito",
+    "flow": "Flujo",
+    "selectFlow": "— Selecciona un flujo —",
+    "defaultValue": "Valor predeterminado",
+    "defaultValuePlaceholder": "ej. \"hola\", 42, true, {\"key\": \"val\"}",
+    "description": "Descripción",
+    "descriptionPlaceholder": "Descripción opcional",
+    "nameRequired": "El nombre es obligatorio",
+    "missingTenant": "Selecciona un tenant antes de guardar variables.",
+    "saveError": "No se pudo guardar",
+    "cancel": "Cancelar",
+    "save": "Guardar",
+    "saving": "Guardando..."
+  },
+  "page": {
+    "title": "Gestor de variables",
+    "subtitle": "{count} {count, plural, one {variable} other {variables}} · Variables globales, por flujo y de sesión",
+    "seedDefaults": "Cargar predeterminadas",
+    "seedDefaultsTitle": "Crea las variables estándar del chatbot (conversaciones, solicitudes, agenda, agentes, horarios)",
+    "newVariable": "Nueva variable",
+    "searchPlaceholder": "Buscar variables...",
+    "allScopes": "Todos los ámbitos",
+    "allFlows": "Todos los flujos",
+    "loading": "Cargando...",
+    "empty": "No se encontraron variables. Crea una variable global o asignada a un flujo.",
+    "seedMissingTenant": "Selecciona un tenant antes de cargar variables predeterminadas",
+    "seedSuccess": "✓ {created} variables creadas, {skipped} ya existían",
+    "seedError": "Error al crear variables predeterminadas"
+  },
+  "table": {
+    "name": "Nombre",
+    "type": "Tipo",
+    "defaultValue": "Valor predeterminado",
+    "flow": "Flujo",
+    "description": "Descripción"
+  },
+  "delete": {
+    "title": "¿Eliminar variable?",
+    "description": "{name} se eliminará de forma permanente.",
+    "cancel": "Cancelar",
+    "delete": "Eliminar",
+    "deleting": "Eliminando..."
+  }
+}

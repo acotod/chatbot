@@ -1,0 +1,55 @@
+{
+  "scopes": {
+    "global": "Global",
+    "flow": "Flow",
+    "session": "Session"
+  },
+  "modal": {
+    "titleEdit": "Edit variable",
+    "titleNew": "New variable",
+    "name": "Name",
+    "type": "Type",
+    "scope": "Scope",
+    "flow": "Flow",
+    "selectFlow": "— Select a flow —",
+    "defaultValue": "Default value",
+    "defaultValuePlaceholder": "e.g. \"hello\", 42, true, {\"key\": \"val\"}",
+    "description": "Description",
+    "descriptionPlaceholder": "Optional description",
+    "nameRequired": "Name is required",
+    "missingTenant": "Select a tenant before saving variables.",
+    "saveError": "Could not save",
+    "cancel": "Cancel",
+    "save": "Save",
+    "saving": "Saving..."
+  },
+  "page": {
+    "title": "Variables manager",
+    "subtitle": "{count} {count, plural, one {variable} other {variables}} · Global, flow-level, and session variables",
+    "seedDefaults": "Load defaults",
+    "seedDefaultsTitle": "Creates standard chatbot variables (conversations, requests, agenda, agents, schedules)",
+    "newVariable": "New variable",
+    "searchPlaceholder": "Search variables...",
+    "allScopes": "All scopes",
+    "allFlows": "All flows",
+    "loading": "Loading...",
+    "empty": "No variables found. Create a global variable or one assigned to a flow.",
+    "seedMissingTenant": "Select a tenant before loading default variables",
+    "seedSuccess": "✓ {created} variables created, {skipped} already existed",
+    "seedError": "Error creating default variables"
+  },
+  "table": {
+    "name": "Name",
+    "type": "Type",
+    "defaultValue": "Default value",
+    "flow": "Flow",
+    "description": "Description"
+  },
+  "delete": {
+    "title": "Delete variable?",
+    "description": "{name} will be permanently deleted.",
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "deleting": "Deleting..."
+  }
+}

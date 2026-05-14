@@ -1,0 +1,49 @@
+{
+  "plans": {
+    "free": "Gratis",
+    "pro": "Pro",
+    "enterprise": "Empresarial"
+  },
+  "create": {
+    "title": "Nueva empresa",
+    "name": "Nombre",
+    "slug": "Slug",
+    "plan": "Plan",
+    "namePlaceholder": "Ej: Clinica Norte",
+    "slugPlaceholder": "clinica-norte",
+    "creating": "Creando...",
+    "submit": "Crear empresa",
+    "nameSlugRequired": "Nombre y slug son obligatorios.",
+    "created": "Empresa creada correctamente.",
+    "createError": "No se pudo crear la empresa. Revisa nombre/slug o permisos."
+  },
+  "manage": {
+    "title": "Administrar empresas",
+    "loading": "Cargando empresas...",
+    "loadError": "No se pudieron cargar las empresas. Verifica que tu usuario sea super admin y tenga permisos.",
+    "empty": "No hay empresas creadas.",
+    "headers": {
+      "logo": "Logo",
+      "name": "Nombre",
+      "slug": "Slug",
+      "plan": "Plan",
+      "status": "Estado",
+      "actions": "Acciones"
+    },
+    "uploadLogo": "Subir logo",
+    "change": "Cambiar",
+    "upload": "Subir",
+    "defaultPlan": "Gratis",
+    "active": "Activo",
+    "inactive": "Inactivo",
+    "deactivate": "Desactivar",
+    "activate": "Activar",
+    "rotateKey": "Rotar key",
+    "statusUpdated": "Estado de la empresa actualizado.",
+    "statusUpdateError": "No se pudo actualizar el estado de la empresa.",
+    "keyRotated": "API key rotada correctamente.",
+    "keyRotateError": "No se pudo rotar la API key de la empresa.",
+    "logoUpdated": "Logo actualizado.",
+    "logoUpdateError": "No se pudo subir el logo."
+  }
+}
