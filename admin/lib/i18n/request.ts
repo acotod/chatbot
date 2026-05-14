@@ -1,11 +1,12 @@
 import { getRequestConfig } from 'next-intl/server';
-import { locales, defaultLocale } from './config';
+import { locales, defaultLocale, type Locale } from './config';
 
 export default getRequestConfig(async ({ requestLocale }) => {
-  let locale = requestLocale;
+  const requestedLocale = await requestLocale;
+  let locale: Locale = defaultLocale;
 
-  if (!locale || !locales.includes(locale as any)) {
-    locale = defaultLocale;
+  if (requestedLocale && locales.includes(requestedLocale as Locale)) {
+    locale = requestedLocale as Locale;
   }
 
   const [common, dashboard, errors, solicitudes, conversaciones, agenda, contactos, settings] = await Promise.all([

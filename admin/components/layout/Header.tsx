@@ -12,6 +12,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Bell, Search } from "lucide-react";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useCurrentLocale } from "@/lib/i18n/client";
 
 function subscribeToClientSnapshot() {
   return () => {};
@@ -67,6 +68,7 @@ function stripLocalePrefix(pathname: string): string {
 
 export function Header() {
   const t = useTranslations("common");
+  const locale = useCurrentLocale();
   const pathname = usePathname();
   const normalizedPathname = stripLocalePrefix(pathname);
   const { tenantSlug, setTenantSlug } = useAuthStore();
@@ -215,7 +217,7 @@ export function Header() {
             <div className="absolute right-0 mt-2 w-96 max-w-[calc(100vw-2rem)] rounded-2xl border border-slate-200 bg-white shadow-lg z-40 overflow-hidden">
               <div className="px-4 py-3 border-b border-slate-200 flex items-center justify-between">
                 <div>
-                  <p className="text-sm font-semibold text-slate-900">Notificaciones</p>
+                  <p className="text-sm font-semibold text-slate-900">{t("header.notifications")}</p>
                   <p className="text-xs text-slate-500">{t("header.unreadCount", { count: unreadCount })}</p>
                 </div>
                 <button
@@ -247,7 +249,7 @@ export function Header() {
                         <p className="text-sm font-medium text-slate-900 truncate">{item.title}</p>
                         <p className="text-xs text-slate-600 mt-1 break-words">{item.message}</p>
                         <p className="text-[11px] text-slate-400 mt-1">
-                          {new Date(item.createdAt).toLocaleString("es-CR")}
+                          {new Date(item.createdAt).toLocaleString(locale === "en" ? "en-US" : "es-CR")}
                         </p>
                       </div>
                       {!item.readAt && (
