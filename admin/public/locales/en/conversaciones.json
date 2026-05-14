@@ -1,14 +1,71 @@
 {
-  "pageTitle": "Conversations",
-  "searchPlaceholder": "Search conversations...",
-  "empty": "No conversations yet",
-  "typing": "Typing...",
-  "lastMessage": "Last message",
-  "unread": "Unread",
-  "assignedTo": "Assigned to",
-  "filters": {
-    "all": "All",
-    "open": "Open",
-    "closed": "Closed"
+  "header": "Conversations",
+  "searchPlaceholder": "Search...",
+  "emptyList": "No conversations yet",
+  "emptyListSub": "WhatsApp messages will appear here in real time 💙",
+  "selectConversation": "Select a conversation",
+  "selectConversationSub": "WhatsApp messages appear in real time",
+  "noMessages": "No messages yet",
+  "loadMore": "Load older messages",
+  "loading": "Loading...",
+  "inputPlaceholder": "Type a message...",
+  "noPhone": "This user has no registered phone number",
+  "socket": {
+    "connectedTitle": "Connected in real time",
+    "disconnectedTitle": "No connection",
+    "live": "Live",
+    "offline": "Offline"
+  },
+  "quickActions": {
+    "escalate": "Escalate",
+    "urgent": "Urgent"
+  },
+  "escalationForm": {
+    "title": "Assign agent",
+    "placeholder": "Select agent...",
+    "creating": "Creating...",
+    "createAndAssign": "Create and assign"
+  },
+  "tabs": {
+    "solicitudes": "Requests",
+    "agentes": "Agents",
+    "notas": "Notes",
+    "historial": "Flow"
+  },
+  "solicitudesTab": {
+    "empty": "No requests",
+    "emptySub": "Use \"Escalate\" to create one",
+    "view": "View",
+    "markAttended": "Attended",
+    "cancel": "Cancel"
+  },
+  "agentesTab": {
+    "empty": "No agents"
+  },
+  "notasTab": {
+    "placeholder": "Add internal note about this contact...",
+    "save": "Save note"
+  },
+  "historialTab": {
+    "empty": "No recorded conversations",
+    "emptySub": "Flow conversations appear here",
+    "unknownFlow": "Unknown flow",
+    "noEvents": "No events"
+  },
+  "statusLabels": {
+    "open": "pending",
+    "in_progress": "urgent",
+    "pending_info": "pending info",
+    "completed": "attended",
+    "rejected": "cancelled"
+  },
+  "eventLabels": {
+    "conversation_started": "Start",
+    "message_sent": "Bot sent",
+    "user_input": "User wrote",
+    "condition_evaluated": "Condition",
+    "api_call": "API call",
+    "task_status_change": "Task status",
+    "conversation_ended": "End"
   }
 }

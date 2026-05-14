@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { CalendarDays, Check, Pencil, Trash2, X, Settings, MessageSquare, Lock, Briefcase, Palette, RefreshCw, Upload } from "lucide-react";
+import { useTranslations } from "@/lib/i18n/client";
 
 // ── LLM config types ──────────────────────────────────────────────────────────
 type LlmProvider = "openai" | "anthropic" | "custom";
@@ -95,6 +96,7 @@ interface AdminUserItem {
 }
 
 function AdminHierarchySection({ tenantSlug }: { tenantSlug: string }) {
+  const t = useTranslations("settings");
   const qc = useQueryClient();
   const { data: rawData } = useQuery({
     queryKey: ["admin-users", tenantSlug],
@@ -113,12 +115,12 @@ function AdminHierarchySection({ tenantSlug }: { tenantSlug: string }) {
 
   return (
     <ConfigSection
-      title="Jerarquía de administradores"
-      description="Asigná el jefe (superior directo) de cada usuario administrador para construir el árbol de escalación."
+      title={t("hierarchy.title")}
+      description={t("hierarchy.description")}
     >
       <div className="space-y-3">
         {adminUsers.length === 0 ? (
-          <p className="text-sm text-slate-500">No hay administradores en este tenant.</p>
+          <p className="text-sm text-slate-500">{t("hierarchy.empty")}</p>
         ) : (
           adminUsers.map((user) => {
             const otherUsers = adminUsers.filter((u) => u.id !== user.id);
@@ -129,7 +131,7 @@ function AdminHierarchySection({ tenantSlug }: { tenantSlug: string }) {
                   <p className="text-xs text-slate-500 truncate">{user.email}</p>
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className="text-xs text-slate-400">Jefe:</span>
+                  <span className="text-xs text-slate-400">{t("hierarchy.bossLabel")}</span>
                   <select
                     value={user.jefeId ?? ""}
                     onChange={(e) => {
@@ -139,7 +141,7 @@ function AdminHierarchySection({ tenantSlug }: { tenantSlug: string }) {
                     disabled={setJefeMutation.isPending}
                     className="text-sm border border-slate-200 rounded-lg px-2 py-1 bg-white focus:outline-none focus:ring-2 focus:ring-rose-500/30"
                   >
-                    <option value="">— Sin jefe —</option>
+                    <option value="">{t("hierarchy.noBoss")}</option>
                     {otherUsers.map((u) => (
                       <option key={u.id} value={u.id}>
                         {u.nombre}
@@ -157,6 +159,7 @@ function AdminHierarchySection({ tenantSlug }: { tenantSlug: string }) {
 }
 
 export default function ConfiguracionPage() {
+  const t = useTranslations("settings");
   const { tenantSlug } = useAuthStore();
   const qc = useQueryClient();
 
@@ -376,7 +379,7 @@ export default function ConfiguracionPage() {
       setPuestoNombre("");
       setPuestoError("");
     },
-    onError: () => setPuestoError("No se pudo crear el puesto."),
+    onError: () => setPuestoError(t("puestos.errorCreate")),
   });
 
   const updatePuestoMutation = useMutation({
@@ -388,7 +391,7 @@ export default function ConfiguracionPage() {
       setEditingPuestoNombre("");
       setPuestoError("");
     },
-    onError: () => setPuestoError("No se pudo actualizar el puesto."),
+    onError: () => setPuestoError(t("puestos.errorUpdate")),
   });
 
   const deletePuestoMutation = useMutation({
@@ -397,7 +400,7 @@ export default function ConfiguracionPage() {
       qc.invalidateQueries({ queryKey: ["agente-puestos", tenantSlug] });
       setPuestoError("");
     },
-    onError: () => setPuestoError("No se pudo eliminar el puesto."),
+    onError: () => setPuestoError(t("puestos.errorDelete")),
   });
 
   const { data: configData } = useQuery({
@@ -501,7 +504,7 @@ export default function ConfiguracionPage() {
 
   function handleCreatePuesto() {
     if (!puestoNombre.trim()) {
-      setPuestoError("Escribí un nombre para el puesto.");
+      setPuestoError(t("puestos.errorEmpty"));
       return;
     }
     setPuestoError("");
@@ -517,7 +520,7 @@ export default function ConfiguracionPage() {
   function saveEditPuesto() {
     if (!editingPuestoId) return;
     if (!editingPuestoNombre.trim()) {
-      setPuestoError("El nombre no puede quedar vacío.");
+      setPuestoError(t("puestos.errorNameEmpty"));
       return;
     }
     setPuestoError("");
@@ -590,8 +593,8 @@ export default function ConfiguracionPage() {
     <div className="space-y-4">
       <div className="flex items-center justify-between mb-2">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">Configuración</h1>
-          <p className="text-sm text-slate-500">Administrá todos los aspectos de tu tenant</p>
+          <h1 className="text-2xl font-bold text-slate-900">{t("pageTitle")}</h1>
+          <p className="text-sm text-slate-500">{t("subtitle")}</p>
         </div>
       </div>
 
@@ -599,23 +602,23 @@ export default function ConfiguracionPage() {
         <TabsList className="w-full justify-start overflow-x-auto bg-slate-50 border-b border-slate-200">
           <TabsTrigger value="comunicacion" className="flex items-center gap-2">
             <MessageSquare size={16} />
-            Comunicación
+            {t("tabs.comunicacion")}
           </TabsTrigger>
           <TabsTrigger value="email-ia" className="flex items-center gap-2">
             <Settings size={16} />
-            Email & IA
+            {t("tabs.emailIa")}
           </TabsTrigger>
           <TabsTrigger value="organizacion" className="flex items-center gap-2">
             <Briefcase size={16} />
-            Organización
+            {t("tabs.organizacion")}
           </TabsTrigger>
           <TabsTrigger value="modulos" className="flex items-center gap-2">
             <Lock size={16} />
-            Módulos
+            {t("tabs.modulos")}
           </TabsTrigger>
           <TabsTrigger value="branding" className="flex items-center gap-2">
             <Palette size={16} />
-            Branding
+            {t("tabs.branding")}
           </TabsTrigger>
         </TabsList>
 
@@ -631,19 +634,19 @@ export default function ConfiguracionPage() {
               disabled={refreshingTab === "comunicacion"}
             >
               <RefreshCw size={14} className={refreshingTab === "comunicacion" ? "animate-spin" : ""} />
-              {refreshingTab === "comunicacion" ? "Actualizando..." : "Actualizar"}
+              {refreshingTab === "comunicacion" ? t("refreshing") : t("refresh")}
             </Button>
           </div>
 
           {/* Horarios */}
           <ConfigSection
-            title="Horarios de atención"
-            description="Definí en qué rango horario el chatbot acepta nuevas solicitudes"
+            title={t("horarios.title")}
+            description={t("horarios.description")}
           >
             <div className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <Input
-                  label="Hora de apertura"
+                  label={t("horarios.openTime")}
                   type="time"
                   value={horarios.inicio}
                   onChange={(e) =>
@@ -651,7 +654,7 @@ export default function ConfiguracionPage() {
                   }
                 />
                 <Input
-                  label="Hora de cierre"
+                  label={t("horarios.closeTime")}
                   type="time"
                   value={horarios.fin}
                   onChange={(e) =>
@@ -660,17 +663,17 @@ export default function ConfiguracionPage() {
                 />
               </div>
               <div>
-                <p className="text-sm font-medium text-slate-700 mb-2">Días de atención</p>
+                <p className="text-sm font-medium text-slate-700 mb-2">{t("horarios.workDays")}</p>
                 <div className="flex gap-2 flex-wrap">
                   {[
-                    { label: "Dom", value: 0 },
-                    { label: "Lun", value: 1 },
-                    { label: "Mar", value: 2 },
-                    { label: "Mié", value: 3 },
-                    { label: "Jue", value: 4 },
-                    { label: "Vie", value: 5 },
-                    { label: "Sáb", value: 6 },
-                  ].map(({ label, value }) => {
+                    { labelKey: "sun", value: 0 },
+                    { labelKey: "mon", value: 1 },
+                    { labelKey: "tue", value: 2 },
+                    { labelKey: "wed", value: 3 },
+                    { labelKey: "thu", value: 4 },
+                    { labelKey: "fri", value: 5 },
+                    { labelKey: "sat", value: 6 },
+                  ].map(({ labelKey, value }) => {
                     const active = (horarios.dias ?? []).includes(value);
                     return (
                       <button
@@ -690,7 +693,7 @@ export default function ConfiguracionPage() {
                             : "bg-white text-slate-500 border-slate-200 hover:border-blue-400"
                         }`}
                       >
-                        {label}
+                        {t(`horarios.days.${labelKey}`)}
                       </button>
                     );
                   })}
@@ -701,12 +704,12 @@ export default function ConfiguracionPage() {
 
           {/* Mensajes */}
           <ConfigSection
-            title="Mensaje de bienvenida"
-            description="Primer mensaje que recibe el usuario al iniciar el flujo"
+            title={t("bienvenida.title")}
+            description={t("bienvenida.description")}
           >
             <div className="flex flex-col gap-1.5">
               <label className="text-sm font-medium text-slate-700">
-                Texto del mensaje
+                {t("bienvenida.label")}
               </label>
               <textarea
                 value={mensajeBienvenida}
@@ -715,39 +718,38 @@ export default function ConfiguracionPage() {
                 className="px-3.5 py-2.5 rounded-xl border border-slate-200 bg-white text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 resize-none transition-all"
               />
               <p className="text-xs text-slate-400">
-                Tip: usá un tono cercano y empático 💙
+                {t("bienvenida.tip")}
               </p>
             </div>
           </ConfigSection>
 
           {/* WhatsApp Business */}
           <ConfigSection
-            title="WhatsApp Business"
-            description="Credenciales para enviar y recibir mensajes desde Meta Cloud API"
+            title={t("whatsapp.title")}
+            description={t("whatsapp.description")}
           >
             <div className="space-y-4">
               <Input
-                label="Phone Number ID"
+                label={t("whatsapp.phoneLabel")}
                 placeholder="123456789012345"
                 value={waCreds.phoneNumberId}
                 onChange={(e) => setWaCreds((c) => ({ ...c, phoneNumberId: e.target.value }))}
               />
               <Input
-                label="Access Token"
-                placeholder={waTokenConfigured ? "•••••••• (ya configurado)" : "EAAGm..."}
+                label={t("whatsapp.tokenLabel")}
+                placeholder={waTokenConfigured ? t("whatsapp.tokenConfigured") : "EAAGm..."}
                 value={waCreds.accessToken}
                 onChange={(e) => setWaCreds((c) => ({ ...c, accessToken: e.target.value }))}
                 type="password"
               />
               <p className="text-xs text-slate-400">
-                Token de usuario del sistema con permiso <code>whatsapp_business_messaging</code>.
-                Obtenelo en Meta Business Manager → Configuración de sistema.
+                {t("whatsapp.permissionNote")}
               </p>
               <div className="flex justify-end">
                 <Button onClick={() => saveWaMutation.mutate()} disabled={saveWaMutation.isPending}>
                   {waSaved ? (
-                    <><Check size={16} /> Guardado 💙</>
-                  ) : saveWaMutation.isPending ? "Guardando..." : "Guardar credenciales"}
+                    <><Check size={16} /> {t("whatsapp.saved")}</>
+                  ) : saveWaMutation.isPending ? t("whatsapp.saving") : t("whatsapp.saveButton")}
                 </Button>
               </div>
             </div>
@@ -756,7 +758,7 @@ export default function ConfiguracionPage() {
           {/* Save button for this tab */}
           <div className="flex items-center justify-between pt-4 border-t border-slate-200">
             <p className="text-sm text-slate-400">
-              Los cambios se aplican de inmediato
+              {t("changesInstant")}
             </p>
             <Button
               onClick={() => saveMutation.mutate()}
@@ -765,12 +767,12 @@ export default function ConfiguracionPage() {
               {saved ? (
                 <>
                   <Check size={16} />
-                  Guardado 💙
+                  {t("saved")}
                 </>
               ) : saveMutation.isPending ? (
-                "Guardando..."
+                t("saving")
               ) : (
-                "Guardar cambios"
+                t("saveChanges")
               )}
             </Button>
           </div>
@@ -788,34 +790,34 @@ export default function ConfiguracionPage() {
               disabled={refreshingTab === "email-ia"}
             >
               <RefreshCw size={14} className={refreshingTab === "email-ia" ? "animate-spin" : ""} />
-              {refreshingTab === "email-ia" ? "Actualizando..." : "Actualizar"}
+              {refreshingTab === "email-ia" ? t("refreshing") : t("refresh")}
             </Button>
           </div>
 
           <ConfigSection
-            title="Email transaccional"
-            description="Configurá el SMTP del tenant para password reset y envíos desde flujos de conversación"
+            title={t("email.title")}
+            description={t("email.description")}
           >
             <div className="space-y-4">
               <Input
-                label="SMTP URL"
+                label={t("email.smtpUrl")}
                 placeholder="smtps://usuario:clave@smtp.mailprovider.com:465"
                 value={emailSettings.smtpUrl}
                 onChange={(e) => setEmailSettings((prev) => ({ ...prev, smtpUrl: e.target.value }))}
               />
               <p className="text-xs text-slate-400">
-                Si completás esta URL, tiene prioridad sobre host, puerto y credenciales separadas.
+                {t("email.smtpUrlNote")}
               </p>
 
               <div className="grid grid-cols-2 gap-4">
                 <Input
-                  label="SMTP Host"
+                  label={t("email.smtpHost")}
                   placeholder="smtp.gmail.com"
                   value={emailSettings.smtpHost}
                   onChange={(e) => setEmailSettings((prev) => ({ ...prev, smtpHost: e.target.value }))}
                 />
                 <Input
-                  label="SMTP Port"
+                  label={t("email.smtpPort")}
                   placeholder="587"
                   value={emailSettings.smtpPort}
                   onChange={(e) => setEmailSettings((prev) => ({ ...prev, smtpPort: e.target.value }))}
@@ -824,23 +826,23 @@ export default function ConfiguracionPage() {
 
               <div className="grid grid-cols-2 gap-4">
                 <Input
-                  label="SMTP User"
+                  label={t("email.smtpUser")}
                   placeholder="notificaciones@tu-dominio.com"
                   value={emailSettings.smtpUser}
                   onChange={(e) => setEmailSettings((prev) => ({ ...prev, smtpUser: e.target.value }))}
                 />
                 <div className="flex flex-col gap-1.5">
-                  <label className="text-sm font-medium text-slate-700">Contraseña SMTP</label>
+                  <label className="text-sm font-medium text-slate-700">{t("email.smtpPass")}</label>
                   <Input
                     type="password"
-                    placeholder={emailPassConfigured ? "•••••••• (ya configurado)" : "Contraseña de aplicación / SMTP"}
+                    placeholder={emailPassConfigured ? t("email.smtpPassConfigured") : t("email.smtpPass")}
                     value={emailSettings.smtpPass}
                     onChange={(e) => setEmailSettings((prev) => ({ ...prev, smtpPass: e.target.value }))}
                     autoComplete="new-password"
                   />
                   {emailPassConfigured && emailSettings.smtpPass === "" && (
                     <p className="text-xs text-emerald-600 flex items-center gap-1">
-                      <Check size={12} /> Hay una clave SMTP guardada
+                      <Check size={12} /> {t("email.smtpSavedKey")}
                     </p>
                   )}
                 </div>
@@ -853,18 +855,18 @@ export default function ConfiguracionPage() {
                   onChange={(e) => setEmailSettings((prev) => ({ ...prev, smtpSecure: e.target.checked }))}
                   className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
                 />
-                Usar SMTP seguro (TLS/SSL)
+                {t("email.smtpSecure")}
               </label>
 
               <div className="grid grid-cols-2 gap-4">
                 <Input
-                  label="Correo remitente"
+                  label={t("email.emailFrom")}
                   placeholder="no-reply@tu-dominio.com"
                   value={emailSettings.emailFrom}
                   onChange={(e) => setEmailSettings((prev) => ({ ...prev, emailFrom: e.target.value }))}
                 />
                 <Input
-                  label="URL base del admin"
+                  label={t("email.adminBaseUrl")}
                   placeholder="https://admin.tu-dominio.com"
                   value={emailSettings.adminBaseUrl}
                   onChange={(e) => setEmailSettings((prev) => ({ ...prev, adminBaseUrl: e.target.value }))}
@@ -872,14 +874,14 @@ export default function ConfiguracionPage() {
               </div>
 
               <p className="text-xs text-slate-400">
-                Esta URL se usa para construir el enlace de recuperación de agentes. Si el tenant no define nada, el backend sigue usando variables de entorno.
+                {t("email.adminUrlNote")}
               </p>
 
               <div className="flex justify-end">
                 <Button onClick={() => saveEmailMutation.mutate()} disabled={saveEmailMutation.isPending}>
                   {emailSaved ? (
-                    <><Check size={16} /> Guardado 💙</>
-                  ) : saveEmailMutation.isPending ? "Guardando..." : "Guardar configuración de correo"}
+                    <><Check size={16} /> {t("email.saved")}</>
+                  ) : saveEmailMutation.isPending ? t("email.saving") : t("email.saveButton")}
                 </Button>
               </div>
             </div>
@@ -887,13 +889,13 @@ export default function ConfiguracionPage() {
 
           {/* LLM / IA */}
           <ConfigSection
-            title="Inteligencia Artificial (LLM)"
-            description="Configurá el proveedor de IA que usará el chatbot para diagnósticos y rescate de flows"
+            title={t("llm.title")}
+            description={t("llm.description")}
           >
             <div className="space-y-4">
               {/* Provider */}
               <div className="flex flex-col gap-1.5">
-                <label className="text-sm font-medium text-slate-700">Proveedor</label>
+                <label className="text-sm font-medium text-slate-700">{t("llm.provider")}</label>
                 <select
                   value={llm.provider}
                   onChange={(e) => {
@@ -911,7 +913,7 @@ export default function ConfiguracionPage() {
 
               {/* Model */}
               <div className="flex flex-col gap-1.5">
-                <label className="text-sm font-medium text-slate-700">Modelo</label>
+                <label className="text-sm font-medium text-slate-700">{t("llm.model")}</label>
                 {llm.provider === "custom" ? (
                   <Input
                     placeholder="nombre-del-modelo"
@@ -933,17 +935,17 @@ export default function ConfiguracionPage() {
 
               {/* API Key */}
               <div className="flex flex-col gap-1.5">
-                <label className="text-sm font-medium text-slate-700">API Key</label>
+                <label className="text-sm font-medium text-slate-700">{t("llm.apiKey")}</label>
                 <Input
                   type="password"
-                  placeholder={llmKeyConfigured ? "API key configurada ✓  (dejá vacío para no cambiar)" : "sk-... / sk-ant-..."}
+                  placeholder={llmKeyConfigured ? t("llm.apiKeyConfigured") : "sk-... / sk-ant-..."}
                   value={llm.api_key}
                   onChange={(e) => setLlm((prev) => ({ ...prev, api_key: e.target.value }))}
                   autoComplete="new-password"
                 />
                 {llmKeyConfigured && llm.api_key === "" && (
                   <p className="text-xs text-emerald-600 flex items-center gap-1">
-                    <Check size={12} /> Hay una API key guardada
+                    <Check size={12} /> {t("llm.apiKeySaved")}
                   </p>
                 )}
               </div>
@@ -951,7 +953,7 @@ export default function ConfiguracionPage() {
               {/* Base URL — only for custom */}
               {llm.provider === "custom" && (
                 <Input
-                  label="Base URL"
+                  label={t("llm.baseUrl")}
                   placeholder="https://mi-api.com/v1"
                   value={llm.base_url}
                   onChange={(e) => setLlm((prev) => ({ ...prev, base_url: e.target.value }))}
@@ -964,8 +966,8 @@ export default function ConfiguracionPage() {
                   disabled={saveLlmMutation.isPending || (!llmKeyConfigured && llm.api_key.trim() === "")}
                 >
                   {llmSaved ? (
-                    <><Check size={16} /> Guardado 💙</>
-                  ) : saveLlmMutation.isPending ? "Guardando..." : "Guardar configuración LLM"}
+                    <><Check size={16} /> {t("llm.saved")}</>
+                  ) : saveLlmMutation.isPending ? t("llm.saving") : t("llm.saveButton")}
                 </Button>
               </div>
             </div>
@@ -984,25 +986,25 @@ export default function ConfiguracionPage() {
               disabled={refreshingTab === "organizacion"}
             >
               <RefreshCw size={14} className={refreshingTab === "organizacion" ? "animate-spin" : ""} />
-              {refreshingTab === "organizacion" ? "Actualizando..." : "Actualizar"}
+              {refreshingTab === "organizacion" ? t("refreshing") : t("refresh")}
             </Button>
           </div>
 
           {/* Catalogo de puestos */}
           <ConfigSection
-            title="Catálogo de puestos"
-            description="Administrá los puestos disponibles para asignar a agentes (CRUD)."
+            title={t("puestos.title")}
+            description={t("puestos.description")}
           >
             <div className="space-y-4">
               <div className="flex gap-2">
                 <Input
                   label=""
-                  placeholder="Ej: Soporte Nivel 1"
+                  placeholder={t("puestos.placeholder")}
                   value={puestoNombre}
                   onChange={(e) => setPuestoNombre(e.target.value)}
                 />
                 <Button type="button" onClick={handleCreatePuesto} disabled={createPuestoMutation.isPending}>
-                  {createPuestoMutation.isPending ? "Creando..." : "Crear"}
+                  {createPuestoMutation.isPending ? t("puestos.creating") : t("puestos.create")}
                 </Button>
               </div>
 
@@ -1010,7 +1012,7 @@ export default function ConfiguracionPage() {
 
               <div className="space-y-2">
                 {puestos.length === 0 ? (
-                  <p className="text-sm text-slate-500">No hay puestos creados.</p>
+                  <p className="text-sm text-slate-500">{t("puestos.empty")}</p>
                 ) : (
                   puestos.map((puesto) => {
                     const isEditing = editingPuestoId === puesto.id;
@@ -1030,7 +1032,7 @@ export default function ConfiguracionPage() {
                           {isEditing ? (
                             <>
                               <Button type="button" variant="secondary" onClick={saveEditPuesto} disabled={updatePuestoMutation.isPending}>
-                                Guardar
+                                {t("puestos.save")}
                               </Button>
                               <Button
                                 type="button"
@@ -1072,8 +1074,8 @@ export default function ConfiguracionPage() {
 
           {/* Solicitudes enterprise */}
           <ConfigSection
-            title="Solicitudes enterprise"
-            description="Configurá el comportamiento avanzado del módulo de solicitudes por empresa"
+            title={t("enterpriseConfig.title")}
+            description={t("enterpriseConfig.description")}
           >
             <div className="space-y-3">
               <label className="flex items-center gap-2 text-sm text-slate-700">
@@ -1087,7 +1089,7 @@ export default function ConfiguracionPage() {
                     }))
                   }
                 />
-                Búsqueda avanzada
+                {t("enterpriseConfig.advancedSearch")}
               </label>
               <label className="flex items-center gap-2 text-sm text-slate-700">
                 <input
@@ -1100,7 +1102,7 @@ export default function ConfiguracionPage() {
                     }))
                   }
                 />
-                SLA habilitado
+                {t("enterpriseConfig.slaEnabled")}
               </label>
               <label className="flex items-center gap-2 text-sm text-slate-700">
                 <input
@@ -1113,7 +1115,7 @@ export default function ConfiguracionPage() {
                     }))
                   }
                 />
-                Escalación manual
+                {t("enterpriseConfig.manualEscalation")}
               </label>
               <label className="flex items-center gap-2 text-sm text-slate-700">
                 <input
@@ -1126,12 +1128,12 @@ export default function ConfiguracionPage() {
                     }))
                   }
                 />
-                Reglas de asignación
+                {t("enterpriseConfig.assignmentRules")}
               </label>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div className="space-y-1">
                   <label className="text-xs text-slate-500 uppercase tracking-wide">
-                    Umbral warning SLA (min)
+                    {t("enterpriseConfig.slaWarningLabel")}
                   </label>
                   <input
                     type="number"
@@ -1149,7 +1151,7 @@ export default function ConfiguracionPage() {
                 </div>
                 <div className="space-y-1">
                   <label className="text-xs text-slate-500 uppercase tracking-wide">
-                    Intervalo auto-escalación (min)
+                    {t("enterpriseConfig.escalationIntervalLabel")}
                   </label>
                   <input
                     type="number"
@@ -1176,8 +1178,8 @@ export default function ConfiguracionPage() {
                   disabled={saveSolicitudesEnterpriseConfigMutation.isPending}
                 >
                   {saveSolicitudesEnterpriseConfigMutation.isPending
-                    ? "Guardando..."
-                    : "Guardar configuración"}
+                    ? t("enterpriseConfig.saving")
+                    : t("enterpriseConfig.saveButton")}
                 </Button>
               </div>
             </div>
@@ -1196,22 +1198,22 @@ export default function ConfiguracionPage() {
               disabled={refreshingTab === "modulos"}
             >
               <RefreshCw size={14} className={refreshingTab === "modulos" ? "animate-spin" : ""} />
-              {refreshingTab === "modulos" ? "Actualizando..." : "Actualizar"}
+              {refreshingTab === "modulos" ? t("refreshing") : t("refresh")}
             </Button>
           </div>
 
           {/* Módulos opcionales */}
           <ConfigSection
-            title="Módulos"
-            description="Activá o desactivá funcionalidades del sistema"
+            title={t("modules.title")}
+            description={t("modules.description")}
           >
             <div className="flex items-center justify-between py-1">
               <div className="flex items-center gap-3">
                 <CalendarDays size={20} className="text-blue-500" />
                 <div>
-                  <p className="text-sm font-medium text-slate-800">Agenda</p>
+                  <p className="text-sm font-medium text-slate-800">{t("modules.agenda.name")}</p>
                   <p className="text-xs text-slate-400">
-                    Calendario de eventos semanales con asignación de agentes
+                    {t("modules.agenda.description")}
                   </p>
                 </div>
               </div>
@@ -1236,13 +1238,13 @@ export default function ConfiguracionPage() {
 
           {/* Política de Bloqueo de Cuenta */}
           <ConfigSection
-            title="Seguridad: Política de Bloqueo de Cuenta"
-            description="Configurá los intentos máximos de login fallidos y la duración del bloqueo temporal"
+            title={t("security.title")}
+            description={t("security.description")}
           >
             <div className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <Input
-                  label="Máximo de intentos fallidos"
+                  label={t("security.maxAttempts")}
                   type="number"
                   min="1"
                   max="20"
@@ -1253,7 +1255,7 @@ export default function ConfiguracionPage() {
                   }}
                 />
                 <Input
-                  label="Duración del bloqueo (minutos)"
+                  label={t("security.lockoutMinutes")}
                   type="number"
                   min="1"
                   max="1440"
@@ -1266,7 +1268,7 @@ export default function ConfiguracionPage() {
               </div>
               <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
                 <p className="text-xs text-blue-900">
-                  💡 Después de {lockoutPolicy.maxAttempts} intentos fallidos, la cuenta se bloqueará por {lockoutPolicy.lockoutMinutes} minuto{lockoutPolicy.lockoutMinutes !== 1 ? 's' : ''}.
+                  {t("security.hint", { maxAttempts: lockoutPolicy.maxAttempts, lockoutMinutes: lockoutPolicy.lockoutMinutes })}
                 </p>
               </div>
               <div className="flex justify-end">
@@ -1277,9 +1279,9 @@ export default function ConfiguracionPage() {
                   {lockoutSaved ? (
                     <>
                       <Check size={16} />
-                      Guardado 💙
+                      {t("security.saved")}
                     </>
-                  ) : saveLockoutPolicyMutation.isPending ? "Guardando..." : "Guardar política"}
+                  ) : saveLockoutPolicyMutation.isPending ? t("security.saving") : t("security.saveButton")}
                 </Button>
               </div>
             </div>
@@ -1298,24 +1300,24 @@ export default function ConfiguracionPage() {
               disabled={refreshingTab === "branding"}
             >
               <RefreshCw size={14} className={refreshingTab === "branding" ? "animate-spin" : ""} />
-              {refreshingTab === "branding" ? "Actualizando..." : "Actualizar"}
+              {refreshingTab === "branding" ? t("refreshing") : t("refresh")}
             </Button>
           </div>
 
           {/* Branding */}
           <ConfigSection
-            title="Branding"
-            description="Información visual de tu organización"
+            title={t("branding.title")}
+            description={t("branding.description")}
           >
             <div className="space-y-6">
               {/* Logo upload */}
               <div className="space-y-3">
-                <p className="text-sm font-medium text-slate-700">Logo del tenant</p>
+                <p className="text-sm font-medium text-slate-700">{t("branding.logoLabel")}</p>
                 <div className="flex items-center gap-4">
                   {logoPreview ? (
                     <img
                       src={logoPreview}
-                      alt="Vista previa del logo"
+                      alt={t("branding.logoPreviewAlt")}
                       className="h-16 w-auto max-w-[160px] rounded-lg border border-slate-200 object-contain p-1"
                     />
                   ) : (
@@ -1327,7 +1329,7 @@ export default function ConfiguracionPage() {
                     <label className="cursor-pointer">
                       <span className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50 transition-colors">
                         <Upload size={14} />
-                        Seleccionar imagen
+                        {t("branding.selectImage")}
                       </span>
                       <input
                         type="file"
@@ -1349,24 +1351,24 @@ export default function ConfiguracionPage() {
                         disabled={uploadLogoMutation.isPending}
                         className="text-sm"
                       >
-                        {uploadLogoMutation.isPending ? "Subiendo..." : "Guardar logo"}
+                        {uploadLogoMutation.isPending ? t("branding.saving") : t("branding.saveLogo")}
                       </Button>
                     )}
                     {logoSaved && (
                       <p className="text-xs text-green-600 flex items-center gap-1">
-                        <Check size={12} /> Logo actualizado
+                        <Check size={12} /> {t("branding.logoSaved")}
                       </p>
                     )}
                     {uploadLogoMutation.isError && (
-                      <p className="text-xs text-red-600">Error al subir el logo. Intenta de nuevo.</p>
+                      <p className="text-xs text-red-600">{t("branding.logoError")}</p>
                     )}
-                    <p className="text-xs text-slate-400">PNG, JPG o SVG. Recomendado: 200×60 px.</p>
+                    <p className="text-xs text-slate-400">{t("branding.logoHint")}</p>
                   </div>
                 </div>
               </div>
 
-              <Input label="Nombre de la organización" placeholder="Clínica Esperanza" />
-              <Input label="Color principal (hex)" placeholder="#2563eb" />
+              <Input label={t("branding.orgName")} placeholder="Clínica Esperanza" />
+              <Input label={t("branding.primaryColor")} placeholder="#2563eb" />
             </div>
           </ConfigSection>
         </TabsContent>

@@ -1,30 +1,56 @@
 {
-  "pageTitle": "Dashboard",
-  "overview": "Overview",
-  "metrics": "Metrics",
-  "recentActivity": "Recent Activity",
-  "activeConversations": "Active Conversations",
-  "totalRequests": "Total Requests",
-  "completedRequests": "Completed Requests",
-  "averageResponseTime": "Avg Response Time",
-  "satisfactionRate": "Satisfaction Rate",
+  "agentPanel": {
+    "eyebrow": "Panel",
+    "title": "Agent Panel",
+    "subtitle": "Main view of your operational access.",
+    "loading": "Loading panel...",
+    "error": "Could not load agent panel.",
+    "welcome": "Welcome",
+    "company": "Company:",
+    "status": "Status:",
+    "viewProfile": "View full profile",
+    "summary": "Summary",
+    "email": "Email:",
+    "position": "Position:",
+    "lastAccess": "Last access:",
+    "noPosition": "No position",
+    "noRecord": "No record",
+    "kpis": {
+      "activeRequests": "Active requests",
+      "assignedToYou": "Assigned to you",
+      "completedMonth": "Completed (month)",
+      "resolvedThisMonth": "Resolved this month",
+      "agendaNext7Days": "Agenda next 7 days",
+      "upcomingEvents": "Upcoming events",
+      "overdueAgenda": "Overdue agenda",
+      "pastPending": "Past pending"
+    }
+  },
   "kpis": {
-    "conversations": "Conversations",
-    "messages": "Messages",
-    "users": "Users",
-    "agents": "Agents",
-    "requests": "Requests"
+    "pendingRequests": "Pending requests",
+    "waitingAttention": "Waiting for attention",
+    "activeUrgencies": "Active urgencies",
+    "requireImmediate": "Require immediate attention",
+    "attended": "Attended",
+    "thisPeriod": "This period",
+    "whatsappConversations": "WhatsApp Conversations",
+    "activeUsers": "Active users",
+    "totalUsers": "Total users",
+    "registered": "Registered"
   },
-  "charts": {
-    "conversationsTrend": "Conversations Trend",
-    "messageVolume": "Message Volume",
-    "requestStatus": "Request Status",
-    "agentPerformance": "Agent Performance"
+  "chart": {
+    "title": "Requests by status",
+    "noData": "No data available"
   },
-  "period": {
-    "today": "Today",
-    "thisWeek": "This Week",
-    "thisMonth": "This Month",
-    "custom": "Custom"
+  "recentRequests": {
+    "title": "Latest requests",
+    "viewAll": "View all →",
+    "empty": "No recent requests",
+    "cols": {
+      "name": "Name",
+      "schedule": "Schedule",
+      "status": "Status",
+      "date": "Date"
+    }
   }
 }

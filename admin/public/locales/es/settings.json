@@ -1,13 +1,147 @@
 {
   "pageTitle": "Configuración",
+  "subtitle": "Administrá todos los aspectos de tu tenant",
   "tabs": {
-    "general": "General",
-    "security": "Seguridad",
-    "branding": "Branding",
-    "integrations": "Integraciones"
+    "comunicacion": "Comunicación",
+    "emailIa": "Email & IA",
+    "organizacion": "Organización",
+    "modulos": "Módulos",
+    "branding": "Branding"
+  },
+  "refresh": "Actualizar",
+  "refreshing": "Actualizando...",
+  "horarios": {
+    "title": "Horarios de atención",
+    "description": "Definí en qué rango horario el chatbot acepta nuevas solicitudes",
+    "openTime": "Hora de apertura",
+    "closeTime": "Hora de cierre",
+    "workDays": "Días de atención",
+    "days": {
+      "sun": "Dom",
+      "mon": "Lun",
+      "tue": "Mar",
+      "wed": "Mié",
+      "thu": "Jue",
+      "fri": "Vie",
+      "sat": "Sáb"
+    }
+  },
+  "bienvenida": {
+    "title": "Mensaje de bienvenida",
+    "description": "Primer mensaje que recibe el usuario al iniciar el flujo",
+    "label": "Texto del mensaje",
+    "tip": "Tip: usá un tono cercano y empático 💙"
+  },
+  "whatsapp": {
+    "title": "WhatsApp Business",
+    "description": "Credenciales para enviar y recibir mensajes desde Meta Cloud API",
+    "phoneLabel": "Phone Number ID",
+    "tokenLabel": "Access Token",
+    "tokenConfigured": "•••••••• (ya configurado)",
+    "permissionNote": "Token de usuario del sistema con permiso whatsapp_business_messaging. Obtenelo en Meta Business Manager → Configuración de sistema.",
+    "saveButton": "Guardar credenciales",
+    "saving": "Guardando...",
+    "saved": "Guardado 💙"
   },
   "saveChanges": "Guardar cambios",
-  "saved": "Cambios guardados",
-  "uploadLogo": "Subir logo",
-  "removeLogo": "Eliminar logo"
+  "saving": "Guardando...",
+  "saved": "Guardado 💙",
+  "changesInstant": "Los cambios se aplican de inmediato",
+  "email": {
+    "title": "Email transaccional",
+    "description": "Configurá el SMTP del tenant para password reset y envíos desde flujos de conversación",
+    "smtpUrl": "SMTP URL",
+    "smtpHost": "SMTP Host",
+    "smtpPort": "SMTP Port",
+    "smtpUser": "SMTP User",
+    "smtpPass": "Contraseña SMTP",
+    "smtpPassConfigured": "•••••••• (ya configurado)",
+    "smtpSavedKey": "Hay una clave SMTP guardada",
+    "smtpSecure": "Usar SMTP seguro (TLS/SSL)",
+    "emailFrom": "Correo remitente",
+    "adminBaseUrl": "URL base del admin",
+    "smtpUrlNote": "Si completás esta URL, tiene prioridad sobre host, puerto y credenciales separadas.",
+    "adminUrlNote": "Esta URL se usa para construir el enlace de recuperación de agentes. Si el tenant no define nada, el backend sigue usando variables de entorno.",
+    "saveButton": "Guardar configuración de correo",
+    "saving": "Guardando...",
+    "saved": "Guardado 💙"
+  },
+  "llm": {
+    "title": "Inteligencia Artificial (LLM)",
+    "description": "Configurá el proveedor de IA que usará el chatbot para diagnósticos y rescate de flows",
+    "provider": "Proveedor",
+    "model": "Modelo",
+    "apiKey": "API Key",
+    "apiKeyConfigured": "API key configurada ✓  (dejá vacío para no cambiar)",
+    "apiKeySaved": "Hay una API key guardada",
+    "baseUrl": "Base URL",
+    "saveButton": "Guardar configuración LLM",
+    "saving": "Guardando...",
+    "saved": "Guardado 💙"
+  },
+  "puestos": {
+    "title": "Catálogo de puestos",
+    "description": "Administrá los puestos disponibles para asignar a agentes (CRUD).",
+    "placeholder": "Ej: Soporte Nivel 1",
+    "create": "Crear",
+    "creating": "Creando...",
+    "empty": "No hay puestos creados.",
+    "save": "Guardar",
+    "errorCreate": "No se pudo crear el puesto.",
+    "errorUpdate": "No se pudo actualizar el puesto.",
+    "errorDelete": "No se pudo eliminar el puesto.",
+    "errorEmpty": "Escribí un nombre para el puesto.",
+    "errorNameEmpty": "El nombre no puede quedar vacío."
+  },
+  "hierarchy": {
+    "title": "Jerarquía de administradores",
+    "description": "Asigná el jefe (superior directo) de cada usuario administrador para construir el árbol de escalación.",
+    "bossLabel": "Jefe:",
+    "noBoss": "— Sin jefe —",
+    "empty": "No hay administradores en este tenant."
+  },
+  "enterpriseConfig": {
+    "title": "Solicitudes enterprise",
+    "description": "Configurá el comportamiento avanzado del módulo de solicitudes por empresa",
+    "advancedSearch": "Búsqueda avanzada",
+    "slaEnabled": "SLA habilitado",
+    "manualEscalation": "Escalación manual",
+    "assignmentRules": "Reglas de asignación",
+    "slaWarningLabel": "Umbral warning SLA (min)",
+    "escalationIntervalLabel": "Intervalo auto-escalación (min)",
+    "saveButton": "Guardar configuración",
+    "saving": "Guardando..."
+  },
+  "modules": {
+    "title": "Módulos",
+    "description": "Activá o desactivá funcionalidades del sistema",
+    "agenda": {
+      "name": "Agenda",
+      "description": "Calendario de eventos semanales con asignación de agentes"
+    }
+  },
+  "security": {
+    "title": "Seguridad: Política de Bloqueo de Cuenta",
+    "description": "Configurá los intentos máximos de login fallidos y la duración del bloqueo temporal",
+    "maxAttempts": "Máximo de intentos fallidos",
+    "lockoutMinutes": "Duración del bloqueo (minutos)",
+    "hint": "Después de {maxAttempts} intentos fallidos, la cuenta se bloqueará por {lockoutMinutes} minutos.",
+    "saveButton": "Guardar política",
+    "saving": "Guardando...",
+    "saved": "Guardado 💙"
+  },
+  "branding": {
+    "title": "Branding",
+    "description": "Información visual de tu organización",
+    "logoLabel": "Logo del tenant",
+    "logoPreviewAlt": "Vista previa del logo",
+    "selectImage": "Seleccionar imagen",
+    "saveLogo": "Guardar logo",
+    "saving": "Subiendo...",
+    "logoSaved": "Logo actualizado",
+    "logoError": "Error al subir el logo. Intenta de nuevo.",
+    "logoHint": "PNG, JPG o SVG. Recomendado: 200×60 px.",
+    "orgName": "Nombre de la organización",
+    "primaryColor": "Color principal (hex)"
+  }
 }

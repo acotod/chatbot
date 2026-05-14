@@ -1,14 +1,71 @@
 {
-  "pageTitle": "Conversaciones",
-  "searchPlaceholder": "Buscar conversaciones...",
-  "empty": "Aún no hay conversaciones",
-  "typing": "Escribiendo...",
-  "lastMessage": "Último mensaje",
-  "unread": "Sin leer",
-  "assignedTo": "Asignado a",
-  "filters": {
-    "all": "Todas",
-    "open": "Abiertas",
-    "closed": "Cerradas"
+  "header": "Conversaciones",
+  "searchPlaceholder": "Buscar...",
+  "emptyList": "Todavía no hay conversaciones",
+  "emptyListSub": "Los mensajes de WhatsApp aparecerán aquí en tiempo real 💙",
+  "selectConversation": "Seleccioná una conversación",
+  "selectConversationSub": "Los mensajes de WhatsApp aparecen en tiempo real",
+  "noMessages": "No hay mensajes aún",
+  "loadMore": "Cargar mensajes anteriores",
+  "loading": "Cargando...",
+  "inputPlaceholder": "Escribí un mensaje...",
+  "noPhone": "Este usuario no tiene número de teléfono registrado",
+  "socket": {
+    "connectedTitle": "Conectado en tiempo real",
+    "disconnectedTitle": "Sin conexión",
+    "live": "En vivo",
+    "offline": "Offline"
+  },
+  "quickActions": {
+    "escalate": "Escalar",
+    "urgent": "Urgente"
+  },
+  "escalationForm": {
+    "title": "Asignar agente",
+    "placeholder": "Seleccionar agente...",
+    "creating": "Creando...",
+    "createAndAssign": "Crear y asignar"
+  },
+  "tabs": {
+    "solicitudes": "Solicitudes",
+    "agentes": "Agentes",
+    "notas": "Notas",
+    "historial": "Flujo"
+  },
+  "solicitudesTab": {
+    "empty": "Sin solicitudes",
+    "emptySub": "Usá \"Escalar\" para crear una",
+    "view": "Ver",
+    "markAttended": "Atendida",
+    "cancel": "Cancelar"
+  },
+  "agentesTab": {
+    "empty": "No hay agentes"
+  },
+  "notasTab": {
+    "placeholder": "Agregar nota interna sobre este contacto...",
+    "save": "Guardar nota"
+  },
+  "historialTab": {
+    "empty": "Sin conversaciones registradas",
+    "emptySub": "Las conversaciones del flujo aparecen aquí",
+    "unknownFlow": "Flujo desconocido",
+    "noEvents": "Sin eventos"
+  },
+  "statusLabels": {
+    "open": "pendiente",
+    "in_progress": "urgente",
+    "pending_info": "pendiente info",
+    "completed": "atendida",
+    "rejected": "cancelada"
+  },
+  "eventLabels": {
+    "conversation_started": "Inicio",
+    "message_sent": "Bot envió",
+    "user_input": "Usuario escribió",
+    "condition_evaluated": "Condición",
+    "api_call": "API call",
+    "task_status_change": "Estado tarea",
+    "conversation_ended": "Fin"
   }
 }

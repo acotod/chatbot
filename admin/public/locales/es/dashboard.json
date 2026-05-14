@@ -1,6 +1,59 @@
 {
-  "pageTitle": "Panel",
-  "overview": "Resumen",
+  "agentPanel": {
+    "eyebrow": "Panel",
+    "title": "Panel de agente",
+    "subtitle": "Vista principal de tu acceso operativo.",
+    "loading": "Cargando panel...",
+    "error": "No se pudo cargar el panel de agente.",
+    "welcome": "Bienvenido",
+    "company": "Empresa:",
+    "status": "Estado:",
+    "viewProfile": "Ver perfil completo",
+    "summary": "Resumen",
+    "email": "Correo electrónico:",
+    "position": "Puesto:",
+    "lastAccess": "Último acceso:",
+    "noPosition": "Sin puesto",
+    "noRecord": "Sin registro",
+    "kpis": {
+      "activeRequests": "Solicitudes activas",
+      "assignedToYou": "Asignadas a vos",
+      "completedMonth": "Completadas (mes)",
+      "resolvedThisMonth": "Resueltas este mes",
+      "agendaNext7Days": "Agenda próximos 7 días",
+      "upcomingEvents": "Eventos próximos",
+      "overdueAgenda": "Agenda vencida",
+      "pastPending": "Pendientes pasados"
+    }
+  },
+  "kpis": {
+    "pendingRequests": "Solicitudes pendientes",
+    "waitingAttention": "Esperando atención",
+    "activeUrgencies": "Urgencias activas",
+    "requireImmediate": "Requieren atención inmediata",
+    "attended": "Atendidas",
+    "thisPeriod": "Este período",
+    "whatsappConversations": "Conversaciones WhatsApp",
+    "activeUsers": "Usuarios activos",
+    "totalUsers": "Total usuarios",
+    "registered": "Registrados"
+  },
+  "chart": {
+    "title": "Solicitudes por estado",
+    "noData": "Sin datos disponibles"
+  },
+  "recentRequests": {
+    "title": "Últimas solicitudes",
+    "viewAll": "Ver todas →",
+    "empty": "No hay solicitudes recientes",
+    "cols": {
+      "name": "Nombre",
+      "schedule": "Horario",
+      "status": "Estado",
+      "date": "Fecha"
+    }
+  }
+},
   "metrics": "Métricas",
   "recentActivity": "Actividad Reciente",
   "activeConversations": "Conversaciones Activas",

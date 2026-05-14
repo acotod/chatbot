@@ -23,6 +23,7 @@ import {
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+import { useTranslations } from "@/lib/i18n/client";
 
 type AgentProfile = {
   agenteId: number;
@@ -70,6 +71,7 @@ function KpiCard({
 }
 
 export default function DashboardPage() {
+  const t = useTranslations("dashboard");
   const router = useRouter();
   const { logout: logoutAgent } = useAgentAuthStore();
   const hasAdminAccessToken = Boolean(getStoredAccessToken());
@@ -145,7 +147,7 @@ export default function DashboardPage() {
             router.replace("/agente/login?reason=expired");
             return;
           }
-          setAgentError("No se pudo cargar el panel de agente.");
+          setAgentError(t("agentPanel.error"));
         }
       } finally {
         if (!cancelled) {
@@ -163,7 +165,7 @@ export default function DashboardPage() {
 
   if (isAgentSession) {
     if (agentLoading) {
-      return <div className="rounded-3xl bg-white border border-slate-200 shadow-sm p-6 text-sm text-slate-500">Cargando panel...</div>;
+      return <div className="rounded-3xl bg-white border border-slate-200 shadow-sm p-6 text-sm text-slate-500">{t("agentPanel.loading")}</div>;
     }
 
     if (agentError) {
@@ -177,65 +179,65 @@ export default function DashboardPage() {
     return (
       <div className="space-y-6">
         <div className="rounded-3xl bg-white border border-slate-200 shadow-sm p-6 sm:p-8">
-          <p className="text-sm font-medium uppercase tracking-[0.2em] text-cyan-600">Panel</p>
-          <h1 className="mt-2 text-3xl font-semibold tracking-tight text-slate-900">Panel de agente</h1>
-          <p className="mt-2 text-slate-600">Vista principal de tu acceso operativo.</p>
+          <p className="text-sm font-medium uppercase tracking-[0.2em] text-cyan-600">{t("agentPanel.eyebrow")}</p>
+          <h1 className="mt-2 text-3xl font-semibold tracking-tight text-slate-900">{t("agentPanel.title")}</h1>
+          <p className="mt-2 text-slate-600">{t("agentPanel.subtitle")}</p>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
           <KpiCard
             icon={ClipboardList}
-            title="Solicitudes activas"
+            title={t("agentPanel.kpis.activeRequests")}
             value={agentKpisLoading ? "..." : (agentKpis?.solicitudesActivas ?? 0)}
-            sub="Asignadas a vos"
+            sub={t("agentPanel.kpis.assignedToYou")}
             color="bg-amber-100 text-amber-600"
           />
           <KpiCard
             icon={CalendarCheck}
-            title="Completadas (mes)"
+            title={t("agentPanel.kpis.completedMonth")}
             value={agentKpisLoading ? "..." : (agentKpis?.solicitudesCompletadasMes ?? 0)}
-            sub="Resueltas este mes"
+            sub={t("agentPanel.kpis.resolvedThisMonth")}
             color="bg-green-100 text-green-600"
           />
           <KpiCard
             icon={TrendingUp}
-            title="Agenda próximos 7 días"
+            title={t("agentPanel.kpis.agendaNext7Days")}
             value={agentKpisLoading ? "..." : (agentKpis?.agendaProximos7Dias ?? 0)}
-            sub="Eventos próximos"
+            sub={t("agentPanel.kpis.upcomingEvents")}
             color="bg-blue-100 text-blue-600"
           />
           <KpiCard
             icon={AlertTriangle}
-            title="Agenda vencida"
+            title={t("agentPanel.kpis.overdueAgenda")}
             value={agentKpisLoading ? "..." : (agentKpis?.agendaVencida ?? 0)}
-            sub="Pendientes pasados"
+            sub={t("agentPanel.kpis.pastPending")}
             color="bg-red-100 text-red-600"
           />
         </div>
 
         <div className="grid gap-4 sm:grid-cols-3">
           <div className="rounded-3xl bg-white border border-slate-200 shadow-sm p-6 sm:col-span-2">
-            <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Bienvenido</p>
+            <p className="text-xs uppercase tracking-[0.2em] text-slate-400">{t("agentPanel.welcome")}</p>
             <h2 className="mt-2 text-2xl font-semibold text-slate-900">{agentProfile.nombre}</h2>
             <p className="mt-2 text-sm text-slate-600">
-              Empresa: <span className="font-medium text-slate-900">{agentProfile.tenantNombre || agentProfile.tenantSlug}</span>
+              {t("agentPanel.company")} <span className="font-medium text-slate-900">{agentProfile.tenantNombre || agentProfile.tenantSlug}</span>
             </p>
             <p className="mt-1 text-sm text-slate-600">
-              Estado: <span className="font-medium text-slate-900">{agentProfile.estado}</span>
+              {t("agentPanel.status")} <span className="font-medium text-slate-900">{agentProfile.estado}</span>
             </p>
             <div className="mt-4">
               <Link href="/agente/perfil" className="inline-flex rounded-xl bg-cyan-600 px-4 py-2 text-sm font-medium text-white hover:bg-cyan-700 transition">
-                Ver perfil completo
+                {t("agentPanel.viewProfile")}
               </Link>
             </div>
           </div>
 
           <div className="rounded-3xl bg-white border border-slate-200 shadow-sm p-6">
-            <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Resumen</p>
+            <p className="text-xs uppercase tracking-[0.2em] text-slate-400">{t("agentPanel.summary")}</p>
             <div className="mt-3 space-y-2 text-sm text-slate-600">
-              <p><span className="font-medium text-slate-900">Correo electrónico:</span> {agentProfile.email}</p>
-              <p><span className="font-medium text-slate-900">Puesto:</span> {agentProfile.puesto?.nombre || "Sin puesto"}</p>
-              <p><span className="font-medium text-slate-900">Último acceso:</span> {agentProfile.lastSeenAt ? new Date(agentProfile.lastSeenAt).toLocaleString("es-ES") : "Sin registro"}</p>
+              <p><span className="font-medium text-slate-900">{t("agentPanel.email")}</span> {agentProfile.email}</p>
+              <p><span className="font-medium text-slate-900">{t("agentPanel.position")}</span> {agentProfile.puesto?.nombre || t("agentPanel.noPosition")}</p>
+              <p><span className="font-medium text-slate-900">{t("agentPanel.lastAccess")}</span> {agentProfile.lastSeenAt ? new Date(agentProfile.lastSeenAt).toLocaleString("es-ES") : t("agentPanel.noRecord")}</p>
             </div>
           </div>
         </div>
@@ -261,37 +263,37 @@ export default function DashboardPage() {
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-4">
         <KpiCard
           icon={ClipboardList}
-          title="Solicitudes pendientes"
+          title={t("kpis.pendingRequests")}
           value={pendientes}
-          sub="Esperando atención"
+          sub={t("kpis.waitingAttention")}
           color="bg-amber-100 text-amber-600"
         />
         <KpiCard
           icon={AlertTriangle}
-          title="Urgencias activas"
+          title={t("kpis.activeUrgencies")}
           value={urgencias}
-          sub="Requieren atención inmediata"
+          sub={t("kpis.requireImmediate")}
           color="bg-red-100 text-red-600"
         />
         <KpiCard
           icon={CalendarCheck}
-          title="Atendidas"
+          title={t("kpis.attended")}
           value={atendidas}
-          sub="Este período"
+          sub={t("kpis.thisPeriod")}
           color="bg-green-100 text-green-600"
         />
         <KpiCard
           icon={MessageSquare}
-          title="Conversaciones WhatsApp"
+          title={t("kpis.whatsappConversations")}
           value={mensajesHoy}
-          sub="Usuarios ativos"
+          sub={t("kpis.activeUsers")}
           color="bg-indigo-100 text-indigo-600"
         />
         <KpiCard
           icon={TrendingUp}
-          title="Total usuarios"
+          title={t("kpis.totalUsers")}
           value={metrics?.totalUsers ?? "–"}
-          sub="Registrados"
+          sub={t("kpis.registered")}
           color="bg-blue-100 text-blue-600"
         />
       </div>
@@ -300,7 +302,7 @@ export default function DashboardPage() {
         {/* Chart */}
         <Card className="xl:col-span-1">
           <CardHeader>
-            <h2 className="font-semibold text-slate-800">Solicitudes por estado</h2>
+            <h2 className="font-semibold text-slate-800">{t("chart.title")}</h2>
           </CardHeader>
           <CardContent>
             {chartData.length > 0 ? (
@@ -330,7 +332,7 @@ export default function DashboardPage() {
               </ResponsiveContainer>
             ) : (
               <p className="text-slate-400 text-sm py-12 text-center">
-                Sin datos disponibles
+                {t("chart.noData")}
               </p>
             )}
           </CardContent>
@@ -339,18 +341,18 @@ export default function DashboardPage() {
         {/* Recent solicitudes */}
         <Card className="xl:col-span-2">
           <CardHeader className="flex items-center justify-between">
-            <h2 className="font-semibold text-slate-800">Últimas solicitudes</h2>
+            <h2 className="font-semibold text-slate-800">{t("recentRequests.title")}</h2>
             <a
               href="/solicitudes"
               className="text-sm text-blue-600 hover:text-blue-700 font-medium"
             >
-              Ver todas →
+              {t("recentRequests.viewAll")}
             </a>
           </CardHeader>
           {solicitudes.length === 0 ? (
             <CardContent>
               <p className="text-slate-400 text-sm py-8 text-center">
-                No hay solicitudes recientes
+                {t("recentRequests.empty")}
               </p>
             </CardContent>
           ) : (
@@ -359,16 +361,16 @@ export default function DashboardPage() {
                 <thead className="bg-slate-50">
                   <tr>
                     <th className="text-left px-6 py-3 text-xs font-medium text-slate-500 uppercase tracking-wide">
-                      Nombre
+                      {t("recentRequests.cols.name")}
                     </th>
                     <th className="text-left px-4 py-3 text-xs font-medium text-slate-500 uppercase tracking-wide hidden md:table-cell">
-                      Horario
+                      {t("recentRequests.cols.schedule")}
                     </th>
                     <th className="text-left px-4 py-3 text-xs font-medium text-slate-500 uppercase tracking-wide">
-                      Estado
+                      {t("recentRequests.cols.status")}
                     </th>
                     <th className="text-left px-4 py-3 text-xs font-medium text-slate-500 uppercase tracking-wide hidden lg:table-cell">
-                      Fecha
+                      {t("recentRequests.cols.date")}
                     </th>
                   </tr>
                 </thead>

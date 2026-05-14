@@ -23,6 +23,7 @@ import { useAuthStore } from "@/store/auth";
 import { agentesApi, conversationsApi, solicitudesApi, whatsappApi } from "@/lib/api";
 import { useWaSocket } from "@/hooks/useSocket";
 import { getSocket } from "@/lib/socket";
+import { useTranslations } from "@/lib/i18n/client";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -86,12 +87,12 @@ interface Agente {
   estado?: string | null;
 }
 
-const SOLICITUD_STATUS_LABEL: Record<string, string> = {
-  open: "pendiente",
-  in_progress: "urgente",
-  pending_info: "pendiente info",
-  completed: "atendida",
-  rejected: "cancelada",
+const SOLICITUD_STATUS_KEY: Record<string, string> = {
+  open: "open",
+  in_progress: "in_progress",
+  pending_info: "pending_info",
+  completed: "completed",
+  rejected: "rejected",
 };
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -136,6 +137,7 @@ function getDisplayName(thread: Thread): string {
 // ── Socket indicator ──────────────────────────────────────────────────────────
 
 function SocketIndicator({ tenantId }: { tenantId: string | null }) {
+  const t = useTranslations("conversaciones");
   const [connected, setConnected] = useState(false);
 
   useEffect(() => {
@@ -154,31 +156,41 @@ function SocketIndicator({ tenantId }: { tenantId: string | null }) {
 
   return (
     <span
-      title={connected ? "Conectado en tiempo real" : "Sin conexión"}
+      title={connected ? t("socket.connectedTitle") : t("socket.disconnectedTitle")}
       className={cn(
         "flex items-center gap-1 text-xs px-2 py-0.5 rounded-full",
         connected ? "bg-green-50 text-green-600" : "bg-slate-100 text-slate-400"
       )}
     >
       {connected ? <Wifi size={12} /> : <WifiOff size={12} />}
-      {connected ? "En vivo" : "Offline"}
+      {connected ? t("socket.live") : t("socket.offline")}
     </span>
   );
 }
 
 // ── ConvHistoryCard ────────────────────────────────────────────────────────────
 
-const EVENT_LABELS: Record<string, { label: string; color: string }> = {
-  conversation_started:  { label: "Inicio",          color: "text-green-600 bg-green-50 border-green-200" },
-  message_sent:          { label: "Bot envió",        color: "text-blue-600 bg-blue-50 border-blue-200" },
-  user_input:            { label: "Usuario escribió", color: "text-slate-600 bg-slate-50 border-slate-200" },
-  condition_evaluated:   { label: "Condición",        color: "text-violet-600 bg-violet-50 border-violet-200" },
-  api_call:              { label: "API call",         color: "text-orange-600 bg-orange-50 border-orange-200" },
-  task_status_change:    { label: "Estado tarea",     color: "text-yellow-700 bg-yellow-50 border-yellow-200" },
-  conversation_ended:    { label: "Fin",              color: "text-slate-500 bg-slate-100 border-slate-200" },
+const EVENT_COLORS: Record<string, string> = {
+  conversation_started:  "text-green-600 bg-green-50 border-green-200",
+  message_sent:          "text-blue-600 bg-blue-50 border-blue-200",
+  user_input:            "text-slate-600 bg-slate-50 border-slate-200",
+  condition_evaluated:   "text-violet-600 bg-violet-50 border-violet-200",
+  api_call:              "text-orange-600 bg-orange-50 border-orange-200",
+  task_status_change:    "text-yellow-700 bg-yellow-50 border-yellow-200",
+  conversation_ended:    "text-slate-500 bg-slate-100 border-slate-200",
 };
 
 function ConvHistoryCard({ conv }: { conv: ConvRecord }) {
+  const t = useTranslations("conversaciones");
+  const eventLabels: Record<string, string> = {
+    conversation_started: t("eventLabels.conversation_started"),
+    message_sent: t("eventLabels.message_sent"),
+    user_input: t("eventLabels.user_input"),
+    condition_evaluated: t("eventLabels.condition_evaluated"),
+    api_call: t("eventLabels.api_call"),
+    task_status_change: t("eventLabels.task_status_change"),
+    conversation_ended: t("eventLabels.conversation_ended"),
+  };
   const [open, setOpen] = useState(false);
   const { data: eventsData } = useQuery({
     queryKey: ["convEvents", conv.id],
@@ -204,7 +216,7 @@ function ConvHistoryCard({ conv }: { conv: ConvRecord }) {
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-1.5">
             <span className="text-xs font-medium text-slate-800 truncate">
-              {conv.flow?.nombre ?? "Flujo desconocido"}
+              {conv.flow?.nombre ?? t("historialTab.unknownFlow")}
             </span>
             <span className={cn("text-[10px] font-semibold px-1.5 py-0.5 rounded-full shrink-0", statusColor)}>
               {conv.status}
@@ -220,10 +232,11 @@ function ConvHistoryCard({ conv }: { conv: ConvRecord }) {
       {open && (
         <div className="border-t border-slate-100 divide-y divide-slate-50">
           {events.length === 0 && (
-            <p className="text-xs text-slate-400 px-3 py-3 text-center">Sin eventos</p>
+            <p className="text-xs text-slate-400 px-3 py-3 text-center">{t("historialTab.noEvents")}</p>
           )}
           {events.map((ev) => {
-            const meta = EVENT_LABELS[ev.eventType] ?? { label: ev.eventType, color: "text-slate-500 bg-slate-50 border-slate-200" };
+            const color = EVENT_COLORS[ev.eventType] ?? "text-slate-500 bg-slate-50 border-slate-200";
+            const label = eventLabels[ev.eventType] ?? ev.eventType;
             const payload = ev.payload as Record<string, unknown>;
             const detail =
               (payload.content as string) ??
@@ -235,8 +248,8 @@ function ConvHistoryCard({ conv }: { conv: ConvRecord }) {
                 <Zap size={11} className="mt-0.5 text-slate-300 shrink-0" />
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-1.5">
-                    <span className={cn("text-[10px] font-semibold px-1.5 py-px rounded border", meta.color)}>
-                      {meta.label}
+                    <span className={cn("text-[10px] font-semibold px-1.5 py-px rounded border", color)}>
+                      {label}
                     </span>
                     {ev.nodeRef && (
                       <span className="text-[10px] text-slate-400 truncate">{ev.nodeRef}</span>
@@ -261,6 +274,14 @@ function ConvHistoryCard({ conv }: { conv: ConvRecord }) {
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 export default function ConversacionesPage() {
+  const t = useTranslations("conversaciones");
+  const solicitudStatusLabels: Record<string, string> = {
+    open: t("statusLabels.open"),
+    in_progress: t("statusLabels.in_progress"),
+    pending_info: t("statusLabels.pending_info"),
+    completed: t("statusLabels.completed"),
+    rejected: t("statusLabels.rejected"),
+  };
   const { tenantSlug, setTenantSlug, superAdmin } = useAuthStore();
   const qc = useQueryClient();
   const router = useRouter();
@@ -533,14 +554,14 @@ export default function ConversacionesPage() {
         <div className="p-4 border-b border-slate-100 space-y-2">
           <div className="flex items-center justify-between">
             <span className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
-              Conversaciones
+              {t("header")}
             </span>
             <SocketIndicator tenantId={tenantId} />
           </div>
           <div className="relative">
             <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
             <input
-              placeholder="Buscar..."
+              placeholder={t("searchPlaceholder")}
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className="w-full pl-9 pr-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30"
@@ -565,9 +586,9 @@ export default function ConversacionesPage() {
 
           {!threadsLoading && filtered.length === 0 && (
             <div className="flex flex-col items-center justify-center h-40 text-slate-400 text-sm gap-2 px-4 text-center">
-              <p>Todavía no hay conversaciones</p>
+              <p>{t("emptyList")}</p>
               <p className="text-xs text-slate-300">
-                Los mensajes de WhatsApp aparecerán aquí en tiempo real 💙
+                {t("emptyListSub")}
               </p>
             </div>
           )}
@@ -615,8 +636,8 @@ export default function ConversacionesPage() {
       {!activeThread ? (
         <div className="flex-1 flex flex-col items-center justify-center text-slate-400 gap-3">
           <div className="w-16 h-16 rounded-2xl bg-slate-100 flex items-center justify-center text-3xl">💬</div>
-          <p className="font-medium text-slate-600">Seleccioná una conversación</p>
-          <p className="text-sm text-slate-400">Los mensajes de WhatsApp aparecen en tiempo real</p>
+          <p className="font-medium text-slate-600">{t("selectConversation")}</p>
+          <p className="text-sm text-slate-400">{t("selectConversationSub")}</p>
         </div>
       ) : (
         <div className="flex-1 flex flex-col min-w-0">
@@ -647,7 +668,7 @@ export default function ConversacionesPage() {
 
             {!mensajesLoading && messages.length === 0 && (
               <div className="flex items-center justify-center h-32 text-slate-400 text-sm">
-                No hay mensajes aún
+                {t("noMessages")}
               </div>
             )}
 
@@ -678,7 +699,7 @@ export default function ConversacionesPage() {
                   disabled={loadingMore}
                   className="text-xs text-blue-600 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 px-4 py-1.5 rounded-full border border-blue-200 transition disabled:opacity-50"
                 >
-                  {loadingMore ? "Cargando..." : "Cargar mensajes anteriores"}
+                  {loadingMore ? t("loading") : t("loadMore")}
                 </button>
               </div>
             )}
@@ -689,7 +710,7 @@ export default function ConversacionesPage() {
           <div className="px-4 py-3 bg-white border-t border-slate-200">
             {!activeThread.user?.phone ? (
               <p className="text-xs text-slate-400 text-center py-1">
-                Este usuario no tiene número de teléfono registrado
+                {t("noPhone")}
               </p>
             ) : (
               <div className="flex items-center gap-3">
@@ -697,7 +718,7 @@ export default function ConversacionesPage() {
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
                   onKeyDown={(e) => e.key === "Enter" && handleSend()}
-                  placeholder="Escribí un mensaje..."
+                  placeholder={t("inputPlaceholder")}
                   disabled={sendMutation.isPending}
                   className="flex-1 px-4 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30 disabled:opacity-60"
                 />
@@ -738,14 +759,14 @@ export default function ConversacionesPage() {
                 className="flex-1 flex items-center justify-center gap-1.5 text-xs font-medium bg-blue-50 hover:bg-blue-100 text-blue-700 py-1.5 px-2 rounded-lg transition"
               >
                 <UserCheck size={13} />
-                Escalar
+                {t("quickActions.escalate")}
               </button>
               <button
                 onClick={handleMarcarUrgente}
                 className="flex-1 flex items-center justify-center gap-1.5 text-xs font-medium bg-red-50 hover:bg-red-100 text-red-600 py-1.5 px-2 rounded-lg transition"
               >
                 <AlertTriangle size={13} />
-                Urgente
+                {t("quickActions.urgent")}
               </button>
             </div>
 
@@ -753,7 +774,7 @@ export default function ConversacionesPage() {
             {showEscalarForm && (
               <div className="mt-3 p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-2">
                 <div className="flex items-center justify-between">
-                  <p className="text-xs font-semibold text-slate-600">Asignar agente</p>
+                  <p className="text-xs font-semibold text-slate-600">{t("escalationForm.title")}</p>
                   <button onClick={() => setShowEscalarForm(false)} className="text-slate-400 hover:text-slate-600">
                     <X size={13} />
                   </button>
@@ -764,7 +785,7 @@ export default function ConversacionesPage() {
                     onChange={(e) => setEscalarAgenteId(e.target.value ? Number(e.target.value) : "")}
                     className="w-full text-xs bg-white border border-slate-200 rounded-lg px-2 py-1.5 pr-6 appearance-none focus:outline-none focus:ring-2 focus:ring-blue-500/30"
                   >
-                    <option value="">Seleccionar agente...</option>
+                    <option value="">{t("escalationForm.placeholder")}</option>
                     {agentes.map((a) => (
                       <option key={a.id} value={a.id}>{a.nombre}</option>
                     ))}
@@ -776,7 +797,7 @@ export default function ConversacionesPage() {
                   onClick={handleEscalar}
                   className="w-full text-xs font-medium bg-blue-600 hover:bg-blue-700 text-white py-1.5 rounded-lg transition disabled:opacity-50"
                 >
-                  {escalandoId ? "Creando..." : "Crear y asignar"}
+                  {escalandoId ? t("escalationForm.creating") : t("escalationForm.createAndAssign")}
                 </button>
               </div>
             )}
@@ -786,7 +807,7 @@ export default function ConversacionesPage() {
           <div className="flex border-b border-slate-100">
             {(["solicitudes", "agentes", "notas", "historial"] as const).map((tab) => {
               const icons = { solicitudes: ClipboardList, agentes: UserCheck, notas: StickyNote, historial: GitBranch };
-              const labels = { solicitudes: "Solicitudes", agentes: "Agentes", notas: "Notas", historial: "Flujo" };
+              const labels = { solicitudes: t("tabs.solicitudes"), agentes: t("tabs.agentes"), notas: t("tabs.notas"), historial: t("tabs.historial") };
               const Icon = icons[tab];
               return (
                 <button
@@ -821,8 +842,8 @@ export default function ConversacionesPage() {
                 {!solicitudesLoading && solicitudes.length === 0 && (
                   <div className="flex flex-col items-center justify-center py-8 text-slate-400 text-xs text-center gap-2">
                     <ClipboardList size={24} className="text-slate-200" />
-                    <p>Sin solicitudes</p>
-                    <p className="text-slate-300">Usá "Escalar" para crear una</p>
+                    <p>{t("solicitudesTab.empty")}</p>
+                    <p className="text-slate-300">{t("solicitudesTab.emptySub")}</p>
                   </div>
                 )}
                 {solicitudes.map((s) => (
@@ -838,7 +859,7 @@ export default function ConversacionesPage() {
                         s.estado === "rejected" ? "bg-slate-100 text-slate-500" :
                         "bg-yellow-100 text-yellow-700"
                       )}>
-                        {s.estado ? (SOLICITUD_STATUS_LABEL[s.estado] ?? s.estado) : "pendiente"}
+                        {s.estado ? (solicitudStatusLabels[s.estado] ?? s.estado) : solicitudStatusLabels["open"]}
                       </span>
                     </div>
                     {s.agente && (
@@ -853,14 +874,14 @@ export default function ConversacionesPage() {
                         className="text-[10px] text-blue-500 hover:text-blue-700 flex items-center gap-0.5"
                       >
                         <ExternalLink size={9} />
-                        Ver
+                        {t("solicitudesTab.view")}
                       </button>
                       {s.estado !== "completed" && (
                         <button
                           onClick={() => updateEstadoMutation.mutate({ id: s.id, estado: "completed" })}
                           className="text-[10px] text-green-600 hover:underline ml-1"
                         >
-                          Atendida
+                          {t("solicitudesTab.markAttended")}
                         </button>
                       )}
                       {s.estado !== "rejected" && (
@@ -868,7 +889,7 @@ export default function ConversacionesPage() {
                           onClick={() => updateEstadoMutation.mutate({ id: s.id, estado: "rejected" })}
                           className="text-[10px] text-slate-400 hover:underline ml-auto"
                         >
-                          Cancelar
+                          {t("solicitudesTab.cancel")}
                         </button>
                       )}
                     </div>
@@ -883,7 +904,7 @@ export default function ConversacionesPage() {
                 {agentes.length === 0 && (
                   <div className="flex flex-col items-center justify-center py-8 text-slate-400 text-xs text-center gap-2">
                     <UserCheck size={24} className="text-slate-200" />
-                    <p>No hay agentes</p>
+                    <p>{t("agentesTab.empty")}</p>
                   </div>
                 )}
                 {agentes.map((a) => (
@@ -918,7 +939,7 @@ export default function ConversacionesPage() {
                 <textarea
                   value={nota}
                   onChange={(e) => setNota(e.target.value)}
-                  placeholder="Agregar nota interna sobre este contacto..."
+                  placeholder={t("notasTab.placeholder")}
                   rows={4}
                   className="w-full text-xs bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 resize-none focus:outline-none focus:ring-2 focus:ring-blue-500/30"
                 />
@@ -927,7 +948,7 @@ export default function ConversacionesPage() {
                   disabled={!nota.trim()}
                   className="w-full text-xs font-medium bg-slate-800 hover:bg-slate-900 text-white py-1.5 rounded-lg transition disabled:opacity-40"
                 >
-                  Guardar nota
+                  {t("notasTab.save")}
                 </button>
               </div>
             )}
@@ -938,8 +959,8 @@ export default function ConversacionesPage() {
                 {convHistory.length === 0 && (
                   <div className="flex flex-col items-center justify-center py-8 text-slate-400 text-xs text-center gap-2">
                     <GitBranch size={24} className="text-slate-200" />
-                    <p>Sin conversaciones registradas</p>
-                    <p className="text-slate-300">Las conversaciones del flujo aparecen aquí</p>
+                    <p>{t("historialTab.empty")}</p>
+                    <p className="text-slate-300">{t("historialTab.emptySub")}</p>
                   </div>
                 )}
                 {convHistory.map((conv) => (

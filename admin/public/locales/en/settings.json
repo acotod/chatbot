@@ -1,13 +1,147 @@
 {
   "pageTitle": "Settings",
+  "subtitle": "Manage all aspects of your tenant",
   "tabs": {
-    "general": "General",
-    "security": "Security",
-    "branding": "Branding",
-    "integrations": "Integrations"
+    "comunicacion": "Communication",
+    "emailIa": "Email & AI",
+    "organizacion": "Organization",
+    "modulos": "Modules",
+    "branding": "Branding"
+  },
+  "refresh": "Refresh",
+  "refreshing": "Updating...",
+  "horarios": {
+    "title": "Business hours",
+    "description": "Define the time range when the chatbot accepts new requests",
+    "openTime": "Opening time",
+    "closeTime": "Closing time",
+    "workDays": "Business days",
+    "days": {
+      "sun": "Sun",
+      "mon": "Mon",
+      "tue": "Tue",
+      "wed": "Wed",
+      "thu": "Thu",
+      "fri": "Fri",
+      "sat": "Sat"
+    }
+  },
+  "bienvenida": {
+    "title": "Welcome message",
+    "description": "First message the user receives when starting the flow",
+    "label": "Message text",
+    "tip": "Tip: use a close and empathetic tone 💙"
+  },
+  "whatsapp": {
+    "title": "WhatsApp Business",
+    "description": "Credentials to send and receive messages from Meta Cloud API",
+    "phoneLabel": "Phone Number ID",
+    "tokenLabel": "Access Token",
+    "tokenConfigured": "•••••••• (already configured)",
+    "permissionNote": "System user token with whatsapp_business_messaging permission. Get it in Meta Business Manager → System setup.",
+    "saveButton": "Save credentials",
+    "saving": "Saving...",
+    "saved": "Saved 💙"
   },
   "saveChanges": "Save changes",
-  "saved": "Changes saved",
-  "uploadLogo": "Upload logo",
-  "removeLogo": "Remove logo"
+  "saving": "Saving...",
+  "saved": "Saved 💙",
+  "changesInstant": "Changes apply immediately",
+  "email": {
+    "title": "Transactional email",
+    "description": "Configure the tenant SMTP for password reset and conversation flow sends",
+    "smtpUrl": "SMTP URL",
+    "smtpHost": "SMTP Host",
+    "smtpPort": "SMTP Port",
+    "smtpUser": "SMTP User",
+    "smtpPass": "SMTP Password",
+    "smtpPassConfigured": "•••••••• (already configured)",
+    "smtpSavedKey": "SMTP key saved",
+    "smtpSecure": "Use secure SMTP (TLS/SSL)",
+    "emailFrom": "Sender email",
+    "adminBaseUrl": "Admin base URL",
+    "smtpUrlNote": "If you fill this URL, it takes priority over host, port and separate credentials.",
+    "adminUrlNote": "This URL is used to build the agent recovery link. If the tenant does not define one, the backend uses environment variables.",
+    "saveButton": "Save email settings",
+    "saving": "Saving...",
+    "saved": "Saved 💙"
+  },
+  "llm": {
+    "title": "Artificial Intelligence (LLM)",
+    "description": "Configure the AI provider the chatbot will use for diagnostics and flow rescue",
+    "provider": "Provider",
+    "model": "Model",
+    "apiKey": "API Key",
+    "apiKeyConfigured": "API key configured ✓  (leave empty to not change)",
+    "apiKeySaved": "API key saved",
+    "baseUrl": "Base URL",
+    "saveButton": "Save LLM settings",
+    "saving": "Saving...",
+    "saved": "Saved 💙"
+  },
+  "puestos": {
+    "title": "Position catalog",
+    "description": "Manage the positions available to assign to agents (CRUD).",
+    "placeholder": "E.g.: Support Level 1",
+    "create": "Create",
+    "creating": "Creating...",
+    "empty": "No positions created.",
+    "save": "Save",
+    "errorCreate": "Could not create position.",
+    "errorUpdate": "Could not update position.",
+    "errorDelete": "Could not delete position.",
+    "errorEmpty": "Enter a name for the position.",
+    "errorNameEmpty": "Name cannot be empty."
+  },
+  "hierarchy": {
+    "title": "Administrator hierarchy",
+    "description": "Assign the manager (direct supervisor) of each admin user to build the escalation tree.",
+    "bossLabel": "Manager:",
+    "noBoss": "— No manager —",
+    "empty": "No administrators in this tenant."
+  },
+  "enterpriseConfig": {
+    "title": "Enterprise requests",
+    "description": "Configure advanced behavior of the enterprise requests module",
+    "advancedSearch": "Advanced search",
+    "slaEnabled": "SLA enabled",
+    "manualEscalation": "Manual escalation",
+    "assignmentRules": "Assignment rules",
+    "slaWarningLabel": "SLA warning threshold (min)",
+    "escalationIntervalLabel": "Auto-escalation interval (min)",
+    "saveButton": "Save settings",
+    "saving": "Saving..."
+  },
+  "modules": {
+    "title": "Modules",
+    "description": "Enable or disable system features",
+    "agenda": {
+      "name": "Agenda",
+      "description": "Weekly event calendar with agent assignment"
+    }
+  },
+  "security": {
+    "title": "Security: Account Lockout Policy",
+    "description": "Configure maximum failed login attempts and temporary lockout duration",
+    "maxAttempts": "Maximum failed attempts",
+    "lockoutMinutes": "Lockout duration (minutes)",
+    "hint": "After {maxAttempts} failed attempts, the account will be locked for {lockoutMinutes} minutes.",
+    "saveButton": "Save policy",
+    "saving": "Saving...",
+    "saved": "Saved 💙"
+  },
+  "branding": {
+    "title": "Branding",
+    "description": "Visual information of your organization",
+    "logoLabel": "Tenant logo",
+    "logoPreviewAlt": "Logo preview",
+    "selectImage": "Select image",
+    "saveLogo": "Save logo",
+    "saving": "Uploading...",
+    "logoSaved": "Logo updated",
+    "logoError": "Error uploading logo. Try again.",
+    "logoHint": "PNG, JPG or SVG. Recommended: 200×60 px.",
+    "orgName": "Organization name",
+    "primaryColor": "Primary color (hex)"
+  }
 }
