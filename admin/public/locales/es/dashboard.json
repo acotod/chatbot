@@ -53,31 +53,4 @@
       "date": "Fecha"
     }
   }
-},
-  "metrics": "Métricas",
-  "recentActivity": "Actividad Reciente",
-  "activeConversations": "Conversaciones Activas",
-  "totalRequests": "Total de Solicitudes",
-  "completedRequests": "Solicitudes Completadas",
-  "averageResponseTime": "Tiempo Promedio de Respuesta",
-  "satisfactionRate": "Tasa de Satisfacción",
-  "kpis": {
-    "conversations": "Conversaciones",
-    "messages": "Mensajes",
-    "users": "Usuarios",
-    "agents": "Agentes",
-    "requests": "Solicitudes"
-  },
-  "charts": {
-    "conversationsTrend": "Tendencia de Conversaciones",
-    "messageVolume": "Volumen de Mensajes",
-    "requestStatus": "Estado de Solicitudes",
-    "agentPerformance": "Rendimiento del Agente"
-  },
-  "period": {
-    "today": "Hoy",
-    "thisWeek": "Esta Semana",
-    "thisMonth": "Este Mes",
-    "custom": "Personalizado"
-  }
 }
