@@ -2,11 +2,15 @@
 
 import { usePathname } from 'next/navigation';
 import { useCurrentLocale } from '@/lib/i18n/client';
-import { locales, localeNames } from '@/lib/i18n/config';
+import { locales } from '@/lib/i18n/config';
 
 export default function LanguageSwitcher() {
   const pathname = usePathname();
   const locale = useCurrentLocale();
+  const localeLabels =
+    locale === 'es'
+      ? { en: 'Ingles', es: 'Espanol' }
+      : { en: 'English', es: 'Spanish' };
 
   const handleChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const newLocaleValue = e.target.value;
@@ -47,7 +51,7 @@ export default function LanguageSwitcher() {
       >
         {locales.map((loc) => (
           <option key={loc} value={loc}>
-            {localeNames[loc]}
+            {localeLabels[loc]}
           </option>
         ))}
       </select>
