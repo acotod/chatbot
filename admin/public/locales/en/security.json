@@ -1,0 +1,64 @@
+{
+  "admin": {
+    "header": {
+      "title": "Security settings",
+      "description": "Manage your connected devices, sessions, and multi-factor authentication"
+    },
+    "tabs": {
+      "devices": "Connected devices",
+      "mfa": "MFA recovery codes"
+    },
+    "deviceTips": {
+      "title": "Security recommendations",
+      "item1": "Review your connected devices frequently",
+      "item2": "Immediately revoke access from any device you do not recognize",
+      "item3": "If you see suspicious activity, change your password and review your account",
+      "item4": "Enable MFA recovery codes for emergency access"
+    },
+    "mfaTips": {
+      "title": "MFA best practices",
+      "item1": "Store recovery codes in a secure password manager",
+      "item2": "Never share your recovery codes with anyone",
+      "item3": "Generate new codes periodically, for example every 3 months",
+      "item4": "Keep recovery codes separate from your authenticator backup"
+    },
+    "footer": {
+      "lastUpdate": "Last update: {date}",
+      "contact": "For security matters, contact your system administrator"
+    }
+  },
+  "agent": {
+    "header": {
+      "title": "Security settings",
+      "description": "Manage your connected devices and active sessions"
+    },
+    "devices": {
+      "title": "Connected devices",
+      "loading": "Loading devices...",
+      "empty": "No connected devices were found",
+      "ip": "IP: {ip}",
+      "lastSeen": "Last seen: {date}"
+    },
+    "actions": {
+      "revoke": "Revoke",
+      "revoking": "Revoking...",
+      "refresh": "Refresh"
+    },
+    "tips": {
+      "title": "Security recommendations",
+      "item1": "Review your connected devices frequently",
+      "item2": "Immediately revoke access from any device you do not recognize",
+      "item3": "Sign out from devices when you are not using them",
+      "item4": "Report any suspicious activity to your administrator"
+    },
+    "errors": {
+      "loadDevices": "Could not load devices",
+      "revokeFailed": "Could not revoke the device session"
+    },
+    "confirmRevoke": "Are you sure you want to revoke access for \"{deviceName}\"? You will need to sign in again on that device.",
+    "successRevoked": "Device session revoked successfully",
+    "footer": {
+      "lastUpdate": "Last update: {date}"
+    }
+  }
+}

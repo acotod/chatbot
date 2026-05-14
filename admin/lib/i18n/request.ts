@@ -9,7 +9,7 @@ export default getRequestConfig(async ({ requestLocale }) => {
     locale = requestedLocale as Locale;
   }
 
-  const [common, dashboard, errors, solicitudes, conversaciones, agenda, contactos, settings, sandbox, webhooks, wabaFlows, variables, tenants, agentes] = await Promise.all([
+  const [common, dashboard, errors, solicitudes, conversaciones, agenda, contactos, settings, sandbox, webhooks, wabaFlows, variables, tenants, agentes, security] = await Promise.all([
     import(`../../public/locales/${locale}/common.json`),
     import(`../../public/locales/${locale}/dashboard.json`),
     import(`../../public/locales/${locale}/errors.json`),
@@ -24,6 +24,7 @@ export default getRequestConfig(async ({ requestLocale }) => {
     import(`../../public/locales/${locale}/variables.json`),
     import(`../../public/locales/${locale}/tenants.json`),
     import(`../../public/locales/${locale}/agentes.json`),
+    import(`../../public/locales/${locale}/security.json`),
   ]);
 
   return {
@@ -43,6 +44,7 @@ export default getRequestConfig(async ({ requestLocale }) => {
       variables: variables.default,
       tenants: tenants.default,
       agentes: agentes.default,
+      security: security.default,
     },
   };
 });

@@ -1,0 +1,64 @@
+{
+  "admin": {
+    "header": {
+      "title": "Ajustes de seguridad",
+      "description": "Administra tus dispositivos conectados, sesiones y la autenticacion multifactor"
+    },
+    "tabs": {
+      "devices": "Dispositivos conectados",
+      "mfa": "Codigos de recuperacion MFA"
+    },
+    "deviceTips": {
+      "title": "Recomendaciones de seguridad",
+      "item1": "Revisa con frecuencia tus dispositivos conectados",
+      "item2": "Revoca de inmediato el acceso de cualquier dispositivo que no reconozcas",
+      "item3": "Si ves actividad sospechosa, cambia tu contrasena y revisa tu cuenta",
+      "item4": "Activa los codigos de recuperacion MFA para accesos de emergencia"
+    },
+    "mfaTips": {
+      "title": "Buenas practicas de MFA",
+      "item1": "Guarda los codigos de recuperacion en un gestor de contrasenas seguro",
+      "item2": "Nunca compartas los codigos de recuperacion con nadie",
+      "item3": "Genera codigos nuevos periodicamente, por ejemplo cada 3 meses",
+      "item4": "Manten los codigos separados de la copia de seguridad de tu autenticador"
+    },
+    "footer": {
+      "lastUpdate": "Ultima actualizacion: {date}",
+      "contact": "Para asuntos de seguridad, contacta con tu administrador del sistema"
+    }
+  },
+  "agent": {
+    "header": {
+      "title": "Ajustes de seguridad",
+      "description": "Administra tus dispositivos conectados y sesiones activas"
+    },
+    "devices": {
+      "title": "Dispositivos conectados",
+      "loading": "Cargando dispositivos...",
+      "empty": "No se encontraron dispositivos conectados",
+      "ip": "IP: {ip}",
+      "lastSeen": "Ultima conexion: {date}"
+    },
+    "actions": {
+      "revoke": "Revocar",
+      "revoking": "Revocando...",
+      "refresh": "Actualizar"
+    },
+    "tips": {
+      "title": "Recomendaciones de seguridad",
+      "item1": "Revisa con frecuencia tus dispositivos conectados",
+      "item2": "Revoca de inmediato el acceso de cualquier dispositivo que no reconozcas",
+      "item3": "Cierra sesion en los dispositivos cuando no los estes usando",
+      "item4": "Reporta cualquier actividad sospechosa a tu administrador"
+    },
+    "errors": {
+      "loadDevices": "No se pudieron cargar los dispositivos",
+      "revokeFailed": "No se pudo revocar la sesion del dispositivo"
+    },
+    "confirmRevoke": "Seguro que quieres revocar el acceso de \"{deviceName}\"? Tendras que iniciar sesion otra vez en ese dispositivo.",
+    "successRevoked": "La sesion del dispositivo se revoco correctamente",
+    "footer": {
+      "lastUpdate": "Ultima actualizacion: {date}"
+    }
+  }
+}

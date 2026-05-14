@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useLocale, useTranslations } from 'next-intl';
 import axios from 'axios';
 import { deviceSessionsApi } from '@/lib/api';
 import { Header } from '@/components/layout/Header';
@@ -20,11 +20,12 @@ interface DeviceSession {
  * Phase 2: Enterprise authentication hardening
  */
 export default function AgentSecuritySettingsPage() {
+  const t = useTranslations('security');
+  const locale = useLocale();
   const [devices, setDevices] = useState<DeviceSession[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [revoking, setRevoking] = useState<string | null>(null);
-  const router = useRouter();
 
   React.useEffect(() => {
     fetchDevices();
@@ -41,14 +42,14 @@ export default function AgentSecuritySettingsPage() {
         return;
       }
       console.error('Error fetching devices:', err);
-      setError(err.response?.data?.error || 'No se pudieron cargar los dispositivos');
+      setError(err.response?.data?.error || t('agent.errors.loadDevices'));
     } finally {
       setLoading(false);
     }
   };
 
   const handleRevokeDevice = async (deviceId: string, deviceName: string) => {
-    if (!confirm(`¿Seguro que quieres revocar el acceso de "${deviceName}"? Tendrás que iniciar sesión otra vez en ese dispositivo.`)) {
+    if (!confirm(t('agent.confirmRevoke', { deviceName }))) {
       return;
     }
 
@@ -56,13 +57,13 @@ export default function AgentSecuritySettingsPage() {
       setRevoking(deviceId);
       await deviceSessionsApi.revokeAgentDevice(deviceId);
       setDevices(devices.filter(d => d.id !== deviceId));
-      alert('La sesión del dispositivo se revocó correctamente');
+      alert(t('agent.successRevoked'));
     } catch (err: any) {
       if (axios.isCancel(err) || err?.code === 'ERR_CANCELED') {
         return;
       }
       console.error('Error revoking device:', err);
-      setError(err.response?.data?.error || 'No se pudo revocar la sesión del dispositivo');
+      setError(err.response?.data?.error || t('agent.errors.revokeFailed'));
     } finally {
       setRevoking(null);
     }
@@ -82,15 +83,15 @@ export default function AgentSecuritySettingsPage() {
       <div className="max-w-4xl mx-auto p-8">
         {/* Header */}
         <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900">Ajustes de seguridad</h1>
+          <h1 className="text-3xl font-bold text-gray-900">{t('agent.header.title')}</h1>
           <p className="mt-2 text-gray-600">
-            Administra tus dispositivos conectados y sesiones activas
+            {t('agent.header.description')}
           </p>
         </div>
 
         {/* Connected Devices Section */}
         <div className="bg-white rounded-lg shadow p-6 mb-6">
-          <h2 className="text-xl font-semibold mb-4 text-gray-900">Dispositivos conectados</h2>
+          <h2 className="text-xl font-semibold mb-4 text-gray-900">{t('agent.devices.title')}</h2>
 
           {error && (
             <div className="mb-4 p-3 bg-red-100 border border-red-400 text-red-700 rounded">
@@ -101,10 +102,10 @@ export default function AgentSecuritySettingsPage() {
           {loading ? (
             <div className="text-center py-8">
               <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
-              <p className="mt-2 text-gray-600">Cargando dispositivos...</p>
+              <p className="mt-2 text-gray-600">{t('agent.devices.loading')}</p>
             </div>
           ) : devices.length === 0 ? (
-            <p className="text-gray-500">No se encontraron dispositivos conectados</p>
+            <p className="text-gray-500">{t('agent.devices.empty')}</p>
           ) : (
             <div className="space-y-3">
               {devices.map((device) => (
@@ -112,8 +113,8 @@ export default function AgentSecuritySettingsPage() {
                   <div className="flex-1">
                     <div className="font-semibold text-gray-900">{device.deviceName}</div>
                     <div className="text-sm text-gray-600 mt-1">
-                      <div>IP: {device.ipAddress}</div>
-                      <div>Última conexión: {formatDate(device.lastSeenAt)}</div>
+                      <div>{t('agent.devices.ip', { ip: device.ipAddress })}</div>
+                      <div>{t('agent.devices.lastSeen', { date: formatDate(device.lastSeenAt) })}</div>
                     </div>
                   </div>
                   <button
@@ -125,7 +126,7 @@ export default function AgentSecuritySettingsPage() {
                         : 'bg-red-600 hover:bg-red-700'
                     }`}
                   >
-                    {revoking === device.id ? 'Revocando...' : 'Revocar'}
+                    {revoking === device.id ? t('agent.actions.revoking') : t('agent.actions.revoke')}
                   </button>
                 </div>
               ))}
@@ -136,19 +137,20 @@ export default function AgentSecuritySettingsPage() {
             onClick={fetchDevices}
             className="mt-4 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition"
           >
-            Actualizar
+            {t('agent.actions.refresh')}
           </button>
         </div>
 
         {/* Security Tips */}
         <div className="bg-blue-50 border border-blue-200 rounded-lg p-6">
-          <h3 className="font-semibold text-blue-900 mb-2">💡 Recomendaciones de seguridad</h3>
+          <h3 className="font-semibold text-blue-900 mb-2">{t('agent.tips.title')}</h3>
           <ul className="text-sm text-blue-800 space-y-2 list-disc list-inside">
-            <li>Revisa con frecuencia tus dispositivos conectados</li>
-            <li>Revoca de inmediato el acceso de cualquier dispositivo que no reconozcas</li>
-            <li>Cierra sesión en los dispositivos cuando no los estés usando</li>
-            <li>Reporta cualquier actividad sospechosa a tu administrador</li>
+            <li>{t('agent.tips.item1')}</li>
+            <li>{t('agent.tips.item2')}</li>
+            <li>{t('agent.tips.item3')}</li>
+            <li>{t('agent.tips.item4')}</li>
           </ul>
+          <p className="mt-3 text-sm text-blue-800">{t('agent.footer.lastUpdate', { date: new Date().toLocaleDateString(locale) })}</p>
         </div>
       </div>
     </div>
