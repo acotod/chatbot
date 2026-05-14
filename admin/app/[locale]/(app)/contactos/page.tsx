@@ -43,7 +43,8 @@ import {
   MessageSquare,
 } from "lucide-react";
 import { format } from "date-fns";
-import { es } from "date-fns/locale";
+import { enUS, es } from "date-fns/locale";
+import { useCurrentLocale, useTranslations } from "@/lib/i18n/client";
 import { useAuthStore } from "@/store/auth";
 import { getStoredAccessToken } from "@/store/auth";
 import { getStoredAgentAccessToken } from "@/store/agentAuth";
@@ -94,12 +95,12 @@ function getMessagePreview(contenido: unknown): string {
 
   const parsed = pickText(contenido);
   if (parsed) return parsed;
-  if (!contenido || typeof contenido !== "object") return "[mensaje no textual]";
+  if (!contenido || typeof contenido !== "object") return "";
 
   try {
     return JSON.stringify(contenido as Record<string, unknown>);
   } catch {
-    return "[mensaje no textual]";
+    return "";
   }
 }
 
@@ -125,6 +126,10 @@ function LeadScoreBadge({ score }: { score: number | null }) {
 }
 
 export default function ContactosPage() {
+  const t = useTranslations("contactos");
+  const locale = useCurrentLocale();
+  const dateFnsLocale = locale === "en" ? enUS : es;
+
   const { tenantSlug, superAdmin } = useAuthStore();
   const qc = useQueryClient();
   const hasAccessToken = Boolean(getStoredAccessToken());
@@ -218,8 +223,8 @@ export default function ContactosPage() {
           <div className="flex items-center gap-3">
             <UserCircle2 className="w-7 h-7 text-blue-600" />
             <div>
-              <h1 className="text-2xl font-bold text-gray-900">Contactos</h1>
-              <p className="text-sm text-gray-500">{agentContactos?.total ?? 0} contactos asociados a tus solicitudes</p>
+              <h1 className="text-2xl font-bold text-gray-900">{t("pageTitle")}</h1>
+              <p className="text-sm text-gray-500">{t("agentContacts", { count: agentContactos?.total ?? 0 })}</p>
             </div>
           </div>
         </div>
@@ -228,7 +233,7 @@ export default function ContactosPage() {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
           <Input
             className="pl-10"
-            placeholder="Buscar por nombre, telefono, email, empresa..."
+            placeholder={t("searchPlaceholder")}
             value={search}
             onChange={e => handleSearchChange(e.target.value)}
           />
@@ -238,21 +243,21 @@ export default function ContactosPage() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Contacto</TableHead>
-                <TableHead>Canal</TableHead>
-                <TableHead>Etiquetas</TableHead>
-                <TableHead>Solicitudes</TableHead>
-                <TableHead>Ultimo contacto</TableHead>
+                <TableHead>{t("contact")}</TableHead>
+                <TableHead>{t("channel")}</TableHead>
+                <TableHead>{t("tags")}</TableHead>
+                <TableHead>{t("requests")}</TableHead>
+                <TableHead>{t("lastContact")}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {isAgentContactosLoading ? (
                 <TableRow>
-                  <TableCell colSpan={5} className="text-center py-12 text-gray-400">Cargando...</TableCell>
+                  <TableCell colSpan={5} className="text-center py-12 text-gray-400">{t("loading")}</TableCell>
                 </TableRow>
               ) : rows.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={5} className="text-center py-12 text-gray-400">No hay contactos</TableCell>
+                  <TableCell colSpan={5} className="text-center py-12 text-gray-400">{t("noContacts")}</TableCell>
                 </TableRow>
               ) : rows.map((c) => (
                 <TableRow key={c.id}>
@@ -279,7 +284,7 @@ export default function ContactosPage() {
                   </TableCell>
                   <TableCell className="text-sm text-gray-600">{c._count?.solicitudes ?? 0}</TableCell>
                   <TableCell className="text-xs text-gray-500">
-                    {c.ultimoContacto ? format(new Date(c.ultimoContacto), "dd MMM yyyy", { locale: es }) : "-"}
+                    {c.ultimoContacto ? format(new Date(c.ultimoContacto), "dd MMM yyyy", { locale: dateFnsLocale }) : "-"}
                   </TableCell>
                 </TableRow>
               ))}
@@ -297,13 +302,13 @@ export default function ContactosPage() {
         <div className="flex items-center gap-3">
           <UserCircle2 className="w-7 h-7 text-blue-600" />
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">Contactos</h1>
-            <p className="text-sm text-gray-500">{data?.total ?? 0} contactos totales</p>
+            <h1 className="text-2xl font-bold text-gray-900">{t("pageTitle")}</h1>
+            <p className="text-sm text-gray-500">{t("totalContacts", { count: data?.total ?? 0 })}</p>
           </div>
         </div>
         <Button onClick={openCreate} className="gap-2">
           <Plus className="w-4 h-4" />
-          Nuevo Contacto
+          {t("newContact")}
         </Button>
       </div>
 
@@ -312,7 +317,7 @@ export default function ContactosPage() {
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
         <Input
           className="pl-10"
-          placeholder="Buscar por nombre, teléfono, email, empresa..."
+          placeholder={t("searchPlaceholder")}
           value={search}
           onChange={e => handleSearchChange(e.target.value)}
         />
@@ -323,12 +328,12 @@ export default function ContactosPage() {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Contacto</TableHead>
-              <TableHead>Canal</TableHead>
-              <TableHead>Etiquetas</TableHead>
-              <TableHead>Lead Score</TableHead>
-              <TableHead>Actividad</TableHead>
-              <TableHead>Último contacto</TableHead>
+              <TableHead>{t("contact")}</TableHead>
+              <TableHead>{t("channel")}</TableHead>
+              <TableHead>{t("tags")}</TableHead>
+              <TableHead>{t("leadScore")}</TableHead>
+              <TableHead>{t("activity")}</TableHead>
+              <TableHead>{t("lastContact")}</TableHead>
               <TableHead></TableHead>
             </TableRow>
           </TableHeader>
@@ -336,13 +341,13 @@ export default function ContactosPage() {
             {isLoading ? (
               <TableRow>
                 <TableCell colSpan={7} className="text-center py-12 text-gray-400">
-                  Cargando...
+                  {t("loading")}
                 </TableCell>
               </TableRow>
             ) : contacts.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={7} className="text-center py-12 text-gray-400">
-                  No hay contactos
+                  {t("noContacts")}
                 </TableCell>
               </TableRow>
             ) : contacts.map(c => (
@@ -376,13 +381,13 @@ export default function ContactosPage() {
                 <TableCell><LeadScoreBadge score={c.leadScore} /></TableCell>
                 <TableCell>
                   <div className="flex items-center gap-3 text-xs text-gray-500">
-                    <span title="Solicitudes">{c._count?.solicitudes ?? 0} sol.</span>
+                    <span title={t("requests")}>{c._count?.solicitudes ?? 0} {locale === "en" ? "req." : "sol."}</span>
                     <span title="Deals">{c._count?.deals ?? 0} deals</span>
-                    <span title="Tareas">{c._count?.tasks ?? 0} tareas</span>
+                    <span title={t("tasks")}>{c._count?.tasks ?? 0} {locale === "en" ? "tasks" : "tareas"}</span>
                   </div>
                 </TableCell>
                 <TableCell className="text-xs text-gray-500">
-                  {c.ultimoContacto ? format(new Date(c.ultimoContacto), "dd MMM yyyy", { locale: es }) : "—"}
+                  {c.ultimoContacto ? format(new Date(c.ultimoContacto), "dd MMM yyyy", { locale: dateFnsLocale }) : "—"}
                 </TableCell>
                 <TableCell onClick={e => e.stopPropagation()}>
                   <div className="flex items-center gap-1">
@@ -394,7 +399,7 @@ export default function ContactosPage() {
                       variant="ghost"
                       className="h-7 w-7 text-red-500 hover:text-red-700"
                       onClick={() => {
-                        if (confirm(`¿Eliminar contacto ${c.nombre ?? c.phone}?`)) deleteMutation.mutate(c.id);
+                        if (confirm(t("deleteConfirm", { name: c.nombre ?? c.phone ?? "-" }))) deleteMutation.mutate(c.id);
                       }}
                     >
                       <Trash2 className="w-3.5 h-3.5" />
@@ -413,35 +418,35 @@ export default function ContactosPage() {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <UserCircle2 className="w-5 h-5 text-blue-600" />
-              Vista 360 — {detail?.nombre ?? detail?.phone ?? "Contacto"}
+              {t("contact360")} — {detail?.nombre ?? detail?.phone ?? t("contact")}
             </DialogTitle>
           </DialogHeader>
           {loadingDetail ? (
-            <p className="text-center py-8 text-gray-400">Cargando...</p>
+            <p className="text-center py-8 text-gray-400">{t("loading")}</p>
           ) : detail ? (
             <Tabs defaultValue="perfil">
               <TabsList className="w-full">
-                <TabsTrigger value="perfil">Perfil</TabsTrigger>
-                <TabsTrigger value="solicitudes">Solicitudes ({detail.solicitudes?.length ?? 0})</TabsTrigger>
+                <TabsTrigger value="perfil">{t("profile")}</TabsTrigger>
+                <TabsTrigger value="solicitudes">{t("requests")} ({detail.solicitudes?.length ?? 0})</TabsTrigger>
                 <TabsTrigger value="deals">Deals ({detail.deals?.length ?? 0})</TabsTrigger>
-                <TabsTrigger value="tareas">Tareas ({detail.tasks?.length ?? 0})</TabsTrigger>
-                <TabsTrigger value="mensajes">Mensajes</TabsTrigger>
+                <TabsTrigger value="tareas">{t("tasks")} ({detail.tasks?.length ?? 0})</TabsTrigger>
+                <TabsTrigger value="mensajes">{t("recentMessages")}</TabsTrigger>
               </TabsList>
 
               <TabsContent value="perfil" className="space-y-4 mt-4">
                 <div className="grid grid-cols-2 gap-4">
-                  <Field label="Nombre" value={detail.nombre} />
-                  <Field label="Teléfono" value={detail.phone} />
-                  <Field label="Email" value={detail.email} />
-                  <Field label="Empresa" value={detail.empresa} />
-                  <Field label="Cargo" value={detail.cargo} />
-                  <Field label="Canal origen" value={detail.canalOrigen} />
-                  <Field label="Lead Score" value={detail.leadScore?.toString()} />
-                  <Field label="Último contacto" value={detail.ultimoContacto ? format(new Date(detail.ultimoContacto), "dd/MM/yyyy HH:mm") : null} />
+                  <Field label={t("fields.name")} value={detail.nombre} />
+                  <Field label={t("fields.phone")} value={detail.phone} />
+                  <Field label={t("fields.email")} value={detail.email} />
+                  <Field label={t("fields.company")} value={detail.empresa} />
+                  <Field label={t("fields.role")} value={detail.cargo} />
+                  <Field label={t("fields.sourceChannel")} value={detail.canalOrigen} />
+                  <Field label={t("fields.leadScore")} value={detail.leadScore?.toString()} />
+                  <Field label={t("fields.lastContact")} value={detail.ultimoContacto ? format(new Date(detail.ultimoContacto), "dd/MM/yyyy HH:mm") : null} />
                 </div>
                 {(detail.etiquetas ?? []).length > 0 && (
                   <div>
-                    <p className="text-xs font-medium text-gray-500 mb-1.5">Etiquetas</p>
+                    <p className="text-xs font-medium text-gray-500 mb-1.5">{t("tags")}</p>
                     <div className="flex flex-wrap gap-1">
                       {detail.etiquetas.map(t => <Badge key={t} variant="secondary">{t}</Badge>)}
                     </div>
@@ -449,25 +454,25 @@ export default function ContactosPage() {
                 )}
                 {detail.notas && (
                   <div>
-                    <p className="text-xs font-medium text-gray-500 mb-1">Notas</p>
+                    <p className="text-xs font-medium text-gray-500 mb-1">{t("fields.notes")}</p>
                     <p className="text-sm text-gray-700 bg-gray-50 rounded-lg p-3">{detail.notas}</p>
                   </div>
                 )}
                 <Button size="sm" variant="outline" onClick={() => { setSelectedId(null); openEdit(detail); }}>
-                  <Pencil className="w-3.5 h-3.5 mr-1.5" />Editar contacto
+                  <Pencil className="w-3.5 h-3.5 mr-1.5" />{t("editContact")}
                 </Button>
               </TabsContent>
 
               <TabsContent value="solicitudes" className="mt-4">
                 {detail.solicitudes?.length === 0 ? (
-                  <p className="text-center py-8 text-gray-400">Sin solicitudes</p>
+                  <p className="text-center py-8 text-gray-400">{t("withoutRequests")}</p>
                 ) : (
                   <div className="space-y-2">
                     {detail.solicitudes?.map(s => (
                       <div key={s.id} className="flex items-center justify-between p-3 border rounded-lg">
                         <div>
                           <p className="text-sm font-medium">Solicitud #{s.id}</p>
-                          <p className="text-xs text-gray-500">{s.agente?.nombre ?? "Sin agente"}</p>
+                          <p className="text-xs text-gray-500">{s.agente?.nombre ?? t("withoutAgent")}</p>
                         </div>
                         <div className="text-right">
                           <Badge variant="outline">{s.estado}</Badge>
@@ -481,14 +486,14 @@ export default function ContactosPage() {
 
               <TabsContent value="deals" className="mt-4">
                 {detail.deals?.length === 0 ? (
-                  <p className="text-center py-8 text-gray-400">Sin deals</p>
+                  <p className="text-center py-8 text-gray-400">{t("withoutDeals")}</p>
                 ) : (
                   <div className="space-y-2">
                     {detail.deals?.map(d => (
                       <div key={d.id} className="flex items-center justify-between p-3 border rounded-lg">
                         <div>
                           <p className="text-sm font-medium">{d.titulo}</p>
-                          <p className="text-xs text-gray-500">{d.agente?.nombre ?? "Sin agente"}</p>
+                          <p className="text-xs text-gray-500">{d.agente?.nombre ?? t("withoutAgent")}</p>
                         </div>
                         <div className="text-right">
                           <Badge className={`text-xs ${ETAPA_COLORS[d.etapa] ?? ""}`}>{d.etapa}</Badge>
@@ -502,18 +507,18 @@ export default function ContactosPage() {
 
               <TabsContent value="tareas" className="mt-4">
                 {detail.tasks?.length === 0 ? (
-                  <p className="text-center py-8 text-gray-400">Sin tareas</p>
+                  <p className="text-center py-8 text-gray-400">{t("withoutTasks")}</p>
                 ) : (
                   <div className="space-y-2">
-                    {detail.tasks?.map(t => (
-                      <div key={t.id} className="flex items-center justify-between p-3 border rounded-lg">
+                    {detail.tasks?.map(taskItem => (
+                      <div key={taskItem.id} className="flex items-center justify-between p-3 border rounded-lg">
                         <div>
-                          <p className="text-sm font-medium">{t.titulo}</p>
-                          <p className="text-xs text-gray-500 capitalize">{t.tipo}</p>
+                          <p className="text-sm font-medium">{taskItem.titulo}</p>
+                          <p className="text-xs text-gray-500 capitalize">{taskItem.tipo}</p>
                         </div>
                         <div className="text-right">
-                          <Badge variant={t.estado === "completada" ? "default" : "outline"}>{t.estado}</Badge>
-                          {t.venceEn && <p className="text-xs text-gray-400 mt-1">Vence: {format(new Date(t.venceEn), "dd/MM/yyyy")}</p>}
+                          <Badge variant={taskItem.estado === "completada" ? "default" : "outline"}>{taskItem.estado}</Badge>
+                          {taskItem.venceEn && <p className="text-xs text-gray-400 mt-1">{t("due")}: {format(new Date(taskItem.venceEn), "dd/MM/yyyy")}</p>}
                         </div>
                       </div>
                     ))}
@@ -523,12 +528,12 @@ export default function ContactosPage() {
 
               <TabsContent value="mensajes" className="mt-4">
                 {detail.mensajes?.length === 0 ? (
-                  <p className="text-center py-8 text-gray-400">Sin mensajes recientes</p>
+                  <p className="text-center py-8 text-gray-400">{t("withoutRecentMessages")}</p>
                 ) : (
                   <div className="space-y-2">
                     {detail.mensajes?.map(m => (
                       <div key={m.id} className={`p-3 rounded-lg text-sm ${m.tipo === "inbound" ? "bg-gray-50" : "bg-blue-50 ml-8"}`}>
-                        <p className="text-gray-700 break-words whitespace-pre-wrap">{getMessagePreview(m.contenido)}</p>
+                        <p className="text-gray-700 break-words whitespace-pre-wrap">{getMessagePreview(m.contenido) || t("withoutTextMessage")}</p>
                         <p className="text-xs text-gray-400 mt-1">{format(new Date(m.createdAt), "dd/MM HH:mm")}</p>
                       </div>
                     ))}
@@ -544,22 +549,22 @@ export default function ContactosPage() {
       <Dialog open={showForm} onOpenChange={o => { setShowForm(o); if (!o) setEditing(null); }}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
-            <DialogTitle>{editing?.id ? "Editar Contacto" : "Nuevo Contacto"}</DialogTitle>
+            <DialogTitle>{editing?.id ? t("editContactTitle") : t("newContactTitle")}</DialogTitle>
           </DialogHeader>
           <form onSubmit={handleSave} className="space-y-4 mt-2">
             <div className="grid grid-cols-2 gap-3">
-              <FormField name="nombre" label="Nombre" defaultValue={editing?.nombre ?? ""} />
-              <FormField name="phone" label="Teléfono" defaultValue={editing?.phone ?? ""} />
-              <FormField name="email" label="Email" type="email" defaultValue={editing?.email ?? ""} />
-              <FormField name="empresa" label="Empresa" defaultValue={editing?.empresa ?? ""} />
-              <FormField name="cargo" label="Cargo" defaultValue={editing?.cargo ?? ""} />
+              <FormField name="nombre" label={t("fields.name")} defaultValue={editing?.nombre ?? ""} />
+              <FormField name="phone" label={t("fields.phone")} defaultValue={editing?.phone ?? ""} />
+              <FormField name="email" label={t("fields.email")} type="email" defaultValue={editing?.email ?? ""} />
+              <FormField name="empresa" label={t("fields.company")} defaultValue={editing?.empresa ?? ""} />
+              <FormField name="cargo" label={t("fields.role")} defaultValue={editing?.cargo ?? ""} />
               <FormField name="leadScore" label="Lead Score (0-100)" type="number" defaultValue={editing?.leadScore?.toString() ?? "0"} />
             </div>
-            <FormField name="etiquetas" label="Etiquetas (separadas por coma)" defaultValue={(editing?.etiquetas ?? []).join(", ")} />
+            <FormField name="etiquetas" label={t("labelsHint")} defaultValue={(editing?.etiquetas ?? []).join(", ")} />
             <div className="flex justify-end gap-2 pt-2">
-              <Button type="button" variant="outline" onClick={() => { setShowForm(false); setEditing(null); }}>Cancelar</Button>
+              <Button type="button" variant="outline" onClick={() => { setShowForm(false); setEditing(null); }}>{t("cancel")}</Button>
               <Button type="submit" disabled={saveMutation.isPending}>
-                {saveMutation.isPending ? "Guardando..." : "Guardar"}
+                {saveMutation.isPending ? t("saving") : t("save")}
               </Button>
             </div>
           </form>

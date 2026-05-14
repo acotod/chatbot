@@ -1,5 +1,42 @@
 {
   "pageTitle": "Agenda",
+  "myAgendaTitle": "Mi agenda",
+  "myAgendaSubtitle": "Eventos asignados al agente (próximos 30 días).",
+  "eventsCount": "{count} eventos",
+  "loadingAgenda": "Cargando agenda...",
+  "noAssignedEvents": "No hay eventos asignados.",
+  "selectTenant": "Selecciona un tenant para abrir Agenda.",
+  "moduleInactive": "El módulo está inactivo para este tenant.",
+  "comingSoon": "Próximamente disponible",
+  "agendaPanel": "Panel Agenda",
+  "darkMode": "Oscuro",
+  "lightMode": "Claro",
+  "granularity": "Granularidad",
+  "filterByOwner": "Filtro por responsable",
+  "filterByType": "Filtro por tipo",
+  "filterByStatus": "Filtro por estado",
+  "all": "Todos",
+  "weeklyAgenda": "Agenda semanal",
+  "weeklyAgendaSubtitle": "Arrastra, redimensiona y sincroniza eventos en tiempo real.",
+  "loadingEvents": "Cargando eventos...",
+  "table": {
+    "event": "Evento",
+    "type": "Tipo",
+    "status": "Estado",
+    "start": "Inicio",
+    "end": "Fin"
+  },
+  "types": {
+    "reunion": "Reunión",
+    "tarea": "Tarea",
+    "automatizacion": "Automatización",
+    "webhook": "Webhook"
+  },
+  "statuses": {
+    "pendiente": "Pendiente",
+    "en_progreso": "En progreso",
+    "completado": "Completado"
+  },
   "newEvent": "Nuevo evento",
   "editEvent": "Editar evento",
   "deleteEvent": "Eliminar evento",
@@ -14,6 +51,7 @@
     "canceled": "Cancelado"
   },
   "messages": {
+    "tenantRequired": "Tenant no seleccionado",
     "titleRequired": "El título es obligatorio",
     "invalidRange": "Rango de tiempo inválido"
   }

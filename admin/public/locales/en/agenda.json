@@ -1,5 +1,42 @@
 {
   "pageTitle": "Agenda",
+  "myAgendaTitle": "My agenda",
+  "myAgendaSubtitle": "Events assigned to the agent (next 30 days).",
+  "eventsCount": "{count} events",
+  "loadingAgenda": "Loading agenda...",
+  "noAssignedEvents": "No assigned events.",
+  "selectTenant": "Select a tenant to open Agenda.",
+  "moduleInactive": "This module is disabled for this tenant.",
+  "comingSoon": "Coming soon",
+  "agendaPanel": "Agenda panel",
+  "darkMode": "Dark",
+  "lightMode": "Light",
+  "granularity": "Granularity",
+  "filterByOwner": "Filter by owner",
+  "filterByType": "Filter by type",
+  "filterByStatus": "Filter by status",
+  "all": "All",
+  "weeklyAgenda": "Weekly agenda",
+  "weeklyAgendaSubtitle": "Drag, resize and sync events in real-time.",
+  "loadingEvents": "Loading events...",
+  "table": {
+    "event": "Event",
+    "type": "Type",
+    "status": "Status",
+    "start": "Start",
+    "end": "End"
+  },
+  "types": {
+    "reunion": "Meeting",
+    "tarea": "Task",
+    "automatizacion": "Automation",
+    "webhook": "Webhook"
+  },
+  "statuses": {
+    "pendiente": "Pending",
+    "en_progreso": "In progress",
+    "completado": "Completed"
+  },
   "newEvent": "New event",
   "editEvent": "Edit event",
   "deleteEvent": "Delete event",
@@ -14,6 +51,7 @@
     "canceled": "Canceled"
   },
   "messages": {
+    "tenantRequired": "Tenant not selected",
     "titleRequired": "Title is required",
     "invalidRange": "Invalid time range"
   }

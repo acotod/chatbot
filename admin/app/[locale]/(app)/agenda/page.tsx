@@ -17,6 +17,7 @@ import timeGridPlugin from "@fullcalendar/timegrid";
 import { EventInput } from "@fullcalendar/core";
 import { CalendarDays, Moon, Plus, Sun } from "lucide-react";
 import { useSocket } from "@/hooks/useSocket";
+import { useCurrentLocale, useTranslations } from "@/lib/i18n/client";
 import { useMemo, useRef, useState } from "react";
 
 type AgendaApiAssignment = {
@@ -83,6 +84,10 @@ function toFormEvent(event: AgendaApiEvent): AgendaEventFormData {
 }
 
 export default function AgendaPage() {
+  const t = useTranslations("agenda");
+  const locale = useCurrentLocale();
+  const dateLocale = locale === "en" ? "en-US" : "es-CR";
+
   const queryClient = useQueryClient();
   const calendarRef = useRef<FullCalendar | null>(null);
   const { tenantSlug } = useAuthStore();
@@ -174,7 +179,7 @@ export default function AgendaPage() {
 
   const saveMutation = useMutation({
     mutationFn: async (form: AgendaEventFormData) => {
-      if (!tenantSlug) throw new Error("Tenant no seleccionado");
+      if (!tenantSlug) throw new Error(t("messages.tenantRequired"));
       const payload = {
         titulo: form.titulo,
         descripcion: form.descripcion,
@@ -212,7 +217,7 @@ export default function AgendaPage() {
 
   const deleteMutation = useMutation({
     mutationFn: async (id: number) => {
-      if (!tenantSlug) throw new Error("Tenant no seleccionado");
+      if (!tenantSlug) throw new Error(t("messages.tenantRequired"));
       await agendaApi.remove(tenantSlug, id);
     },
     onSuccess: () => {
@@ -224,7 +229,7 @@ export default function AgendaPage() {
 
   const triggerMutation = useMutation({
     mutationFn: async (id: number) => {
-      if (!tenantSlug) throw new Error("Tenant no seleccionado");
+      if (!tenantSlug) throw new Error(t("messages.tenantRequired"));
       await agendaApi.triggerStart(tenantSlug, id);
     },
   });
@@ -320,37 +325,37 @@ export default function AgendaPage() {
     return (
       <div className="space-y-5">
         <div className="rounded-2xl border border-slate-200 bg-white p-5">
-          <h1 className="text-xl font-semibold text-slate-900">Mi agenda</h1>
-          <p className="mt-1 text-sm text-slate-600">Eventos asignados al agente (proximos 30 dias).</p>
-          <p className="mt-3 text-sm text-slate-500">{agentAgenda?.total ?? 0} eventos</p>
+          <h1 className="text-xl font-semibold text-slate-900">{t("myAgendaTitle")}</h1>
+          <p className="mt-1 text-sm text-slate-600">{t("myAgendaSubtitle")}</p>
+          <p className="mt-3 text-sm text-slate-500">{t("eventsCount", { count: agentAgenda?.total ?? 0 })}</p>
         </div>
 
         <Card>
           <CardContent className="p-0">
             {agentAgendaLoading ? (
-              <div className="py-16 text-center text-slate-400 text-sm">Cargando agenda...</div>
+              <div className="py-16 text-center text-slate-400 text-sm">{t("loadingAgenda")}</div>
             ) : rows.length === 0 ? (
-              <div className="py-16 text-center text-slate-400 text-sm">No hay eventos asignados.</div>
+              <div className="py-16 text-center text-slate-400 text-sm">{t("noAssignedEvents")}</div>
             ) : (
               <div className="overflow-x-auto">
                 <table className="min-w-full text-sm">
                   <thead className="bg-slate-50 text-slate-600">
                     <tr>
-                      <th className="px-4 py-3 text-left font-medium">Evento</th>
-                      <th className="px-4 py-3 text-left font-medium">Tipo</th>
-                      <th className="px-4 py-3 text-left font-medium">Estado</th>
-                      <th className="px-4 py-3 text-left font-medium">Inicio</th>
-                      <th className="px-4 py-3 text-left font-medium">Fin</th>
+                      <th className="px-4 py-3 text-left font-medium">{t("table.event")}</th>
+                      <th className="px-4 py-3 text-left font-medium">{t("table.type")}</th>
+                      <th className="px-4 py-3 text-left font-medium">{t("table.status")}</th>
+                      <th className="px-4 py-3 text-left font-medium">{t("table.start")}</th>
+                      <th className="px-4 py-3 text-left font-medium">{t("table.end")}</th>
                     </tr>
                   </thead>
                   <tbody>
                     {rows.map((event) => (
                       <tr key={event.id} className="border-t border-slate-100">
                         <td className="px-4 py-3 text-slate-800">{event.titulo}</td>
-                        <td className="px-4 py-3 text-slate-600">{event.tipo}</td>
-                        <td className="px-4 py-3 text-slate-600">{event.estado}</td>
-                        <td className="px-4 py-3 text-slate-600">{new Date(event.startAt).toLocaleString("es-CR")}</td>
-                        <td className="px-4 py-3 text-slate-600">{new Date(event.endAt).toLocaleString("es-CR")}</td>
+                        <td className="px-4 py-3 text-slate-600">{t(`types.${event.tipo}`)}</td>
+                        <td className="px-4 py-3 text-slate-600">{t(`statuses.${event.estado}`)}</td>
+                        <td className="px-4 py-3 text-slate-600">{new Date(event.startAt).toLocaleString(dateLocale)}</td>
+                        <td className="px-4 py-3 text-slate-600">{new Date(event.endAt).toLocaleString(dateLocale)}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -367,7 +372,7 @@ export default function AgendaPage() {
     return (
       <Card>
         <CardContent className="py-16 text-center text-slate-500">
-          Selecciona un tenant para abrir Agenda.
+          {t("selectTenant")}
         </CardContent>
       </Card>
     );
@@ -381,13 +386,13 @@ export default function AgendaPage() {
             <CalendarDays className="w-7 h-7 text-blue-600" />
           </div>
           <div>
-            <h2 className="text-xl font-semibold text-slate-900">Agenda</h2>
+            <h2 className="text-xl font-semibold text-slate-900">{t("pageTitle")}</h2>
             <p className="text-slate-500 text-sm mt-1 max-w-xs">
-              El modulo esta inactivo para este tenant.
+              {t("moduleInactive")}
             </p>
           </div>
           <span className="inline-flex items-center px-3 py-1 rounded-full bg-amber-100 text-amber-700 text-xs font-medium">
-            Proximamente disponible
+            {t("comingSoon")}
           </span>
         </CardContent>
       </Card>
@@ -399,14 +404,14 @@ export default function AgendaPage() {
       <div className="grid grid-cols-1 xl:grid-cols-[320px_minmax(0,1fr)] gap-5">
         <Card className="h-fit">
           <CardHeader className="flex flex-row items-center justify-between">
-            <h2 className="text-sm font-semibold text-slate-900">Panel Agenda</h2>
+            <h2 className="text-sm font-semibold text-slate-900">{t("agendaPanel")}</h2>
             <Button
               variant="ghost"
               size="sm"
               onClick={() => setTheme((prev) => (prev === "light" ? "dark" : "light"))}
             >
               {theme === "light" ? <Moon size={14} /> : <Sun size={14} />}
-              {theme === "light" ? "Oscuro" : "Claro"}
+              {theme === "light" ? t("darkMode") : t("lightMode")}
             </Button>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -424,7 +429,7 @@ export default function AgendaPage() {
             </div>
 
             <div className="space-y-2">
-              <label className="text-xs font-medium text-slate-600">Granularidad</label>
+              <label className="text-xs font-medium text-slate-600">{t("granularity")}</label>
               <select
                 className="h-10 w-full rounded-xl border border-slate-200 px-3 text-sm"
                 value={slotMinutes}
@@ -437,13 +442,13 @@ export default function AgendaPage() {
             </div>
 
             <div className="space-y-2">
-              <label className="text-xs font-medium text-slate-600">Filtro por responsable</label>
+              <label className="text-xs font-medium text-slate-600">{t("filterByOwner")}</label>
               <select
                 className="h-10 w-full rounded-xl border border-slate-200 px-3 text-sm"
                 value={filterAgenteId}
                 onChange={(e) => setFilterAgenteId(e.target.value)}
               >
-                <option value="">Todos</option>
+                <option value="">{t("all")}</option>
                 {agentes.map((agente: { id: number; nombre: string }) => (
                   <option key={agente.id} value={agente.id}>{agente.nombre}</option>
                 ))}
@@ -451,31 +456,31 @@ export default function AgendaPage() {
             </div>
 
             <div className="space-y-2">
-              <label className="text-xs font-medium text-slate-600">Filtro por tipo</label>
+              <label className="text-xs font-medium text-slate-600">{t("filterByType")}</label>
               <select
                 className="h-10 w-full rounded-xl border border-slate-200 px-3 text-sm"
                 value={filterTipo}
                 onChange={(e) => setFilterTipo(e.target.value)}
               >
-                <option value="">Todos</option>
-                <option value="reunion">Reunion</option>
-                <option value="tarea">Tarea</option>
-                <option value="automatizacion">Automatizacion</option>
-                <option value="webhook">Webhook</option>
+                <option value="">{t("all")}</option>
+                <option value="reunion">{t("types.reunion")}</option>
+                <option value="tarea">{t("types.tarea")}</option>
+                <option value="automatizacion">{t("types.automatizacion")}</option>
+                <option value="webhook">{t("types.webhook")}</option>
               </select>
             </div>
 
             <div className="space-y-2">
-              <label className="text-xs font-medium text-slate-600">Filtro por estado</label>
+              <label className="text-xs font-medium text-slate-600">{t("filterByStatus")}</label>
               <select
                 className="h-10 w-full rounded-xl border border-slate-200 px-3 text-sm"
                 value={filterEstado}
                 onChange={(e) => setFilterEstado(e.target.value)}
               >
-                <option value="">Todos</option>
-                <option value="pendiente">Pendiente</option>
-                <option value="en_progreso">En progreso</option>
-                <option value="completado">Completado</option>
+                <option value="">{t("all")}</option>
+                <option value="pendiente">{t("statuses.pendiente")}</option>
+                <option value="en_progreso">{t("statuses.en_progreso")}</option>
+                <option value="completado">{t("statuses.completado")}</option>
               </select>
             </div>
           </CardContent>
@@ -484,12 +489,12 @@ export default function AgendaPage() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between">
             <div>
-              <h1 className="text-lg font-semibold text-slate-900">Agenda semanal</h1>
-              <p className="text-xs text-slate-500 mt-0.5">Arrastra, redimensiona y sincroniza eventos en tiempo real.</p>
+              <h1 className="text-lg font-semibold text-slate-900">{t("weeklyAgenda")}</h1>
+              <p className="text-xs text-slate-500 mt-0.5">{t("weeklyAgendaSubtitle")}</p>
             </div>
             <Button onClick={() => openCreateFromRange(new Date(), new Date(Date.now() + slotMinutes * 60 * 1000))}>
               <Plus size={14} />
-              Nuevo evento
+              {t("newEvent")}
             </Button>
           </CardHeader>
           <CardContent className="px-2 pb-3">
@@ -521,7 +526,7 @@ export default function AgendaPage() {
                 headerToolbar={{ left: "prev,next today", center: "title", right: "" }}
               />
             </div>
-            {eventsQuery.isLoading && <p className="text-xs text-slate-500 mt-2">Cargando eventos...</p>}
+            {eventsQuery.isLoading && <p className="text-xs text-slate-500 mt-2">{t("loadingEvents")}</p>}
           </CardContent>
         </Card>
       </div>
