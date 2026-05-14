@@ -7,6 +7,7 @@ import { getStoredAccessToken, useAuthStore } from "@/store/auth";
 import { Plus, Trash2, Shield, Users, Pencil } from "lucide-react";
 import { Modal } from "@/components/ui/Modal";
 import axios from "axios";
+import { useTranslations } from "next-intl";
 
 interface Permiso { id: number; clave: string; }
 interface Role { id: number; nombre: string; tenantId: string | null; permisos: { permiso: Permiso }[]; }
@@ -37,6 +38,7 @@ function RolesAccessPage({ initialTab = "roles", lockToUsers = false }: RolesAcc
   const { permissions } = useAuthStore();
   const canManageRoles = me?.superAdmin || (permissions ?? []).includes("MANAGE_ROLES");
   const canManageUsers = me?.superAdmin || canManageRoles || (permissions ?? []).includes("MANAGE_USERS");
+  const t = useTranslations("roles");
   const [tab, setTab] = useState<RolesViewTab>(initialTab);
   const [showRoleModal, setShowRoleModal] = useState(false);
   const [showUserModal, setShowUserModal] = useState(false);
@@ -90,9 +92,9 @@ function RolesAccessPage({ initialTab = "roles", lockToUsers = false }: RolesAcc
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-semibold text-gray-900">{isUsersView ? "Usuarios admin" : "Roles y Accesos"}</h1>
+          <h1 className="text-2xl font-semibold text-gray-900">{isUsersView ? t("titleUsers") : t("title")}</h1>
           <p className="text-sm text-gray-500 mt-1">
-            {isUsersView ? "Gestión de usuarios admin" : "Control granular de permisos (RBAC)"}
+            {isUsersView ? t("subtitleUsers") : t("subtitle")}
           </p>
         </div>
         {(tab === "users" ? canManageUsers : canManageRoles) && (
@@ -101,7 +103,7 @@ function RolesAccessPage({ initialTab = "roles", lockToUsers = false }: RolesAcc
             className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-blue-700 transition"
           >
             <Plus className="w-4 h-4" />
-            {tab === "roles" ? "Nuevo rol" : "Nuevo usuario"}
+            {tab === "roles" ? t("newRole") : t("newUser")}
           </button>
         )}
       </div>
@@ -109,20 +111,20 @@ function RolesAccessPage({ initialTab = "roles", lockToUsers = false }: RolesAcc
       {/* Tabs */}
       {canManageRoles && !lockToUsers && (
         <div className="flex border-b">
-          {(["roles", "users"] as const).map((t) => (
+          {(["roles", "users"] as const).map((tabKey) => (
             <button
-              key={t}
-              onClick={() => setTab(t)}
+              key={tabKey}
+              onClick={() => setTab(tabKey)}
               className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition ${
-                tab === t
+                tab === tabKey
                   ? "border-blue-600 text-blue-600"
                   : "border-transparent text-gray-500 hover:text-gray-700"
               }`}
             >
-              {t === "roles" ? (
-                <span className="flex items-center gap-2"><Shield className="w-4 h-4" />Roles</span>
+              {tabKey === "roles" ? (
+                <span className="flex items-center gap-2"><Shield className="w-4 h-4" />{t("tabRoles")}</span>
               ) : (
-                <span className="flex items-center gap-2"><Users className="w-4 h-4" />Usuarios admin</span>
+                <span className="flex items-center gap-2"><Users className="w-4 h-4" />{t("tabUsers")}</span>
               )}
             </button>
           ))}
@@ -142,21 +144,21 @@ function RolesAccessPage({ initialTab = "roles", lockToUsers = false }: RolesAcc
                     <div>
                       <h3 className="font-semibold text-gray-900">{role.nombre}</h3>
                       <p className="text-xs text-gray-400 mt-1">
-                        {role.tenantId ? `Tenant: ${role.tenantId}` : "Global"}
+                        {role.tenantId ? `Tenant: ${role.tenantId}` : t("global")}
                       </p>
                     </div>
                     <div className="flex items-center gap-1">
                       <button
                         onClick={() => setEditingRole(role)}
                         className="text-gray-400 hover:text-blue-500 transition p-1"
-                        title="Editar rol"
+                        title={t("editRole")}
                       >
                         <Pencil className="w-4 h-4" />
                       </button>
                       <button
                         onClick={() => deleteRole.mutate(role.id)}
                         className="text-gray-400 hover:text-red-500 transition p-1"
-                        title="Eliminar rol"
+                        title={t("deleteRole")}
                       >
                         <Trash2 className="w-4 h-4" />
                       </button>
@@ -183,11 +185,11 @@ function RolesAccessPage({ initialTab = "roles", lockToUsers = false }: RolesAcc
           <table className="w-full text-sm">
             <thead className="bg-gray-50 border-b">
               <tr>
-                <th className="px-4 py-3 text-left font-medium text-gray-600">Nombre</th>
-                <th className="px-4 py-3 text-left font-medium text-gray-600">Correo electrónico</th>
-                <th className="px-4 py-3 text-left font-medium text-gray-600">Empresa</th>
-                <th className="px-4 py-3 text-left font-medium text-gray-600">Roles</th>
-                <th className="px-4 py-3 text-left font-medium text-gray-600">Tipo</th>
+                <th className="px-4 py-3 text-left font-medium text-gray-600">{t("colName")}</th>
+                <th className="px-4 py-3 text-left font-medium text-gray-600">{t("colEmail")}</th>
+                <th className="px-4 py-3 text-left font-medium text-gray-600">{t("colCompany")}</th>
+                <th className="px-4 py-3 text-left font-medium text-gray-600">{t("colRoles")}</th>
+                <th className="px-4 py-3 text-left font-medium text-gray-600">{t("colType")}</th>
                 <th className="px-4 py-3" />
               </tr>
             </thead>
@@ -223,11 +225,11 @@ function RolesAccessPage({ initialTab = "roles", lockToUsers = false }: RolesAcc
                       <td className="px-4 py-3">
                         {u.superAdmin ? (
                           <span className="text-xs bg-purple-100 text-purple-700 px-2 py-1 rounded font-medium">
-                            Superadministrador
+                            {t("superAdmin")}
                           </span>
                         ) : (
                           <span className="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded">
-                            Administrador
+                            {t("admin")}
                           </span>
                         )}
                       </td>
@@ -236,14 +238,14 @@ function RolesAccessPage({ initialTab = "roles", lockToUsers = false }: RolesAcc
                           <button
                             onClick={() => setEditingUser(u)}
                             className="text-gray-400 hover:text-blue-500 transition"
-                            title="Editar usuario"
+                            title={t("editUser")}
                           >
                             <Pencil className="w-4 h-4" />
                           </button>
                           <button
                             onClick={() => deleteUser.mutate(u.id)}
                             className="text-gray-400 hover:text-red-500 transition"
-                            title="Eliminar usuario"
+                            title={t("deleteUser")}
                           >
                             <Trash2 className="w-4 h-4" />
                           </button>
@@ -323,6 +325,7 @@ function CreateRoleModal({
   onClose: () => void;
   onCreated: () => void;
 }) {
+  const t = useTranslations("roles");
   const [nombre, setNombre] = useState("");
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [loading, setLoading] = useState(false);
@@ -346,19 +349,19 @@ function CreateRoleModal({
   }
 
   return (
-    <Modal open={open} onClose={onClose} title="Nuevo rol">
+    <Modal open={open} onClose={onClose} title={t("newRole")}>
       <div className="space-y-4">
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Nombre</label>
+          <label className="block text-sm font-medium text-gray-700 mb-1">{t("fieldName")}</label>
           <input
             value={nombre}
             onChange={(e) => setNombre(e.target.value)}
             className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-            placeholder="Ej: Supervisor"
+            placeholder={t("rolePlaceholder")}
           />
         </div>
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">Permisos</label>
+          <label className="block text-sm font-medium text-gray-700 mb-2">{t("fieldPermissions")}</label>
           <div className="grid grid-cols-2 gap-2 max-h-48 overflow-y-auto">
             {permisos.map((p) => (
               <label key={p.id} className="flex items-center gap-2 text-sm cursor-pointer">
@@ -378,7 +381,7 @@ function CreateRoleModal({
           disabled={loading || !nombre.trim()}
           className="w-full bg-blue-600 text-white py-2 rounded-lg text-sm hover:bg-blue-700 disabled:opacity-50 transition"
         >
-          {loading ? "Creando…" : "Crear rol"}
+          {loading ? t("creating") : t("createRole")}
         </button>
       </div>
     </Modal>
@@ -402,6 +405,7 @@ function CreateUserModal({
   const [selectedRoles, setSelectedRoles] = useState<Set<number>>(new Set());
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const t = useTranslations("roles");
   const tenantNameById = useMemo(() => {
     const map = new Map<string, string>();
     tenants.forEach((t) => map.set(t.id, `${t.nombre} (${t.slug})`));
@@ -430,13 +434,13 @@ function CreateUserModal({
 
   async function handleSubmit() {
     if (!form.nombre || !form.email || !form.password) {
-      setError("Todos los campos son obligatorios");
+      setError(t("errRequired"));
       return;
     }
     setLoading(true); setError("");
     try {
       if (canManageRoles && selectedRoles.size === 0) {
-        setError("Selecciona al menos un rol");
+        setError(t("errRoleRequired"));
         setLoading(false);
         return;
       }
@@ -451,15 +455,15 @@ function CreateUserModal({
       setSelectedRoles(new Set());
     } catch (err) {
       if (axios.isAxiosError(err)) {
-        setError(String(err.response?.data?.error || "No se pudo crear el usuario"));
+        setError(String(err.response?.data?.error || t("errCreateUser")));
       } else {
-        setError("No se pudo crear el usuario");
+        setError(t("errCreateUser"));
       }
     } finally { setLoading(false); }
   }
 
   return (
-    <Modal open={open} onClose={onClose} title="Nuevo usuario admin">
+    <Modal open={open} onClose={onClose} title={t("createUserTitle")}>
       <div className="space-y-4">
         {(["nombre", "email", "password"] as const).map((field) => (
           <div key={field}>
@@ -475,13 +479,13 @@ function CreateUserModal({
           </div>
         ))}
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Tenant</label>
+          <label className="block text-sm font-medium text-gray-700 mb-1">{t("fieldTenant")}</label>
           {isTenantAdmin ? (
             <p className="text-sm text-gray-700 bg-gray-50 border rounded-lg px-3 py-2">
               {tenantId && tenantNameById.get(tenantId)
                 ? tenantNameById.get(tenantId)
                 : callerTenantId}
-              <span className="text-gray-400 text-xs"> (fijo a tu tenant)</span>
+              <span className="text-gray-400 text-xs"> {t("tenantFixed")}</span>
             </p>
           ) : (
             <select
@@ -489,7 +493,7 @@ function CreateUserModal({
               onChange={(e) => setTenantId(e.target.value)}
               className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
-              <option value="">— Sin tenant (global) —</option>
+              <option value="">{t("noTenant")}</option>
               {tenants.map((t) => (
                 <option key={t.id} value={t.id}>{t.nombre} ({t.slug})</option>
               ))}
@@ -499,7 +503,7 @@ function CreateUserModal({
         <div>
           {canManageRoles && (
             <>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Roles</label>
+              <label className="block text-sm font-medium text-gray-700 mb-2">{t("fieldRoles")}</label>
               <div className="space-y-1 max-h-32 overflow-y-auto">
                 {allowedRoles.map((r) => (
                   <label key={r.id} className="flex items-center gap-2 text-sm cursor-pointer">
@@ -513,7 +517,7 @@ function CreateUserModal({
                   </label>
                 ))}
                 {allowedRoles.length === 0 && (
-                  <p className="text-xs text-gray-400">No hay roles disponibles para el tenant seleccionado.</p>
+                  <p className="text-xs text-gray-400">{t("noRolesForTenant")}</p>
                 )}
               </div>
             </>
@@ -525,7 +529,7 @@ function CreateUserModal({
           disabled={loading}
           className="w-full bg-blue-600 text-white py-2 rounded-lg text-sm hover:bg-blue-700 disabled:opacity-50 transition"
         >
-          {loading ? "Creando…" : "Crear usuario"}
+          {loading ? t("creating") : t("createUser")}
         </button>
       </div>
     </Modal>
@@ -549,6 +553,7 @@ function EditRoleModal({
   );
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const t = useTranslations("roles");
 
   function toggle(id: number) {
     setSelected((prev) => {
@@ -565,15 +570,15 @@ function EditRoleModal({
       await rbacApi.updateRole(role.id, { nombre: nombre.trim(), permisoIds: [...selected] });
       onSaved();
     } catch {
-      setError("No se pudo actualizar el rol");
+      setError(t("errUpdateRole"));
     } finally { setLoading(false); }
   }
 
   return (
-    <Modal open={open} onClose={onClose} title="Editar rol">
+    <Modal open={open} onClose={onClose} title={t("editRole")}>
       <div className="space-y-4">
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Nombre</label>
+          <label className="block text-sm font-medium text-gray-700 mb-1">{t("fieldName")}</label>
           <input
             value={nombre}
             onChange={(e) => setNombre(e.target.value)}
@@ -602,7 +607,7 @@ function EditRoleModal({
           disabled={loading || !nombre.trim()}
           className="w-full bg-blue-600 text-white py-2 rounded-lg text-sm hover:bg-blue-700 disabled:opacity-50 transition"
         >
-          {loading ? "Guardando…" : "Guardar cambios"}
+          {loading ? t("saving") : t("saveChanges")}
         </button>
       </div>
     </Modal>
@@ -631,6 +636,7 @@ function EditUserModal({
   );
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const t = useTranslations("roles");
   const tenantNameById = useMemo(() => {
     const map = new Map<string, string>();
     tenants.forEach((t) => map.set(t.id, `${t.nombre} (${t.slug})`));
@@ -659,13 +665,13 @@ function EditUserModal({
 
   async function handleSubmit() {
     if (!form.nombre || !form.email) {
-      setError("Nombre y email son obligatorios");
+      setError(t("errNameEmail"));
       return;
     }
     setLoading(true); setError("");
     try {
       if (canManageRoles && selectedRoles.size === 0) {
-        setError("Selecciona al menos un rol");
+        setError(t("errRoleRequired"));
         setLoading(false);
         return;
       }
@@ -679,15 +685,15 @@ function EditUserModal({
       await rbacApi.updateUser(user.id, payload);
       onSaved();
     } catch {
-      setError("No se pudo actualizar el usuario");
+      setError(t("errUpdateUser"));
     } finally { setLoading(false); }
   }
 
   return (
-    <Modal open={open} onClose={onClose} title="Editar usuario admin">
+    <Modal open={open} onClose={onClose} title={t("editUserTitle")}>
       <div className="space-y-4">
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Nombre</label>
+          <label className="block text-sm font-medium text-gray-700 mb-1">{t("fieldName")}</label>
           <input
             value={form.nombre}
             onChange={(e) => setForm((p) => ({ ...p, nombre: e.target.value }))}
@@ -695,7 +701,7 @@ function EditUserModal({
           />
         </div>
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+          <label className="block text-sm font-medium text-gray-700 mb-1">{t("fieldEmail")}</label>
           <input
             type="email"
             value={form.email}
@@ -705,7 +711,7 @@ function EditUserModal({
         </div>
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">
-            Nueva contraseña <span className="text-gray-400 font-normal">(dejar vacío para no cambiar)</span>
+            {t("fieldNewPassword")} <span className="text-gray-400 font-normal">{t("passwordHint")}</span>
           </label>
           <input
             type="password"
@@ -716,13 +722,13 @@ function EditUserModal({
           />
         </div>
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Tenant</label>
+          <label className="block text-sm font-medium text-gray-700 mb-1">{t("fieldTenant")}</label>
           {isTenantAdmin ? (
             <p className="text-sm text-gray-700 bg-gray-50 border rounded-lg px-3 py-2">
               {tenantId && tenantNameById.get(tenantId)
                 ? tenantNameById.get(tenantId)
                 : callerTenantId}
-              <span className="text-gray-400 text-xs"> (fijo a tu tenant)</span>
+              <span className="text-gray-400 text-xs"> {t("tenantFixed")}</span>
             </p>
           ) : (
             <>
@@ -731,13 +737,13 @@ function EditUserModal({
                 onChange={(e) => setTenantId(e.target.value)}
                 className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
-                <option value="">— Sin tenant (global) —</option>
+                <option value="">{t("noTenant")}</option>
                 {tenants.map((t) => (
                   <option key={t.id} value={t.id}>{t.nombre} ({t.slug})</option>
                 ))}
               </select>
               {!user.superAdmin && (
-                <p className="text-xs text-gray-400 mt-1">Un usuario no-superAdmin solo puede pertenecer a un tenant.</p>
+                <p className="text-xs text-gray-400 mt-1">{t("nonSuperAdminNote")}</p>
               )}
             </>
           )}
@@ -745,7 +751,7 @@ function EditUserModal({
         <div>
           {canManageRoles ? (
             <>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Roles</label>
+              <label className="block text-sm font-medium text-gray-700 mb-2">{t("fieldRoles")}</label>
               <div className="space-y-1 max-h-32 overflow-y-auto">
                 {allowedRoles.map((r) => (
                   <label key={r.id} className="flex items-center gap-2 text-sm cursor-pointer">
@@ -759,21 +765,21 @@ function EditUserModal({
                   </label>
                 ))}
                 {allowedRoles.length === 0 && (
-                  <p className="text-xs text-gray-400">No hay roles disponibles para el tenant seleccionado.</p>
+                  <p className="text-xs text-gray-400">{t("noRolesForTenant")}</p>
                 )}
               </div>
             </>
           ) : (
             <div>
-              <p className="text-xs text-gray-500 font-medium mb-1">Roles asignados</p>
+              <p className="text-xs text-gray-500 font-medium mb-1">{t("assignedRoles")}</p>
               <div className="space-y-1">
                 {user.roles.length === 0 ? (
-                  <p className="text-xs text-gray-400">Sin roles asignados</p>
+                  <p className="text-xs text-gray-400">{t("noRolesAssigned")}</p>
                 ) : user.roles.map(({ role }) => (
                   <span key={role.id} className="inline-block text-xs bg-blue-50 text-blue-700 px-2 py-1 rounded mr-1">{role.nombre}</span>
                 ))}
               </div>
-              <p className="text-xs text-gray-400 mt-1">No tienes permiso para cambiar roles.</p>
+              <p className="text-xs text-gray-400 mt-1">{t("noRolesPermission")}</p>
             </div>
           )}
         </div>
@@ -783,7 +789,7 @@ function EditUserModal({
           disabled={loading}
           className="w-full bg-blue-600 text-white py-2 rounded-lg text-sm hover:bg-blue-700 disabled:opacity-50 transition"
         >
-          {loading ? "Guardando…" : "Guardar cambios"}
+          {loading ? t("saving") : t("saveChanges")}
         </button>
       </div>
     </Modal>
