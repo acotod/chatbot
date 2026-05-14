@@ -11,6 +11,7 @@ import { MessageCircle } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { getStoredRefreshToken } from "@/store/auth";
+import { useCurrentLocale } from "@/lib/i18n/client";
 
 type AuthResponse = {
   accessToken: string;
@@ -30,7 +31,7 @@ const LOGIN_REDIRECT_ORDER: Array<{ href: string; permission: Permission }> = [
   { href: "/configuracion", permission: "MANAGE_TENANTS" },
   { href: "/auditoria", permission: "VIEW_AUDITORIA" },
   { href: "/roles", permission: "MANAGE_ROLES" },
-    { href: "/roles", permission: "MANAGE_USERS" },
+  { href: "/usuarios-admin", permission: "MANAGE_USERS" },
   { href: "/tenants", permission: "MANAGE_TENANTS" },
   { href: "/integraciones", permission: "MANAGE_TENANTS" },
   { href: "/variables", permission: "EDIT_FLUJOS" },
@@ -46,6 +47,7 @@ function resolvePostLoginRoute(superAdmin: boolean, permissions: Permission[]): 
 }
 
 export default function LoginPage() {
+  const locale = useCurrentLocale();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -54,6 +56,48 @@ export default function LoginPage() {
   const { setToken, setPermissions, setRefreshToken, setTenantSlug } = useAuthStore();
   const router = useRouter();
   const queryClient = useQueryClient();
+
+  const withLocale = (path: string): string => {
+    if (locale === "es") return path;
+    if (path === "/") return `/${locale}`;
+    return `/${locale}${path}`;
+  };
+
+  const copy = locale === "en"
+    ? {
+        genericError: "Could not sign in. Please try again.",
+        invalidCredentials: "Incorrect credentials. Verify your email and password.",
+        noAccess: "Your account has no access to this panel. Contact an administrator.",
+        locked: "Account temporarily locked due to multiple failed attempts. Try again in a few minutes.",
+        tooManyAttempts: "Too many attempts. Wait a few minutes and try again.",
+        unavailable: "Authentication service is temporarily unavailable. Contact support.",
+        logoSubtitle: "Admin panel",
+        title: "Welcome back",
+        subtitle: "Enter your credentials to continue",
+        emailLabel: "Email",
+        emailPlaceholder: "admin@clinic.com",
+        passwordLabel: "Password",
+        loggingIn: "Signing in...",
+        signIn: "Sign in",
+        footer: "Zentra Bot · Admin panel for intelligent conversations",
+      }
+    : {
+        genericError: "No se pudo iniciar sesión. Intenta nuevamente.",
+        invalidCredentials: "Credenciales incorrectas. Verificá tu email y contraseña.",
+        noAccess: "Tu cuenta no tiene acceso al panel. Contactá al administrador.",
+        locked: "Cuenta temporalmente bloqueada por múltiples intentos fallidos. Intenta en unos minutos.",
+        tooManyAttempts: "Demasiados intentos seguidos. Esperá unos minutos antes de volver a intentar.",
+        unavailable: "Servicio de autenticación no disponible temporalmente. Contactá al soporte.",
+        logoSubtitle: "Panel administrativo",
+        title: "Bienvenido de vuelta",
+        subtitle: "Ingresá tus credenciales para continuar",
+        emailLabel: "Correo electrónico",
+        emailPlaceholder: "admin@clinica.com",
+        passwordLabel: "Contraseña",
+        loggingIn: "Iniciando sesión...",
+        signIn: "Iniciar sesión",
+        footer: "Zentra Bot · Panel administrativo de conversaciones inteligentes",
+      };
 
   // Initialize error logger on mount
   useEffect(() => {
@@ -68,27 +112,27 @@ export default function LoginPage() {
 
   function getAuthErrorMessage(error: unknown): string {
     if (!axios.isAxiosError(error)) {
-      return "No se pudo iniciar sesion. Intenta nuevamente.";
+      return copy.genericError;
     }
 
     const status = error.response?.status;
     if (status === 400 || status === 401) {
-      return "Credenciales incorrectas. Verificá tu email y contraseña.";
+      return copy.invalidCredentials;
     }
     if (status === 403) {
-      return "Tu cuenta no tiene acceso al panel. Contactá al administrador.";
+      return copy.noAccess;
     }
     if (status === 423) {
-      return "Cuenta temporalmente bloqueada por múltiples intentos fallidos. Intenta en unos minutos.";
+      return copy.locked;
     }
     if (status === 429) {
-      return "Demasiados intentos seguidos. Esperá unos minutos antes de volver a intentar.";
+      return copy.tooManyAttempts;
     }
     if (status === 503) {
-      return "Servicio de autenticación no disponible temporalmente. Contactá al soporte.";
+      return copy.unavailable;
     }
 
-    return String(error.response?.data?.error || "No se pudo iniciar sesión. Intenta nuevamente.");
+    return String(error.response?.data?.error || copy.genericError);
   }
 
   async function applyAuthSession(response: AuthResponse) {
@@ -127,7 +171,7 @@ export default function LoginPage() {
       setToken(r.data.accessToken, r.data.expiresIn);
       scheduleProactiveRefresh(r.data.expiresIn ?? 900, async () => {});
     });
-    router.push(targetRoute);
+    router.push(withLocale(targetRoute));
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -173,25 +217,25 @@ export default function LoginPage() {
           </div>
           <div>
             <h1 className="text-xl font-bold tracking-tight text-slate-900">Zentra Bot</h1>
-            <p className="text-xs text-slate-500">Panel administrativo</p>
+            <p className="text-xs text-slate-500">{copy.logoSubtitle}</p>
           </div>
         </div>
 
         <h2 className="text-3xl font-semibold tracking-tight text-slate-900 mb-2">
-          Bienvenido de vuelta
+          {copy.title}
         </h2>
         <p className="text-slate-600 text-base mb-7">
-          Ingresá tus credenciales para continuar
+          {copy.subtitle}
         </p>
 
         <form onSubmit={handleSubmit} className="space-y-4.5">
           <div className="flex flex-col gap-1.5">
-            <label className="text-sm font-medium text-slate-700">Correo electrónico</label>
+            <label className="text-sm font-medium text-slate-700">{copy.emailLabel}</label>
             <input
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              placeholder="admin@clinica.com"
+              placeholder={copy.emailPlaceholder}
               required
               className="px-4 py-3 rounded-xl border border-slate-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 transition-all"
             />
@@ -199,7 +243,7 @@ export default function LoginPage() {
 
           <div className="flex flex-col gap-1.5">
             <label className="text-sm font-medium text-slate-700">
-              Contraseña
+              {copy.passwordLabel}
             </label>
             <input
               type="password"
@@ -222,12 +266,12 @@ export default function LoginPage() {
             disabled={loading}
             className="w-full py-3.5 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-xl transition-all shadow-sm shadow-blue-100 disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {loading ? "Iniciando sesión..." : "Iniciar sesión"}
+            {loading ? copy.loggingIn : copy.signIn}
           </button>
         </form>
 
         <p className="mt-7 text-center text-xs text-slate-500">
-          Zentra Bot · Panel administrativo de conversaciones inteligentes
+          {copy.footer}
         </p>
       </div>
 

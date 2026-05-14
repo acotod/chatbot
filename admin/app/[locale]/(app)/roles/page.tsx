@@ -12,6 +12,12 @@ interface Permiso { id: number; clave: string; }
 interface Role { id: number; nombre: string; tenantId: string | null; permisos: { permiso: Permiso }[]; }
 interface Tenant { id: string; slug: string; nombre: string; }
 interface AdminUser { id: number; email: string; nombre: string; superAdmin: boolean; tenantId: string | null; roles: { role: { id: number; nombre: string } }[]; }
+type RolesViewTab = "roles" | "users";
+
+interface RolesAccessPageProps {
+  initialTab?: RolesViewTab;
+  lockToUsers?: boolean;
+}
 
 function getAssignableRoles(roles: Role[], isTenantAdmin: boolean, tenantId: string): Role[] {
   if (isTenantAdmin) {
@@ -23,7 +29,7 @@ function getAssignableRoles(roles: Role[], isTenantAdmin: boolean, tenantId: str
   return roles.filter((r) => r.tenantId === null || r.tenantId === tenantId);
 }
 
-export default function RolesPage() {
+function RolesAccessPage({ initialTab = "roles", lockToUsers = false }: RolesAccessPageProps) {
   const qc = useQueryClient();
   const me = getMe();
   const hasAccessToken = Boolean(getStoredAccessToken());
@@ -31,8 +37,7 @@ export default function RolesPage() {
   const { permissions } = useAuthStore();
   const canManageRoles = me?.superAdmin || (permissions ?? []).includes("MANAGE_ROLES");
   const canManageUsers = me?.superAdmin || canManageRoles || (permissions ?? []).includes("MANAGE_USERS");
-  // Users-only managers start on the users tab and cannot navigate to roles tab
-  const [tab, setTab] = useState<"roles" | "users">(canManageRoles ? "roles" : "users");
+  const [tab, setTab] = useState<RolesViewTab>(initialTab);
   const [showRoleModal, setShowRoleModal] = useState(false);
   const [showUserModal, setShowUserModal] = useState(false);
   const [editingRole, setEditingRole] = useState<Role | null>(null);
@@ -51,8 +56,12 @@ export default function RolesPage() {
   });
 
   useEffect(() => {
-    if (!canManageRoles && tab === "roles") setTab("users");
-  }, [canManageRoles, tab]);
+    if (lockToUsers || !canManageRoles || initialTab === "users") {
+      setTab("users");
+      return;
+    }
+    setTab("roles");
+  }, [canManageRoles, initialTab, lockToUsers]);
 
   const { data: users = [], isLoading: loadingUsers } = useQuery<AdminUser[]>({
     queryKey: ["adminUsers"],
@@ -75,13 +84,15 @@ export default function RolesPage() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["adminUsers"] }),
   });
 
+  const isUsersView = tab === "users" || lockToUsers || !canManageRoles;
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-semibold text-gray-900">{canManageRoles ? "Roles y Accesos" : "Usuarios admin"}</h1>
+          <h1 className="text-2xl font-semibold text-gray-900">{isUsersView ? "Usuarios admin" : "Roles y Accesos"}</h1>
           <p className="text-sm text-gray-500 mt-1">
-            {canManageRoles ? "Control granular de permisos (RBAC)" : "Gestión de usuarios admin"}
+            {isUsersView ? "Gestión de usuarios admin" : "Control granular de permisos (RBAC)"}
           </p>
         </div>
         {(tab === "users" ? canManageUsers : canManageRoles) && (
@@ -96,7 +107,7 @@ export default function RolesPage() {
       </div>
 
       {/* Tabs */}
-      {canManageRoles && (
+      {canManageRoles && !lockToUsers && (
         <div className="flex border-b">
           {(["roles", "users"] as const).map((t) => (
             <button
@@ -294,6 +305,14 @@ export default function RolesPage() {
       )}
     </div>
   );
+}
+
+export default function RolesPage() {
+  return <RolesAccessPage initialTab="roles" />;
+}
+
+export function AdminUsersPage() {
+  return <RolesAccessPage initialTab="users" lockToUsers />;
 }
 
 function CreateRoleModal({

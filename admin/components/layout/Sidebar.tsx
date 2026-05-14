@@ -11,6 +11,7 @@ import {
 } from "@/lib/sidebarAccess";
 import { cn } from "@/lib/utils";
 import { useTranslations } from "@/lib/i18n/client";
+import { useCurrentLocale } from "@/lib/i18n/client";
 import { getStoredAccessToken, getStoredRefreshToken, useAuthStore } from "@/store/auth";
 import { getStoredAgentAccessToken, useAgentAuthStore } from "@/store/agentAuth";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -69,7 +70,8 @@ const NAV_ITEMS: Array<{
   { icon: ShieldCheck, labelKey: "nav.security", href: "/security" },
   { icon: CreditCard, labelKey: "nav.billing", href: "/facturacion", superAdminOnly: true },
   { icon: ScrollText, labelKey: "nav.audit", href: "/auditoria", permission: "VIEW_AUDITORIA" },
-  { icon: ShieldCheck, labelKey: "nav.roles", href: "/roles", permissions: ["MANAGE_ROLES", "MANAGE_USERS"] },
+  { icon: ShieldCheck, labelKey: "nav.roles", href: "/roles", permission: "MANAGE_ROLES" },
+  { icon: Users, labelKey: "nav.adminUsers", href: "/usuarios-admin", permissions: ["MANAGE_USERS", "MANAGE_ROLES"] },
   { icon: Building2, labelKey: "nav.companies", href: "/tenants", permission: "MANAGE_TENANTS" },
   { icon: Plug, labelKey: "nav.integrations", href: "/integraciones", permission: "MANAGE_TENANTS" },
   { icon: Variable, labelKey: "nav.variables", href: "/variables", permission: "EDIT_FLUJOS" },
@@ -100,6 +102,7 @@ function stripLocalePrefix(pathname: string): string {
 
 export function Sidebar() {
   const t = useTranslations("common");
+  const locale = useCurrentLocale();
   const pathname = usePathname();
   const normalizedPathname = stripLocalePrefix(pathname);
   const router = useRouter();
@@ -118,6 +121,12 @@ export function Sidebar() {
   const [tenants, setTenants] = useState<{ slug: string; nombre: string }[]>([]);
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
+
+  const withLocale = (path: string): string => {
+    if (locale === "es") return path;
+    if (path === "/") return `/${locale}`;
+    return `/${locale}${path}`;
+  };
 
   function normalizeTenantName(nombre: unknown, slug: string): string {
     if (typeof nombre === "string" && nombre.trim()) return nombre;
@@ -177,7 +186,7 @@ export function Sidebar() {
       } finally {
         queryClient.clear();
         logoutAgent();
-        router.push("/agente/login");
+        router.push(withLocale("/agente/login"));
       }
       return;
     }
@@ -192,7 +201,7 @@ export function Sidebar() {
     } finally {
       queryClient.clear();
       logout();
-      router.push("/login");
+      router.push(withLocale("/login"));
     }
   }
 
@@ -205,12 +214,7 @@ export function Sidebar() {
   const filteredNavItems = useMemo<(typeof NAV_ITEMS)[number][]>(() => {
     if (isAgentSession) return AGENT_NAV_ITEMS;
 
-    const onlyManageUsers = !superAdmin && permissionSet.has("MANAGE_USERS") && !permissionSet.has("MANAGE_ROLES");
-    const navItems = onlyManageUsers
-      ? NAV_ITEMS.map((item) => (item.href === "/roles" ? { ...item, labelKey: "nav.adminUsers" } : item))
-      : NAV_ITEMS;
-
-    return filterAuthorizedNavItems(navItems, accessContext);
+    return filterAuthorizedNavItems(NAV_ITEMS, accessContext);
   }, [accessContext, isAgentSession, permissionSet, superAdmin]);
 
   const authorizedFallbackHref = useMemo(
@@ -246,7 +250,7 @@ export function Sidebar() {
       });
     }
     if (normalizedPathname !== fallback) {
-      router.replace(fallback);
+      router.replace(withLocale(fallback));
     }
   }, [
     isAgentSession,
@@ -258,6 +262,7 @@ export function Sidebar() {
     router,
     authorizedFallbackHref,
     accessContext,
+    withLocale,
   ]);
 
   const canViewSolicitudes = superAdmin || permissionSet.has("VIEW_SOLICITUDES");
@@ -330,7 +335,7 @@ export function Sidebar() {
           return (
             <Link
               key={item.href}
-              href={item.href}
+              href={withLocale(item.href)}
               className={cn(
                 "flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-medium transition-all",
                 active
