@@ -8,6 +8,7 @@ import {
   useAuthStore,
 } from "@/store/auth";
 import { getTabId } from "./tabManager";
+import { resolveApiBaseFromEnvOrWindow } from "./apiBase";
 
 // Set to true when an intentional logout is in progress so response-interceptor
 // errors that race with session teardown are not surfaced in the console.
@@ -27,56 +28,8 @@ function getRequestTabId(): string {
   return inMemoryRequestTabId;
 }
 
-function isLocalHostname(hostname: string): boolean {
-  return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "0.0.0.0";
-}
-
-function parseHostname(rawUrl: string): string | null {
-  try {
-    return new URL(rawUrl).hostname;
-  } catch {
-    return null;
-  }
-}
-
-function mapAdminOrAgentHostToApi(hostname: string): string | null {
-  const labels = hostname.split(".");
-  const roleIndex = labels.findIndex((label) => label === "admin" || label === "agente");
-  if (roleIndex === -1) return null;
-  labels[roleIndex] = "api";
-  return labels.join(".");
-}
-
 function resolveApiBase(): string {
-  const envBase = process.env.NEXT_PUBLIC_API_URL?.trim();
-  if (envBase) {
-    if (typeof window !== "undefined") {
-      const currentHost = window.location.hostname;
-      const envHost = parseHostname(envBase);
-
-      // Ignore localhost/loopback API URLs when running on a real remote host.
-      if (!(envHost && isLocalHostname(envHost) && !isLocalHostname(currentHost))) {
-        return envBase.replace(/\/+$/, "");
-      }
-    } else {
-      return envBase.replace(/\/+$/, "");
-    }
-  }
-
-  if (typeof window !== "undefined") {
-    const { hostname, origin, port, protocol } = window.location;
-    if (hostname === "localhost" || hostname === "127.0.0.1") {
-      return "http://127.0.0.1:3200";
-    }
-    const mappedApiHost = mapAdminOrAgentHostToApi(hostname);
-    if (mappedApiHost) {
-      return `${protocol}//${mappedApiHost}${port ? `:${port}` : ""}`;
-    }
-    // In production-like environments, prefer same-origin if explicit API URL is missing.
-    return origin;
-  }
-
-  return "http://127.0.0.1:3200";
+  return resolveApiBaseFromEnvOrWindow(process.env.NEXT_PUBLIC_API_URL);
 }
 
 export const API_BASE = resolveApiBase();

@@ -1,6 +1,7 @@
 import axios from "axios";
 import { getStoredAgentAccessToken } from "@/store/agentAuth";
 import { getTabId } from "./tabManager";
+import { resolveApiBaseFromEnvOrWindow } from "./apiBase";
 
 let inMemoryRequestTabId = "";
 
@@ -26,25 +27,8 @@ function getRequestTabId(): string {
   return inMemoryRequestTabId;
 }
 
-function mapAgentOrAdminHostToApi(hostname: string): string | null {
-  const labels = hostname.split(".");
-  const roleIndex = labels.findIndex((label) => label === "admin" || label === "agente");
-  if (roleIndex === -1) return null;
-  labels[roleIndex] = "api";
-  return labels.join(".");
-}
-
 function getAgentApiBase(): string {
-  if (typeof window === "undefined") return "http://127.0.0.1:3200";
-  const { hostname, origin, port, protocol } = window.location;
-  if (hostname === "localhost" || hostname === "127.0.0.1") {
-    return "http://127.0.0.1:3200";
-  }
-  const mappedApiHost = mapAgentOrAdminHostToApi(hostname);
-  if (mappedApiHost) {
-    return `${protocol}//${mappedApiHost}${port ? `:${port}` : ""}`;
-  }
-  return origin;
+  return resolveApiBaseFromEnvOrWindow(process.env.NEXT_PUBLIC_API_URL);
 }
 
 export const agentApiClient = axios.create({

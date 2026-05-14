@@ -1,47 +1,10 @@
 'use client';
 import { io, Socket } from 'socket.io-client';
 import { getStoredAccessToken } from '@/store/auth';
-
-function isLocalHostname(hostname: string): boolean {
-  return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '0.0.0.0';
-}
-
-function parseHostname(rawUrl: string): string | null {
-  try {
-    return new URL(rawUrl).hostname;
-  } catch {
-    return null;
-  }
-}
+import { resolveApiBaseFromEnvOrWindow } from '@/lib/apiBase';
 
 function resolveSocketBase(): string {
-  const envBase = process.env.NEXT_PUBLIC_API_URL?.trim();
-  if (envBase) {
-    if (typeof window !== 'undefined') {
-      const currentHost = window.location.hostname;
-      const envHost = parseHostname(envBase);
-      if (!(envHost && isLocalHostname(envHost) && !isLocalHostname(currentHost))) {
-        return envBase.replace(/\/+$/, '');
-      }
-    } else {
-      return envBase.replace(/\/+$/, '');
-    }
-  }
-
-  if (typeof window !== 'undefined') {
-    const { hostname, origin, protocol } = window.location;
-    if (isLocalHostname(hostname)) {
-      return 'http://127.0.0.1:3200';
-    }
-    // Map admin.* or agente.* subdomains to api.* for socket connection
-    if (hostname.startsWith('admin.') || hostname.startsWith('agente.')) {
-      const suffix = hostname.includes('.') ? hostname.slice(hostname.indexOf('.') + 1) : hostname;
-      return `${protocol}//api.${suffix}`;
-    }
-    return origin;
-  }
-
-  return 'http://127.0.0.1:3200';
+  return resolveApiBaseFromEnvOrWindow(process.env.NEXT_PUBLIC_API_URL);
 }
 
 const API_URL = resolveSocketBase();
@@ -62,7 +25,7 @@ export function getSocket(tenantId: string): Socket {
     socket = io(API_URL, {
       auth: { token },
       query: { tenantId },
-      transports: ['websocket'],
+      transports: ['websocket', 'polling'],
       autoConnect: true,
     });
     activeTenantId = tenantId;
