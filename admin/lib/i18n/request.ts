@@ -1,17 +1,6 @@
 import { getRequestConfig } from 'next-intl/server';
 import { locales, defaultLocale } from './config';
 
-function mergeMessages(
-  ...parts: Array<Record<string, unknown>>
-): Record<string, unknown> {
-  return parts.reduce<Record<string, unknown>>((acc, part) => {
-    Object.entries(part).forEach(([key, value]) => {
-      acc[key] = value;
-    });
-    return acc;
-  }, {});
-}
-
 export default getRequestConfig(async ({ requestLocale }) => {
   let locale = requestLocale;
 
@@ -41,7 +30,6 @@ export default getRequestConfig(async ({ requestLocale }) => {
       agenda: agenda.default,
       contactos: contactos.default,
       settings: settings.default,
-      ...mergeMessages(common.default),
     },
   };
 });
