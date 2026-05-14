@@ -46,13 +46,13 @@ function RolesAccessPage({ initialTab = "roles", lockToUsers = false }: RolesAcc
   const { data: permisos = [] } = useQuery<Permiso[]>({
     queryKey: ["permisos"],
     queryFn: () => rbacApi.listPermisos().then((r) => r.data),
-    enabled: canManageRoles,
+    enabled: hasAccessToken,
   });
 
   const { data: roles = [], isLoading: loadingRoles } = useQuery<Role[]>({
     queryKey: ["roles"],
     queryFn: () => rbacApi.listRoles().then((r) => r.data),
-    enabled: canManageRoles,
+    enabled: hasAccessToken,
   });
 
   useEffect(() => {
