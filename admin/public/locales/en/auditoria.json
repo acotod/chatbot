@@ -1,0 +1,22 @@
+{
+  "header": {
+    "title": "Audit",
+    "description": "Complete record of all system actions"
+  },
+  "filters": {
+    "actionPlaceholder": "Filter by action...",
+    "records": "{total} records"
+  },
+  "table": {
+    "action": "Action",
+    "entity": "Entity",
+    "user": "User",
+    "date": "Date",
+    "systemUser": "system"
+  },
+  "pagination": {
+    "previous": "Previous",
+    "next": "Next",
+    "pageOf": "Page {page} of {totalPages}"
+  }
+}

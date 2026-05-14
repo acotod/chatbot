@@ -1,0 +1,22 @@
+{
+  "header": {
+    "title": "Auditoria",
+    "description": "Registro completo de todas las acciones del sistema"
+  },
+  "filters": {
+    "actionPlaceholder": "Filtrar por accion...",
+    "records": "{total} registros"
+  },
+  "table": {
+    "action": "Accion",
+    "entity": "Entidad",
+    "user": "Usuario",
+    "date": "Fecha",
+    "systemUser": "sistema"
+  },
+  "pagination": {
+    "previous": "Anterior",
+    "next": "Siguiente",
+    "pageOf": "Pagina {page} de {totalPages}"
+  }
+}

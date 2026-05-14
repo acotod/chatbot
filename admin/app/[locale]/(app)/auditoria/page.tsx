@@ -1,8 +1,9 @@
 "use client";
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { auditApi } from "@/lib/api";
 import { formatDate } from "@/lib/utils";
+import { useTranslations } from "next-intl";
 import { ChevronDown, ChevronRight, Search } from "lucide-react";
 
 interface AuditLog {
@@ -17,6 +18,7 @@ interface AuditLog {
 }
 
 export default function AuditoriaPage() {
+  const t = useTranslations("auditoria");
   const [page, setPage] = useState(1);
   const [accion, setAccion] = useState("");
   const [expanded, setExpanded] = useState<Set<number>>(new Set());
@@ -45,9 +47,9 @@ export default function AuditoriaPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold text-gray-900">Auditoría</h1>
+        <h1 className="text-2xl font-semibold text-gray-900">{t("header.title")}</h1>
         <p className="text-sm text-gray-500 mt-1">
-          Registro completo de todas las acciones del sistema
+          {t("header.description")}
         </p>
       </div>
 
@@ -58,11 +60,11 @@ export default function AuditoriaPage() {
           <input
             value={accion}
             onChange={(e) => { setAccion(e.target.value); setPage(1); }}
-            placeholder="Filtrar por acción…"
+            placeholder={t("filters.actionPlaceholder")}
             className="pl-9 pr-4 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 w-64"
           />
         </div>
-        <span className="text-sm text-gray-500">{total} registros</span>
+        <span className="text-sm text-gray-500">{t("filters.records", { total })}</span>
       </div>
 
       {/* Table */}
@@ -71,10 +73,10 @@ export default function AuditoriaPage() {
           <thead className="bg-gray-50 border-b">
             <tr>
               <th className="px-4 py-3 text-left font-medium text-gray-600 w-6" />
-              <th className="px-4 py-3 text-left font-medium text-gray-600">Acción</th>
-              <th className="px-4 py-3 text-left font-medium text-gray-600">Entidad</th>
-              <th className="px-4 py-3 text-left font-medium text-gray-600">Usuario</th>
-              <th className="px-4 py-3 text-left font-medium text-gray-600">Fecha</th>
+              <th className="px-4 py-3 text-left font-medium text-gray-600">{t("table.action")}</th>
+              <th className="px-4 py-3 text-left font-medium text-gray-600">{t("table.entity")}</th>
+              <th className="px-4 py-3 text-left font-medium text-gray-600">{t("table.user")}</th>
+              <th className="px-4 py-3 text-left font-medium text-gray-600">{t("table.date")}</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
@@ -88,10 +90,9 @@ export default function AuditoriaPage() {
                     ))}
                   </tr>
                 ))
-              : logs.map((log) => (
-                  <>
+                  : logs.map((log) => (
+                    <Fragment key={log.id}>
                     <tr
-                      key={log.id}
                       className="hover:bg-gray-50 cursor-pointer"
                       onClick={() => toggleExpanded(log.id)}
                     >
@@ -114,7 +115,7 @@ export default function AuditoriaPage() {
                         )}
                       </td>
                       <td className="px-4 py-3 text-gray-600">
-                        {log.adminUser?.email ?? "sistema"}
+                        {log.adminUser?.email ?? t("table.systemUser")}
                       </td>
                       <td className="px-4 py-3 text-gray-500">
                         {formatDate(log.createdAt)}
@@ -129,7 +130,7 @@ export default function AuditoriaPage() {
                         </td>
                       </tr>
                     )}
-                  </>
+                  </Fragment>
                 ))}
           </tbody>
         </table>
@@ -142,17 +143,17 @@ export default function AuditoriaPage() {
           disabled={page === 1}
           className="px-4 py-2 text-sm border rounded-lg disabled:opacity-40 hover:bg-gray-50"
         >
-          Anterior
+          {t("pagination.previous")}
         </button>
         <span className="text-sm text-gray-500">
-          Página {page} de {totalPages}
+          {t("pagination.pageOf", { page, totalPages })}
         </span>
         <button
           onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
           disabled={page === totalPages}
           className="px-4 py-2 text-sm border rounded-lg disabled:opacity-40 hover:bg-gray-50"
         >
-          Siguiente
+          {t("pagination.next")}
         </button>
       </div>
     </div>
