@@ -299,14 +299,14 @@ export function Sidebar() {
           >
             <span className="flex items-center gap-2 min-w-0">
               <Building2 size={14} className="text-slate-400 shrink-0" />
-              <span className="truncate">{tenantSlug || t("common.selectCompany")}</span>
+              <span className="truncate">{tenantSlug || t("selectCompany")}</span>
             </span>
             <ChevronDown size={14} className={cn("text-slate-400 shrink-0 transition-transform", dropdownOpen && "rotate-180")} />
           </button>
           {dropdownOpen && (
             <div className="mt-1 bg-white border border-slate-200 rounded-lg shadow-md overflow-hidden z-50">
               {tenants.length === 0 && (
-                <p className="px-3 py-2 text-xs text-slate-400">{t("common.noCompanies")}</p>
+                <p className="px-3 py-2 text-xs text-slate-400">{t("noCompanies")}</p>
               )}
               {tenants.map((t) => (
                 <button

@@ -120,8 +120,8 @@ export function Header() {
     ? normalizeTenantName(selectedTenant.nombre, selectedTenant.slug)
     : null;
   const tenantDisplayName = isAgentSession
-    ? (agentProfile?.tenantNombre || agentProfile?.tenantSlug || t("common.roleAgent"))
-    : (selectedTenantName || selectedTenant?.slug || tenantSlug || t("common.roleAdmin"));
+    ? (agentProfile?.tenantNombre || agentProfile?.tenantSlug || t("roleAgent"))
+    : (selectedTenantName || selectedTenant?.slug || tenantSlug || t("roleAdmin"));
   const rawTenantLogo = isAgentSession
     ? (agentProfile?.tenantLogoUrl ?? null)
     : (selectedTenant?.logoUrl ?? null);
@@ -131,8 +131,8 @@ export function Header() {
       : `${API_BASE}${rawTenantLogo}`
     : null;
   const identityEmail = isAgentSession
-    ? (agentProfile?.email ?? t("common.agentSession"))
-    : (sessionEmail ?? t("common.noSession"));
+    ? (agentProfile?.email ?? t("agentSession"))
+    : (sessionEmail ?? t("noSession"));
   const identityInitial = isAgentSession
     ? ((agentProfile?.nombre || "Agente").charAt(0).toUpperCase())
     : tenantDisplayName.charAt(0).toUpperCase();
@@ -170,7 +170,7 @@ export function Header() {
             onChange={(e) => setTenantSlug(e.target.value)}
             className="px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30 min-w-44"
           >
-            {tenants.length === 0 && <option value="">{t("common.noCompanies")}</option>}
+            {tenants.length === 0 && <option value="">{t("noCompanies")}</option>}
             {tenants.map((tenant) => (
               <option key={tenant.id} value={tenant.slug}>
                 {`${normalizeTenantName(tenant.nombre, tenant.slug)} (${tenant.slug})`}
