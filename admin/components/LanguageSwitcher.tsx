@@ -1,11 +1,10 @@
 'use client';
 
-import { useRouter, usePathname } from 'next/navigation';
+import { usePathname } from 'next/navigation';
 import { useCurrentLocale } from '@/lib/i18n/client';
 import { locales, localeNames } from '@/lib/i18n/config';
 
 export default function LanguageSwitcher() {
-  const router = useRouter();
   const pathname = usePathname();
   const locale = useCurrentLocale();
 
@@ -22,11 +21,15 @@ export default function LanguageSwitcher() {
     }
 
     const basePath = pathname.replace(/^\/(en|es)(?=\/|$)/, '') || '/';
-    const newPathname = newLocale === 'es' ? basePath : `/${newLocale}${basePath}`;
+    const normalizedBasePath = basePath === '/' ? '' : basePath;
 
-    // Keep middleware locale detection in sync across navigations.
-    document.cookie = `NEXT_LOCALE=${newLocale}; path=/; max-age=31536000`;
-    router.replace(newPathname);
+    // Force a full navigation with an explicit locale prefix so middleware
+    // sets NEXT_LOCALE server-side reliably on every environment.
+    const search = typeof window !== 'undefined' ? window.location.search : '';
+    const hash = typeof window !== 'undefined' ? window.location.hash : '';
+    const targetPath = `/${newLocale}${normalizedBasePath}${search}${hash}`;
+    window.location.assign(targetPath);
+
     try {
       localStorage.setItem('preferredLocale', newLocale);
     } catch {
