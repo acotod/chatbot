@@ -373,9 +373,6 @@ export default function AgentSolicitudesPage() {
 									</p>
 								</div>
 							</div>
-							<p className="mt-3 text-sm text-slate-600">
-								{isEn ? "This request is being viewed in an agent session; technical detail is limited." : "Esta solicitud se está viendo con sesión de agente; el detalle técnico queda limitado."}
-							</p>
 						</div>
 
 						<Tabs value={detailTab} className="space-y-4">
