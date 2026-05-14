@@ -14,6 +14,7 @@ import { Card } from "@/components/ui/Card";
 import { Modal } from "@/components/ui/Modal";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn, formatDate } from "@/lib/utils";
+import { useCurrentLocale, useTranslations } from "@/lib/i18n/client";
 import { AlertTriangle, Clock3, Filter, MessageCircleMore, Search, UserCheck } from "lucide-react";
 import { useSocket } from "@/hooks/useSocket";
 
@@ -21,44 +22,44 @@ const ESTADOS = ["open", "in_progress", "pending_info", "completed", "rejected"]
 const PRIORIDADES = ["", "baja", "media", "alta"];
 const CATEGORIAS = ["", "tecnico", "facturacion", "comercial", "soporte", "otro"];
 const SLA_FILTERS = ["", "on_track", "warning", "breached", "no_sla"];
-const ESTADO_LABELS: Record<string, string> = {
-  open: "Abierta",
-  in_progress: "En progreso",
-  pending_info: "Pendiente info",
-  completed: "Completada",
-  rejected: "Rechazada",
+const ESTADO_LABEL_KEYS: Record<string, string> = {
+  open: "status.open",
+  in_progress: "status.in_progress",
+  pending_info: "status.pending_info",
+  completed: "status.completed",
+  rejected: "status.rejected",
 };
 
-const SLA_LABELS: Record<string, string> = {
-  on_track: "En SLA",
-  warning: "Por vencer",
-  breached: "Vencido",
-  no_sla: "Sin SLA",
+const SLA_LABEL_KEYS: Record<string, string> = {
+  on_track: "sla.on_track",
+  warning: "sla.warning",
+  breached: "sla.breached",
+  no_sla: "sla.no_sla",
 };
 
-const PRIORIDAD_LABELS: Record<string, string> = {
-  baja: "Baja",
-  media: "Media",
-  alta: "Alta",
+const PRIORIDAD_LABEL_KEYS: Record<string, string> = {
+  baja: "priority.baja",
+  media: "priority.media",
+  alta: "priority.alta",
 };
 
-const CATEGORIA_LABELS: Record<string, string> = {
-  tecnico: "Tecnico",
-  facturacion: "Facturacion",
-  comercial: "Comercial",
-  soporte: "Soporte",
-  otro: "Otro",
+const CATEGORIA_LABEL_KEYS: Record<string, string> = {
+  tecnico: "categoryLabels.tecnico",
+  facturacion: "categoryLabels.facturacion",
+  comercial: "categoryLabels.comercial",
+  soporte: "categoryLabels.soporte",
+  otro: "categoryLabels.otro",
 };
 
-const EVENT_BADGES: Record<string, { label: string; color: string }> = {
-  conversation_started: { label: "Inicio", color: "text-emerald-700 bg-emerald-50 border-emerald-200" },
-  message_sent: { label: "Bot", color: "text-blue-700 bg-blue-50 border-blue-200" },
-  user_input: { label: "Cliente", color: "text-slate-700 bg-slate-100 border-slate-200" },
-  menu_selection: { label: "Seleccion", color: "text-violet-700 bg-violet-50 border-violet-200" },
-  condition_evaluated: { label: "Condicion", color: "text-amber-700 bg-amber-50 border-amber-200" },
-  api_call: { label: "API", color: "text-orange-700 bg-orange-50 border-orange-200" },
-  task_status_change: { label: "Tarea", color: "text-fuchsia-700 bg-fuchsia-50 border-fuchsia-200" },
-  conversation_ended: { label: "Cierre", color: "text-slate-600 bg-slate-100 border-slate-200" },
+const EVENT_BADGES: Record<string, { labelKey: string; color: string }> = {
+  conversation_started: { labelKey: "events.conversation_started", color: "text-emerald-700 bg-emerald-50 border-emerald-200" },
+  message_sent: { labelKey: "events.message_sent", color: "text-blue-700 bg-blue-50 border-blue-200" },
+  user_input: { labelKey: "events.user_input", color: "text-slate-700 bg-slate-100 border-slate-200" },
+  menu_selection: { labelKey: "events.menu_selection", color: "text-violet-700 bg-violet-50 border-violet-200" },
+  condition_evaluated: { labelKey: "events.condition_evaluated", color: "text-amber-700 bg-amber-50 border-amber-200" },
+  api_call: { labelKey: "events.api_call", color: "text-orange-700 bg-orange-50 border-orange-200" },
+  task_status_change: { labelKey: "events.task_status_change", color: "text-fuchsia-700 bg-fuchsia-50 border-fuchsia-200" },
+  conversation_ended: { labelKey: "events.conversation_ended", color: "text-slate-600 bg-slate-100 border-slate-200" },
 };
 
 interface Solicitud {
@@ -173,6 +174,9 @@ const DEFAULT_SOLICITUDES_CONFIG: SolicitudesTenantConfig = {
 };
 
 export default function SolicitudesPage() {
+  const t = useTranslations("solicitudes");
+  const locale = useCurrentLocale();
+  const dateLocale = locale === "en" ? "en-US" : "es-CR";
 
   const { tenantSlug, superAdmin } = useAuthStore();
 
@@ -229,10 +233,34 @@ export default function SolicitudesPage() {
   const [escalationReason, setEscalationReason] = useState("");
   const [escalationTargetAdminUserId, setEscalationTargetAdminUserId] = useState<string>("");
   const defaultDetailTab: "resumen" | "conversaciones" | "mensajes" = isAgentSession ? "mensajes" : "resumen";
-  const detailModeLabel = isAgentSession ? "Vista de agente" : "Vista admin";
+  const detailModeLabel = isAgentSession ? t("agentMode") : t("adminMode");
   const detailModeDescription = isAgentSession
-    ? "Esta solicitud se está viendo con sesión de agente; el detalle técnico queda limitado."
-    : "Edición completa del panel admin con estados, prioridad, agente y mensajes.";
+    ? t("agentModeDescription")
+    : t("adminModeDescription");
+
+  const estadoLabel = (value?: string | null) => {
+    if (!value) return "-";
+    const key = ESTADO_LABEL_KEYS[value];
+    return key ? t(key as any) : value;
+  };
+
+  const prioridadLabel = (value?: string | null) => {
+    if (!value) return "-";
+    const key = PRIORIDAD_LABEL_KEYS[value];
+    return key ? t(key as any) : value;
+  };
+
+  const categoriaLabel = (value?: string | null) => {
+    if (!value) return "-";
+    const key = CATEGORIA_LABEL_KEYS[value];
+    return key ? t(key as any) : value;
+  };
+
+  const slaLabel = (value?: string | null) => {
+    if (!value) return t("sla.no_sla");
+    const key = SLA_LABEL_KEYS[value];
+    return key ? t(key as any) : value;
+  };
 
   function openSolicitudDetail(solicitud: Solicitud): void {
     setDetailModal({ open: true, solicitud });
@@ -422,7 +450,7 @@ export default function SolicitudesPage() {
               agente: detailDraft.agenteId
                 ? {
                     id: Number(detailDraft.agenteId),
-                    nombre: prev.solicitud.agente?.nombre ?? "Asignado",
+                    nombre: prev.solicitud.agente?.nombre ?? t("status.assigned"),
                   }
                 : null,
             }
@@ -587,12 +615,12 @@ export default function SolicitudesPage() {
   }
 
   function formatEventPayload(payload: unknown): string {
-    if (payload == null) return "Sin payload";
+    if (payload == null) return t("noPayload");
     if (typeof payload === "string") return payload;
     try {
       return JSON.stringify(payload, null, 2);
     } catch {
-      return "Payload no serializable";
+      return t("nonSerializablePayload");
     }
   }
 
@@ -897,9 +925,9 @@ export default function SolicitudesPage() {
               </div>
               <div className="min-w-0">
                 <p className="text-sm font-semibold text-slate-900 truncate">
-                  {conversationDetailModal.conversation.flow?.nombre ?? "Conversacion"}
+                  {conversationDetailModal.conversation.flow?.nombre ?? t("customerConversations")}
                 </p>
-                <p className="text-xs text-slate-500 truncate">Cliente {conversationDetailModal.conversation.userKey}</p>
+                <p className="text-xs text-slate-500 truncate">{t("client")} {conversationDetailModal.conversation.userKey}</p>
               </div>
             </div>
             <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700 whitespace-nowrap">
@@ -907,25 +935,25 @@ export default function SolicitudesPage() {
             </span>
           </div>
           <div className="mt-3 grid gap-2 text-xs text-slate-500 sm:grid-cols-2">
-            <p>Inicio: {formatDate(conversationDetailModal.conversation.startedAt)}</p>
+            <p>{t("startLabel")}: {formatDate(conversationDetailModal.conversation.startedAt)}</p>
             <p>
-              Fin: {conversationDetailModal.conversation.endedAt
+              {t("endLabel")}: {conversationDetailModal.conversation.endedAt
                 ? formatDate(conversationDetailModal.conversation.endedAt)
-                : "Activa / sin cierre"}
+                : t("activeNoEnd")}
             </p>
           </div>
         </div>
 
         {isAgentSession ? (
           <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 p-4 text-sm text-slate-500">
-            El detalle técnico solo está disponible para administradores. En esta vista se muestra el resumen de la conversación.
+            {t("technicalDetailRestricted")}
           </div>
         ) : (
           <>
             <div className="rounded-2xl border border-slate-200 overflow-hidden">
               <div className="border-b border-slate-200 bg-white px-4 py-2.5">
-                <p className="text-sm font-medium text-slate-800">Mensajes</p>
-                <p className="text-xs text-slate-400">Vista estilo cliente</p>
+                <p className="text-sm font-medium text-slate-800">{t("messagesLabel")}</p>
+                <p className="text-xs text-slate-400">{t("clientStyleView")}</p>
               </div>
               <div className="max-h-[42vh] overflow-y-auto p-4 space-y-3 bg-slate-50">
                 {conversationDetailLoading ? (
@@ -938,16 +966,16 @@ export default function SolicitudesPage() {
                   </div>
                 ) : conversationBubbles.length === 0 ? (
                   <div className="flex items-center justify-center h-24 text-sm text-slate-400">
-                    No hay mensajes legibles para mostrar en esta conversación.
+                    {t("withoutReadableMessages")}
                   </div>
                 ) : (
                   conversationBubbles.map((bubble) => {
                     const isCrm = bubble.eventType === "crm_outbound" || bubble.eventType === "crm_inbound";
                     const senderLabel = isCrm
-                      ? (bubble.nodeRef ?? (bubble.isOutbound ? "Agente" : "Cliente"))
+                      ? (bubble.nodeRef ?? (bubble.isOutbound ? t("tableHeaders.agent") : t("client")))
                       : bubble.isOutbound
-                        ? "Bot"
-                        : "Cliente";
+                        ? t("events.message_sent")
+                        : t("client");
                     return (
                     <div key={bubble.id} className={cn("flex flex-col gap-0.5", bubble.isOutbound ? "items-end" : "items-start")}>
                       <span className={cn("text-[10px] font-medium px-1", bubble.isOutbound ? (isCrm ? "text-emerald-600" : "text-blue-500") : "text-slate-400")}>
@@ -963,7 +991,7 @@ export default function SolicitudesPage() {
                       >
                         <p className="whitespace-pre-wrap">{bubble.text}</p>
                         <p className={cn("text-xs mt-1", bubble.isOutbound ? (isCrm ? "text-emerald-200" : "text-blue-200") : "text-slate-400")}>
-                          {new Date(bubble.createdAt).toLocaleTimeString("es", { hour: "2-digit", minute: "2-digit" })}
+                          {new Date(bubble.createdAt).toLocaleTimeString(dateLocale, { hour: "2-digit", minute: "2-digit" })}
                         </p>
                       </div>
                     </div>
@@ -974,15 +1002,15 @@ export default function SolicitudesPage() {
             </div>
 
             <div className="rounded-2xl border border-slate-200 bg-white p-3.5 space-y-2 max-h-[28vh] overflow-y-auto">
-              <p className="text-sm font-medium text-slate-800">Actividad del flujo</p>
+              <p className="text-sm font-medium text-slate-800">{t("activityFlow")}</p>
               {conversationDetailLoading ? (
-                <p className="text-sm text-slate-400">Cargando actividad...</p>
+                <p className="text-sm text-slate-400">{t("loadingActivity")}</p>
               ) : conversationEvents.length === 0 ? (
-                <p className="text-sm text-slate-400">No hay eventos registrados.</p>
+                <p className="text-sm text-slate-400">{t("withoutEvents")}</p>
               ) : (
                 conversationEvents.map((eventItem) => {
                   const badge = EVENT_BADGES[eventItem.eventType] ?? {
-                    label: eventItem.eventType,
+                    labelKey: "all",
                     color: "text-slate-700 bg-slate-100 border-slate-200",
                   };
                   return (
@@ -990,14 +1018,14 @@ export default function SolicitudesPage() {
                       <div className="flex items-center justify-between gap-2">
                         <div className="flex items-center gap-2 min-w-0">
                           <span className={cn("text-[11px] font-semibold px-2 py-0.5 rounded-full border", badge.color)}>
-                            {badge.label}
+                            {badge.labelKey === "all" ? eventItem.eventType : t(badge.labelKey as any)}
                           </span>
                           {eventItem.nodeRef ? (
                             <span className="text-[11px] text-slate-400 truncate">{eventItem.nodeRef}</span>
                           ) : null}
                         </div>
                         <span className="text-[11px] text-slate-400 shrink-0">
-                          {new Date(eventItem.createdAt).toLocaleTimeString("es", {
+                          {new Date(eventItem.createdAt).toLocaleTimeString(dateLocale, {
                             hour: "2-digit",
                             minute: "2-digit",
                             second: "2-digit",
@@ -1005,7 +1033,7 @@ export default function SolicitudesPage() {
                         </span>
                       </div>
                       <details className="mt-1.5">
-                        <summary className="cursor-pointer text-[11px] text-slate-500 select-none">Ver detalle técnico</summary>
+                        <summary className="cursor-pointer text-[11px] text-slate-500 select-none">{t("detailTechnical")}</summary>
                         <pre className="mt-2 overflow-auto rounded-lg bg-slate-950/95 p-3 text-xs text-slate-100">
                           {formatEventPayload(eventItem.payload)}
                         </pre>
@@ -1020,7 +1048,7 @@ export default function SolicitudesPage() {
 
         <div className="flex justify-end">
           <Button variant="secondary" onClick={() => setConversationDetailModal({ open: false, conversation: null })}>
-            Cerrar
+            {t("close")}
           </Button>
         </div>
       </div>
@@ -1051,7 +1079,7 @@ export default function SolicitudesPage() {
 
   function openEscalationModal(solicitud: Solicitud) {
     if (!solicitud.userId) {
-      alert("La solicitud debe tener un usuario asociado para escalar.");
+      alert(t("withoutPortalPhone"));
       return;
     }
     setEscalationModal({ open: true, solicitud });
@@ -1072,62 +1100,62 @@ export default function SolicitudesPage() {
   if (isAgentSession) {
     const rows: AgentSolicitud[] = agentSolicitudes?.data ?? [];
     const agentTotal = Number(agentSolicitudes?.total ?? 0);
-    const heading = agentStatusFilter === "assigned" ? "Solicitudes asignadas" : "Solicitudes finalizadas";
+    const heading = agentStatusFilter === "assigned" ? t("assignedTitle") : t("completedTitle");
 
     return (
       <div className="space-y-5">
         <div className="rounded-2xl border border-slate-200 bg-white p-5">
           <h1 className="text-xl font-semibold text-slate-900">{heading}</h1>
-          <p className="mt-1 text-sm text-slate-600">Vista del agente sobre sus solicitudes.</p>
+          <p className="mt-1 text-sm text-slate-600">{t("agentViewSubtitle")}</p>
           <div className="mt-4 inline-flex rounded-xl border border-slate-200 bg-slate-50 p-1">
             <button
               type="button"
               onClick={() => setAgentStatusFilter("assigned")}
               className={`px-3 py-1.5 text-sm rounded-lg ${agentStatusFilter === "assigned" ? "bg-white text-slate-900 shadow-sm" : "text-slate-600"}`}
             >
-              Asignadas
+              {t("assignedTitle")}
             </button>
             <button
               type="button"
               onClick={() => setAgentStatusFilter("completed")}
               className={`px-3 py-1.5 text-sm rounded-lg ${agentStatusFilter === "completed" ? "bg-white text-slate-900 shadow-sm" : "text-slate-600"}`}
             >
-              Finalizadas
+              {t("completedTitle")}
             </button>
           </div>
-          <p className="mt-3 text-sm text-slate-500">{agentTotal} resultados</p>
+          <p className="mt-3 text-sm text-slate-500">{t("resultsCount", { count: agentTotal })}</p>
         </div>
 
         <Card>
           {isAgentSolicitudesLoading ? (
-            <div className="py-16 text-center text-slate-400 text-sm">Cargando solicitudes...</div>
+            <div className="py-16 text-center text-slate-400 text-sm">{t("loading")}</div>
           ) : rows.length === 0 ? (
-            <div className="py-16 text-center text-slate-400 text-sm">No hay solicitudes para este filtro.</div>
+            <div className="py-16 text-center text-slate-400 text-sm">{t("emptyFilter")}</div>
           ) : (
             <div className="overflow-x-auto">
               <table className="min-w-full text-sm">
                 <thead className="bg-slate-50 text-slate-600">
                   <tr>
                     <th className="px-4 py-3 text-left font-medium">ID</th>
-                    <th className="px-4 py-3 text-left font-medium">Titulo</th>
-                    <th className="px-4 py-3 text-left font-medium">Contacto</th>
-                    <th className="px-4 py-3 text-left font-medium">Categoria</th>
-                    <th className="px-4 py-3 text-left font-medium">Estado</th>
-                    <th className="px-4 py-3 text-left font-medium">Prioridad</th>
-                    <th className="px-4 py-3 text-left font-medium">Vence</th>
-                    <th className="px-4 py-3 text-left font-medium">Actualizada</th>
-                    <th className="px-4 py-3 text-left font-medium">Acciones</th>
+                    <th className="px-4 py-3 text-left font-medium">{t("tableHeaders.title")}</th>
+                    <th className="px-4 py-3 text-left font-medium">{t("tableHeaders.contact")}</th>
+                    <th className="px-4 py-3 text-left font-medium">{t("tableHeaders.category")}</th>
+                    <th className="px-4 py-3 text-left font-medium">{t("tableHeaders.status")}</th>
+                    <th className="px-4 py-3 text-left font-medium">{t("tableHeaders.priority")}</th>
+                    <th className="px-4 py-3 text-left font-medium">{t("tableHeaders.due")}</th>
+                    <th className="px-4 py-3 text-left font-medium">{t("tableHeaders.updated")}</th>
+                    <th className="px-4 py-3 text-left font-medium">{t("tableHeaders.actions")}</th>
                   </tr>
                 </thead>
                 <tbody>
                   {rows.map((s) => (
                     <tr key={s.id} className="border-t border-slate-100">
                       <td className="px-4 py-3 text-slate-700">#{s.id}</td>
-                      <td className="px-4 py-3 text-slate-700">{s.titulo || s.nombre || "Sin titulo"}</td>
+                      <td className="px-4 py-3 text-slate-700">{s.titulo || s.nombre || t("withoutTitle")}</td>
                       <td className="px-4 py-3 text-slate-600">{s.nombre || s.telefonoContacto || "-"}</td>
-                      <td className="px-4 py-3 text-slate-700">{CATEGORIA_LABELS[s.categoria || ""] ?? s.categoria ?? "-"}</td>
-                      <td className="px-4 py-3 text-slate-700">{ESTADO_LABELS[s.estado || ""] ?? s.estado ?? "-"}</td>
-                      <td className="px-4 py-3 text-slate-700">{PRIORIDAD_LABELS[s.prioridad || ""] ?? s.prioridad ?? "-"}</td>
+                      <td className="px-4 py-3 text-slate-700">{categoriaLabel(s.categoria)}</td>
+                      <td className="px-4 py-3 text-slate-700">{estadoLabel(s.estado)}</td>
+                      <td className="px-4 py-3 text-slate-700">{prioridadLabel(s.prioridad)}</td>
                       <td className="px-4 py-3 text-slate-500">{s.dueAt ? formatDate(s.dueAt) : "-"}</td>
                       <td className="px-4 py-3 text-slate-500">{formatDate(s.updatedAt)}</td>
                       <td className="px-4 py-3">
@@ -1138,7 +1166,7 @@ export default function SolicitudesPage() {
                               onClick={() => updateAgentSolicitud.mutate({ id: s.id, data: { estado: "in_progress" } })}
                               className="rounded-lg border border-blue-200 bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700"
                             >
-                              Tomar
+                              {t("take")}
                             </button>
                           )}
                           {s.estado !== "completed" && s.estado !== "rejected" && (
@@ -1147,7 +1175,7 @@ export default function SolicitudesPage() {
                               onClick={() => updateAgentSolicitud.mutate({ id: s.id, data: { estado: "completed" } })}
                               className="rounded-lg border border-emerald-200 bg-emerald-50 px-2 py-1 text-xs font-medium text-emerald-700"
                             >
-                              Completar
+                              {t("complete")}
                             </button>
                           )}
                           <button
@@ -1176,7 +1204,7 @@ export default function SolicitudesPage() {
                             }}
                             className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs font-medium text-slate-700"
                           >
-                            Conversaciones
+                            {t("viewConversations")}
                           </button>
                         </div>
                       </td>
@@ -1192,29 +1220,29 @@ export default function SolicitudesPage() {
       <Modal
         open={detailModal.open}
         onClose={() => setDetailModal({ open: false, solicitud: null })}
-        title="Detalle de solicitud"
+        title={t("requestDetail")}
         className="max-w-2xl"
       >
         {detailModal.solicitud && (
           <div className="space-y-4">
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-                <p className="text-xs uppercase tracking-wide text-slate-500">Cliente</p>
-                <p className="mt-1 text-sm font-medium text-slate-900">{detailModal.solicitud.nombre || "Sin nombre"}</p>
-                <p className="text-sm text-slate-600">{detailModal.solicitud.telefonoContacto || "Sin teléfono"}</p>
+                <p className="text-xs uppercase tracking-wide text-slate-500">{t("client")}</p>
+                <p className="mt-1 text-sm font-medium text-slate-900">{detailModal.solicitud.nombre || t("withoutName")}</p>
+                <p className="text-sm text-slate-600">{detailModal.solicitud.telefonoContacto || t("withoutPhone")}</p>
               </div>
               <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-                <p className="text-xs uppercase tracking-wide text-slate-500">Estado</p>
-                <p className="mt-1 text-sm font-medium text-slate-900">{(ESTADO_LABELS[detailModal.solicitud.estado || ""] ?? detailModal.solicitud.estado) || "-"}</p>
-                <p className="text-sm text-slate-600">Actualizada {formatDate(detailModal.solicitud.updatedAt || detailModal.solicitud.createdAt)}</p>
+                <p className="text-xs uppercase tracking-wide text-slate-500">{t("state")}</p>
+                <p className="mt-1 text-sm font-medium text-slate-900">{estadoLabel(detailModal.solicitud.estado)}</p>
+                <p className="text-sm text-slate-600">{t("updatedAtLabel")} {formatDate(detailModal.solicitud.updatedAt || detailModal.solicitud.createdAt)}</p>
               </div>
             </div>
             <div className="rounded-xl border border-dashed border-slate-200 bg-white p-4 text-sm text-slate-600">
-              La acción de conversaciones abre este detalle para revisar la solicitud seleccionada.
+              {t("customerConversations")}
             </div>
             <div className="flex justify-end">
               <Button variant="secondary" onClick={() => setDetailModal({ open: false, solicitud: null })}>
-                Cerrar
+                {t("close")}
               </Button>
             </div>
           </div>
@@ -1225,7 +1253,7 @@ export default function SolicitudesPage() {
         <Modal
           open={detailModal.open}
           onClose={() => setDetailModal({ open: false, solicitud: null })}
-          title="Detalle de solicitud"
+          title={t("requestDetail")}
           className="max-w-4xl"
         >
           {detailModal.solicitud && (
@@ -1244,24 +1272,24 @@ export default function SolicitudesPage() {
                         {detailModeLabel}
                       </span>
                       <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-600">
-                        Solicitud #{detailModal.solicitud.id}
+                        {t("requestNumber", { id: detailModal.solicitud.id })}
                       </span>
                     </div>
                     <h3 className="mt-3 truncate text-xl font-semibold text-slate-900">
-                      {detailModal.solicitud.nombre || "Sin nombre"}
+                      {detailModal.solicitud.nombre || t("withoutName")}
                     </h3>
                     <p className="mt-1 text-sm text-slate-600">
-                      {detailModal.solicitud.telefonoContacto || "Sin teléfono"}
+                      {detailModal.solicitud.telefonoContacto || t("withoutPhone")}
                       {detailModal.solicitud.createdAt ? ` · Creada ${formatDate(detailModal.solicitud.createdAt)}` : ""}
                     </p>
                   </div>
                   <div className="flex flex-col gap-2 lg:items-end">
                     <StatusBadge status={detailModal.solicitud.estado} />
                     <p className="text-xs text-slate-500">
-                      {detailModal.solicitud.agente?.nombre ? `Agente: ${detailModal.solicitud.agente.nombre}` : "Sin agente asignado"}
+                      {detailModal.solicitud.agente?.nombre ? `${t("tableHeaders.agent")}: ${detailModal.solicitud.agente.nombre}` : t("withoutAssignee")}
                     </p>
                     <p className="text-xs text-slate-500">
-                      {detailModal.solicitud.dueAt ? `Vence ${formatDate(detailModal.solicitud.dueAt)}` : "Sin vencimiento"}
+                      {detailModal.solicitud.dueAt ? `${t("tableHeaders.due")} ${formatDate(detailModal.solicitud.dueAt)}` : t("withoutDue")}
                     </p>
                   </div>
                 </div>
@@ -1270,45 +1298,45 @@ export default function SolicitudesPage() {
 
               <Tabs value={detailTab} className="space-y-4">
                 <TabsList className="w-full justify-start overflow-x-auto">
-                  <TabsTrigger value="resumen" onClick={() => setDetailTab("resumen")}>Resumen</TabsTrigger>
-                  <TabsTrigger value="conversaciones" onClick={() => setDetailTab("conversaciones")}>Conversaciones del cliente</TabsTrigger>
-                  <TabsTrigger value="mensajes" onClick={() => setDetailTab("mensajes")}>Mensajes WhatsApp</TabsTrigger>
+                  <TabsTrigger value="resumen" onClick={() => setDetailTab("resumen")}>{t("summary")}</TabsTrigger>
+                  <TabsTrigger value="conversaciones" onClick={() => setDetailTab("conversaciones")}>{t("customerConversations")}</TabsTrigger>
+                  <TabsTrigger value="mensajes" onClick={() => setDetailTab("mensajes")}>{t("customerWhatsappMessages")}</TabsTrigger>
                 </TabsList>
 
               <TabsContent value="resumen" className="space-y-4">
                 <div className="grid gap-3 sm:grid-cols-2">
                   <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                    <p className="text-xs uppercase tracking-wide text-slate-500">Cliente</p>
-                    <p className="mt-1 font-medium text-slate-900">{detailModal.solicitud.nombre || "Sin nombre"}</p>
-                    <p className="text-sm text-slate-600">{detailModal.solicitud.telefonoContacto || "Sin teléfono"}</p>
+                    <p className="text-xs uppercase tracking-wide text-slate-500">{t("client")}</p>
+                    <p className="mt-1 font-medium text-slate-900">{detailModal.solicitud.nombre || t("withoutName")}</p>
+                    <p className="text-sm text-slate-600">{detailModal.solicitud.telefonoContacto || t("withoutPhone")}</p>
                   </div>
                   <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                    <p className="text-xs uppercase tracking-wide text-slate-500">Estado</p>
+                    <p className="text-xs uppercase tracking-wide text-slate-500">{t("state")}</p>
                     <div className="mt-1"><StatusBadge status={detailModal.solicitud.estado} /></div>
-                    <p className="text-sm text-slate-600 mt-2">Creada: {formatDate(detailModal.solicitud.createdAt)}</p>
+                    <p className="text-sm text-slate-600 mt-2">{t("createdAtLabel")}: {formatDate(detailModal.solicitud.createdAt)}</p>
                   </div>
                   <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                    <p className="text-xs uppercase tracking-wide text-slate-500">Agente</p>
-                    <p className="mt-1 text-sm text-slate-700">{detailModal.solicitud.agente?.nombre ?? "Sin asignar"}</p>
+                    <p className="text-xs uppercase tracking-wide text-slate-500">{t("tableHeaders.agent")}</p>
+                    <p className="mt-1 text-sm text-slate-700">{detailModal.solicitud.agente?.nombre ?? t("withoutAssignee")}</p>
                   </div>
                   <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                    <p className="text-xs uppercase tracking-wide text-slate-500">Conexión</p>
-                    <p className="mt-1 text-sm text-slate-700">{detailClientKey || "Sin identificador de cliente"}</p>
+                    <p className="text-xs uppercase tracking-wide text-slate-500">{t("connection")}</p>
+                    <p className="mt-1 text-sm text-slate-700">{detailClientKey || t("withoutClientKey")}</p>
                   </div>
                   <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                    <p className="text-xs uppercase tracking-wide text-slate-500">Vencimiento</p>
-                    <p className="mt-1 text-sm text-slate-700">{detailModal.solicitud.dueAt ? formatDate(detailModal.solicitud.dueAt) : "Sin fecha"}</p>
+                    <p className="text-xs uppercase tracking-wide text-slate-500">{t("dueDate")}</p>
+                    <p className="mt-1 text-sm text-slate-700">{detailModal.solicitud.dueAt ? formatDate(detailModal.solicitud.dueAt) : t("withoutDate")}</p>
                   </div>
                   <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                    <p className="text-xs uppercase tracking-wide text-slate-500">Primera respuesta</p>
-                    <p className="mt-1 text-sm text-slate-700">{detailModal.solicitud.firstResponseAt ? formatDate(detailModal.solicitud.firstResponseAt) : "Pendiente"}</p>
+                    <p className="text-xs uppercase tracking-wide text-slate-500">{t("firstResponse")}</p>
+                    <p className="mt-1 text-sm text-slate-700">{detailModal.solicitud.firstResponseAt ? formatDate(detailModal.solicitud.firstResponseAt) : t("status.pending")}</p>
                   </div>
                 </div>
                 <div className="rounded-xl border border-slate-200 bg-white p-4 space-y-3">
-                  <p className="text-sm font-medium text-slate-900">Gestionar solicitud</p>
+                  <p className="text-sm font-medium text-slate-900">{t("manageRequest")}</p>
                   <div className="grid gap-3 sm:grid-cols-3">
                     <div className="space-y-1.5">
-                      <label className="text-xs font-medium uppercase tracking-wide text-slate-500">Estado</label>
+                      <label className="text-xs font-medium uppercase tracking-wide text-slate-500">{t("state")}</label>
                       <select
                         value={detailDraft.estado}
                         onChange={(e) => setDetailDraft((prev) => ({ ...prev, estado: e.target.value }))}
@@ -1316,13 +1344,13 @@ export default function SolicitudesPage() {
                       >
                         {ESTADOS.filter(Boolean).map((estado) => (
                           <option key={estado} value={estado}>
-                            {ESTADO_LABELS[estado] ?? estado}
+                            {estadoLabel(estado)}
                           </option>
                         ))}
                       </select>
                     </div>
                     <div className="space-y-1.5">
-                      <label className="text-xs font-medium uppercase tracking-wide text-slate-500">Prioridad</label>
+                      <label className="text-xs font-medium uppercase tracking-wide text-slate-500">{t("tableHeaders.priority")}</label>
                       <select
                         value={detailDraft.prioridad}
                         onChange={(e) => setDetailDraft((prev) => ({ ...prev, prioridad: e.target.value }))}
@@ -1330,47 +1358,47 @@ export default function SolicitudesPage() {
                       >
                         {PRIORIDADES.filter(Boolean).map((prioridad) => (
                           <option key={prioridad} value={prioridad}>
-                            {PRIORIDAD_LABELS[prioridad] ?? prioridad}
+                            {prioridadLabel(prioridad)}
                           </option>
                         ))}
                       </select>
                     </div>
                     <div className="space-y-1.5">
-                      <label className="text-xs font-medium uppercase tracking-wide text-slate-500">Agente</label>
+                      <label className="text-xs font-medium uppercase tracking-wide text-slate-500">{t("tableHeaders.agent")}</label>
                       <select
                         value={detailDraft.agenteId}
                         disabled
                         className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-500"
                       >
-                        <option value="">{detailModal.solicitud.agente?.nombre ?? "Asignado automáticamente"}</option>
+                        <option value="">{detailModal.solicitud.agente?.nombre ?? t("agentAssignedAuto")}</option>
                       </select>
                     </div>
                     <div className="space-y-1.5">
-                      <label className="text-xs font-medium uppercase tracking-wide text-slate-500">Categoria</label>
+                      <label className="text-xs font-medium uppercase tracking-wide text-slate-500">{t("category")}</label>
                       <select
                         value={detailDraft.categoria}
                         onChange={(e) => setDetailDraft((prev) => ({ ...prev, categoria: e.target.value }))}
                         className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm"
                       >
-                        <option value="">Sin categoria</option>
+                        <option value="">{t("withoutCategory")}</option>
                         {CATEGORIAS.filter(Boolean).map((categoria) => (
                           <option key={categoria} value={categoria}>
-                            {CATEGORIA_LABELS[categoria] ?? categoria}
+                            {categoriaLabel(categoria)}
                           </option>
                         ))}
                       </select>
                     </div>
                     <div className="space-y-1.5">
-                      <label className="text-xs font-medium uppercase tracking-wide text-slate-500">Subcategoria</label>
+                      <label className="text-xs font-medium uppercase tracking-wide text-slate-500">{t("subcategory")}</label>
                       <input
                         value={detailDraft.subcategoria}
                         onChange={(e) => setDetailDraft((prev) => ({ ...prev, subcategoria: e.target.value }))}
-                        placeholder="Ej: integracion-whatsapp"
+                        placeholder={t("subcategoryPlaceholder")}
                         className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm"
                       />
                     </div>
                     <div className="space-y-1.5">
-                      <label className="text-xs font-medium uppercase tracking-wide text-slate-500">Fecha limite</label>
+                      <label className="text-xs font-medium uppercase tracking-wide text-slate-500">{t("dueDate")}</label>
                       <input
                         type="datetime-local"
                         value={detailDraft.dueAt}
@@ -1384,7 +1412,7 @@ export default function SolicitudesPage() {
                       variant="secondary"
                       onClick={() => setDetailModal({ open: false, solicitud: null })}
                     >
-                      Cerrar
+                      {t("close")}
                     </Button>
                     <Button
                       onClick={() => {
@@ -1402,16 +1430,16 @@ export default function SolicitudesPage() {
                       }}
                       disabled={updateAgentSolicitud.isPending}
                     >
-                      {updateAgentSolicitud.isPending ? "Guardando..." : "Guardar cambios"}
+                      {updateAgentSolicitud.isPending ? t("saving") : t("saveChanges")}
                     </Button>
                   </div>
                 </div>
                 <div className="flex justify-end gap-3 pt-2">
                   <Button variant="secondary" onClick={() => setDetailModal({ open: false, solicitud: null })}>
-                    Cerrar
+                    {t("close")}
                   </Button>
                   <Button onClick={() => setDetailTab("conversaciones")}>
-                    Ver conversaciones del cliente
+                    {t("customerConversations")}
                   </Button>
                 </div>
               </TabsContent>
@@ -1419,15 +1447,15 @@ export default function SolicitudesPage() {
               <TabsContent value="conversaciones" className="space-y-4">
                 {!detailClientKey ? (
                   <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 p-6 text-sm text-slate-500">
-                    Esta solicitud no tiene teléfono de cliente para buscar conversaciones del tenant.
+                    {t("withoutPortalPhone")}
                   </div>
                 ) : conversationsLoading ? (
                   <div className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-500">
-                    Cargando conversaciones del cliente...
+                    {t("loadingConversations")}
                   </div>
                 ) : conversations.length === 0 ? (
                   <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 p-6 text-sm text-slate-500">
-                    No hay conversaciones registradas para este cliente en este tenant.
+                    {t("withoutConversations")}
                   </div>
                 ) : (
                   <div className="space-y-3 max-h-[55vh] overflow-auto pr-1">
@@ -1448,21 +1476,21 @@ export default function SolicitudesPage() {
                           <div className="flex items-start justify-between gap-3">
                             <div>
                               <div className="flex items-center gap-2 flex-wrap">
-                                <p className="font-medium text-slate-900">{conversation.flow?.nombre ?? "Flujo sin nombre"}</p>
+                                <p className="font-medium text-slate-900">{conversation.flow?.nombre ?? t("withoutTitle")}</p>
                                 {isCurrentConversation && (
                                   <span className="rounded-full bg-blue-100 px-2 py-0.5 text-[11px] font-semibold text-blue-700">
-                                    Conversación actual
+                                    {t("currentConversation")}
                                   </span>
                                 )}
                               </div>
-                              <p className="text-sm text-slate-500 mt-1">ID {conversation.id} · Estado {conversation.status}</p>
+                              <p className="text-sm text-slate-500 mt-1">ID {conversation.id} · {t("state")} {conversation.status}</p>
                               <p className="text-sm text-slate-500">
-                                Inicio {formatDate(conversation.startedAt)}
-                                {conversation.endedAt ? ` · Fin ${formatDate(conversation.endedAt)}` : ""}
+                                {t("startLabel")} {formatDate(conversation.startedAt)}
+                                {conversation.endedAt ? ` · ${t("endLabel")} ${formatDate(conversation.endedAt)}` : ""}
                               </p>
                             </div>
                             <div className="text-right text-xs text-slate-500">
-                              <p>{conversation.solicitudes?.length ?? 0} solicitud(es) vinculada(s)</p>
+                              <p>{t("linkedRequests", { count: conversation.solicitudes?.length ?? 0 })}</p>
                               <p className="truncate max-w-[12rem]">{conversation.userKey}</p>
                             </div>
                           </div>
@@ -1473,7 +1501,7 @@ export default function SolicitudesPage() {
                                   key={solicitud.id}
                                   className="rounded-full bg-slate-100 px-2 py-1 text-[11px] font-medium text-slate-600"
                                 >
-                                  Solicitud #{solicitud.id} · {ESTADO_LABELS[solicitud.estado] ?? solicitud.estado}
+                                  {t("requestNumber", { id: solicitud.id })} · {estadoLabel(solicitud.estado)}
                                 </span>
                               ))}
                             </div>
@@ -1485,7 +1513,7 @@ export default function SolicitudesPage() {
                 )}
                 <div className="flex justify-end gap-3 pt-2">
                   <Button variant="secondary" onClick={() => setDetailModal({ open: false, solicitud: null })}>
-                    Cerrar
+                    {t("close")}
                   </Button>
                 </div>
               </TabsContent>
@@ -1496,16 +1524,16 @@ export default function SolicitudesPage() {
                     <div>
                       <div className="flex items-center gap-2 text-sm font-medium text-slate-800">
                         <Filter size={16} className="text-slate-500" />
-                        Filtros de mensajes
+                        {t("messageFiltersTitle")}
                       </div>
                       <p className="mt-1 text-xs text-slate-500">
-                        Acotá la conversación por contenido, dirección, estado de lectura o rango de fechas.
+                        {t("messageFiltersSubtitle")}
                       </p>
                     </div>
                     <div className="flex items-center gap-2 self-start">
                       {activeMessageFilterCount > 0 ? (
                         <span className="rounded-full border border-blue-200 bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-700">
-                          {activeMessageFilterCount} activos
+                          {t("activeFilters", { count: activeMessageFilterCount })}
                         </span>
                       ) : null}
                       <Button
@@ -1515,54 +1543,54 @@ export default function SolicitudesPage() {
                         disabled={!hasActiveMessageFilters}
                         className="shrink-0"
                       >
-                        Limpiar filtros
+                        {t("clearFilters")}
                       </Button>
                     </div>
                   </div>
 
                   <div className="mt-4 grid gap-3 lg:grid-cols-12">
                     <label className="space-y-1.5 lg:col-span-4">
-                      <span className="text-xs font-medium uppercase tracking-wide text-slate-500">Buscar texto</span>
+                      <span className="text-xs font-medium uppercase tracking-wide text-slate-500">{t("messageTextPlaceholder")}</span>
                       <div className="relative">
                         <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
                         <input
                           type="text"
                           value={messageSearch}
                           onChange={(e) => setMessageSearch(e.target.value)}
-                          placeholder="Texto del mensaje"
+                          placeholder={t("messageTextPlaceholder")}
                           className="w-full rounded-lg border border-slate-200 bg-white py-2 pl-9 pr-3 text-sm placeholder-slate-400 focus:border-blue-500 focus:outline-none"
                         />
                       </div>
                     </label>
 
                     <label className="space-y-1.5 lg:col-span-2">
-                      <span className="text-xs font-medium uppercase tracking-wide text-slate-500">Dirección</span>
+                      <span className="text-xs font-medium uppercase tracking-wide text-slate-500">{t("direction")}</span>
                       <select
                         value={messageDirection}
                         onChange={(e) => setMessageDirection((e.target.value as "" | "entrada" | "salida") || "")}
                         className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
                       >
-                        <option value="">Todas</option>
-                        <option value="entrada">Recibidos</option>
-                        <option value="salida">Enviados</option>
+                        <option value="">{t("all")}</option>
+                        <option value="entrada">{t("incoming")}</option>
+                        <option value="salida">{t("outgoing")}</option>
                       </select>
                     </label>
 
                     <label className="space-y-1.5 lg:col-span-2">
-                      <span className="text-xs font-medium uppercase tracking-wide text-slate-500">Lectura</span>
+                      <span className="text-xs font-medium uppercase tracking-wide text-slate-500">{t("readStatus")}</span>
                       <select
                         value={messageReadStatus}
                         onChange={(e) => setMessageReadStatus((e.target.value as "" | "leido" | "no_leido") || "")}
                         className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
                       >
-                        <option value="">Todos</option>
-                        <option value="leido">Leidos</option>
-                        <option value="no_leido">No leidos</option>
+                        <option value="">{t("all")}</option>
+                        <option value="leido">{t("read")}</option>
+                        <option value="no_leido">{t("unread")}</option>
                       </select>
                     </label>
 
                     <label className="space-y-1.5 lg:col-span-2">
-                      <span className="text-xs font-medium uppercase tracking-wide text-slate-500">Desde</span>
+                      <span className="text-xs font-medium uppercase tracking-wide text-slate-500">{t("from")}</span>
                       <input
                         type="date"
                         value={messageStartDate}
@@ -1572,7 +1600,7 @@ export default function SolicitudesPage() {
                     </label>
 
                     <label className="space-y-1.5 lg:col-span-2">
-                      <span className="text-xs font-medium uppercase tracking-wide text-slate-500">Hasta</span>
+                      <span className="text-xs font-medium uppercase tracking-wide text-slate-500">{t("to")}</span>
                       <input
                         type="date"
                         value={messageEndDate}
@@ -1583,9 +1611,9 @@ export default function SolicitudesPage() {
                   </div>
 
                   <div className="mt-3 flex flex-wrap items-center gap-2">
-                    <span className="text-[11px] font-medium uppercase tracking-wide text-slate-400">Rangos rápidos</span>
+                    <span className="text-[11px] font-medium uppercase tracking-wide text-slate-400">{t("quickRanges")}</span>
                     <Button variant="secondary" size="sm" onClick={() => applyMessageDatePreset(1)}>
-                      Hoy
+                      {t("today")}
                     </Button>
                     <Button variant="secondary" size="sm" onClick={() => applyMessageDatePreset(7)}>
                       7d
@@ -1598,12 +1626,12 @@ export default function SolicitudesPage() {
 
                 {messagesLoading ? (
                   <div className="flex items-center justify-center py-8">
-                    <div className="text-slate-500">Cargando mensajes...</div>
+                    <div className="text-slate-500">{t("loadingMessages")}</div>
                   </div>
                 ) : messageRows.length === 0 ? (
                   <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50 px-4 py-8 text-center">
                     <MessageCircleMore className="mx-auto mb-2 h-6 w-6 text-slate-400" />
-                    <p className="text-sm text-slate-600">No hay mensajes aún</p>
+                    <p className="text-sm text-slate-600">{t("withoutMessages")}</p>
                   </div>
                 ) : (
                   <div className="space-y-3 max-h-96 overflow-y-auto">
@@ -1618,7 +1646,7 @@ export default function SolicitudesPage() {
                         )}
                       >
                         <div className="text-xs font-medium mb-1">
-                          {msg.direccion === "salida" ? "🔴 Enviado" : "🟢 Recibido"}
+                          {msg.direccion === "salida" ? `🔴 ${t("outgoing")}` : `🟢 ${t("incoming")}`}
                         </div>
                         <p className="text-sm break-words">
                           {typeof msg.contenido === "string"
@@ -1640,7 +1668,7 @@ export default function SolicitudesPage() {
                       type="text"
                       value={messageInput}
                       onChange={(e) => setMessageInput(e.target.value)}
-                      placeholder="Escribe un mensaje..."
+                      placeholder={t("messageWritePlaceholder")}
                       onKeyDown={(e) => {
                         if (e.key === "Enter" && !e.shiftKey && messageInput.trim()) {
                           sendMessageMutation.mutate({ text: messageInput });
@@ -1658,11 +1686,11 @@ export default function SolicitudesPage() {
                       disabled={sendMessageMutation.isPending || !messageInput.trim()}
                       size="sm"
                     >
-                      {sendMessageMutation.isPending ? "Enviando..." : "Enviar"}
+                      {sendMessageMutation.isPending ? t("sending") : t("send")}
                     </Button>
                   </div>
                   {sendMessageMutation.isError && (
-                    <p className="text-xs text-red-600">Error al enviar mensaje</p>
+                    <p className="text-xs text-red-600">{t("messageSendError")}</p>
                   )}
                 </div>
               </TabsContent>
@@ -1674,7 +1702,7 @@ export default function SolicitudesPage() {
         <Modal
           open={conversationDetailModal.open}
           onClose={() => setConversationDetailModal({ open: false, conversation: null })}
-          title="Detalle de conversación"
+          title={t("conversationDetail")}
           className="max-w-3xl"
         >
           {renderConversationDetailContent()}
@@ -1686,32 +1714,32 @@ export default function SolicitudesPage() {
   return (
     <div className="space-y-5">
       <div className="rounded-2xl border border-slate-200 bg-white p-5">
-        <h1 className="text-xl font-semibold text-slate-900">Solicitudes</h1>
-        <p className="mt-1 text-sm text-slate-600">Gestion y seguimiento de solicitudes del tenant.</p>
+        <h1 className="text-xl font-semibold text-slate-900">{t("pageTitle")}</h1>
+        <p className="mt-1 text-sm text-slate-600">{t("subtitle")}</p>
       </div>
 
       <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 xl:grid-cols-4">
         <Card className="p-4">
-          <p className="text-xs text-slate-500 uppercase tracking-wide">Total</p>
+          <p className="text-xs text-slate-500 uppercase tracking-wide">{t("all")}</p>
           <p className="text-2xl font-semibold text-slate-900 mt-1">{stats.total ?? 0}</p>
         </Card>
         <Card className="p-4">
           <div className="flex items-center justify-between">
-            <p className="text-xs text-slate-500 uppercase tracking-wide">En SLA</p>
+            <p className="text-xs text-slate-500 uppercase tracking-wide">{t("sla.on_track")}</p>
             <Clock3 size={14} className="text-emerald-500" />
           </div>
           <p className="text-2xl font-semibold text-emerald-700 mt-1">{tenantConfig.slaEnabled ? (stats.sla?.onTrack ?? 0) : 0}</p>
         </Card>
         <Card className="p-4">
           <div className="flex items-center justify-between">
-            <p className="text-xs text-slate-500 uppercase tracking-wide">Por vencer</p>
+            <p className="text-xs text-slate-500 uppercase tracking-wide">{t("sla.warning")}</p>
             <Clock3 size={14} className="text-amber-500" />
           </div>
           <p className="text-2xl font-semibold text-amber-700 mt-1">{tenantConfig.slaEnabled ? (stats.sla?.warning ?? 0) : 0}</p>
         </Card>
         <Card className="p-4">
           <div className="flex items-center justify-between">
-            <p className="text-xs text-slate-500 uppercase tracking-wide">SLA vencido</p>
+            <p className="text-xs text-slate-500 uppercase tracking-wide">{t("sla.breached")}</p>
             <AlertTriangle size={14} className="text-rose-500" />
           </div>
           <p className="text-2xl font-semibold text-rose-700 mt-1">{tenantConfig.slaEnabled ? (stats.sla?.breached ?? 0) : 0}</p>
@@ -1729,7 +1757,7 @@ export default function SolicitudesPage() {
               setPage(1);
             }}
             disabled={!tenantConfig.advancedSearchEnabled}
-            placeholder="Buscar por nombre, teléfono o título"
+            placeholder={t("searchPlaceholder")}
             className="text-sm bg-transparent focus:outline-none text-slate-700 w-full"
           />
         </div>
@@ -1745,7 +1773,7 @@ export default function SolicitudesPage() {
           >
             {ESTADOS.map((e) => (
               <option key={e} value={e}>
-                {e === "" ? "Todos los estados" : ESTADO_LABELS[e] ?? e}
+                {e === "" ? t("allStatuses") : estadoLabel(e)}
               </option>
             ))}
           </select>
@@ -1763,7 +1791,7 @@ export default function SolicitudesPage() {
           >
             {PRIORIDADES.map((p) => (
               <option key={p} value={p}>
-                {p === "" ? "Todas las prioridades" : PRIORIDAD_LABELS[p] ?? p}
+                {p === "" ? t("allPriorities") : prioridadLabel(p)}
               </option>
             ))}
           </select>
@@ -1780,7 +1808,7 @@ export default function SolicitudesPage() {
           >
             {CATEGORIAS.map((c) => (
               <option key={c} value={c}>
-                {c === "" ? "Todas las categorias" : CATEGORIA_LABELS[c] ?? c}
+                {c === "" ? t("allCategories") : categoriaLabel(c)}
               </option>
             ))}
           </select>
@@ -1798,32 +1826,32 @@ export default function SolicitudesPage() {
           >
             {SLA_FILTERS.map((s) => (
               <option key={s} value={s}>
-                {s === "" ? "Todos los SLA" : SLA_LABELS[s] ?? s}
+                {s === "" ? t("allSla") : slaLabel(s)}
               </option>
             ))}
           </select>
         </div>
 
         <span className="text-sm text-slate-500 ml-auto">
-          {total} solicitudes
+          {t("totalCount", { count: total })}
         </span>
       </div>
 
       <Card>
         {isLoading ? (
           <div className="py-16 text-center text-slate-400 text-sm">
-            Cargando solicitudes...
+            {t("loading")}
           </div>
         ) : solicitudes.length === 0 ? (
           <div className="py-16 text-center">
-            <p className="text-slate-400 text-sm">No hay solicitudes con ese filtro</p>
+            <p className="text-slate-400 text-sm">{t("emptyFilter")}</p>
           </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="bg-slate-50 border-b border-slate-200">
                 <tr>
-                  {["Nombre", "Telefono", "Categoria", "Prioridad", "SLA", "Agente", "Estado", "Vence", "Fecha", "Acciones"].map(
+                  {[t("tableHeaders.name"), t("tableHeaders.phone"), t("tableHeaders.category"), t("tableHeaders.priority"), t("tableHeaders.sla"), t("tableHeaders.agent"), t("tableHeaders.status"), t("tableHeaders.due"), t("tableHeaders.date"), t("tableHeaders.actions")].map(
                     (h) => (
                       <th
                         key={h}
@@ -1839,16 +1867,16 @@ export default function SolicitudesPage() {
                 {solicitudes.map((s) => (
                   <tr key={s.id} className="hover:bg-slate-50/60 transition group">
                     <td className="px-5 py-3.5 font-medium text-slate-900">
-                      {s.nombre || "Sin nombre"}
+                      {s.nombre || t("withoutName")}
                     </td>
                     <td className="px-5 py-3.5 text-slate-600">
                       {s.telefonoContacto || "-"}
                     </td>
                     <td className="px-5 py-3.5 text-slate-600">
-                      {s.categoria ? (CATEGORIA_LABELS[s.categoria] ?? s.categoria) : "-"}
+                      {categoriaLabel(s.categoria)}
                     </td>
                     <td className="px-5 py-3.5 text-slate-600">
-                      {s.prioridad ? (PRIORIDAD_LABELS[s.prioridad] ?? s.prioridad) : "-"}
+                      {prioridadLabel(s.prioridad)}
                     </td>
                     <td className="px-5 py-3.5">
                       <span
@@ -1862,12 +1890,12 @@ export default function SolicitudesPage() {
                                 : "bg-slate-100 text-slate-600"
                         }`}
                       >
-                        {SLA_LABELS[s.slaStatus?.status || "no_sla"] || "Sin SLA"}
+                        {slaLabel(s.slaStatus?.status || "no_sla")}
                       </span>
                     </td>
                     <td className="px-5 py-3.5 text-slate-600">
                       {s.agente?.nombre ?? (
-                        <span className="text-slate-400 italic">Sin asignar</span>
+                        <span className="text-slate-400 italic">{t("withoutAssignee")}</span>
                       )}
                     </td>
                     <td className="px-5 py-3.5">
@@ -1889,7 +1917,7 @@ export default function SolicitudesPage() {
                             }
                             className="text-xs text-blue-600 hover:text-blue-700 font-medium border border-blue-200 rounded-lg px-2 py-1 bg-blue-50 hover:bg-blue-100 transition"
                           >
-                            Tomar
+                            {t("take")}
                           </button>
                         )}
                         {tenantConfig.manualEscalationEnabled && (
@@ -1898,7 +1926,7 @@ export default function SolicitudesPage() {
                             disabled={escalateSolicitud.isPending || !s.userId}
                             className="text-xs text-rose-600 hover:text-rose-700 font-medium border border-rose-200 rounded-lg px-2 py-1 bg-rose-50 hover:bg-rose-100 transition"
                           >
-                            Escalar
+                            {t("escalate")}
                           </button>
                         )}
                         {tenantConfig.customerPortalEnabled && (
@@ -1911,15 +1939,15 @@ export default function SolicitudesPage() {
                                 const target = url || (typeof window !== "undefined" ? `${window.location.origin}${path}` : path);
                                 if (target && typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
                                   await navigator.clipboard.writeText(String(target));
-                                  alert("Link de portal copiado");
+                                  alert(t("portalCopied"));
                                 }
                               } catch {
-                                alert("No se pudo generar el link del portal");
+                                alert(t("portalError"));
                               }
                             }}
                             className="text-xs text-indigo-600 hover:text-indigo-700 font-medium border border-indigo-200 rounded-lg px-2 py-1 bg-indigo-50 hover:bg-indigo-100 transition"
                           >
-                            Link portal
+                            {t("portalLink")}
                           </button>
                         )}
                         <button
@@ -1930,7 +1958,7 @@ export default function SolicitudesPage() {
                           className="text-xs text-blue-600 hover:text-blue-700 font-medium border border-blue-200 rounded-lg px-2 py-1 bg-blue-50 hover:bg-blue-100 transition flex items-center gap-1"
                         >
                           <UserCheck size={12} />
-                          Asignar
+                          {t("assignAgent")}
                         </button>
                         <button
                           onClick={() => {
@@ -1939,7 +1967,7 @@ export default function SolicitudesPage() {
                           className="text-xs text-slate-700 hover:text-slate-900 font-medium border border-slate-200 rounded-lg px-2 py-1 bg-white hover:bg-slate-50 transition flex items-center gap-1"
                         >
                           <MessageCircleMore size={12} />
-                          Conversaciones
+                          {t("viewConversations")}
                         </button>
                       </div>
                     </td>
@@ -1959,10 +1987,10 @@ export default function SolicitudesPage() {
               disabled={page === 1}
               onClick={() => setPage((p) => p - 1)}
             >
-              ← Anterior
+              ← {t("pagination.previous")}
             </Button>
             <span className="text-sm text-slate-500">
-              Página {page} de {Math.ceil(total / 15)}
+              {t("pagination.page")} {page} {t("pagination.of")} {Math.ceil(total / 15)}
             </span>
             <Button
               variant="secondary"
@@ -1970,7 +1998,7 @@ export default function SolicitudesPage() {
               disabled={page * 15 >= total}
               onClick={() => setPage((p) => p + 1)}
             >
-              Siguiente →
+              {t("pagination.next")} →
             </Button>
           </div>
         )}
@@ -1980,19 +2008,19 @@ export default function SolicitudesPage() {
       <Modal
         open={assignModal.open}
         onClose={() => setAssignModal({ open: false, solicitudId: null })}
-        title="Asignar agente"
+        title={t("assignAgentTitle")}
       >
         <div className="space-y-4">
           <div className="flex flex-col gap-1.5">
             <label className="text-sm font-medium text-slate-700">
-              Seleccioná un agente disponible
+              {t("assignAgentHint")}
             </label>
             <select
               value={selectedAgente}
               onChange={(e) => setSelectedAgente(e.target.value)}
               className="px-3.5 py-2.5 rounded-xl border border-slate-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30"
             >
-              <option value="">— Elegir agente —</option>
+              <option value="">- {t("chooseAgent")} -</option>
               {agentes
                 .filter((a) => a.estado === "activo")
                 .map((a) => (
@@ -2007,13 +2035,13 @@ export default function SolicitudesPage() {
               variant="secondary"
               onClick={() => setAssignModal({ open: false, solicitudId: null })}
             >
-              Cancelar
+              {t("cancel")}
             </Button>
             <Button
               onClick={handleAssign}
               disabled={!selectedAgente || assignAgente.isPending}
             >
-              {assignAgente.isPending ? "Asignando..." : "Asignar"}
+              {assignAgente.isPending ? t("assigning") : t("assignAgent")}
             </Button>
           </div>
         </div>
@@ -2027,7 +2055,7 @@ export default function SolicitudesPage() {
           setEscalationReason("");
           setEscalationTargetAdminUserId("");
         }}
-        title="Escalar por árbol jerárquico"
+        title={t("escalationTitle")}
       >
         <div className="space-y-4">
           <div>
@@ -2035,16 +2063,16 @@ export default function SolicitudesPage() {
               Solicitud #{escalationModal.solicitud?.id}
             </p>
             <p className="text-xs text-slate-600 mt-1">
-              Usuario a escalar: {escalationModal.solicitud?.nombre || escalationModal.solicitud?.user?.phone || escalationModal.solicitud?.telefonoContacto || "No definido"}
+              {t("escalationUser")}: {escalationModal.solicitud?.nombre || escalationModal.solicitud?.user?.phone || escalationModal.solicitud?.telefonoContacto || t("notDefined")}
             </p>
             <p className="text-xs text-slate-500 mt-1">
-              Seleccioná el administrador destino dentro del árbol jerárquico.
+              {t("targetAdminHint")}
             </p>
           </div>
 
           <div className="rounded-xl border border-slate-200 bg-slate-50 max-h-72 overflow-y-auto p-3 space-y-3">
             {adminUsers.length === 0 ? (
-              <p className="text-sm text-slate-500">No hay administradores disponibles para escalar.</p>
+              <p className="text-sm text-slate-500">{t("availableAdminsEmpty")}</p>
             ) : (
               (() => {
                 function renderAdminUserNode(user: typeof adminUsers[0], depth: number): React.ReactNode {
@@ -2082,12 +2110,12 @@ export default function SolicitudesPage() {
           </div>
 
           <div className="flex flex-col gap-1.5">
-            <label className="text-sm font-medium text-slate-700">Motivo (opcional)</label>
+            <label className="text-sm font-medium text-slate-700">{t("reasonOptional")}</label>
             <textarea
               value={escalationReason}
               onChange={(e) => setEscalationReason(e.target.value)}
               rows={3}
-              placeholder="Ej: requiere validación de nivel 2"
+              placeholder={t("reasonPlaceholder")}
               className="px-3.5 py-2.5 rounded-xl border border-slate-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-rose-500/30"
             />
           </div>
@@ -2102,13 +2130,13 @@ export default function SolicitudesPage() {
               }}
               disabled={escalateSolicitud.isPending}
             >
-              Cancelar
+              {t("cancel")}
             </Button>
             <Button
               onClick={handleEscalateSubmit}
               disabled={!escalationTargetAdminUserId || escalateSolicitud.isPending || adminUsers.length === 0}
             >
-              {escalateSolicitud.isPending ? "Escalando..." : "Confirmar escalación"}
+              {escalateSolicitud.isPending ? t("escalating") : t("escalationConfirm")}
             </Button>
           </div>
         </div>
@@ -2117,50 +2145,50 @@ export default function SolicitudesPage() {
       <Modal
         open={detailModal.open}
         onClose={() => setDetailModal({ open: false, solicitud: null })}
-        title="Detalle de solicitud"
+        title={t("requestDetail")}
         className="max-w-4xl"
       >
         {detailModal.solicitud && (
           <Tabs value={detailTab} className="space-y-4">
             <TabsList className="w-full justify-start overflow-x-auto">
-              <TabsTrigger value="resumen" onClick={() => setDetailTab("resumen")}>Resumen</TabsTrigger>
-              <TabsTrigger value="conversaciones" onClick={() => setDetailTab("conversaciones")}>Conversaciones del cliente</TabsTrigger>
+              <TabsTrigger value="resumen" onClick={() => setDetailTab("resumen")}>{t("summary")}</TabsTrigger>
+              <TabsTrigger value="conversaciones" onClick={() => setDetailTab("conversaciones")}>{t("customerConversations")}</TabsTrigger>
             </TabsList>
 
             <TabsContent value="resumen" className="space-y-4">
               <div className="grid gap-3 sm:grid-cols-2">
                 <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                  <p className="text-xs uppercase tracking-wide text-slate-500">Cliente</p>
-                  <p className="mt-1 font-medium text-slate-900">{detailModal.solicitud.nombre || "Sin nombre"}</p>
-                  <p className="text-sm text-slate-600">{detailModal.solicitud.telefonoContacto || "Sin teléfono"}</p>
+                  <p className="text-xs uppercase tracking-wide text-slate-500">{t("client")}</p>
+                  <p className="mt-1 font-medium text-slate-900">{detailModal.solicitud.nombre || t("withoutName")}</p>
+                  <p className="text-sm text-slate-600">{detailModal.solicitud.telefonoContacto || t("withoutPhone")}</p>
                 </div>
                 <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                  <p className="text-xs uppercase tracking-wide text-slate-500">Estado</p>
+                  <p className="text-xs uppercase tracking-wide text-slate-500">{t("state")}</p>
                   <div className="mt-1"><StatusBadge status={detailModal.solicitud.estado} /></div>
-                  <p className="text-sm text-slate-600 mt-2">Creada: {formatDate(detailModal.solicitud.createdAt)}</p>
+                  <p className="text-sm text-slate-600 mt-2">{t("createdAtLabel")}: {formatDate(detailModal.solicitud.createdAt)}</p>
                 </div>
                 <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                  <p className="text-xs uppercase tracking-wide text-slate-500">Agente</p>
-                  <p className="mt-1 text-sm text-slate-700">{detailModal.solicitud.agente?.nombre ?? "Sin asignar"}</p>
+                  <p className="text-xs uppercase tracking-wide text-slate-500">{t("tableHeaders.agent")}</p>
+                  <p className="mt-1 text-sm text-slate-700">{detailModal.solicitud.agente?.nombre ?? t("withoutAssignee")}</p>
                 </div>
                 <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                  <p className="text-xs uppercase tracking-wide text-slate-500">Conexión</p>
-                  <p className="mt-1 text-sm text-slate-700">{detailClientKey || "Sin identificador de cliente"}</p>
+                  <p className="text-xs uppercase tracking-wide text-slate-500">{t("connection")}</p>
+                  <p className="mt-1 text-sm text-slate-700">{detailClientKey || t("withoutClientKey")}</p>
                 </div>
                 <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                  <p className="text-xs uppercase tracking-wide text-slate-500">Vencimiento</p>
-                  <p className="mt-1 text-sm text-slate-700">{detailModal.solicitud.dueAt ? formatDate(detailModal.solicitud.dueAt) : "Sin fecha"}</p>
+                  <p className="text-xs uppercase tracking-wide text-slate-500">{t("dueDate")}</p>
+                  <p className="mt-1 text-sm text-slate-700">{detailModal.solicitud.dueAt ? formatDate(detailModal.solicitud.dueAt) : t("withoutDate")}</p>
                 </div>
                 <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                  <p className="text-xs uppercase tracking-wide text-slate-500">Primera respuesta</p>
-                  <p className="mt-1 text-sm text-slate-700">{detailModal.solicitud.firstResponseAt ? formatDate(detailModal.solicitud.firstResponseAt) : "Pendiente"}</p>
+                  <p className="text-xs uppercase tracking-wide text-slate-500">{t("firstResponse")}</p>
+                  <p className="mt-1 text-sm text-slate-700">{detailModal.solicitud.firstResponseAt ? formatDate(detailModal.solicitud.firstResponseAt) : t("status.pending")}</p>
                 </div>
               </div>
               <div className="rounded-xl border border-slate-200 bg-white p-4 space-y-3">
-                <p className="text-sm font-medium text-slate-900">Gestionar solicitud</p>
+                <p className="text-sm font-medium text-slate-900">{t("manageRequest")}</p>
                 <div className="grid gap-3 sm:grid-cols-3">
                   <div className="space-y-1.5">
-                    <label className="text-xs font-medium uppercase tracking-wide text-slate-500">Estado</label>
+                    <label className="text-xs font-medium uppercase tracking-wide text-slate-500">{t("state")}</label>
                     <select
                       value={detailDraft.estado}
                       onChange={(e) => setDetailDraft((prev) => ({ ...prev, estado: e.target.value }))}
@@ -2168,13 +2196,13 @@ export default function SolicitudesPage() {
                     >
                       {ESTADOS.filter(Boolean).map((estado) => (
                         <option key={estado} value={estado}>
-                          {ESTADO_LABELS[estado] ?? estado}
+                          {estadoLabel(estado)}
                         </option>
                       ))}
                     </select>
                   </div>
                   <div className="space-y-1.5">
-                    <label className="text-xs font-medium uppercase tracking-wide text-slate-500">Prioridad</label>
+                    <label className="text-xs font-medium uppercase tracking-wide text-slate-500">{t("tableHeaders.priority")}</label>
                     <select
                       value={detailDraft.prioridad}
                       onChange={(e) => setDetailDraft((prev) => ({ ...prev, prioridad: e.target.value }))}
@@ -2182,19 +2210,19 @@ export default function SolicitudesPage() {
                     >
                       {PRIORIDADES.filter(Boolean).map((prioridad) => (
                         <option key={prioridad} value={prioridad}>
-                          {PRIORIDAD_LABELS[prioridad] ?? prioridad}
+                          {prioridadLabel(prioridad)}
                         </option>
                       ))}
                     </select>
                   </div>
                   <div className="space-y-1.5">
-                    <label className="text-xs font-medium uppercase tracking-wide text-slate-500">Agente</label>
+                    <label className="text-xs font-medium uppercase tracking-wide text-slate-500">{t("tableHeaders.agent")}</label>
                     <select
                       value={detailDraft.agenteId}
                       onChange={(e) => setDetailDraft((prev) => ({ ...prev, agenteId: e.target.value }))}
                       className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm"
                     >
-                      <option value="">Sin asignar</option>
+                      <option value="">{t("withoutAssignee")}</option>
                       {agentes
                         .filter((a) => a.estado === "activo")
                         .map((a) => (
@@ -2205,31 +2233,31 @@ export default function SolicitudesPage() {
                     </select>
                   </div>
                     <div className="space-y-1.5">
-                      <label className="text-xs font-medium uppercase tracking-wide text-slate-500">Categoria</label>
+                      <label className="text-xs font-medium uppercase tracking-wide text-slate-500">{t("category")}</label>
                       <select
                         value={detailDraft.categoria}
                         onChange={(e) => setDetailDraft((prev) => ({ ...prev, categoria: e.target.value }))}
                         className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm"
                       >
-                        <option value="">Sin categoria</option>
+                        <option value="">{t("withoutCategory")}</option>
                         {CATEGORIAS.filter(Boolean).map((categoria) => (
                           <option key={categoria} value={categoria}>
-                            {CATEGORIA_LABELS[categoria] ?? categoria}
+                            {categoriaLabel(categoria)}
                           </option>
                         ))}
                       </select>
                     </div>
                     <div className="space-y-1.5">
-                      <label className="text-xs font-medium uppercase tracking-wide text-slate-500">Subcategoria</label>
+                      <label className="text-xs font-medium uppercase tracking-wide text-slate-500">{t("subcategory")}</label>
                       <input
                         value={detailDraft.subcategoria}
                         onChange={(e) => setDetailDraft((prev) => ({ ...prev, subcategoria: e.target.value }))}
-                        placeholder="Ej: integracion-whatsapp"
+                        placeholder={t("subcategoryPlaceholder")}
                         className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm"
                       />
                     </div>
                     <div className="space-y-1.5">
-                      <label className="text-xs font-medium uppercase tracking-wide text-slate-500">Fecha limite</label>
+                      <label className="text-xs font-medium uppercase tracking-wide text-slate-500">{t("dueDate")}</label>
                       <input
                         type="datetime-local"
                         value={detailDraft.dueAt}
@@ -2243,7 +2271,7 @@ export default function SolicitudesPage() {
                     variant="secondary"
                     onClick={() => setDetailModal({ open: false, solicitud: null })}
                   >
-                    Cerrar
+                    {t("close")}
                   </Button>
                   <Button
                     onClick={() => {
@@ -2262,16 +2290,16 @@ export default function SolicitudesPage() {
                     }}
                     disabled={saveSolicitud.isPending}
                   >
-                    {saveSolicitud.isPending ? "Guardando..." : "Guardar cambios"}
+                    {saveSolicitud.isPending ? t("saving") : t("saveChanges")}
                   </Button>
                 </div>
               </div>
               <div className="flex justify-end gap-3 pt-2">
                 <Button variant="secondary" onClick={() => setDetailModal({ open: false, solicitud: null })}>
-                  Cerrar
+                  {t("close")}
                 </Button>
                 <Button onClick={() => setDetailTab("conversaciones")}>
-                  Ver conversaciones del cliente
+                  {t("customerConversations")}
                 </Button>
               </div>
             </TabsContent>
@@ -2279,15 +2307,15 @@ export default function SolicitudesPage() {
             <TabsContent value="conversaciones" className="space-y-4">
               {!detailClientKey ? (
                 <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 p-6 text-sm text-slate-500">
-                  Esta solicitud no tiene teléfono de cliente para buscar conversaciones del tenant.
+                  {t("withoutPortalPhone")}
                 </div>
               ) : conversationsLoading ? (
                 <div className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-500">
-                  Cargando conversaciones del cliente...
+                  {t("loadingConversations")}
                 </div>
               ) : conversations.length === 0 ? (
                 <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 p-6 text-sm text-slate-500">
-                  No hay conversaciones registradas para este cliente en este tenant.
+                  {t("withoutConversations")}
                 </div>
               ) : (
                 <div className="space-y-3 max-h-[55vh] overflow-auto pr-1">
@@ -2308,21 +2336,21 @@ export default function SolicitudesPage() {
                         <div className="flex items-start justify-between gap-3">
                           <div>
                             <div className="flex items-center gap-2 flex-wrap">
-                              <p className="font-medium text-slate-900">{conversation.flow?.nombre ?? "Flujo sin nombre"}</p>
+                              <p className="font-medium text-slate-900">{conversation.flow?.nombre ?? t("withoutTitle")}</p>
                               {isCurrentConversation && (
                                 <span className="rounded-full bg-blue-100 px-2 py-0.5 text-[11px] font-semibold text-blue-700">
-                                  Conversación actual
+                                  {t("currentConversation")}
                                 </span>
                               )}
                             </div>
-                            <p className="text-sm text-slate-500 mt-1">ID {conversation.id} · Estado {conversation.status}</p>
+                            <p className="text-sm text-slate-500 mt-1">ID {conversation.id} · {t("state")} {conversation.status}</p>
                             <p className="text-sm text-slate-500">
-                              Inicio {formatDate(conversation.startedAt)}
-                              {conversation.endedAt ? ` · Fin ${formatDate(conversation.endedAt)}` : ""}
+                              {t("startLabel")} {formatDate(conversation.startedAt)}
+                              {conversation.endedAt ? ` · ${t("endLabel")} ${formatDate(conversation.endedAt)}` : ""}
                             </p>
                           </div>
                           <div className="text-right text-xs text-slate-500">
-                            <p>{conversation.solicitudes?.length ?? 0} solicitud(es) vinculada(s)</p>
+                            <p>{t("linkedRequests", { count: conversation.solicitudes?.length ?? 0 })}</p>
                             <p className="truncate max-w-[12rem]">{conversation.userKey}</p>
                           </div>
                         </div>
@@ -2333,7 +2361,7 @@ export default function SolicitudesPage() {
                                 key={solicitud.id}
                                 className="rounded-full bg-slate-100 px-2 py-1 text-[11px] font-medium text-slate-600"
                               >
-                                Solicitud #{solicitud.id} · {ESTADO_LABELS[solicitud.estado] ?? solicitud.estado}
+                                {t("requestNumber", { id: solicitud.id })} · {estadoLabel(solicitud.estado)}
                               </span>
                             ))}
                           </div>
@@ -2345,7 +2373,7 @@ export default function SolicitudesPage() {
               )}
               <div className="flex justify-end gap-3 pt-2">
                 <Button variant="secondary" onClick={() => setDetailModal({ open: false, solicitud: null })}>
-                  Cerrar
+                  {t("close")}
                 </Button>
               </div>
             </TabsContent>
@@ -2356,7 +2384,7 @@ export default function SolicitudesPage() {
       <Modal
         open={conversationDetailModal.open}
         onClose={() => setConversationDetailModal({ open: false, conversation: null })}
-        title="Detalle de conversación"
+        title={t("conversationDetail")}
         className="max-w-3xl"
       >
         {renderConversationDetailContent()}
