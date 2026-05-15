@@ -87,6 +87,7 @@ function RolesAccessPage({ initialTab = "roles", lockToUsers = false }: RolesAcc
   });
 
   const isUsersView = tab === "users" || lockToUsers;
+  const canCreateCurrentTab = tab === "users" ? canManageUsers : canManageRoles;
 
   return (
     <div className="space-y-6">
@@ -97,15 +98,20 @@ function RolesAccessPage({ initialTab = "roles", lockToUsers = false }: RolesAcc
             {isUsersView ? t("subtitleUsers") : t("subtitle")}
           </p>
         </div>
-        {(tab === "users" ? canManageUsers : canManageRoles) && (
-          <button
-            onClick={() => (tab === "roles" ? setShowRoleModal(true) : setShowUserModal(true))}
-            className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-blue-700 transition"
-          >
-            <Plus className="w-4 h-4" />
-            {tab === "roles" ? t("newRole") : t("newUser")}
-          </button>
-        )}
+        <button
+          type="button"
+          onClick={canCreateCurrentTab ? () => (tab === "roles" ? setShowRoleModal(true) : setShowUserModal(true)) : undefined}
+          disabled={!canCreateCurrentTab}
+          title={!canCreateCurrentTab ? t("noCreatePermission") : undefined}
+          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm transition ${
+            canCreateCurrentTab
+              ? "bg-blue-600 text-white hover:bg-blue-700"
+              : "bg-gray-200 text-gray-500 cursor-not-allowed"
+          }`}
+        >
+          <Plus className="w-4 h-4" />
+          {tab === "roles" ? t("newRole") : t("newUser")}
+        </button>
       </div>
 
       {/* Tabs */}

@@ -5,6 +5,7 @@
   "subtitleUsers": "Gestión de usuarios admin",
   "newRole": "Nuevo rol",
   "newUser": "Nuevo usuario",
+  "noCreatePermission": "No tienes permisos para crear elementos en este módulo.",
   "tabRoles": "Roles",
   "tabUsers": "Usuarios admin",
   "global": "Global",

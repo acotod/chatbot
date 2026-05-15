@@ -5,6 +5,7 @@
   "subtitleUsers": "Admin user management",
   "newRole": "New role",
   "newUser": "New user",
+  "noCreatePermission": "You do not have permission to create items in this module.",
   "tabRoles": "Roles",
   "tabUsers": "Admin users",
   "global": "Global",
