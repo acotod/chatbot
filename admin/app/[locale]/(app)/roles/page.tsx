@@ -36,8 +36,8 @@ function RolesAccessPage({ initialTab = "roles", lockToUsers = false }: RolesAcc
   const hasAccessToken = Boolean(getStoredAccessToken());
   const isTenantAdmin = !me?.superAdmin && !!me?.tenantId;
   const { permissions } = useAuthStore();
-  const canManageRoles = me?.superAdmin || (permissions ?? []).includes("MANAGE_ROLES");
-  const canManageUsers = me?.superAdmin || canManageRoles || (permissions ?? []).includes("MANAGE_USERS");
+  const canManageRolesByStore = me?.superAdmin || (permissions ?? []).includes("MANAGE_ROLES");
+  const canManageUsersByStore = me?.superAdmin || canManageRolesByStore || (permissions ?? []).includes("MANAGE_USERS");
   const t = useTranslations("roles");
   const [tab, setTab] = useState<RolesViewTab>(initialTab);
   const [showRoleModal, setShowRoleModal] = useState(false);
@@ -51,11 +51,12 @@ function RolesAccessPage({ initialTab = "roles", lockToUsers = false }: RolesAcc
     enabled: hasAccessToken,
   });
 
-  const { data: roles = [], isLoading: loadingRoles } = useQuery<Role[]>({
+  const rolesQuery = useQuery<Role[]>({
     queryKey: ["roles"],
     queryFn: () => rbacApi.listRoles().then((r) => r.data),
     enabled: hasAccessToken,
   });
+  const { data: roles = [], isLoading: loadingRoles } = rolesQuery;
 
   useEffect(() => {
     if (lockToUsers || initialTab === "users") {
@@ -65,10 +66,15 @@ function RolesAccessPage({ initialTab = "roles", lockToUsers = false }: RolesAcc
     setTab("roles");
   }, [initialTab, lockToUsers]);
 
-  const { data: users = [], isLoading: loadingUsers } = useQuery<AdminUser[]>({
+  const usersQuery = useQuery<AdminUser[]>({
     queryKey: ["adminUsers"],
     queryFn: () => rbacApi.listUsers().then((r) => r.data),
   });
+  const { data: users = [], isLoading: loadingUsers } = usersQuery;
+
+  // Fallback to API success in case local permission state is stale.
+  const canManageRoles = canManageRolesByStore || rolesQuery.isSuccess;
+  const canManageUsers = canManageUsersByStore || canManageRoles || usersQuery.isSuccess;
 
   const { data: tenants = [] } = useQuery<Tenant[]>({
     queryKey: ["tenants"],
