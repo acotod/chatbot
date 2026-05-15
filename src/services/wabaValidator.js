@@ -59,7 +59,7 @@ const VALID_COMPONENT_TYPES = new Set([
   'NavigationList', 'RichText', 'PhotoPicker', 'DocumentPicker',
 ]);
 const VALID_LAYOUT_TYPES = new Set(['SingleColumnLayout']);
-const VALID_VERSIONS = new Set(['3.0', '3.1', '4.0', '5.0', '5.1', '6.0', '6.1', '7.0']);
+const VALID_VERSIONS = new Set(['3.0', '3.1', '4.0', '5.0', '5.1', '6.0', '6.1', '7.0', '7.1']);
 
 const MAX_BUTTONS = 3;
 const MAX_DROPDOWN_OPTIONS = 300;
@@ -106,6 +106,52 @@ function validateWabaJson(flow) {
   const screenIds = flow.screens.map((s) => s?.id);
   if (!screenIds.includes('INIT') && !screenIds.includes('WELCOME') && !screenIds.includes('START')) {
     warnings.push({ code: 'NO_INIT_SCREEN', message: 'Consider naming your first screen "INIT" for clarity' });
+  }
+
+  // routing_model connectivity check
+  if (flow.routing_model && typeof flow.routing_model === 'object' && !Array.isArray(flow.routing_model)) {
+    const routingKeys = Object.keys(flow.routing_model);
+    const entryScreen = screenIds[0]; // first screen is the entry point
+
+    // BFS to find all reachable screens from entry
+    const reachable = new Set();
+    const queue = entryScreen ? [entryScreen] : [];
+    while (queue.length) {
+      const current = queue.shift();
+      if (reachable.has(current)) continue;
+      reachable.add(current);
+      const neighbors = flow.routing_model[current];
+      if (Array.isArray(neighbors)) {
+        neighbors.forEach((n) => { if (!reachable.has(n)) queue.push(n); });
+      }
+    }
+
+    // Every screen in routing_model must be reachable from entry
+    const disconnected = routingKeys.filter((k) => !reachable.has(k));
+    if (disconnected.length > 0) {
+      disconnected.forEach((screenId) => {
+        const idx = screenIds.indexOf(screenId);
+        errors.push({
+          code: 'DISCONNECTED_SCREEN',
+          message: `Screen "${screenId}" is not reachable from the entry screen. All screens must be connected.`,
+          field: idx >= 0 ? `screens[${idx}].id` : `routing_model.${screenId}`,
+          fix: `Either remove screen "${screenId}" from both "screens" and "routing_model", or add a navigation to it from an existing screen.`,
+          disconnected_screens: disconnected,
+        });
+      });
+    }
+
+    // Every screen in the screens array should also be in routing_model
+    screenIds.forEach((sid, idx) => {
+      if (sid && !Object.prototype.hasOwnProperty.call(flow.routing_model, sid)) {
+        warnings.push({
+          code: 'SCREEN_NOT_IN_ROUTING_MODEL',
+          message: `Screen "${sid}" is present in "screens" but missing from "routing_model"`,
+          field: `screens[${idx}].id`,
+          fix: `Add "${sid}" as a key in "routing_model" with its list of reachable screens (empty array [] if terminal)`,
+        });
+      }
+    });
   }
 
   flow.screens.forEach((screen, idx) => {
@@ -288,6 +334,25 @@ function applyDeterministicFixes(flow, structuralErrors) {
           const before = fixed.screens[idx].layout.type;
           fixed.screens[idx].layout.type = 'SingleColumnLayout';
           changes.push({ field: err.field, before, after: 'SingleColumnLayout', reason: err.message });
+        }
+        break;
+      }
+
+      case 'DISCONNECTED_SCREEN': {
+        // Remove all disconnected screens from both screens[] and routing_model
+        const toRemove = new Set(err.disconnected_screens || []);
+        if (toRemove.size > 0) {
+          const before = fixed.screens.map((s) => s.id);
+          fixed.screens = fixed.screens.filter((s) => !toRemove.has(s.id));
+          toRemove.forEach((sid) => {
+            if (fixed.routing_model) delete fixed.routing_model[sid];
+          });
+          changes.push({
+            field: 'screens + routing_model',
+            before: before.join(', '),
+            after: fixed.screens.map((s) => s.id).join(', '),
+            reason: `Removed disconnected screens: ${[...toRemove].join(', ')}`,
+          });
         }
         break;
       }
