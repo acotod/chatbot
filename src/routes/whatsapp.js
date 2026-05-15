@@ -107,6 +107,128 @@ function verifyMetaSignature(req, res, next) {
   next();
 }
 
+function normalizeFlowText(value) {
+  return String(value ?? '').trim();
+}
+
+function getFlowPrivateKeyPem() {
+  const rawKey =
+    process.env.WA_FLOW_PRIVATE_KEY ||
+    process.env.FLOW_PRIVATE_KEY ||
+    process.env.PRIVATE_KEY;
+
+  const normalized = normalizeFlowText(rawKey).replace(/\\n/g, '\n');
+  if (!normalized) {
+    throw new Error('Flow private key is not configured');
+  }
+
+  return normalized;
+}
+
+function isEncryptedFlowRequest(body) {
+  return Boolean(
+    body &&
+    typeof body === 'object' &&
+    !Array.isArray(body) &&
+    typeof body.encrypted_flow_data === 'string' &&
+    typeof body.encrypted_aes_key === 'string' &&
+    typeof body.initial_vector === 'string'
+  );
+}
+
+function flipInitialVector(initialVectorBuffer) {
+  const flipped = Buffer.alloc(initialVectorBuffer.length);
+  for (let index = 0; index < initialVectorBuffer.length; index += 1) {
+    flipped[index] = initialVectorBuffer[index] ^ 0xff;
+  }
+  return flipped;
+}
+
+function decryptFlowRequest(body) {
+  const privateKeyPem = getFlowPrivateKeyPem();
+  const privateKey = crypto.createPrivateKey({ key: privateKeyPem });
+  const aesKeyBuffer = crypto.privateDecrypt(
+    {
+      key: privateKey,
+      padding: crypto.constants.RSA_PKCS1_OAEP_PADDING,
+      oaepHash: 'sha256',
+    },
+    Buffer.from(body.encrypted_aes_key, 'base64')
+  );
+
+  const initialVectorBuffer = Buffer.from(body.initial_vector, 'base64');
+  const encryptedFlowDataBuffer = Buffer.from(body.encrypted_flow_data, 'base64');
+  const authTagLength = 16;
+
+  if (encryptedFlowDataBuffer.length <= authTagLength) {
+    throw new Error('encrypted_flow_data is too short');
+  }
+
+  const encryptedPayload = encryptedFlowDataBuffer.subarray(0, -authTagLength);
+  const authTag = encryptedFlowDataBuffer.subarray(-authTagLength);
+
+  const decipher = crypto.createDecipheriv('aes-128-gcm', aesKeyBuffer, initialVectorBuffer);
+  decipher.setAuthTag(authTag);
+
+  const decryptedJson = Buffer.concat([
+    decipher.update(encryptedPayload),
+    decipher.final(),
+  ]).toString('utf8');
+
+  return {
+    decryptedBody: JSON.parse(decryptedJson),
+    aesKeyBuffer,
+    initialVectorBuffer,
+  };
+}
+
+function encryptFlowResponse(payload, aesKeyBuffer, initialVectorBuffer) {
+  const cipher = crypto.createCipheriv(
+    'aes-128-gcm',
+    aesKeyBuffer,
+    flipInitialVector(initialVectorBuffer)
+  );
+
+  return Buffer.concat([
+    cipher.update(JSON.stringify(payload), 'utf8'),
+    cipher.final(),
+    cipher.getAuthTag(),
+  ]).toString('base64');
+}
+
+function resolveFlowScreenName(screen, data, action) {
+  const candidates = [
+    screen,
+    data?.screen,
+    data?.current_screen,
+    data?.previous_screen,
+    data?.previousScreen,
+    data?.entry_screen,
+    data?.start_screen,
+  ];
+
+  for (const candidate of candidates) {
+    const normalized = normalizeFlowText(candidate);
+    if (normalized) return normalized;
+  }
+
+  if (action === 'INIT' || action === 'BACK') {
+    return 'INICIO';
+  }
+
+  return null;
+}
+
+function sendFlowResponse(res, payload, encryptedContext) {
+  if (!encryptedContext) {
+    return res.json(payload);
+  }
+
+  return res
+    .type('text/plain')
+    .send(encryptFlowResponse(payload, encryptedContext.aesKeyBuffer, encryptedContext.initialVectorBuffer));
+}
+
 // ── GET: Meta webhook verification ──────────────────────────────────────────
 
 router.get('/', (req, res) => {
@@ -996,22 +1118,23 @@ router.get('/flows', (req, res) => {
 
 router.post('/flows', verifyMetaSignature, async (req, res, next) => {
   try {
-    const { flow_token, action, screen, data = {} } = req.body;
+    const encryptedContext = isEncryptedFlowRequest(req.body)
+      ? decryptFlowRequest(req.body)
+      : null;
+    const requestBody = encryptedContext?.decryptedBody ?? req.body;
+    const { flow_token, action, screen, data = {} } = requestBody;
 
     // Ping health check from Meta
     if (action === 'ping') {
-      return res.json({ data: { status: 'active' } });
+      return sendFlowResponse(res, { data: { status: 'active' } }, encryptedContext);
     }
 
-    if (!screen) {
-      return res.status(400).json({ error: 'screen is required' });
+    if (!flow_token) {
+      return res.status(400).json({ error: 'flow_token is required' });
     }
 
     // Resolve tenant
-    let tenant = null;
-    if (flow_token) {
-      tenant = await db.findTenantByFlowToken(flow_token);
-    }
+    const tenant = await db.findTenantByFlowToken(flow_token);
     if (!tenant) {
       logger.warn('Meta Flows: tenant not resolved', { flow_token });
       return res.status(400).json({ error: 'Cannot resolve tenant from flow_token' });
@@ -1028,11 +1151,16 @@ router.post('/flows', verifyMetaSignature, async (req, res, next) => {
       userId = user?.id ?? null;
     }
 
+    const resolvedScreen = resolveFlowScreenName(screen, data, action);
+    if (!resolvedScreen) {
+      return res.status(400).json({ error: 'screen is required' });
+    }
+
     // Persist event
-    await db.saveEvent(userId, screen, data, tenant.id);
+    await db.saveEvent(userId, resolvedScreen, data, tenant.id);
 
     // Persist solicitud when applicable
-    if (screen === 'SOLICITUD_ESPACIO') {
+    if (resolvedScreen === 'SOLICITUD_ESPACIO') {
       await db.saveSolicitud(userId, data, tenant.id);
     }
 
@@ -1040,33 +1168,47 @@ router.post('/flows', verifyMetaSignature, async (req, res, next) => {
     const flowConfig = await db.getConfig(tenant.id, 'flow_navigation');
     const navigationOverride = flowConfig ? flowConfig.valor : null;
 
-    const nextScreen = getNextScreen(screen, data, navigationOverride);
+    const nextScreen = action === 'INIT' || action === 'BACK'
+      ? resolvedScreen
+      : getNextScreen(resolvedScreen, data, navigationOverride);
     if (nextScreen === null) {
-      logger.warn('Meta Flows navigation failed', { tenantId: tenant.id, screen });
-      return res.status(400).json({ error: `Unknown screen or option for screen: ${screen}` });
+      logger.warn('Meta Flows navigation failed', { tenantId: tenant.id, screen: resolvedScreen });
+      return res.status(400).json({ error: `Unknown screen or option for screen: ${resolvedScreen}` });
     }
 
     // Enqueue urgencia async processing
-    if (screen === 'URGENCIA' || nextScreen === 'URGENCIA') {
+    if (resolvedScreen === 'URGENCIA' || nextScreen === 'URGENCIA') {
       const redis = getRedisClient();
       if (redis) {
         await redis.lpush('queue:urgencias', JSON.stringify({
-          tenantId: tenant.id, userId, screen, nextScreen, data, timestamp: Date.now(),
+          tenantId: tenant.id, userId, screen: resolvedScreen, nextScreen, data, timestamp: Date.now(),
         }));
       }
     }
 
-    logger.info('Meta Flows navigation', { tenantId: tenant.id, from: screen, to: nextScreen });
+    logger.info('Meta Flows navigation', { tenantId: tenant.id, from: resolvedScreen, to: nextScreen, action });
 
     // Load screen templates for the next screen
     const templatesCfg = await db.getConfig(tenant.id, 'screen_templates');
     const templates = templatesCfg?.valor ?? {};
     const screenData = templates[nextScreen] ?? {};
 
-    return res.json({ screen: nextScreen, data: screenData });
+    return sendFlowResponse(res, { screen: nextScreen, data: screenData }, encryptedContext);
   } catch (err) {
+    if (/Flow private key is not configured|bad decrypt|unable to authenticate data|encrypted_flow_data is too short/i.test(err.message || '')) {
+      logger.warn('Meta Flows decryption failed', { message: err.message });
+      return res.status(421).json({ error: 'Unable to decrypt flow payload' });
+    }
     next(err);
   }
 });
+
+router._flowsCrypto = {
+  decryptFlowRequest,
+  encryptFlowResponse,
+  flipInitialVector,
+  isEncryptedFlowRequest,
+  resolveFlowScreenName,
+};
 
 module.exports = router;
