@@ -177,6 +177,8 @@ export default function ConfiguracionPage() {
   const [waCreds, setWaCreds] = useState({ phoneNumberId: "", accessToken: "" });
   const [waTokenConfigured, setWaTokenConfigured] = useState(false);
   const [waSaved, setWaSaved] = useState(false);
+  const [flowEndpointPublicKey, setFlowEndpointPublicKey] = useState("");
+  const [flowEndpointKeySaved, setFlowEndpointKeySaved] = useState(false);
   const [emailSettings, setEmailSettings] = useState({
     smtpUrl: "",
     smtpHost: "",
@@ -253,6 +255,24 @@ export default function ConfiguracionPage() {
     enabled: !!tenantSlug,
   });
   void waCredsData;
+
+  const { data: flowEndpointPublicKeyData } = useQuery({
+    queryKey: ["config", tenantSlug, "flow_endpoint_public_key"],
+    queryFn: () =>
+      configApi.get(tenantSlug!, "flow_endpoint_public_key").then((r) => {
+        const v = r?.data?.valor;
+        if (typeof v === "string") {
+          setFlowEndpointPublicKey(v);
+        } else if (v && typeof v === "object") {
+          setFlowEndpointPublicKey(String((v as { publicKey?: string }).publicKey ?? ""));
+        } else {
+          setFlowEndpointPublicKey("");
+        }
+        return r?.data;
+      }),
+    enabled: !!tenantSlug,
+  });
+  void flowEndpointPublicKeyData;
 
   const { data: emailSettingsData } = useQuery({
     queryKey: ["config", tenantSlug, "email_settings"],
@@ -339,6 +359,18 @@ export default function ConfiguracionPage() {
       setWaCreds((prev) => ({ ...prev, accessToken: "" }));
       setWaSaved(true);
       setTimeout(() => setWaSaved(false), 3000);
+    },
+  });
+
+  const saveFlowEndpointKeyMutation = useMutation({
+    mutationFn: () =>
+      configApi.set(tenantSlug!, "flow_endpoint_public_key", {
+        publicKey: flowEndpointPublicKey.trim(),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["config", tenantSlug, "flow_endpoint_public_key"] });
+      setFlowEndpointKeySaved(true);
+      setTimeout(() => setFlowEndpointKeySaved(false), 3000);
     },
   });
 
@@ -553,6 +585,7 @@ export default function ConfiguracionPage() {
       if (tab === "comunicacion") {
         await Promise.all([
           qc.invalidateQueries({ queryKey: ["config", tenantSlug, "horarios"] }),
+          qc.invalidateQueries({ queryKey: ["config", tenantSlug, "flow_endpoint_public_key"] }),
           qc.invalidateQueries({ queryKey: ["config", tenantSlug, "wa_credentials"] }),
         ]);
         return;
@@ -720,6 +753,39 @@ export default function ConfiguracionPage() {
               <p className="text-xs text-slate-400">
                 {t("bienvenida.tip")}
               </p>
+            </div>
+          </ConfigSection>
+
+          {/* Flow endpoint public key */}
+          <ConfigSection
+            title={t("flowKey.title")}
+            description={t("flowKey.description")}
+          >
+            <div className="space-y-4">
+              <div className="flex flex-col gap-1.5">
+                <label className="text-sm font-medium text-slate-700">{t("flowKey.label")}</label>
+                <textarea
+                  rows={8}
+                  value={flowEndpointPublicKey}
+                  onChange={(e) => setFlowEndpointPublicKey(e.target.value)}
+                  placeholder={t("flowKey.placeholder")}
+                  className="px-3.5 py-2.5 rounded-xl border border-slate-200 bg-white text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 resize-y transition-all font-mono"
+                />
+                <p className="text-xs text-slate-400">
+                  {t("flowKey.hint")}
+                </p>
+              </div>
+
+              <div className="flex justify-end">
+                <Button
+                  onClick={() => saveFlowEndpointKeyMutation.mutate()}
+                  disabled={saveFlowEndpointKeyMutation.isPending}
+                >
+                  {flowEndpointKeySaved ? (
+                    <><Check size={16} /> {t("flowKey.saved")}</>
+                  ) : saveFlowEndpointKeyMutation.isPending ? t("flowKey.saving") : t("flowKey.saveButton")}
+                </Button>
+              </div>
             </div>
           </ConfigSection>
 

@@ -32,6 +32,16 @@
     "label": "Texto del mensaje",
     "tip": "Tip: usá un tono cercano y empático 💙"
   },
+  "flowKey": {
+    "title": "Clave pública del Flow",
+    "description": "Pegá la clave pública que Meta usará para cifrar los intercambios con este tenant",
+    "label": "Clave pública RSA",
+    "placeholder": "-----BEGIN PUBLIC KEY-----\n...\n-----END PUBLIC KEY-----",
+    "hint": "Generá un par de llaves por tenant y subí esta clave pública en Meta Business Manager.",
+    "saveButton": "Guardar clave pública",
+    "saving": "Guardando...",
+    "saved": "Clave guardada 💙"
+  },
   "whatsapp": {
     "title": "WhatsApp Business",
     "description": "Credenciales para enviar y recibir mensajes desde Meta Cloud API",

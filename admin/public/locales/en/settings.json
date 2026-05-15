@@ -32,6 +32,16 @@
     "label": "Message text",
     "tip": "Tip: use a close and empathetic tone 💙"
   },
+  "flowKey": {
+    "title": "Flow public key",
+    "description": "Paste the public key Meta will use to encrypt exchanges for this tenant",
+    "label": "RSA public key",
+    "placeholder": "-----BEGIN PUBLIC KEY-----\n...\n-----END PUBLIC KEY-----",
+    "hint": "Generate one key pair per tenant and upload this public key in Meta Business Manager.",
+    "saveButton": "Save public key",
+    "saving": "Saving...",
+    "saved": "Key saved 💙"
+  },
   "whatsapp": {
     "title": "WhatsApp Business",
     "description": "Credentials to send and receive messages from Meta Cloud API",
