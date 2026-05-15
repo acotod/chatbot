@@ -155,16 +155,28 @@ function RolesAccessPage({ initialTab = "roles", lockToUsers = false }: RolesAcc
                     </div>
                     <div className="flex items-center gap-1">
                       <button
-                        onClick={() => setEditingRole(role)}
-                        className="text-gray-400 hover:text-blue-500 transition p-1"
-                        title={t("editRole")}
+                        type="button"
+                        onClick={canManageRoles ? () => setEditingRole(role) : undefined}
+                        disabled={!canManageRoles}
+                        className={`transition p-1 ${
+                          canManageRoles
+                            ? "text-gray-400 hover:text-blue-500"
+                            : "text-gray-300 cursor-not-allowed"
+                        }`}
+                        title={canManageRoles ? t("editRole") : t("noManagePermission")}
                       >
                         <Pencil className="w-4 h-4" />
                       </button>
                       <button
-                        onClick={() => deleteRole.mutate(role.id)}
-                        className="text-gray-400 hover:text-red-500 transition p-1"
-                        title={t("deleteRole")}
+                        type="button"
+                        onClick={canManageRoles ? () => deleteRole.mutate(role.id) : undefined}
+                        disabled={!canManageRoles}
+                        className={`transition p-1 ${
+                          canManageRoles
+                            ? "text-gray-400 hover:text-red-500"
+                            : "text-gray-300 cursor-not-allowed"
+                        }`}
+                        title={canManageRoles ? t("deleteRole") : t("noManagePermission")}
                       >
                         <Trash2 className="w-4 h-4" />
                       </button>
@@ -242,16 +254,28 @@ function RolesAccessPage({ initialTab = "roles", lockToUsers = false }: RolesAcc
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-1">
                           <button
-                            onClick={() => setEditingUser(u)}
-                            className="text-gray-400 hover:text-blue-500 transition"
-                            title={t("editUser")}
+                            type="button"
+                            onClick={canManageUsers ? () => setEditingUser(u) : undefined}
+                            disabled={!canManageUsers}
+                            className={`transition ${
+                              canManageUsers
+                                ? "text-gray-400 hover:text-blue-500"
+                                : "text-gray-300 cursor-not-allowed"
+                            }`}
+                            title={canManageUsers ? t("editUser") : t("noManagePermission")}
                           >
                             <Pencil className="w-4 h-4" />
                           </button>
                           <button
-                            onClick={() => deleteUser.mutate(u.id)}
-                            className="text-gray-400 hover:text-red-500 transition"
-                            title={t("deleteUser")}
+                            type="button"
+                            onClick={canManageUsers ? () => deleteUser.mutate(u.id) : undefined}
+                            disabled={!canManageUsers}
+                            className={`transition ${
+                              canManageUsers
+                                ? "text-gray-400 hover:text-red-500"
+                                : "text-gray-300 cursor-not-allowed"
+                            }`}
+                            title={canManageUsers ? t("deleteUser") : t("noManagePermission")}
                           >
                             <Trash2 className="w-4 h-4" />
                           </button>
