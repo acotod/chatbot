@@ -38,6 +38,8 @@
     "label": "Clave pública RSA",
     "placeholder": "-----BEGIN PUBLIC KEY-----\n...\n-----END PUBLIC KEY-----",
     "hint": "Generá un par de llaves por tenant y subí esta clave pública en Meta Business Manager.",
+    "generateButton": "Generar y guardar par de llaves",
+    "generating": "Generando...",
     "saveButton": "Guardar clave pública",
     "saving": "Guardando...",
     "saved": "Clave guardada 💙"

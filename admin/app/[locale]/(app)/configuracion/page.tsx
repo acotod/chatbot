@@ -8,7 +8,7 @@ import { Card, CardContent, CardHeader } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { CalendarDays, Check, Pencil, Trash2, X, Settings, MessageSquare, Lock, Briefcase, Palette, RefreshCw, Upload } from "lucide-react";
+import { CalendarDays, Check, Pencil, Trash2, X, Settings, MessageSquare, Lock, Briefcase, Palette, RefreshCw, Upload, KeyRound } from "lucide-react";
 import { useTranslations } from "@/lib/i18n/client";
 
 // ── LLM config types ──────────────────────────────────────────────────────────
@@ -179,6 +179,7 @@ export default function ConfiguracionPage() {
   const [waSaved, setWaSaved] = useState(false);
   const [flowEndpointPublicKey, setFlowEndpointPublicKey] = useState("");
   const [flowEndpointKeySaved, setFlowEndpointKeySaved] = useState(false);
+  const [isGeneratingKeys, setIsGeneratingKeys] = useState(false);
   const [emailSettings, setEmailSettings] = useState({
     smtpUrl: "",
     smtpHost: "",
@@ -273,6 +274,43 @@ export default function ConfiguracionPage() {
     enabled: !!tenantSlug,
   });
   void flowEndpointPublicKeyData;
+
+  async function generateFlowKeyPair() {
+    if (!tenantSlug) return;
+    setIsGeneratingKeys(true);
+    try {
+      const keyPair = await window.crypto.subtle.generateKey(
+        { name: "RSA-OAEP", modulusLength: 2048, publicExponent: new Uint8Array([1, 0, 1]), hash: "SHA-256" },
+        true,
+        ["encrypt", "decrypt"]
+      );
+      const pubBuf = await window.crypto.subtle.exportKey("spki", keyPair.publicKey);
+      const privBuf = await window.crypto.subtle.exportKey("pkcs8", keyPair.privateKey);
+      const toBase64 = (buf: ArrayBuffer) =>
+        btoa(String.fromCharCode(...new Uint8Array(buf)))
+          .match(/.{1,64}/g)!.join("\n");
+      setFlowEndpointPublicKey(
+        `-----BEGIN PUBLIC KEY-----\n${toBase64(pubBuf)}\n-----END PUBLIC KEY-----`
+      );
+      const privateKeyPem = `-----BEGIN PRIVATE KEY-----\n${toBase64(privBuf)}\n-----END PRIVATE KEY-----`;
+
+      await Promise.all([
+        configApi.set(tenantSlug, "flow_endpoint_public_key", {
+          publicKey: `-----BEGIN PUBLIC KEY-----\n${toBase64(pubBuf)}\n-----END PUBLIC KEY-----`,
+        }),
+        configApi.set(tenantSlug, "flow_endpoint_private_key", {
+          privateKey: privateKeyPem,
+        }),
+      ]);
+
+      qc.invalidateQueries({ queryKey: ["config", tenantSlug, "flow_endpoint_public_key"] });
+      qc.invalidateQueries({ queryKey: ["config", tenantSlug, "flow_endpoint_private_key"] });
+      setFlowEndpointKeySaved(true);
+      setTimeout(() => setFlowEndpointKeySaved(false), 3000);
+    } finally {
+      setIsGeneratingKeys(false);
+    }
+  }
 
   const { data: emailSettingsData } = useQuery({
     queryKey: ["config", tenantSlug, "email_settings"],
@@ -763,7 +801,18 @@ export default function ConfiguracionPage() {
           >
             <div className="space-y-4">
               <div className="flex flex-col gap-1.5">
-                <label className="text-sm font-medium text-slate-700">{t("flowKey.label")}</label>
+                <div className="flex items-center justify-between">
+                  <label className="text-sm font-medium text-slate-700">{t("flowKey.label")}</label>
+                  <button
+                    type="button"
+                    onClick={generateFlowKeyPair}
+                    disabled={isGeneratingKeys}
+                    className="inline-flex items-center gap-1.5 text-xs font-medium text-blue-600 hover:text-blue-800 disabled:opacity-50 transition-colors"
+                  >
+                    <KeyRound size={13} />
+                    {isGeneratingKeys ? t("flowKey.generating") : t("flowKey.generateButton")}
+                  </button>
+                </div>
                 <textarea
                   rows={8}
                   value={flowEndpointPublicKey}
@@ -771,15 +820,13 @@ export default function ConfiguracionPage() {
                   placeholder={t("flowKey.placeholder")}
                   className="px-3.5 py-2.5 rounded-xl border border-slate-200 bg-white text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 resize-y transition-all font-mono"
                 />
-                <p className="text-xs text-slate-400">
-                  {t("flowKey.hint")}
-                </p>
+                <p className="text-xs text-slate-400">{t("flowKey.hint")}</p>
               </div>
 
               <div className="flex justify-end">
                 <Button
                   onClick={() => saveFlowEndpointKeyMutation.mutate()}
-                  disabled={saveFlowEndpointKeyMutation.isPending}
+                  disabled={saveFlowEndpointKeyMutation.isPending || !flowEndpointPublicKey.trim()}
                 >
                   {flowEndpointKeySaved ? (
                     <><Check size={16} /> {t("flowKey.saved")}</>

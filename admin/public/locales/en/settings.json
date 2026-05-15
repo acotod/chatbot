@@ -38,6 +38,8 @@
     "label": "RSA public key",
     "placeholder": "-----BEGIN PUBLIC KEY-----\n...\n-----END PUBLIC KEY-----",
     "hint": "Generate one key pair per tenant and upload this public key in Meta Business Manager.",
+    "generateButton": "Generate and save key pair",
+    "generating": "Generating...",
     "saveButton": "Save public key",
     "saving": "Saving...",
     "saved": "Key saved 💙"

@@ -111,7 +111,22 @@ function normalizeFlowText(value) {
   return String(value ?? '').trim();
 }
 
-function getFlowPrivateKeyPem() {
+async function getFlowPrivateKeyPem(tenantId = null) {
+  if (tenantId) {
+    const cfg = await db.getConfig(tenantId, 'flow_endpoint_private_key');
+    const configuredKey =
+      typeof cfg?.valor === 'string'
+        ? cfg.valor
+        : cfg?.valor && typeof cfg.valor === 'object'
+          ? cfg.valor.privateKey
+          : null;
+
+    const normalizedConfigured = normalizeFlowText(configuredKey).replace(/\\n/g, '\n');
+    if (normalizedConfigured) {
+      return normalizedConfigured;
+    }
+  }
+
   const rawKey =
     process.env.WA_FLOW_PRIVATE_KEY ||
     process.env.FLOW_PRIVATE_KEY ||
@@ -144,8 +159,8 @@ function flipInitialVector(initialVectorBuffer) {
   return flipped;
 }
 
-function decryptFlowRequest(body) {
-  const privateKeyPem = getFlowPrivateKeyPem();
+async function decryptFlowRequest(body, tenantId = null) {
+  const privateKeyPem = await getFlowPrivateKeyPem(tenantId);
   const privateKey = crypto.createPrivateKey({ key: privateKeyPem });
   const aesKeyBuffer = crypto.privateDecrypt(
     {
@@ -1118,8 +1133,13 @@ router.get('/flows', (req, res) => {
 
 router.post('/flows', verifyMetaSignature, async (req, res, next) => {
   try {
+    const tenantSlugFromQuery = normalizeFlowText(req.query.tenant || req.query.tenantSlug);
+    const tenantFromQuery = tenantSlugFromQuery
+      ? await db.findTenantBySlug(tenantSlugFromQuery)
+      : null;
+
     const encryptedContext = isEncryptedFlowRequest(req.body)
-      ? decryptFlowRequest(req.body)
+      ? await decryptFlowRequest(req.body, tenantFromQuery?.id ?? null)
       : null;
     const requestBody = encryptedContext?.decryptedBody ?? req.body;
     const { flow_token, action, screen, data = {} } = requestBody;
@@ -1134,7 +1154,15 @@ router.post('/flows', verifyMetaSignature, async (req, res, next) => {
     }
 
     // Resolve tenant
-    const tenant = await db.findTenantByFlowToken(flow_token);
+    let tenant = null;
+    if (flow_token) {
+      tenant = await db.findTenantByFlowToken(flow_token);
+    }
+
+    if (!tenant && tenantFromQuery) {
+      tenant = tenantFromQuery;
+    }
+
     if (!tenant) {
       logger.warn('Meta Flows: tenant not resolved', { flow_token });
       return res.status(400).json({ error: 'Cannot resolve tenant from flow_token' });
