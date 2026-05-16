@@ -72,13 +72,17 @@ async function verifyFlowsSignature(req, res, next) {
       const expectedBuf = Buffer.from(expectedHex, 'hex');
 
       if (!crypto.timingSafeEqual(receivedBuf, expectedBuf)) {
+        const secretHash = crypto.createHash('sha256').update(appSecret).digest('hex');
+        const bodyPreview = req.rawBody.slice(0, 200).toString('utf8').replace(/[\x00-\x1f]/g, '?');
         logger.warn('Flows webhook signature mismatch', {
           tenantId,
           correlationId: req.correlationId,
-          headerLength: received.length,
-          receivedPrefix: receivedHex.slice(0, 12),
-          expectedPrefix: expectedHex.slice(0, 12),
+          receivedSig: received,
+          expectedPrefix: expectedHex.slice(0, 16),
+          secretSHA256: secretHash,
           bodyLength: req.rawBody.length,
+          bodyPreview,
+          contentType: req.headers['content-type'],
         });
         return res.status(401).json({ error: 'Invalid webhook signature', code: 'WF_SIG_MISMATCH' });
       }
