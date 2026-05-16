@@ -43,7 +43,7 @@ async function verifyFlowsSignature(req, res, next) {
     }
 
     const sig = req.headers['x-hub-signature-256'];
-    if (!sig) return res.status(401).json({ error: 'Missing webhook signature' });
+    if (!sig) return res.status(401).json({ error: 'Missing webhook signature', code: 'WF_SIG_MISSING' });
     if (!req.rawBody) {
       logger.error('rawBody unavailable for Flows webhook signature check');
       return res.status(400).json({ error: 'Raw body unavailable for signature check' });
@@ -63,7 +63,7 @@ async function verifyFlowsSignature(req, res, next) {
         headerLength: received.length,
         headerSample: received.slice(0, 32),
       });
-      return res.status(401).json({ error: 'Invalid webhook signature' });
+      return res.status(401).json({ error: 'Invalid webhook signature', code: 'WF_SIG_FORMAT' });
     }
     const receivedHex = signatureMatch[1].toLowerCase();
 
@@ -80,10 +80,10 @@ async function verifyFlowsSignature(req, res, next) {
           expectedPrefix: expectedHex.slice(0, 12),
           bodyLength: req.rawBody.length,
         });
-        return res.status(401).json({ error: 'Invalid webhook signature' });
+        return res.status(401).json({ error: 'Invalid webhook signature', code: 'WF_SIG_MISMATCH' });
       }
     } catch {
-      return res.status(401).json({ error: 'Invalid webhook signature' });
+      return res.status(401).json({ error: 'Invalid webhook signature', code: 'WF_SIG_COMPARE' });
     }
   } catch (err) {
     return next(err);
