@@ -33,10 +33,12 @@ export function middleware(request: NextRequest) {
     
     // Protect agent routes: if accessing /agente from agent domain, allow it.
     // Allow auth API paths so login requests don't get redirected.
+    // Allow public pages like /facebook/data-deletion and /instrucciones
     // Otherwise, route to /agente/login for non-public pages.
     if (
       !pathnameWithoutLocale.startsWith('/agente') &&
       !pathnameWithoutLocale.startsWith('/facebook') &&
+      !pathnameWithoutLocale.startsWith('/instrucciones') &&
       !pathnameWithoutLocale.startsWith('/_next') &&
       !pathnameWithoutLocale.startsWith('/auth')
     ) {
