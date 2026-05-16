@@ -177,7 +177,7 @@ export default function TestingInstructionsPage() {
                     <p className="mb-2">Cada login exitoso se registra con:</p>
                     <ul className="space-y-1">
                       <li>• <code className="text-xs font-mono">accion: "LOGIN"</code></li>
-                      <li>• <code className="text-xs font-mono">metadata: { via: "facebook", facebookId: "..." }</code></li>
+                      <li>• <code className="text-xs font-mono">metadata: {'{'}  via: "facebook", facebookId: "..." {'}'}</code></li>
                       <li>• IP del cliente y User-Agent</li>
                     </ul>
                   </div>
