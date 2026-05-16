@@ -55,13 +55,11 @@ async function verifyFlowsSignature(req, res, next) {
       .digest('hex');
 
     const received = String(sig).trim();
-    const receivedHex = received.toLowerCase().startsWith('sha256=')
-      ? received.slice('sha256='.length).trim().toLowerCase()
-      : received.trim().toLowerCase();
-
-    if (!/^[a-f0-9]{64}$/.test(receivedHex)) {
+    const signatureMatch = received.match(/^(?:sha256\s*=\s*)?"?([a-f0-9]{64})"?$/i);
+    if (!signatureMatch) {
       return res.status(401).json({ error: 'Invalid webhook signature' });
     }
+    const receivedHex = signatureMatch[1].toLowerCase();
 
     try {
       const receivedBuf = Buffer.from(receivedHex, 'hex');
