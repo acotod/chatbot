@@ -49,11 +49,25 @@ async function verifyFlowsSignature(req, res, next) {
       return res.status(400).json({ error: 'Raw body unavailable for signature check' });
     }
 
-    const expected = 'sha256=' +
-      crypto.createHmac('sha256', appSecret).update(req.rawBody).digest('hex');
+    const expectedHex = crypto
+      .createHmac('sha256', appSecret)
+      .update(req.rawBody)
+      .digest('hex');
+
+    const received = String(sig).trim();
+    const receivedHex = received.toLowerCase().startsWith('sha256=')
+      ? received.slice('sha256='.length).trim().toLowerCase()
+      : received.trim().toLowerCase();
+
+    if (!/^[a-f0-9]{64}$/.test(receivedHex)) {
+      return res.status(401).json({ error: 'Invalid webhook signature' });
+    }
 
     try {
-      if (!crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expected))) {
+      const receivedBuf = Buffer.from(receivedHex, 'hex');
+      const expectedBuf = Buffer.from(expectedHex, 'hex');
+
+      if (!crypto.timingSafeEqual(receivedBuf, expectedBuf)) {
         logger.warn('Flows webhook signature mismatch', { tenantId });
         return res.status(401).json({ error: 'Invalid webhook signature' });
       }
