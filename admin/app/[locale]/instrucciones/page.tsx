@@ -32,7 +32,7 @@ export default function TestingInstructionsPage() {
               <h2 className="mb-4 text-2xl font-bold text-purple-700">📋 Resumen General</h2>
               <div className="rounded-lg border-l-4 border-purple-500 bg-purple-50 p-5">
                 <p className="text-slate-700">
-                  Esta aplicación integra <strong>Facebook Login</strong> como método de autenticación exclusivo para administradores de la plataforma Zentra Bot. La app solicita únicamente los permisos <strong>email</strong> y <strong>public_profile</strong>, y no publica, modifica ni accede a otros recursos de Facebook.
+                  Esta aplicación integra <strong>Facebook Login</strong> como puerta de acceso para administradores que conectan y gestionan activos de WhatsApp Business dentro de Zentra Bot. La app solicita <strong>email</strong>, <strong>public_profile</strong> y <strong>whatsapp_business_management</strong> para identificar al administrador y comprobar por API que tiene acceso a los negocios de WhatsApp que luego administra desde la plataforma.
                 </p>
               </div>
             </div>
@@ -61,11 +61,17 @@ export default function TestingInstructionsPage() {
                         Obtener nombre e identificador de Facebook para auditoría y registros de inicio de sesión
                       </td>
                     </tr>
+                    <tr className="border-b border-slate-200">
+                      <td className="px-4 py-3 font-mono text-sm font-medium">whatsapp_business_management</td>
+                      <td className="px-4 py-3 text-slate-700">
+                        Leer por Graph API los negocios del usuario con <code className="text-xs font-mono">GET /me/businesses</code> y verificar que la cuenta puede administrar activos de WhatsApp Business antes de habilitar la sesión del panel
+                      </td>
+                    </tr>
                   </tbody>
                 </table>
               </div>
               <div className="mt-4 rounded-lg border-l-4 border-blue-500 bg-blue-50 p-4 text-sm text-blue-900">
-                <strong>ℹ️ Nota:</strong> No se solicitan permisos de páginas, eventos, publicaciones ni acceso a datos privados.
+                <strong>ℹ️ Nota:</strong> No se solicitan permisos para publicar contenido. El permiso adicional de WhatsApp se usa solo para validar acceso a activos empresariales requeridos por la integración.
               </div>
             </div>
 
@@ -80,15 +86,19 @@ export default function TestingInstructionsPage() {
                   },
                   {
                     title: "Hacer clic en \"Continuar con Facebook\"",
-                    description: "Se abrirá el diálogo de autorización de Facebook."
+                    description: "Se abrirá el diálogo de autorización de Facebook con email, public_profile y whatsapp_business_management."
                   },
                   {
                     title: "Autorizar con una cuenta de prueba",
                     description: "Inicia sesión con una cuenta de Facebook que tenga email disponible y ya esté vinculada a una cuenta administrativa."
                   },
                   {
+                    title: "Validación obligatoria por API",
+                    description: "Después de autorizar, el backend llama a Graph API para leer permisos concedidos y consultar GET /me/businesses con el mismo token."
+                  },
+                  {
                     title: "Verificar el resultado",
-                    description: "Si la cuenta está vinculada, la app iniciará sesión correctamente y mostrarán los datos del usuario."
+                    description: "Si la cuenta está vinculada y la llamada a /me/businesses funciona, la app iniciará sesión correctamente y mostrará el panel."
                   }
                 ].map((step, idx) => (
                   <div key={idx} className="flex gap-4">
@@ -116,6 +126,8 @@ export default function TestingInstructionsPage() {
                       <li>• El usuario es redirigido al panel administrativo después de autorizar</li>
                       <li>• Se asignan tokens JWT válidos para la sesión</li>
                       <li>• El email de Facebook coincide con el de la cuenta administrativa</li>
+                      <li>• La API confirma que `whatsapp_business_management` fue concedido</li>
+                      <li>• La llamada `GET /me/businesses` devuelve negocios accesibles por el usuario</li>
                       <li>• Se registra la acción en auditoría con el método "facebook"</li>
                     </ul>
                   </div>
@@ -133,7 +145,18 @@ export default function TestingInstructionsPage() {
                 </div>
 
                 <div>
-                  <h3 className="font-semibold text-orange-700">⚠️ Caso 3: Cuenta sin email</h3>
+                  <h3 className="font-semibold text-orange-700">⚠️ Caso 3: Falta permiso de WhatsApp</h3>
+                  <div className="mt-2 rounded-lg border-l-4 border-orange-500 bg-orange-50 p-4 text-sm text-orange-900">
+                    <ul className="space-y-1">
+                      <li>• Si la cuenta no concede <code className="text-xs font-mono">whatsapp_business_management</code></li>
+                      <li>• La app rechaza con HTTP 403</li>
+                      <li>• Se muestra: "Missing whatsapp_business_management permission"</li>
+                    </ul>
+                  </div>
+                </div>
+
+                <div>
+                  <h3 className="font-semibold text-orange-700">⚠️ Caso 4: Cuenta sin email</h3>
                   <div className="mt-2 rounded-lg border-l-4 border-orange-500 bg-orange-50 p-4 text-sm text-orange-900">
                     <ul className="space-y-1">
                       <li>• Si la cuenta no tiene email disponible</li>
@@ -153,7 +176,7 @@ export default function TestingInstructionsPage() {
                 <div>
                   <h3 className="font-semibold text-slate-900">1. Frontend: Obtención del Token</h3>
                   <div className="mt-2 rounded-lg border-l-4 border-slate-300 bg-slate-50 p-4 text-sm text-slate-700">
-                    La app carga el SDK de Facebook desde <code className="text-xs font-mono">https://connect.facebook.net/es_LA/sdk.js</code>, verifica el estado con <code className="text-xs font-mono">FB.getLoginStatus()</code> y, si no está <code className="text-xs font-mono">connected</code>, llama a <code className="text-xs font-mono">FB.login()</code> solicitando <code className="text-xs font-mono">email,public_profile</code>.
+                    La app carga el SDK de Facebook desde <code className="text-xs font-mono">https://connect.facebook.net/es_LA/sdk.js</code>, verifica el estado con <code className="text-xs font-mono">FB.getLoginStatus()</code> y luego llama a <code className="text-xs font-mono">FB.login()</code> solicitando <code className="text-xs font-mono">email,public_profile,whatsapp_business_management</code> con <code className="text-xs font-mono">auth_type=rerequest</code> para forzar la concesión del permiso requerido.
                   </div>
                 </div>
 
@@ -164,6 +187,8 @@ export default function TestingInstructionsPage() {
                     <ul className="space-y-1">
                       <li>• Recibe el <code className="text-xs font-mono">accessToken</code> en el body</li>
                       <li>• Valida el token en <code className="text-xs font-mono">graph.facebook.com/v25.0/debug_token</code></li>
+                      <li>• Consulta <code className="text-xs font-mono">graph.facebook.com/v25.0/me/permissions</code> para verificar permisos concedidos</li>
+                      <li>• Ejecuta <code className="text-xs font-mono">graph.facebook.com/v25.0/me/businesses</code> con el mismo token</li>
                       <li>• Verifica que el <code className="text-xs font-mono">app_id</code> coincida con la configuración</li>
                       <li>• Obtiene el perfil e identifica al administrador</li>
                       <li>• Solo si existe, emite JWT y sesión</li>
@@ -177,7 +202,7 @@ export default function TestingInstructionsPage() {
                     <p className="mb-2">Cada login exitoso se registra con:</p>
                     <ul className="space-y-1">
                       <li>• <code className="text-xs font-mono">accion: "LOGIN"</code></li>
-                      <li>• <code className="text-xs font-mono">metadata: {'{'}  via: "facebook", facebookId: "..." {'}'}</code></li>
+                      <li>• <code className="text-xs font-mono">metadata: {'{'} via: "facebook", facebookId: "...", facebookPermissions: [...], facebookBusinessIds: [...] {'}'}</code></li>
                       <li>• IP del cliente y User-Agent</li>
                     </ul>
                   </div>
@@ -194,11 +219,12 @@ export default function TestingInstructionsPage() {
               </div>
 
               <div className="grid gap-2 text-sm text-slate-700">
-                <div>✅ <strong>Transparencia:</strong> Solo solicita permisos necesarios (email, public_profile)</div>
+                <div>✅ <strong>Transparencia:</strong> Solo solicita permisos necesarios para login y validación de activos de WhatsApp (email, public_profile, whatsapp_business_management)</div>
                 <div>✅ <strong>Seguridad:</strong> Token validado en backend; app secret no expuesto en frontend</div>
                 <div>✅ <strong>Datos del usuario:</strong> Solo se guardan email e identificador para autenticación</div>
                 <div>✅ <strong>Callback de eliminación:</strong> Implementado en <code className="text-xs font-mono">/auth/facebook/data-deletion</code></div>
-                <div>✅ <strong>No automatización:</strong> No publica, comenta, reacciona ni modifica contenido</div>
+                <div>✅ <strong>Uso del permiso:</strong> La app demuestra el uso de <code className="text-xs font-mono">whatsapp_business_management</code> con la llamada obligatoria <code className="text-xs font-mono">GET /me/businesses</code></div>
+                <div>✅ <strong>No automatización social:</strong> No publica, comenta, reacciona ni modifica contenido</div>
                 <div>✅ <strong>No exfiltración:</strong> No descarga listas de amigos ni datos privados</div>
               </div>
             </div>
@@ -226,12 +252,17 @@ export default function TestingInstructionsPage() {
               <div className="space-y-4">
                 <div>
                   <h3 className="font-semibold text-slate-900">¿La app accede a las páginas de Facebook del usuario?</h3>
-                  <p className="mt-1 text-slate-700"><strong>No.</strong> Solo se solicitan <code className="text-xs font-mono">email</code> y <code className="text-xs font-mono">public_profile</code>.</p>
+                  <p className="mt-1 text-slate-700"><strong>No.</strong> La app no administra páginas ni publica contenido. Solo solicita <code className="text-xs font-mono">email</code>, <code className="text-xs font-mono">public_profile</code> y <code className="text-xs font-mono">whatsapp_business_management</code> para validar acceso a activos empresariales de WhatsApp.</p>
                 </div>
 
                 <div>
                   <h3 className="font-semibold text-slate-900">¿Se publican datos en las redes del usuario?</h3>
                   <p className="mt-1 text-slate-700"><strong>No.</strong> La app es de solo lectura. No publica, comenta ni modifica contenido.</p>
+                </div>
+
+                <div>
+                  <h3 className="font-semibold text-slate-900">¿Cómo usará la app whatsapp_business_management?</h3>
+                  <p className="mt-1 text-slate-700"><strong>Para validar y administrar activos de WhatsApp Business.</strong> Durante el login el backend consulta <code className="text-xs font-mono">/me/permissions</code> y <code className="text-xs font-mono">/me/businesses</code> con el token del usuario. Esa validación confirma qué negocios puede administrar el usuario antes de permitirle conectar o gestionar cuentas de WhatsApp Business desde Zentra Bot.</p>
                 </div>
 
                 <div>

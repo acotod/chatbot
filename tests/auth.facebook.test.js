@@ -74,6 +74,18 @@ describe('POST /auth/facebook', () => {
       })
       .mockResolvedValueOnce({
         ok: true,
+        json: async () => ({ data: [
+          { permission: 'email', status: 'granted' },
+          { permission: 'public_profile', status: 'granted' },
+          { permission: 'whatsapp_business_management', status: 'granted' },
+        ] }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ data: [{ id: 'biz-1', name: 'PMC Test Business' }] }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
         json: async () => ({ id: 'fb-user-1', email: 'admin@example.com', name: 'Admin FB' }),
       });
 
@@ -118,6 +130,18 @@ describe('POST /auth/facebook', () => {
       })
       .mockResolvedValueOnce({
         ok: true,
+        json: async () => ({ data: [
+          { permission: 'email', status: 'granted' },
+          { permission: 'public_profile', status: 'granted' },
+          { permission: 'whatsapp_business_management', status: 'granted' },
+        ] }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ data: [{ id: 'biz-2', name: 'Unlinked Business' }] }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
         json: async () => ({ id: 'fb-user-2', email: 'no-user@example.com' }),
       });
 
@@ -129,5 +153,29 @@ describe('POST /auth/facebook', () => {
 
     expect(res.status).toBe(403);
     expect(res.body).toEqual({ error: 'No admin account is linked to this Facebook email' });
+  });
+
+  test('returns 403 when whatsapp_business_management permission is missing', async () => {
+    const app = createApp();
+
+    global.fetch
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ data: { is_valid: true, app_id: '4224350961162585' } }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ data: [
+          { permission: 'email', status: 'granted' },
+          { permission: 'public_profile', status: 'granted' },
+        ] }),
+      });
+
+    const res = await request(app)
+      .post('/auth/facebook')
+      .send({ accessToken: 'valid-facebook-token' });
+
+    expect(res.status).toBe(403);
+    expect(res.body).toEqual({ error: 'Missing whatsapp_business_management permission' });
   });
 });

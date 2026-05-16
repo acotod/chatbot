@@ -14,6 +14,7 @@ type FacebookLoginResponse = {
 
 type FacebookLoginOptions = {
   scope: string;
+  auth_type?: string;
 };
 
 type FacebookSDK = {
@@ -33,6 +34,7 @@ type FacebookWindow = Window & {
 };
 
 const SDK_SRC = "https://connect.facebook.net/es_LA/sdk.js";
+const FACEBOOK_LOGIN_SCOPE = "email,public_profile,whatsapp_business_management";
 
 let sdkLoadPromise: Promise<void> | null = null;
 let initializedAppId: string | null = null;
@@ -125,10 +127,7 @@ export async function getFacebookAccessToken(appId: string): Promise<string> {
   if (!w.FB) throw new Error("Facebook SDK no disponible");
 
   // Meta recommends checking current login status before opening FB.login().
-  const loginStatus = await getFacebookLoginStatus(w.FB);
-  if (loginStatus.status === "connected" && loginStatus.authResponse?.accessToken) {
-    return loginStatus.authResponse.accessToken;
-  }
+  await getFacebookLoginStatus(w.FB);
 
   const authToken = await new Promise<string>((resolve, reject) => {
     w.FB!.login(
@@ -139,7 +138,10 @@ export async function getFacebookAccessToken(appId: string): Promise<string> {
         }
         resolve(response.authResponse.accessToken);
       },
-      { scope: "email,public_profile" }
+      {
+        scope: FACEBOOK_LOGIN_SCOPE,
+        auth_type: "rerequest",
+      }
     );
   });
 

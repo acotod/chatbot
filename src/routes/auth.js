@@ -184,6 +184,16 @@ function normalizeGraphBaseUrl() {
   return (process.env.FACEBOOK_GRAPH_URL || 'https://graph.facebook.com').replace(/\/$/, '');
 }
 
+function getGrantedFacebookPermissions(permissionJson) {
+  return new Set(
+    Array.isArray(permissionJson?.data)
+      ? permissionJson.data
+          .filter((entry) => entry?.status === 'granted' && entry?.permission)
+          .map((entry) => String(entry.permission))
+      : []
+  );
+}
+
 async function validateFacebookToken(fbAccessToken) {
   const appId = process.env.FACEBOOK_APP_ID;
   const appSecret = process.env.FACEBOOK_APP_SECRET;
@@ -223,6 +233,37 @@ async function validateFacebookToken(fbAccessToken) {
     throw err;
   }
 
+  const permissionsUrl = new URL(`${graphBase}/${version}/me/permissions`);
+  permissionsUrl.searchParams.set('access_token', fbAccessToken);
+
+  const permissionsRes = await fetch(permissionsUrl.toString());
+  const permissionsJson = await permissionsRes.json().catch(() => ({}));
+
+  if (!permissionsRes.ok) {
+    const err = new Error('Failed to verify Facebook permissions');
+    err.status = 401;
+    throw err;
+  }
+
+  const grantedPermissions = getGrantedFacebookPermissions(permissionsJson);
+  if (!grantedPermissions.has('whatsapp_business_management')) {
+    const err = new Error('Missing whatsapp_business_management permission');
+    err.status = 403;
+    throw err;
+  }
+
+  const businessesUrl = new URL(`${graphBase}/${version}/me/businesses`);
+  businessesUrl.searchParams.set('access_token', fbAccessToken);
+
+  const businessesRes = await fetch(businessesUrl.toString());
+  const businessesJson = await businessesRes.json().catch(() => ({}));
+
+  if (!businessesRes.ok) {
+    const err = new Error('Failed to read Facebook businesses');
+    err.status = 403;
+    throw err;
+  }
+
   const meUrl = new URL(`${graphBase}/${version}/me`);
   meUrl.searchParams.set('fields', 'id,name,email');
   meUrl.searchParams.set('access_token', fbAccessToken);
@@ -240,6 +281,13 @@ async function validateFacebookToken(fbAccessToken) {
     facebookId: String(meJson.id),
     email: meJson.email ? String(meJson.email).toLowerCase().trim() : null,
     name: meJson.name || null,
+    grantedPermissions: Array.from(grantedPermissions),
+    businesses: Array.isArray(businessesJson?.data)
+      ? businessesJson.data.map((business) => ({
+          id: String(business?.id || ''),
+          name: business?.name ? String(business.name) : null,
+        }))
+      : [],
   };
 }
 
@@ -408,7 +456,12 @@ router.post('/facebook', loginRateLimiter, async (req, res) => {
       entidadId: String(user.id),
       ip,
       userAgent,
-      metadata: { via: 'facebook', facebookId: profile.facebookId },
+      metadata: {
+        via: 'facebook',
+        facebookId: profile.facebookId,
+        facebookPermissions: profile.grantedPermissions,
+        facebookBusinessIds: profile.businesses.map((business) => business.id).filter(Boolean),
+      },
     });
 
     return res.json({ accessToken: accessTokenJwt, refreshToken, expiresIn: ACCESS_TTL, superAdmin: effectiveSuperAdmin });

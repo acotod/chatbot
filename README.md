@@ -33,7 +33,7 @@ La implementación de backend solicitada quedó completada y desplegada.
 
 ## Login con Facebook (SDK JavaScript)
 
-Este backend ahora expone `POST /auth/facebook` para intercambiar el `accessToken` de Facebook por los tokens JWT internos del panel admin.
+Este backend ahora expone `POST /auth/facebook` para intercambiar el `accessToken` de Facebook por los tokens JWT internos del panel admin. Durante esa validación también hace las llamadas obligatorias a Graph API para verificar que el usuario concedió `whatsapp_business_management` y que la app puede leer los negocios asociados mediante `GET /me/businesses`.
 
 Variables de entorno requeridas en la API:
 
@@ -72,12 +72,13 @@ FB.login(async function (response) {
 
 	const data = await r.json();
 	// data.accessToken + data.refreshToken => sesión interna del admin
-}, { scope: 'email,public_profile' });
+}, { scope: 'email,public_profile,whatsapp_business_management', auth_type: 'rerequest' });
 ```
 
 Notas:
 
 - El usuario de Facebook debe tener email disponible y debe existir un `adminUser` con ese mismo email.
+- El login exige que el token tenga concedido `whatsapp_business_management`; si falta, la API responde `403 Missing whatsapp_business_management permission`.
 - El `app secret` nunca debe enviarse al frontend.
 
 ### Mantenimiento en UI (recomendado)
