@@ -76,7 +76,7 @@ async function _ingestUegBestEffort({ tenantId, correlationId, idempotencyKey, r
 // Validates X-Hub-Signature-256 sent by Meta on every POST.
 // Tries tenant-level secret from config first, then falls back to WA_APP_SECRET.
 async function resolveMetaAppSecret(req) {
-  const envSecret = String(process.env.WA_APP_SECRET ?? '').trim();
+  const envSecret = String(process.env.WA_APP_SECRET ?? process.env.FACEBOOK_APP_SECRET ?? '').trim();
   const prisma = getPrismaClient();
   if (!prisma) return envSecret;
 
