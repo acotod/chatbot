@@ -1,0 +1,509 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Instrucciones de Prueba - Facebook Login - Meta App Review</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 40px 20px;
+            min-height: 100vh;
+        }
+        
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            overflow: hidden;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 40px 30px;
+            text-align: center;
+        }
+        
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+        
+        .header p {
+            font-size: 1.1em;
+            opacity: 0.95;
+        }
+        
+        .content {
+            padding: 40px 30px;
+        }
+        
+        section {
+            margin-bottom: 40px;
+        }
+        
+        section h2 {
+            color: #667eea;
+            font-size: 1.8em;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 3px solid #667eea;
+        }
+        
+        section h3 {
+            color: #764ba2;
+            font-size: 1.3em;
+            margin-top: 20px;
+            margin-bottom: 15px;
+        }
+        
+        .instruction-box {
+            background: #f7f9fc;
+            border-left: 4px solid #667eea;
+            padding: 20px;
+            margin-bottom: 20px;
+            border-radius: 6px;
+        }
+        
+        .instruction-box strong {
+            color: #667eea;
+        }
+        
+        .steps {
+            counter-reset: step-counter;
+            list-style: none;
+        }
+        
+        .steps li {
+            counter-increment: step-counter;
+            margin-bottom: 20px;
+            padding-left: 50px;
+            position: relative;
+        }
+        
+        .steps li::before {
+            content: counter(step-counter);
+            position: absolute;
+            left: 0;
+            top: 0;
+            width: 40px;
+            height: 40px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 1.1em;
+        }
+        
+        .steps li strong {
+            display: block;
+            color: #333;
+            margin-bottom: 5px;
+        }
+        
+        .alert {
+            padding: 20px;
+            border-radius: 6px;
+            margin-bottom: 20px;
+        }
+        
+        .alert.success {
+            background: #e8f5e9;
+            border-left: 4px solid #4caf50;
+            color: #2e7d32;
+        }
+        
+        .alert.info {
+            background: #e3f2fd;
+            border-left: 4px solid #2196f3;
+            color: #1565c0;
+        }
+        
+        .alert.warning {
+            background: #fff3e0;
+            border-left: 4px solid #ff9800;
+            color: #e65100;
+        }
+        
+        .credentials {
+            background: #f5f5f5;
+            border: 1px solid #ddd;
+            padding: 15px;
+            border-radius: 6px;
+            margin: 15px 0;
+            font-family: 'Courier New', monospace;
+            font-size: 0.95em;
+        }
+        
+        .credentials strong {
+            color: #333;
+            display: block;
+            margin-top: 10px;
+        }
+        
+        .credentials strong:first-child {
+            margin-top: 0;
+        }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+        }
+        
+        table th, table td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
+        }
+        
+        table th {
+            background: #f7f9fc;
+            color: #667eea;
+            font-weight: 600;
+        }
+        
+        table tr:hover {
+            background: #f9f9f9;
+        }
+        
+        .code-block {
+            background: #2d2d2d;
+            color: #f8f8f2;
+            padding: 20px;
+            border-radius: 6px;
+            overflow-x: auto;
+            margin: 20px 0;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9em;
+            line-height: 1.4;
+        }
+        
+        .footer {
+            background: #f7f9fc;
+            padding: 30px;
+            text-align: center;
+            color: #666;
+            border-top: 1px solid #e0e0e0;
+        }
+        
+        .footer p {
+            margin: 10px 0;
+        }
+        
+        .footer strong {
+            color: #667eea;
+        }
+        
+        ul {
+            margin-left: 20px;
+        }
+        
+        li {
+            margin-bottom: 10px;
+        }
+        
+        .highlight {
+            background: #fff9c4;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-weight: 500;
+        }
+        
+        @media (max-width: 768px) {
+            .header h1 {
+                font-size: 1.8em;
+            }
+            
+            .content {
+                padding: 20px;
+            }
+            
+            table {
+                font-size: 0.9em;
+            }
+            
+            table th, table td {
+                padding: 8px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🔐 Instrucciones de Prueba</h1>
+            <p>Integración Facebook Login para Panel Administrativo</p>
+        </div>
+        
+        <div class="content">
+            <!-- RESUMEN GENERAL -->
+            <section>
+                <h2>📋 Resumen General</h2>
+                <div class="instruction-box">
+                    <p>Esta aplicación integra <strong>Facebook Login</strong> como método de autenticación exclusivo para administradores de la plataforma Zentra Bot. La app solicita únicamente los permisos <strong>email</strong> y <strong>public_profile</strong>, y no publica, modifica ni accede a otros recursos de Facebook.</p>
+                </div>
+            </section>
+            
+            <!-- PERMISOS SOLICITADOS -->
+            <section>
+                <h2>✅ Permisos Solicitados</h2>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Permiso</th>
+                            <th>Propósito</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><strong>email</strong></td>
+                            <td>Obtener la dirección de correo electrónico del usuario para validar si existe una cuenta administrativa vinculada</td>
+                        </tr>
+                        <tr>
+                            <td><strong>public_profile</strong></td>
+                            <td>Obtener el nombre e identificador de Facebook (para auditoría y registros de inicio de sesión)</td>
+                        </tr>
+                    </tbody>
+                </table>
+                <div class="alert info">
+                    <strong>ℹ️ Nota:</strong> No se solicitan permisos de páginas, eventos, publicaciones ni acceso a datos privados. La autenticación es de solo lectura.
+                </div>
+            </section>
+            
+            <!-- INSTRUCCIONES DE PRUEBA -->
+            <section>
+                <h2>🧪 Pasos para Probar la Integración</h2>
+                
+                <ol class="steps">
+                    <li>
+                        <strong>Acceder a la pantalla de inicio de sesión del panel administrativo</strong>
+                        <p>Abre el navegador e ingresa a la URL del panel administrativo. Busca el botón o enlace <span class="highlight">"Continuar con Facebook"</span>.</p>
+                    </li>
+                    
+                    <li>
+                        <strong>Hacer clic en "Continuar con Facebook"</strong>
+                        <p>Se abrirá el diálogo de autorización de Facebook. El navegador te redirigirá a <code>https://www.facebook.com/login.php</code> si no estás autenticado.</p>
+                    </li>
+                    
+                    <li>
+                        <strong>Autorizar con una cuenta de prueba</strong>
+                        <p>Inicia sesión o autoriza con una cuenta de Facebook de prueba que tenga:</p>
+                        <ul>
+                            <li>✓ Email disponible en el perfil</li>
+                            <li>✓ Email ya vinculado a una cuenta administrativa en la base de datos</li>
+                        </ul>
+                    </li>
+                    
+                    <li>
+                        <strong>Verificar el resultado esperado</strong>
+                        <p>Si la cuenta está vinculada, la app iniciará sesión correctamente. Se mostrarán los datos del usuario en el panel administrativo.</p>
+                    </li>
+                </ol>
+            </section>
+            
+            <!-- RESULTADOS ESPERADOS -->
+            <section>
+                <h2>✨ Resultados Esperados</h2>
+                
+                <h3>✅ Caso 1: Cuenta vinculada correctamente</h3>
+                <div class="alert success">
+                    <ul>
+                        <li>El usuario es redirigido al panel administrativo después de autorizar</li>
+                        <li>Se asignan tokens JWT válidos para la sesión</li>
+                        <li>El email de Facebook coincide con el de la cuenta administrativa</li>
+                        <li>Se registra la acción en auditoría con el método "facebook"</li>
+                    </ul>
+                </div>
+                
+                <h3>⚠️ Caso 2: Email no vinculado a administrador</h3>
+                <div class="alert warning">
+                    <ul>
+                        <li>El usuario intenta autorizar con un email que no está vinculado a ninguna cuenta administrativa</li>
+                        <li>La app rechaza el acceso con HTTP 403</li>
+                        <li>Se muestra el mensaje: <code>No admin account is linked to this Facebook email</code></li>
+                        <li>Se registra un intento fallido en auditoría</li>
+                    </ul>
+                </div>
+                
+                <h3>⚠️ Caso 3: Cuenta sin email</h3>
+                <div class="alert warning">
+                    <ul>
+                        <li>Si la cuenta de Facebook no tiene email disponible</li>
+                        <li>La app rechaza con HTTP 400</li>
+                        <li>Se muestra: <code>Facebook account has no email available</code></li>
+                    </ul>
+                </div>
+            </section>
+            
+            <!-- FLUJO TÉCNICO -->
+            <section>
+                <h2>⚙️ Flujo Técnico (Detalles para Revisores)</h2>
+                
+                <h3>1. Frontend: Obtención del Token</h3>
+                <div class="instruction-box">
+                    <p>La app carga el SDK de Facebook desde <code>https://connect.facebook.net/es_LA/sdk.js</code> y llama a <code>FB.login()</code> solicitando <code>email,public_profile</code>.</p>
+                </div>
+                
+                <h3>2. Backend: Validación y Autenticación</h3>
+                <div class="instruction-box">
+                    <p><strong>Endpoint:</strong> <code>POST /auth/facebook</code></p>
+                    <ul>
+                        <li>Recibe el <code>accessToken</code> en el body</li>
+                        <li>Valida el token llamando a <code>https://graph.facebook.com/v25.0/debug_token</code></li>
+                        <li>Verifica que el <code>app_id</code> coincida con la configuración de la app</li>
+                        <li>Obtiene el perfil: <code>https://graph.facebook.com/v25.0/me?fields=id,email,name</code></li>
+                        <li>Busca un administrador con ese email en la base de datos</li>
+                        <li>Solo si existe, emite JWT y sesión</li>
+                    </ul>
+                </div>
+                
+                <h3>3. Auditoría</h3>
+                <div class="instruction-box">
+                    <p>Cada login exitoso se registra con:</p>
+                    <ul>
+                        <li><code>accion: "LOGIN"</code></li>
+                        <li><code>metadata: { via: "facebook", facebookId: "..." }</code></li>
+                        <li>IP del cliente y User-Agent</li>
+                    </ul>
+                </div>
+            </section>
+            
+            <!-- CONFORMIDAD -->
+            <section>
+                <h2>🛡️ Conformidad con Políticas de Meta</h2>
+                
+                <div class="alert info">
+                    <strong>✓ La app cumple con:</strong>
+                </div>
+                
+                <ul>
+                    <li>✅ <strong>Transparencia:</strong> Solo solicita permisos necesarios (email, public_profile)</li>
+                    <li>✅ <strong>Seguridad:</strong> Token validado en backend; no se expone el app secret en frontend</li>
+                    <li>✅ <strong>Datos del usuario:</strong> Solo se guardan email e identificador para autenticación; sin venta, transferencia ni uso secundario</li>
+                    <li>✅ <strong>Callback de eliminación:</strong> Implementado en <code>POST /auth/facebook/data-deletion</code></li>
+                    <li>✅ <strong>No automatización de contenido:</strong> No publica, comenta, reacciona ni modifica contenido</li>
+                    <li>✅ <strong>No exfiltración de datos:</strong> No descarga listas de amigos, contactos ni datos privados</li>
+                </ul>
+            </section>
+            
+            <!-- CALLBACK ELIMINACIÓN DATOS -->
+            <section>
+                <h2>🗑️ Callback de Eliminación de Datos</h2>
+                
+                <div class="instruction-box">
+                    <p><strong>URL pública:</strong> <code>https://[tu-dominio]/auth/facebook/data-deletion</code></p>
+                    <p>Cuando un usuario elimina la app desde Facebook, Meta envía una solicitud con un <code>signed_request</code> firmado. El backend:</p>
+                    <ul>
+                        <li>Verifica la firma con el app secret</li>
+                        <li>Extrae el Facebook ID</li>
+                        <li>Busca y anonimiza datos vinculados (desvincula ID de Facebook, revoca sesiones)</li>
+                        <li>Retorna un código de confirmación único a Meta</li>
+                    </ul>
+                </div>
+            </section>
+            
+            <!-- CONFIGURACIÓN REQUERIDA -->
+            <section>
+                <h2>⚙️ Configuración Requerida</h2>
+                
+                <div class="instruction-box">
+                    <p><strong>Variables de entorno necesarias:</strong></p>
+                    <div class="credentials">
+                        <strong>FACEBOOK_APP_ID</strong>
+                        4224350961162585
+                        
+                        <strong>FACEBOOK_APP_SECRET</strong>
+                        [Configurar en servidor seguro]
+                        
+                        <strong>FACEBOOK_GRAPH_VERSION</strong>
+                        v25.0 (por defecto)
+                    </div>
+                </div>
+                
+                <div class="alert warning">
+                    <strong>⚠️ Importante:</strong> El <code>FACEBOOK_APP_SECRET</code> nunca debe exponerse en el frontend ni en repositorios públicos. Solo debe estar configurado en variables de entorno del servidor.
+                </div>
+            </section>
+            
+            <!-- PRUEBAS AUTOMATIZADAS -->
+            <section>
+                <h2>🔬 Pruebas Unitarias</h2>
+                
+                <div class="instruction-box">
+                    <p>La suite de pruebas cubre:</p>
+                    <ul>
+                        <li>✅ Token de Facebook válido + email vinculado → login exitoso</li>
+                        <li>✅ Token válido + email no vinculado → rechazo HTTP 403</li>
+                        <li>✅ Token ausente → rechazo HTTP 400</li>
+                        <li>✅ Token inválido → rechazo HTTP 401</li>
+                        <li>✅ Cuenta bloqueada temporalmente → rechazo HTTP 423</li>
+                    </ul>
+                </div>
+            </section>
+            
+            <!-- REFERENCIAS TÉCNICAS -->
+            <section>
+                <h2>📚 Referencias Técnicas</h2>
+                
+                <div class="instruction-box">
+                    <p><strong>Archivos de implementación:</strong></p>
+                    <ul>
+                        <li><code>src/routes/auth.js</code> — Endpoint <code>POST /auth/facebook</code> y validación</li>
+                        <li><code>admin/lib/facebookAuth.ts</code> — SDK de Facebook en frontend</li>
+                        <li><code>admin/lib/api.ts</code> — Cliente que llama <code>/auth/facebook</code></li>
+                        <li><code>tests/auth.facebook.test.js</code> — Suite de pruebas</li>
+                        <li><code>README.md</code> — Documentación general</li>
+                    </ul>
+                </div>
+            </section>
+            
+            <!-- PREGUNTAS FRECUENTES -->
+            <section>
+                <h2>❓ Preguntas Frecuentes</h2>
+                
+                <h3>¿La app accede a las páginas de Facebook del usuario?</h3>
+                <div class="instruction-box">
+                    <p><strong>No.</strong> Solo se solicitan <code>email</code> y <code>public_profile</code>. No se solicitan permisos de página ni administración.</p>
+                </div>
+                
+                <h3>¿Qué pasa si el usuario cambia su email en Facebook?</h3>
+                <div class="instruction-box">
+                    <p>La próxima vez que intente login, el nuevo email se utilizará para buscar la cuenta administrativa. Si el nuevo email no está vinculado, se rechazará el acceso.</p>
+                </div>
+                
+                <h3>¿Se publican datos en las redes del usuario?</h3>
+                <div class="instruction-box">
+                    <p><strong>No.</strong> La app es de solo lectura. No publica, comenta ni modifica contenido.</p>
+                </div>
+                
+                <h3>¿Cómo se eliminan los datos cuando el usuario revoca la app?</h3>
+                <div class="instruction-box">
+                    <p>Meta envía una solicitud POST a <code>/auth/facebook/data-deletion</code> con el Facebook ID. El backend anonimiza los datos y retorna un código de confirmación único.</p>
+                </div>
+            </section>
+        </div>
+        
+        <div class="footer">
+            <p><strong>Última actualización:</strong> Mayo 2026</p>
+            <p>Para más información, contacta al equipo de soporte de la plataforma.</p>
+            <p style="margin-top: 20px; color: #999; font-size: 0.9em;">© Zentra Bot - Instrucciones de Prueba Meta App Review</p>
+        </div>
+    </div>
+</body>
+</html>
