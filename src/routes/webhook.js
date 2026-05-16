@@ -24,21 +24,29 @@ function getSubmittedContactName(data) {
 }
 
 // ── Meta HMAC-SHA256 signature verification (same pattern as /whatsapp) ──────────
-// Tries tenant-level secret from DB first, then falls back to WA_APP_SECRET env var.
+// Tries tenant-level secret from DB first, then all known env secrets.
+// Accepts the request if ANY secret produces the correct HMAC.
 async function verifyFlowsSignature(req, res, next) {
   try {
     const tenantId = req.tenant?.id;
-    let appSecret = null;
 
+    // Build ordered list of candidate secrets (deduplicated)
+    const secretCandidates = [];
     if (tenantId) {
-      appSecret = await db.getWaAppSecret(tenantId);
+      const dbSecret = await db.getWaAppSecret(tenantId);
+      if (dbSecret) secretCandidates.push({ label: 'db', value: String(dbSecret).trim() });
     }
-    if (!appSecret) {
-      appSecret = String(process.env.WA_APP_SECRET ?? '').trim() || null;
+    const waSecret = String(process.env.WA_APP_SECRET ?? '').trim();
+    if (waSecret && !secretCandidates.some(s => s.value === waSecret)) {
+      secretCandidates.push({ label: 'WA_APP_SECRET', value: waSecret });
+    }
+    const fbSecret = String(process.env.FACEBOOK_APP_SECRET ?? '').trim();
+    if (fbSecret && !secretCandidates.some(s => s.value === fbSecret)) {
+      secretCandidates.push({ label: 'FACEBOOK_APP_SECRET', value: fbSecret });
     }
 
-    if (!appSecret) {
-      logger.warn('WA_APP_SECRET not set: Flows webhook signature verification is disabled');
+    if (secretCandidates.length === 0) {
+      logger.warn('No app secret available: Flows webhook signature verification is disabled');
       return next();
     }
 
@@ -48,11 +56,6 @@ async function verifyFlowsSignature(req, res, next) {
       logger.error('rawBody unavailable for Flows webhook signature check');
       return res.status(400).json({ error: 'Raw body unavailable for signature check' });
     }
-
-    const expectedHex = crypto
-      .createHmac('sha256', appSecret)
-      .update(req.rawBody)
-      .digest('hex');
 
     const received = String(sig).trim();
     const signatureMatch = received.match(/^(?:sha256\s*=\s*)?"?([a-f0-9]{64})"?$/i);
@@ -66,28 +69,44 @@ async function verifyFlowsSignature(req, res, next) {
       return res.status(401).json({ error: 'Invalid webhook signature', code: 'WF_SIG_FORMAT' });
     }
     const receivedHex = signatureMatch[1].toLowerCase();
+    const receivedBuf = Buffer.from(receivedHex, 'hex');
 
-    try {
-      const receivedBuf = Buffer.from(receivedHex, 'hex');
-      const expectedBuf = Buffer.from(expectedHex, 'hex');
-
-      if (!crypto.timingSafeEqual(receivedBuf, expectedBuf)) {
-        const secretHash = crypto.createHash('sha256').update(appSecret).digest('hex');
-        const bodyPreview = req.rawBody.slice(0, 200).toString('utf8').replace(/[\x00-\x1f]/g, '?');
-        logger.warn('Flows webhook signature mismatch', {
-          tenantId,
-          correlationId: req.correlationId,
-          receivedSig: received,
+    let matched = false;
+    const triedHashes = [];
+    for (const candidate of secretCandidates) {
+      try {
+        const expectedHex = crypto
+          .createHmac('sha256', candidate.value)
+          .update(req.rawBody)
+          .digest('hex');
+        const expectedBuf = Buffer.from(expectedHex, 'hex');
+        if (crypto.timingSafeEqual(receivedBuf, expectedBuf)) {
+          matched = true;
+          logger.debug('Flows webhook signature matched', { tenantId, secretLabel: candidate.label });
+          break;
+        }
+        triedHashes.push({
+          label: candidate.label,
+          secretSHA256: crypto.createHash('sha256').update(candidate.value).digest('hex'),
           expectedPrefix: expectedHex.slice(0, 16),
-          secretSHA256: secretHash,
-          bodyLength: req.rawBody.length,
-          bodyPreview,
-          contentType: req.headers['content-type'],
         });
-        return res.status(401).json({ error: 'Invalid webhook signature', code: 'WF_SIG_MISMATCH' });
+      } catch {
+        // skip malformed secret
       }
-    } catch {
-      return res.status(401).json({ error: 'Invalid webhook signature', code: 'WF_SIG_COMPARE' });
+    }
+
+    if (!matched) {
+      const bodyPreview = req.rawBody.slice(0, 200).toString('utf8').replace(/[\x00-\x1f]/g, '?');
+      logger.warn('Flows webhook signature mismatch (all secrets tried)', {
+        tenantId,
+        correlationId: req.correlationId,
+        receivedSig: received,
+        triedHashes,
+        bodyLength: req.rawBody.length,
+        bodyPreview,
+        contentType: req.headers['content-type'],
+      });
+      return res.status(401).json({ error: 'Invalid webhook signature', code: 'WF_SIG_MISMATCH' });
     }
   } catch (err) {
     return next(err);
