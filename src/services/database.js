@@ -296,6 +296,22 @@ async function _normalizeEmailSettingsForStorage(tenantId, valor) {
   return incoming;
 }
 
+async function _normalizeWaAppSecretForStorage(tenantId, valor) {
+  const existing = await getConfig(tenantId, 'wa_app_secret');
+  const existingSecret = String(existing?.valor ?? '').trim();
+  const incomingSecret = typeof valor === 'string' ? valor.trim() : '';
+
+  if (incomingSecret && incomingSecret !== CONFIG_SECRET_SENTINEL) {
+    return _encryptSecret(incomingSecret);
+  }
+
+  if ((incomingSecret === CONFIG_SECRET_SENTINEL || incomingSecret === '') && existingSecret) {
+    return existingSecret;
+  }
+
+  return '';
+}
+
 async function findTenantByApiKey(apiKey) {
   const client = getPrismaClient();
   if (!client) return null;
@@ -436,6 +452,8 @@ async function setConfig(tenantId, clave, valor) {
     persistedValor = await _normalizeWaCredentialsForStorage(tenantId, valor);
   } else if (clave === 'email_settings') {
     persistedValor = await _normalizeEmailSettingsForStorage(tenantId, valor);
+  } else if (clave === 'wa_app_secret') {
+    persistedValor = await _normalizeWaAppSecretForStorage(tenantId, valor);
   }
 
   return client.configuracion.upsert({
@@ -470,6 +488,11 @@ async function getEmailSettings(tenantId) {
     emailFrom: String(raw.emailFrom ?? '').trim(),
     adminBaseUrl: String(raw.adminBaseUrl ?? '').trim(),
   };
+}
+
+async function getWaAppSecret(tenantId) {
+  const config = await getConfig(tenantId, 'wa_app_secret');
+  return _decryptSecret(config?.valor);
 }
 
 async function getSolicitudesEnterpriseConfig(tenantId) {
@@ -2229,6 +2252,7 @@ module.exports = {
   setConfig,
   getEmailSettings,
   getWaCredentials,
+  getWaAppSecret,
   CONFIG_SECRET_SENTINEL,
   WA_TOKEN_SENTINEL,
   getSolicitudesEnterpriseConfig,

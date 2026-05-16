@@ -50,6 +50,8 @@
     "phoneLabel": "Phone Number ID",
     "tokenLabel": "Access Token",
     "tokenConfigured": "•••••••• (already configured)",
+    "appSecretLabel": "App Secret (WA_APP_SECRET)",
+    "appSecretConfigured": "•••••••• (already configured)",
     "permissionNote": "System user token with whatsapp_business_messaging permission. Get it in Meta Business Manager → System setup.",
     "saveButton": "Save credentials",
     "saving": "Saving...",
@@ -77,8 +79,8 @@
     },
     "step4": {
       "title": "Set App Secret (WA_APP_SECRET)",
-      "where": "This value is NOT entered here. It must be set on the server (.env) as WA_APP_SECRET.",
-      "hint": "It must be the App Secret from the same Meta app used in steps 1-3."
+      "where": "Paste it in the 'App Secret (WA_APP_SECRET)' field on this page.",
+      "hint": "When you save credentials, it is synced automatically to the server (.env)."
     },
     "step5": {
       "title": "Test endpoint in Meta Flow",

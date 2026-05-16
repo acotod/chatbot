@@ -176,6 +176,8 @@ export default function ConfiguracionPage() {
   // WhatsApp Business credentials
   const [waCreds, setWaCreds] = useState({ phoneNumberId: "", accessToken: "" });
   const [waTokenConfigured, setWaTokenConfigured] = useState(false);
+  const [waAppSecret, setWaAppSecret] = useState("");
+  const [waAppSecretConfigured, setWaAppSecretConfigured] = useState(false);
   const [waSaved, setWaSaved] = useState(false);
   const [flowEndpointPublicKey, setFlowEndpointPublicKey] = useState("");
   const [flowEndpointKeySaved, setFlowEndpointKeySaved] = useState(false);
@@ -256,6 +258,19 @@ export default function ConfiguracionPage() {
     enabled: !!tenantSlug,
   });
   void waCredsData;
+
+  const { data: waAppSecretData } = useQuery({
+    queryKey: ["config", tenantSlug, "wa_app_secret"],
+    queryFn: () =>
+      configApi.get(tenantSlug, "wa_app_secret").then((r) => {
+        const v = r?.data?.valor;
+        setWaAppSecret("");
+        setWaAppSecretConfigured(v === "__configured__");
+        return r?.data;
+      }),
+    enabled: !!tenantSlug,
+  });
+  void waAppSecretData;
 
   const { data: flowEndpointPublicKeyData } = useQuery({
     queryKey: ["config", tenantSlug, "flow_endpoint_public_key"],
@@ -386,15 +401,24 @@ export default function ConfiguracionPage() {
   });
 
   const saveWaMutation = useMutation({
-    mutationFn: () =>
-      configApi.set(tenantSlug, "wa_credentials", {
+    mutationFn: async () => {
+      await configApi.set(tenantSlug, "wa_credentials", {
         phoneNumberId: waCreds.phoneNumberId,
         accessToken: waCreds.accessToken.trim() !== "" ? waCreds.accessToken.trim() : "__configured__",
-      }),
+      });
+      await configApi.set(
+        tenantSlug,
+        "wa_app_secret",
+        waAppSecret.trim() !== "" ? waAppSecret.trim() : "__configured__"
+      );
+    },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["config", tenantSlug, "wa_credentials"] });
+      qc.invalidateQueries({ queryKey: ["config", tenantSlug, "wa_app_secret"] });
       setWaTokenConfigured(true);
+      setWaAppSecretConfigured(true);
       setWaCreds((prev) => ({ ...prev, accessToken: "" }));
+      setWaAppSecret("");
       setWaSaved(true);
       setTimeout(() => setWaSaved(false), 3000);
     },
@@ -625,6 +649,7 @@ export default function ConfiguracionPage() {
           qc.invalidateQueries({ queryKey: ["config", tenantSlug, "horarios"] }),
           qc.invalidateQueries({ queryKey: ["config", tenantSlug, "flow_endpoint_public_key"] }),
           qc.invalidateQueries({ queryKey: ["config", tenantSlug, "wa_credentials"] }),
+          qc.invalidateQueries({ queryKey: ["config", tenantSlug, "wa_app_secret"] }),
         ]);
         return;
       }
@@ -898,6 +923,13 @@ export default function ConfiguracionPage() {
                 placeholder={waTokenConfigured ? t("whatsapp.tokenConfigured") : "EAAGm..."}
                 value={waCreds.accessToken}
                 onChange={(e) => setWaCreds((c) => ({ ...c, accessToken: e.target.value }))}
+                type="password"
+              />
+              <Input
+                label={t("whatsapp.appSecretLabel")}
+                placeholder={waAppSecretConfigured ? t("whatsapp.appSecretConfigured") : "ab12cd34..."}
+                value={waAppSecret}
+                onChange={(e) => setWaAppSecret(e.target.value)}
                 type="password"
               />
               <p className="text-xs text-slate-400">

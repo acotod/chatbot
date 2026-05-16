@@ -57,6 +57,29 @@ const logoUpload = multer({
 const prisma = new PrismaClient();
 const router = express.Router();
 
+function persistEnvVariable(key, rawValue) {
+    const envPath = path.join(process.cwd(), '.env');
+    const safeValue = String(rawValue ?? '').replace(/[\r\n]/g, '').trim();
+    const escapedKey = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const linePattern = new RegExp(`^${escapedKey}=.*$`, 'm');
+
+    let currentContent = '';
+    try {
+        currentContent = fs.readFileSync(envPath, 'utf8');
+    } catch (err) {
+        if (err.code !== 'ENOENT') throw err;
+    }
+
+    const nextLine = `${key}=${safeValue}`;
+    const hasTrailingNewline = currentContent.endsWith('\n') || currentContent.length === 0;
+    const nextContent = linePattern.test(currentContent)
+        ? currentContent.replace(linePattern, nextLine)
+        : `${currentContent}${hasTrailingNewline ? '' : '\n'}${nextLine}\n`;
+
+    fs.writeFileSync(envPath, nextContent, 'utf8');
+    process.env[key] = safeValue;
+}
+
 // All admin routes require a valid JWT (issued by POST /auth/login)
 router.use(requireJwt);
 
@@ -2611,12 +2634,22 @@ router.put('/tenants/:slug/config/:clave', requirePermiso('MANAGE_TENANTS'), asy
 
         const config = await db.setConfig(tenant.id, req.params.clave, valor);
 
+        if (req.params.clave === 'wa_app_secret') {
+            const resolvedSecret = await db.getWaAppSecret(tenant.id);
+            if (resolvedSecret) {
+                persistEnvVariable('WA_APP_SECRET', resolvedSecret);
+            }
+        }
+
         // Return masked version
         if (req.params.clave === 'llm_config' && config?.valor?.api_key) {
             return res.json({ ...config, valor: { ...config.valor, api_key: '__configured__' } });
         }
         if (req.params.clave === 'wa_credentials' && config?.valor?.accessToken) {
             return res.json({ ...config, valor: { ...config.valor, accessToken: db.WA_TOKEN_SENTINEL } });
+        }
+        if (req.params.clave === 'wa_app_secret' && config?.valor) {
+            return res.json({ ...config, valor: db.CONFIG_SECRET_SENTINEL });
         }
         if (req.params.clave === 'email_settings' && config?.valor?.smtpPass) {
             return res.json({ ...config, valor: { ...config.valor, smtpPass: db.CONFIG_SECRET_SENTINEL } });
@@ -2644,6 +2677,9 @@ router.get('/tenants/:slug/config/:clave', requirePermiso('MANAGE_TENANTS'), asy
         }
         if (req.params.clave === 'wa_credentials' && config?.valor?.accessToken) {
             return res.json({ ...config, valor: { ...config.valor, accessToken: db.WA_TOKEN_SENTINEL } });
+        }
+        if (req.params.clave === 'wa_app_secret' && config?.valor) {
+            return res.json({ ...config, valor: db.CONFIG_SECRET_SENTINEL });
         }
         if (req.params.clave === 'email_settings' && config?.valor?.smtpPass) {
             return res.json({ ...config, valor: { ...config.valor, smtpPass: db.CONFIG_SECRET_SENTINEL } });

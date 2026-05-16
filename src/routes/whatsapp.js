@@ -74,34 +74,77 @@ async function _ingestUegBestEffort({ tenantId, correlationId, idempotencyKey, r
 
 // ── Meta Webhook Signature Verification ─────────────────────────────────────
 // Validates X-Hub-Signature-256 sent by Meta on every POST.
-// Requires WA_APP_SECRET env var. If not set, skips verification (dev mode).
-function verifyMetaSignature(req, res, next) {
-  const appSecret = process.env.WA_APP_SECRET;
-  if (!appSecret) {
-    logger.warn('WA_APP_SECRET not set: webhook signature verification is disabled');
-    return next();
+// Tries tenant-level secret from config first, then falls back to WA_APP_SECRET.
+async function resolveMetaAppSecret(req) {
+  const envSecret = String(process.env.WA_APP_SECRET ?? '').trim();
+  const prisma = getPrismaClient();
+  if (!prisma) return envSecret;
+
+  const phoneNumberId = String(
+    req.body?.entry?.[0]?.changes?.[0]?.value?.metadata?.phone_number_id ??
+    req.body?.phone_number_id ??
+    req.query?.phone_number_id ??
+    ''
+  ).trim();
+
+  if (phoneNumberId) {
+    const waConfigs = await prisma.configuracion.findMany({
+      where: { clave: 'wa_credentials' },
+      select: { tenantId: true, valor: true },
+    });
+    const matched = waConfigs.find((row) => {
+      const configuredPhone = String(row?.valor?.phoneNumberId ?? '').trim();
+      return configuredPhone === phoneNumberId;
+    });
+
+    if (matched?.tenantId) {
+      const secretFromDb = await db.getWaAppSecret(matched.tenantId);
+      if (secretFromDb) return secretFromDb;
+    }
   }
 
-  const sig = req.headers['x-hub-signature-256'];
-  if (!sig) {
-    return res.status(401).json({ error: 'Missing webhook signature' });
+  const waSecretRows = await prisma.configuracion.findMany({
+    where: { clave: 'wa_app_secret' },
+    select: { tenantId: true },
+  });
+  if (waSecretRows.length === 1) {
+    const secretFromDb = await db.getWaAppSecret(waSecretRows[0].tenantId);
+    if (secretFromDb) return secretFromDb;
   }
 
-  if (!req.rawBody) {
-    logger.error('rawBody unavailable — ensure express.json verify is configured');
-    return res.status(400).json({ error: 'Raw body unavailable for signature check' });
-  }
+  return envSecret;
+}
 
-  const expected = 'sha256=' +
-    crypto.createHmac('sha256', appSecret).update(req.rawBody).digest('hex');
-
+async function verifyMetaSignature(req, res, next) {
   try {
+    const appSecret = await resolveMetaAppSecret(req);
+    if (!appSecret) {
+      logger.warn('WA_APP_SECRET not set: webhook signature verification is disabled');
+      return next();
+    }
+
+    const sig = req.headers['x-hub-signature-256'];
+    if (!sig) {
+      return res.status(401).json({ error: 'Missing webhook signature' });
+    }
+
+    if (!req.rawBody) {
+      logger.error('rawBody unavailable — ensure express.json verify is configured');
+      return res.status(400).json({ error: 'Raw body unavailable for signature check' });
+    }
+
+    const expected = 'sha256=' +
+      crypto.createHmac('sha256', appSecret).update(req.rawBody).digest('hex');
+
     if (!crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expected))) {
       logger.warn('WhatsApp webhook signature mismatch');
       return res.status(401).json({ error: 'Invalid webhook signature' });
     }
-  } catch {
-    return res.status(401).json({ error: 'Invalid webhook signature' });
+  } catch (err) {
+    if (err instanceof RangeError) {
+      return res.status(401).json({ error: 'Invalid webhook signature' });
+    }
+    return next(err);
   }
 
   next();
