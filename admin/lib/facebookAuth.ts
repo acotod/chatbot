@@ -99,6 +99,20 @@ function getFacebookLoginStatus(sdk: FacebookSDK): Promise<FacebookLoginResponse
   });
 }
 
+export async function checkFacebookLoginStatus(appId: string): Promise<FacebookLoginResponse> {
+  if (!appId) {
+    throw new Error("Falta NEXT_PUBLIC_FACEBOOK_APP_ID en la UI");
+  }
+
+  await loadFacebookSdk();
+  ensureFacebookInit(appId);
+
+  const w = getFacebookWindow();
+  if (!w.FB) throw new Error("Facebook SDK no disponible");
+
+  return getFacebookLoginStatus(w.FB);
+}
+
 export async function getFacebookAccessToken(appId: string): Promise<string> {
   if (!appId) {
     throw new Error("Falta NEXT_PUBLIC_FACEBOOK_APP_ID en la UI");

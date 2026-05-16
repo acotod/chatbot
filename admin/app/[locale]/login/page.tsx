@@ -1,6 +1,7 @@
 "use client";
 
 import { API_BASE, authApi } from "@/lib/api";
+import { checkFacebookLoginStatus, getFacebookAccessToken } from "@/lib/facebookAuth";
 import { addLog, initGlobalErrorLogger } from "@/lib/errorLogger";
 import { buildPermissionSet, normalizePermissions, type Permission } from "@/lib/permissions";
 import { scheduleProactiveRefresh, useAuthStore } from "@/store/auth";
@@ -17,6 +18,13 @@ type AuthResponse = {
   refreshToken?: string;
   expiresIn: number;
   superAdmin: boolean;
+};
+
+type FacebookStatusResponse = {
+  status: "connected" | "not_authorized" | "unknown";
+  authResponse?: {
+    accessToken?: string;
+  };
 };
 
 const LOGIN_REDIRECT_ORDER: Array<{ href: string; permission: Permission }> = [
@@ -51,6 +59,7 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [facebookLoading, setFacebookLoading] = useState(false);
 
   const { setToken, setPermissions, setRefreshToken, setTenantSlug } = useAuthStore();
   const router = useRouter();
@@ -61,6 +70,8 @@ export default function LoginPage() {
     if (path === "/") return `/${locale}`;
     return `/${locale}${path}`;
   };
+
+  const facebookAppId = String(process.env.NEXT_PUBLIC_FACEBOOK_APP_ID || "").trim();
 
   const copy = locale === "en"
     ? {
@@ -78,6 +89,9 @@ export default function LoginPage() {
         passwordLabel: "Password",
         loggingIn: "Signing in...",
         signIn: "Sign in",
+        or: "or",
+        continueWithFacebook: "Continue with Facebook",
+        facebookInProgress: "Connecting with Facebook...",
         footer: "Zentra Bot · Admin panel for intelligent conversations",
       }
     : {
@@ -95,6 +109,9 @@ export default function LoginPage() {
         passwordLabel: "Contraseña",
         loggingIn: "Iniciando sesión...",
         signIn: "Iniciar sesión",
+        or: "o",
+        continueWithFacebook: "Continuar con Facebook",
+        facebookInProgress: "Conectando con Facebook...",
         footer: "Zentra Bot · Panel administrativo de conversaciones inteligentes",
       };
 
@@ -105,9 +122,15 @@ export default function LoginPage() {
       level: "info",
       source: "custom",
       message: "Login page mounted",
-      details: { socialLoginEnabled: false },
+      details: { socialLoginEnabled: true },
     });
   }, []);
+
+  function extractFacebookToken(response: FacebookStatusResponse): string | null {
+    const token = response.authResponse?.accessToken;
+    if (response.status === "connected" && token) return token;
+    return null;
+  }
 
   function getAuthErrorMessage(error: unknown): string {
     if (!axios.isAxiosError(error)) {
@@ -203,6 +226,40 @@ export default function LoginPage() {
     }
   }
 
+  async function statusChangeCallback(response: FacebookStatusResponse) {
+    const knownToken = extractFacebookToken(response);
+    const accessToken = knownToken || (await getFacebookAccessToken(facebookAppId));
+    const res = await authApi.loginWithFacebook(accessToken);
+    await applyAuthSession(res.data);
+  }
+
+  async function checkLoginState() {
+    if (!facebookAppId) {
+      setError(copy.unavailable);
+      return;
+    }
+
+    setError("");
+    setFacebookLoading(true);
+    try {
+      const response = await checkFacebookLoginStatus(facebookAppId);
+      await statusChangeCallback(response);
+    } catch (error) {
+      const errorMsg = getAuthErrorMessage(error);
+      setError(errorMsg);
+      addLog({
+        level: "error",
+        source: "custom",
+        message: "Facebook login failed",
+        details: {
+          error: error instanceof Error ? error.message : String(error),
+        },
+      });
+    } finally {
+      setFacebookLoading(false);
+    }
+  }
+
   return (
     <div className="relative min-h-screen overflow-hidden bg-gradient-to-br from-slate-100 via-blue-50 to-slate-100 flex items-center justify-center p-4">
       <div className="pointer-events-none absolute -top-24 -left-24 h-64 w-64 rounded-full bg-blue-200/30 blur-3xl" />
@@ -263,10 +320,28 @@ export default function LoginPage() {
 
           <button
             type="submit"
-            disabled={loading}
+            disabled={loading || facebookLoading}
             className="w-full py-3.5 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-xl transition-all shadow-sm shadow-blue-100 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {loading ? copy.loggingIn : copy.signIn}
+          </button>
+
+          <div className="relative py-1">
+            <div className="absolute inset-0 flex items-center">
+              <div className="w-full border-t border-slate-200" />
+            </div>
+            <div className="relative flex justify-center text-xs uppercase">
+              <span className="bg-white px-2 text-slate-500">{copy.or}</span>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={checkLoginState}
+            disabled={loading || facebookLoading}
+            className="w-full py-3.5 bg-[#1877F2] hover:bg-[#166fe5] text-white font-medium rounded-xl transition-all shadow-sm shadow-blue-100 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {facebookLoading ? copy.facebookInProgress : copy.continueWithFacebook}
           </button>
         </form>
 
