@@ -794,6 +794,51 @@ export default function ConfiguracionPage() {
             </div>
           </ConfigSection>
 
+          <ConfigSection
+            title={t("setupGuide.title")}
+            description={t("setupGuide.description")}
+          >
+            <div className="space-y-3">
+              <div className="rounded-xl border border-blue-200 bg-blue-50 px-3.5 py-3 text-sm text-blue-900">
+                <p className="font-semibold">{t("setupGuide.beforeStartTitle")}</p>
+                <p className="mt-1 text-blue-800">{t("setupGuide.beforeStartText")}</p>
+              </div>
+
+              <div className="rounded-xl border border-slate-200 bg-white px-3.5 py-3">
+                <p className="text-sm font-semibold text-slate-900">1. {t("setupGuide.step1.title")}</p>
+                <p className="mt-1 text-sm text-slate-600">{t("setupGuide.step1.where")}</p>
+                <p className="mt-1 text-xs text-slate-500">{t("setupGuide.step1.hint")}</p>
+              </div>
+
+              <div className="rounded-xl border border-slate-200 bg-white px-3.5 py-3">
+                <p className="text-sm font-semibold text-slate-900">2. {t("setupGuide.step2.title")}</p>
+                <p className="mt-1 text-sm text-slate-600">{t("setupGuide.step2.where")}</p>
+                <p className="mt-1 text-xs text-slate-500">{t("setupGuide.step2.hint")}</p>
+              </div>
+
+              <div className="rounded-xl border border-slate-200 bg-white px-3.5 py-3">
+                <p className="text-sm font-semibold text-slate-900">3. {t("setupGuide.step3.title")}</p>
+                <p className="mt-1 text-sm text-slate-600">{t("setupGuide.step3.where")}</p>
+                <p className="mt-1 text-xs text-slate-500">{t("setupGuide.step3.hint")}</p>
+              </div>
+
+              <div className="rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-3">
+                <p className="text-sm font-semibold text-amber-900">4. {t("setupGuide.step4.title")}</p>
+                <p className="mt-1 text-sm text-amber-800">{t("setupGuide.step4.where")}</p>
+                <p className="mt-1 text-xs text-amber-700">{t("setupGuide.step4.hint")}</p>
+              </div>
+
+              <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3.5 py-3">
+                <p className="text-sm font-semibold text-emerald-900">5. {t("setupGuide.step5.title")}</p>
+                <p className="mt-1 text-sm text-emerald-800">{t("setupGuide.step5.where")}</p>
+                <p className="mt-1 text-xs text-emerald-700">{t("setupGuide.step5.hint")}</p>
+                <p className="mt-2 rounded-md border border-emerald-200 bg-white px-2.5 py-2 font-mono text-xs text-emerald-900 break-all">
+                  {t("setupGuide.step5.endpoint")}
+                </p>
+              </div>
+            </div>
+          </ConfigSection>
+
           {/* Flow endpoint public key */}
           <ConfigSection
             title={t("flowKey.title")}

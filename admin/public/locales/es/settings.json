@@ -55,6 +55,38 @@
     "saving": "Guardando...",
     "saved": "Guardado 💙"
   },
+  "setupGuide": {
+    "title": "Asistente de configuración (for dummies)",
+    "description": "Seguí estos pasos en orden para conectar Meta Flows sin errores de firma.",
+    "beforeStartTitle": "Antes de empezar",
+    "beforeStartText": "Siempre trabajá dentro de la misma app de Meta. Si mezclás datos de apps distintas, el test falla con 401 Invalid webhook signature.",
+    "step1": {
+      "title": "Pegá la Clave pública RSA",
+      "where": "Tomala de Meta Flow Encryption y pegala en el bloque 'Clave pública del Flow' de esta pantalla.",
+      "hint": "Luego hacé clic en 'Guardar clave pública'."
+    },
+    "step2": {
+      "title": "Completá Phone Number ID",
+      "where": "Tomalo en Meta WhatsApp Manager → API Setup → Phone Number ID.",
+      "hint": "No uses el número visible (+1 ...), usá el ID numérico largo."
+    },
+    "step3": {
+      "title": "Completá Access Token",
+      "where": "Tomalo en Meta (System User token / Cloud API token) con permisos de WhatsApp.",
+      "hint": "Pegalo en Access Token y guardá credenciales."
+    },
+    "step4": {
+      "title": "Configurá App Secret (WA_APP_SECRET)",
+      "where": "Este dato NO se pega aquí. Va en el servidor (.env) como WA_APP_SECRET.",
+      "hint": "Debe ser el App Secret de la misma app de Meta usada en los pasos 1-3."
+    },
+    "step5": {
+      "title": "Probá el endpoint en Meta Flow",
+      "where": "En Meta, usá este endpoint para el test del Flow endpoint.",
+      "hint": "Si todo está alineado, deja de aparecer 401 Invalid webhook signature.",
+      "endpoint": "https://api.pmc-dev.com/whatsapp/flows"
+    }
+  },
   "saveChanges": "Guardar cambios",
   "saving": "Guardando...",
   "saved": "Guardado 💙",
