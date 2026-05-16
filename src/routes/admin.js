@@ -394,12 +394,14 @@ router.post('/tenants/:slug/rotate-api-key', requirePermiso('MANAGE_TENANTS'), a
         }
 
         const newApiKey = crypto.randomBytes(32).toString('hex');
+        const hashedKey = crypto.createHash('sha256').update(newApiKey).digest('hex');
         const updated = await prisma.tenant.update({
             where: { id: tenant.id },
-            data: { apiKey: newApiKey },
+            data: { apiKey: hashedKey },
         });
         audit({ adminUserId: req.admin.adminUserId, tenantId: tenant.id, accion: 'ROTATE_API_KEY', entidad: 'tenant', entidadId: tenant.id, ip: req.ip, userAgent: req.headers['user-agent'] });
-        res.json({ id: updated.id, slug: updated.slug, apiKey: updated.apiKey });
+        // Return raw key to caller — only time it's visible; DB stores the hash
+        res.json({ id: updated.id, slug: updated.slug, apiKey: newApiKey });
     } catch (err) {
         next(err);
     }
