@@ -74,11 +74,22 @@ async function _ingestUegBestEffort({ tenantId, correlationId, idempotencyKey, r
 
 // ── Meta Webhook Signature Verification ─────────────────────────────────────
 // Validates X-Hub-Signature-256 sent by Meta on every POST.
-// Tries tenant-level secret from config first, then falls back to WA_APP_SECRET.
-async function resolveMetaAppSecret(req) {
-  const envSecret = String(process.env.WA_APP_SECRET ?? process.env.FACEBOOK_APP_SECRET ?? '').trim();
+// Tries tenant-level secrets first, then environment fallbacks.
+async function resolveMetaAppSecrets(req) {
+  const secretCandidates = [];
+  const pushCandidate = (label, value) => {
+    const normalized = String(value ?? '').trim();
+    if (!normalized) return;
+    if (secretCandidates.some((item) => item.value === normalized)) return;
+    secretCandidates.push({ label, value: normalized });
+  };
+
   const prisma = getPrismaClient();
-  if (!prisma) return envSecret;
+  if (!prisma) {
+    pushCandidate('WA_APP_SECRET', process.env.WA_APP_SECRET);
+    pushCandidate('FACEBOOK_APP_SECRET', process.env.FACEBOOK_APP_SECRET);
+    return secretCandidates;
+  }
 
   const phoneNumberId = String(
     req.body?.entry?.[0]?.changes?.[0]?.value?.metadata?.phone_number_id ??
@@ -99,7 +110,7 @@ async function resolveMetaAppSecret(req) {
 
     if (matched?.tenantId) {
       const secretFromDb = await db.getWaAppSecret(matched.tenantId);
-      if (secretFromDb) return secretFromDb;
+      pushCandidate('db:phone-match', secretFromDb);
     }
   }
 
@@ -109,16 +120,19 @@ async function resolveMetaAppSecret(req) {
   });
   if (waSecretRows.length === 1) {
     const secretFromDb = await db.getWaAppSecret(waSecretRows[0].tenantId);
-    if (secretFromDb) return secretFromDb;
+    pushCandidate('db:single-tenant', secretFromDb);
   }
 
-  return envSecret;
+  pushCandidate('WA_APP_SECRET', process.env.WA_APP_SECRET);
+  pushCandidate('FACEBOOK_APP_SECRET', process.env.FACEBOOK_APP_SECRET);
+
+  return secretCandidates;
 }
 
 async function verifyMetaSignature(req, res, next) {
   try {
-    const appSecret = await resolveMetaAppSecret(req);
-    if (!appSecret) {
+    const secretCandidates = await resolveMetaAppSecrets(req);
+    if (!secretCandidates.length) {
       logger.warn('WA_APP_SECRET not set: webhook signature verification is disabled');
       return next();
     }
@@ -133,11 +147,49 @@ async function verifyMetaSignature(req, res, next) {
       return res.status(400).json({ error: 'Raw body unavailable for signature check' });
     }
 
-    const expected = 'sha256=' +
-      crypto.createHmac('sha256', appSecret).update(req.rawBody).digest('hex');
+    const received = String(sig).trim();
+    const signatureMatch = received.match(/^(?:sha256\s*=\s*)?"?([a-f0-9]{64})"?$/i);
+    if (!signatureMatch) {
+      logger.warn('WhatsApp webhook signature invalid format', {
+        correlationId: req.correlationId,
+        headerLength: received.length,
+        headerSample: received.slice(0, 32),
+      });
+      return res.status(401).json({ error: 'Invalid webhook signature' });
+    }
 
-    if (!crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expected))) {
-      logger.warn('WhatsApp webhook signature mismatch');
+    const receivedHex = signatureMatch[1].toLowerCase();
+    const receivedBuf = Buffer.from(receivedHex, 'hex');
+
+    let matched = false;
+    const triedHashes = [];
+    for (const candidate of secretCandidates) {
+      const expectedHex = crypto
+        .createHmac('sha256', candidate.value)
+        .update(req.rawBody)
+        .digest('hex');
+      const expectedBuf = Buffer.from(expectedHex, 'hex');
+      if (crypto.timingSafeEqual(receivedBuf, expectedBuf)) {
+        matched = true;
+        break;
+      }
+      triedHashes.push({
+        label: candidate.label,
+        secretSHA256: crypto.createHash('sha256').update(candidate.value).digest('hex'),
+        expectedPrefix: expectedHex.slice(0, 16),
+      });
+    }
+
+    if (!matched) {
+      const bodyPreview = req.rawBody.slice(0, 200).toString('utf8').replace(/[\x00-\x1f]/g, '?');
+      logger.warn('WhatsApp webhook signature mismatch (all secrets tried)', {
+        correlationId: req.correlationId,
+        receivedSig: received,
+        triedHashes,
+        bodyLength: req.rawBody.length,
+        bodyPreview,
+        contentType: req.headers['content-type'],
+      });
       return res.status(401).json({ error: 'Invalid webhook signature' });
     }
   } catch (err) {
