@@ -289,10 +289,11 @@ export function Sidebar() {
     <aside className="w-64 bg-white border-r border-slate-200 flex flex-col h-screen sticky top-0">
       {/* Logo */}
       <div className="h-16 flex items-center px-6 border-b border-slate-200">
-        <div className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center mr-3">
-          <MessageCircle className="w-4 h-4 text-white" />
-        </div>
-        <span className="text-slate-900 font-semibold text-lg">Zentra Bot</span>
+        <img
+          src="/branding/zentra-bot-logo.svg"
+          alt="Zentra Bot"
+          className="h-8 w-auto"
+        />
       </div>
 
       {/* Tenant selector — only visible to superAdmin */}

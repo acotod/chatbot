@@ -3,7 +3,6 @@
 import { agentAuthApi, type AgentLoginResponse } from "@/lib/agentApi";
 import { useAgentAuthStore } from "@/store/agentAuth";
 import axios from "axios";
-import { MessageCircle } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
@@ -162,9 +161,11 @@ function AgentLoginScreen({ reason, nextPath }: AgentLoginScreenProps) {
 
         <div className="relative bg-white rounded-3xl shadow-xl border border-slate-200/80 w-full max-w-md p-8 sm:p-9">
           <div className="flex items-center gap-3 mb-9">
-            <div className="w-11 h-11 rounded-2xl bg-cyan-600 flex items-center justify-center shadow-sm shadow-cyan-200">
-              <MessageCircle className="w-5 h-5 text-white" />
-            </div>
+            <img
+              src="/branding/zentra-bot-logo.svg"
+              alt="Zentra Bot"
+              className="h-10 w-auto"
+            />
             <div>
               <h1 className="text-xl font-bold tracking-tight text-slate-900">{t("title")}</h1>
               <p className="text-xs text-slate-500">{t("subtitle")}</p>
@@ -227,9 +228,11 @@ function AgentLoginScreen({ reason, nextPath }: AgentLoginScreenProps) {
 
       <div className="relative bg-white rounded-3xl shadow-xl border border-slate-200/80 w-full max-w-md p-8 sm:p-9">
         <div className="flex items-center gap-3 mb-9">
-          <div className="w-11 h-11 rounded-2xl bg-cyan-600 flex items-center justify-center shadow-sm shadow-cyan-200">
-            <MessageCircle className="w-5 h-5 text-white" />
-          </div>
+          <img
+            src="/branding/zentra-bot-logo.svg"
+            alt="Zentra Bot"
+            className="h-10 w-auto"
+          />
           <div>
             <h1 className="text-xl font-bold tracking-tight text-slate-900">{t("title")}</h1>
             <p className="text-xs text-slate-500">{t("subtitle")}</p>

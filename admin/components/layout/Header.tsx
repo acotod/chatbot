@@ -279,9 +279,11 @@ export function Header() {
               className="w-8 h-8 rounded-full object-cover border border-slate-200"
             />
           ) : (
-            <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center text-white text-sm font-semibold">
-              {identityInitial}
-            </div>
+            <img
+              src="/branding/zentra-bot-logo.svg"
+              alt="Zentra Bot"
+              className="h-8 w-auto max-w-24 rounded-md border border-slate-200 bg-white px-1"
+            />
           )}
           <div className="hidden md:flex flex-col leading-tight">
             <span className="text-sm text-slate-700">{tenantDisplayName}</span>
