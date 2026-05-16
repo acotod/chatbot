@@ -24,27 +24,44 @@ function getSubmittedContactName(data) {
 }
 
 // ── Meta HMAC-SHA256 signature verification (same pattern as /whatsapp) ──────────
-function verifyFlowsSignature(req, res, next) {
-  const appSecret = process.env.WA_APP_SECRET;
-  if (!appSecret) {
-    logger.warn('WA_APP_SECRET not set: Flows webhook signature verification is disabled');
-    return next();
-  }
-  const sig = req.headers['x-hub-signature-256'];
-  if (!sig) return res.status(401).json({ error: 'Missing webhook signature' });
-  if (!req.rawBody) {
-    logger.error('rawBody unavailable for Flows webhook signature check');
-    return res.status(400).json({ error: 'Raw body unavailable for signature check' });
-  }
-  const expected = 'sha256=' +
-    crypto.createHmac('sha256', appSecret).update(req.rawBody).digest('hex');
+// Tries tenant-level secret from DB first, then falls back to WA_APP_SECRET env var.
+async function verifyFlowsSignature(req, res, next) {
   try {
-    if (!crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expected))) {
-      logger.warn('Flows webhook signature mismatch');
+    const tenantId = req.tenant?.id;
+    let appSecret = null;
+
+    if (tenantId) {
+      appSecret = await db.getWaAppSecret(tenantId);
+    }
+    if (!appSecret) {
+      appSecret = String(process.env.WA_APP_SECRET ?? '').trim() || null;
+    }
+
+    if (!appSecret) {
+      logger.warn('WA_APP_SECRET not set: Flows webhook signature verification is disabled');
+      return next();
+    }
+
+    const sig = req.headers['x-hub-signature-256'];
+    if (!sig) return res.status(401).json({ error: 'Missing webhook signature' });
+    if (!req.rawBody) {
+      logger.error('rawBody unavailable for Flows webhook signature check');
+      return res.status(400).json({ error: 'Raw body unavailable for signature check' });
+    }
+
+    const expected = 'sha256=' +
+      crypto.createHmac('sha256', appSecret).update(req.rawBody).digest('hex');
+
+    try {
+      if (!crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expected))) {
+        logger.warn('Flows webhook signature mismatch', { tenantId });
+        return res.status(401).json({ error: 'Invalid webhook signature' });
+      }
+    } catch {
       return res.status(401).json({ error: 'Invalid webhook signature' });
     }
-  } catch {
-    return res.status(401).json({ error: 'Invalid webhook signature' });
+  } catch (err) {
+    return next(err);
   }
   next();
 }
