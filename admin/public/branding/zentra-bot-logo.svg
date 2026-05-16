@@ -1,0 +1,67 @@
+<svg width="1280" height="360" viewBox="0 0 1280 360" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title desc">
+  <title id="title">Zentra Bot Logo</title>
+  <desc id="desc">Refined logo for Zentra Bot with a radial bot-chat symbol and modern wordmark.</desc>
+
+  <defs>
+    <linearGradient id="bg" x1="36" y1="30" x2="306" y2="310" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#11B6AE"/>
+      <stop offset="1" stop-color="#0C3E62"/>
+    </linearGradient>
+    <linearGradient id="ring" x1="72" y1="56" x2="236" y2="228" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#BFFCF7"/>
+      <stop offset="1" stop-color="#34D6C4"/>
+    </linearGradient>
+    <linearGradient id="node" x1="118" y1="100" x2="188" y2="186" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#F3FFFD"/>
+      <stop offset="1" stop-color="#D5FBF4"/>
+    </linearGradient>
+    <filter id="halo" x="0" y="0" width="340" height="340" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feGaussianBlur stdDeviation="14"/>
+    </filter>
+    <filter id="shadow" x="14" y="14" width="300" height="300" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feOffset dy="8"/>
+      <feGaussianBlur stdDeviation="8"/>
+      <feColorMatrix type="matrix" values="0 0 0 0 0.0352941 0 0 0 0 0.211765 0 0 0 0 0.321569 0 0 0 0.28 0"/>
+      <feBlend mode="normal" in2="SourceGraphic" result="shape"/>
+    </filter>
+  </defs>
+
+  <!-- Symbol -->
+  <g transform="translate(24 24)">
+    <rect x="8" y="8" width="272" height="272" rx="64" fill="url(#bg)" filter="url(#shadow)"/>
+    <rect x="8" y="8" width="272" height="272" rx="64" stroke="#D2FDF5" stroke-opacity="0.32"/>
+
+    <rect x="26" y="26" width="236" height="236" rx="50" fill="#D8FFFB" opacity="0.08"/>
+    <rect x="38" y="38" width="212" height="212" rx="44" fill="#0F5A71" opacity="0.16"/>
+
+    <circle cx="144" cy="144" r="66" stroke="url(#ring)" stroke-width="14"/>
+    <circle cx="144" cy="144" r="88" stroke="#A7FBF1" stroke-opacity="0.36" stroke-width="8"/>
+    <circle cx="144" cy="144" r="36" fill="url(#node)"/>
+
+    <circle cx="144" cy="84" r="9" fill="#CBFFF8"/>
+    <circle cx="204" cy="144" r="9" fill="#CBFFF8"/>
+    <circle cx="144" cy="204" r="9" fill="#CBFFF8"/>
+    <circle cx="84" cy="144" r="9" fill="#CBFFF8"/>
+
+    <path d="M144 98V124" stroke="#126884" stroke-width="8" stroke-linecap="round"/>
+    <path d="M144 164V190" stroke="#126884" stroke-width="8" stroke-linecap="round"/>
+    <path d="M98 144H124" stroke="#126884" stroke-width="8" stroke-linecap="round"/>
+    <path d="M164 144H190" stroke="#126884" stroke-width="8" stroke-linecap="round"/>
+
+    <rect x="24" y="24" width="240" height="240" rx="54" fill="#67E8F9" opacity="0.2" filter="url(#halo)"/>
+  </g>
+
+  <!-- Wordmark -->
+  <g transform="translate(352 64)">
+    <text x="0" y="106" fill="#0A314C" style="font-family: 'Outfit', 'Sora', 'Poppins', 'Segoe UI', sans-serif; font-size: 98px; font-weight: 700; letter-spacing: 0.4px;">
+      Zentra
+    </text>
+    <text x="470" y="106" fill="#0E8C7E" style="font-family: 'Outfit', 'Sora', 'Poppins', 'Segoe UI', sans-serif; font-size: 98px; font-weight: 700; letter-spacing: 0.4px;">
+      Bot
+    </text>
+    <rect x="2" y="136" width="650" height="3" rx="1.5" fill="#0EA5A4" fill-opacity="0.25"/>
+    <text x="4" y="186" fill="#1A5D73" style="font-family: 'Outfit', 'Sora', 'Poppins', 'Segoe UI', sans-serif; font-size: 24px; font-weight: 600; letter-spacing: 4.2px; text-transform: uppercase;">
+      Conversational Intelligence
+    </text>
+  </g>
+</svg>
