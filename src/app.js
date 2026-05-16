@@ -22,6 +22,7 @@ const wabaFlowsRouter      = require('./routes/waba-flows');
 const crmRouter            = require('./routes/crm');
 const portalRouter         = require('./routes/portal');
 const resolveTenant = require('./middleware/resolveTenant');
+const { resolveTenantByKey } = require('./middleware/resolveTenant');
 const createRateLimiter = require('./middleware/rateLimiter');
 const errorHandler = require('./middleware/errorHandler');
 const correlationId = require('./middleware/correlationId');
@@ -151,8 +152,8 @@ app.use('/device-sessions', deviceSessionsRouter);
 // Per-tenant rate limiter (applied only to the webhook)
 const tenantRateLimiter = createRateLimiter();
 
-// POST /webhook — tenant identified by x-api-key header
-app.use('/webhook', resolveTenant, tenantRateLimiter, webhookRouter);
+// POST /webhook — tenant identified by x-api-key header OR ?key= query param (Meta Flows)
+app.use('/webhook', resolveTenantByKey, tenantRateLimiter, webhookRouter);
 
 // POST /events/ingest — canonical Unified Event Gateway ingest endpoint
 app.use('/events', resolveTenant, tenantRateLimiter, eventsRouter);
