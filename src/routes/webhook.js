@@ -57,6 +57,12 @@ async function verifyFlowsSignature(req, res, next) {
     const received = String(sig).trim();
     const signatureMatch = received.match(/^(?:sha256\s*=\s*)?"?([a-f0-9]{64})"?$/i);
     if (!signatureMatch) {
+      logger.warn('Flows webhook signature invalid format', {
+        tenantId,
+        correlationId: req.correlationId,
+        headerLength: received.length,
+        headerSample: received.slice(0, 32),
+      });
       return res.status(401).json({ error: 'Invalid webhook signature' });
     }
     const receivedHex = signatureMatch[1].toLowerCase();
@@ -66,7 +72,14 @@ async function verifyFlowsSignature(req, res, next) {
       const expectedBuf = Buffer.from(expectedHex, 'hex');
 
       if (!crypto.timingSafeEqual(receivedBuf, expectedBuf)) {
-        logger.warn('Flows webhook signature mismatch', { tenantId });
+        logger.warn('Flows webhook signature mismatch', {
+          tenantId,
+          correlationId: req.correlationId,
+          headerLength: received.length,
+          receivedPrefix: receivedHex.slice(0, 12),
+          expectedPrefix: expectedHex.slice(0, 12),
+          bodyLength: req.rawBody.length,
+        });
         return res.status(401).json({ error: 'Invalid webhook signature' });
       }
     } catch {
