@@ -153,7 +153,7 @@ export default function TestingInstructionsPage() {
                 <div>
                   <h3 className="font-semibold text-slate-900">1. Frontend: Obtención del Token</h3>
                   <div className="mt-2 rounded-lg border-l-4 border-slate-300 bg-slate-50 p-4 text-sm text-slate-700">
-                    La app carga el SDK de Facebook desde <code className="text-xs font-mono">https://connect.facebook.net/es_LA/sdk.js</code> y llama a <code className="text-xs font-mono">FB.login()</code> solicitando <code className="text-xs font-mono">email,public_profile</code>.
+                    La app carga el SDK de Facebook desde <code className="text-xs font-mono">https://connect.facebook.net/es_LA/sdk.js</code>, verifica el estado con <code className="text-xs font-mono">FB.getLoginStatus()</code> y, si no está <code className="text-xs font-mono">connected</code>, llama a <code className="text-xs font-mono">FB.login()</code> solicitando <code className="text-xs font-mono">email,public_profile</code>.
                   </div>
                 </div>
 

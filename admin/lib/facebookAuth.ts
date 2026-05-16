@@ -2,6 +2,9 @@ type FacebookLoginStatus = "connected" | "not_authorized" | "unknown";
 
 type FacebookAuthResponse = {
   accessToken: string;
+  expiresIn?: string;
+  signedRequest?: string;
+  userID?: string;
 };
 
 type FacebookLoginResponse = {
@@ -20,6 +23,7 @@ type FacebookSDK = {
     xfbml: boolean;
     version: string;
   }) => void;
+  getLoginStatus: (callback: (response: FacebookLoginResponse) => void) => void;
   login: (callback: (response: FacebookLoginResponse) => void, options: FacebookLoginOptions) => void;
 };
 
@@ -87,6 +91,14 @@ function ensureFacebookInit(appId: string): void {
   initializedAppId = appId;
 }
 
+function getFacebookLoginStatus(sdk: FacebookSDK): Promise<FacebookLoginResponse> {
+  return new Promise((resolve) => {
+    sdk.getLoginStatus((response) => {
+      resolve(response);
+    });
+  });
+}
+
 export async function getFacebookAccessToken(appId: string): Promise<string> {
   if (!appId) {
     throw new Error("Falta NEXT_PUBLIC_FACEBOOK_APP_ID en la UI");
@@ -97,6 +109,12 @@ export async function getFacebookAccessToken(appId: string): Promise<string> {
 
   const w = getFacebookWindow();
   if (!w.FB) throw new Error("Facebook SDK no disponible");
+
+  // Meta recommends checking current login status before opening FB.login().
+  const loginStatus = await getFacebookLoginStatus(w.FB);
+  if (loginStatus.status === "connected" && loginStatus.authResponse?.accessToken) {
+    return loginStatus.authResponse.accessToken;
+  }
 
   const authToken = await new Promise<string>((resolve, reject) => {
     w.FB!.login(
