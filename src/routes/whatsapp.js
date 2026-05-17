@@ -714,8 +714,10 @@ async function _handleFallbackToHuman({ tenant, userId, phone, response, phoneNu
 
 async function _sendChatbotResponse({ tenant, userId, phone, phoneNumberId, accessToken, response, correlationId, conversationId, conversationMeta }) {
   const type = response?.type ?? 'text';
-  const forceTextInteractive = process.env.WA_FORCE_TEXT_INTERACTIONS !== '0';
-  const preferTextMenu = type === 'list' && (forceTextInteractive || process.env.WA_PREFER_TEXT_MENU !== '0');
+  // Default: send native interactive (selectable) WhatsApp menus/buttons.
+  // Opt-in to text fallback only when explicitly enabled.
+  const forceTextInteractive = process.env.WA_FORCE_TEXT_INTERACTIONS === '1';
+  const preferTextMenu = type === 'list' && (forceTextInteractive || process.env.WA_PREFER_TEXT_MENU === '1');
   const preferTextButtons = type === 'buttons' && forceTextInteractive;
   const useSandboxOutboundMock =
     conversationMeta?.sandbox === true && conversationMeta?.outboundMetaMock === true;
