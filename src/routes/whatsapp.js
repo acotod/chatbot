@@ -894,6 +894,21 @@ async function _sendChatbotResponse({ tenant, userId, phone, phoneNumberId, acce
       direccion: 'salida',
     });
   } catch (err) {
+    if (type === 'list') {
+      try {
+        const fallbackText = _buildListFallbackText(response);
+        if (fallbackText) {
+          await wa.sendTextMessage(phoneNumberId, phone, fallbackText, accessToken);
+        }
+      } catch (fallbackErr) {
+        logger.warn('List fallback text send failed', {
+          tenantId: tenant.id,
+          phone,
+          message: fallbackErr.message,
+        });
+      }
+    }
+
     await persistFailedOutbound(err.message);
 
     logger.error('_sendChatbotResponse failed, enqueueing retry', {
@@ -921,18 +936,19 @@ async function _sendChatbotResponse({ tenant, userId, phone, phoneNumberId, acce
 }
 
 function _buildTextPayload(to, text) {
+  const safeText = _sanitizeWaText(text, { max: 4096 }) || 'Selecciona una opcion';
   return {
     messaging_product: 'whatsapp',
     recipient_type:    'individual',
     to,
     type:              'text',
-    text:              { preview_url: false, body: text },
+    text:              { preview_url: false, body: safeText },
   };
 }
 
 function _buildButtonPayload(to, response) {
   const buttons = (response.buttons ?? []).slice(0, 3);
-  const bodyText = String(response.text ?? '').trim() || 'Selecciona una opcion';
+  const bodyText = _sanitizeWaText(response.text, { max: 1024 }) || 'Selecciona una opcion';
   return {
     messaging_product: 'whatsapp',
     recipient_type:    'individual',
@@ -947,7 +963,7 @@ function _buildButtonPayload(to, response) {
             type: 'reply',
             reply: {
               id: String(b.id ?? '').trim().slice(0, 256),
-              title: String(b.title ?? '').trim().slice(0, 20),
+              title: _sanitizeWaText(b.title, { max: 20, allowNewlines: false }),
             },
           }))
           .filter((b) => b.reply.id && b.reply.title),
@@ -967,13 +983,13 @@ function _normalizeListSections(response) {
       const rows = (Array.isArray(sec?.rows) ? sec.rows : [])
         .map((r) => ({
           id: String(r?.id ?? '').trim().slice(0, 200),
-          title: String(r?.title ?? '').trim().slice(0, 24),
-          description: r?.description ? String(r.description).trim().slice(0, 72) : '',
+          title: _sanitizeWaText(r?.title, { max: 24, allowNewlines: false }),
+          description: r?.description ? _sanitizeWaText(r.description, { max: 72, allowNewlines: false }) : '',
         }))
         .filter((r) => r.id && r.title)
         .slice(0, 10);
 
-      const title = String(sec?.title ?? '').trim().slice(0, 24);
+      const title = _sanitizeWaText(sec?.title, { max: 24, allowNewlines: false });
       return {
         ...(title ? { title } : {}),
         rows,
@@ -986,11 +1002,11 @@ function _normalizeListSections(response) {
 function _buildListPayload(to, response) {
   const sections = _normalizeListSections(response);
   if (!sections.length) {
-    return _buildTextPayload(to, String(response?.text ?? '').trim() || 'Selecciona una opcion');
+    return _buildTextPayload(to, _sanitizeWaText(response?.text, { max: 4096 }) || 'Selecciona una opcion');
   }
 
-  const bodyText = String(response?.text ?? '').trim() || 'Selecciona una opcion';
-  const buttonLabel = String(response?.buttonLabel ?? 'Ver opciones').trim() || 'Ver opciones';
+  const bodyText = _sanitizeWaText(response?.text, { max: 1024 }) || 'Selecciona una opcion';
+  const buttonLabel = _sanitizeWaText(response?.buttonLabel, { max: 20, allowNewlines: false }) || 'Ver opciones';
 
   return {
     messaging_product: 'whatsapp',
@@ -1013,7 +1029,7 @@ function _buildListFallbackText(response) {
   if (!sections.length) return '';
 
   const lines = [];
-  const header = String(response?.text ?? '').trim();
+  const header = _sanitizeWaText(response?.text, { max: 512 });
   if (header) lines.push(header);
   lines.push('Si no ves el menu en WhatsApp Desktop, responde con el ID de la opcion:');
 
@@ -1025,6 +1041,22 @@ function _buildListFallbackText(response) {
   }
 
   return lines.join('\n').slice(0, 3500);
+}
+
+function _sanitizeWaText(value, { max = 1024, allowNewlines = true } = {}) {
+  let text = String(value ?? '');
+
+  // Drop invalid UTF-16 surrogates that can break Graph validation/display.
+  text = text
+    .replace(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])/g, '')
+    .replace(/(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g, '')
+    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, '');
+
+  if (!allowNewlines) {
+    text = text.replace(/[\r\n]+/g, ' ');
+  }
+
+  return text.trim().slice(0, max);
 }
 
 async function _sendText(phoneNumberId, phone, text, accessToken, tenant, userId, correlationId, options = {}) {
