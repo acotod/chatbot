@@ -1301,10 +1301,10 @@ router.post('/flows', verifyMetaSignature, async (req, res, next) => {
 
     const normalizedAction = String(action || '').toUpperCase();
 
-    // After submitting this form, always continue to closing screen.
-    // Meta can send different action values depending on client/version.
+    // Keep INIT on the current screen, but force submit-like actions forward.
+    // Meta can send inconsistent action values across clients/versions.
     let nextScreen;
-    if (resolvedScreen === 'SOLICITUD_ESPACIO' && normalizedAction !== 'BACK') {
+    if (resolvedScreen === 'SOLICITUD_ESPACIO' && normalizedAction !== 'INIT') {
       nextScreen = 'CIERRE';
     } else {
       nextScreen = normalizedAction === 'INIT' || normalizedAction === 'BACK'

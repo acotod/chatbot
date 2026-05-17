@@ -198,7 +198,13 @@ router.post('/', verifyFlowsSignature, webhookValidationRules, validate, async (
     const navigationOverride = flowConfig ? flowConfig.valor : null;
 
     // Navigate to the next screen
-    let nextScreen = getNextScreen(screen, data, navigationOverride);
+    let nextScreen;
+    if (screen === 'SOLICITUD_ESPACIO') {
+      // This route receives submitted payloads; force progress to closing screen.
+      nextScreen = 'CIERRE';
+    } else {
+      nextScreen = getNextScreen(screen, data, navigationOverride);
+    }
     if (nextScreen === null && screen === 'SOLICITUD_ESPACIO') {
       // Defensive fallback: keep flow progressing even if tenant nav override is incomplete.
       nextScreen = 'CIERRE';
