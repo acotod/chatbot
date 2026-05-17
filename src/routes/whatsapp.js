@@ -815,6 +815,13 @@ async function _sendChatbotResponse({ tenant, userId, phone, phoneNumberId, acce
       const buttons = (response.buttons ?? []).slice(0, 3);
       waResp = await wa.sendButtonMessage(phoneNumberId, phone, response.text ?? '', buttons, accessToken);
     } else if (type === 'list') {
+      const preferTextMenu = process.env.WA_PREFER_TEXT_MENU !== '0';
+      if (preferTextMenu) {
+        const fallbackText = _buildListFallbackText(response)
+          || _sanitizeWaText(response.text, { max: 4096 })
+          || 'Selecciona una opcion';
+        waResp = await wa.sendTextMessage(phoneNumberId, phone, fallbackText, accessToken);
+      } else {
       const sections = _normalizeListSections(response);
       if (!sections.length) {
         waResp = await wa.sendTextMessage(
@@ -841,6 +848,7 @@ async function _sendChatbotResponse({ tenant, userId, phone, phoneNumberId, acce
             await wa.sendTextMessage(phoneNumberId, phone, fallbackText, accessToken);
           }
         }
+      }
       }
     } else {
       // text or end
