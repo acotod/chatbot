@@ -54,6 +54,32 @@ function resolveConfig(config, variables) {
   return config;
 }
 
+function _normalizeMenuInput(value) {
+  return String(value ?? '').trim();
+}
+
+function _humanizeOptionId(id) {
+  const clean = String(id ?? '').trim();
+  if (!clean) return '';
+  return clean
+    .replace(/[_-]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/\b\w/g, (m) => m.toUpperCase());
+}
+
+function _extractMenuOptions(cfg, branchKeys) {
+  const fromButtons = Array.isArray(cfg?.buttons) ? cfg.buttons : [];
+  const fromSections = Array.isArray(cfg?.sections)
+    ? cfg.sections.flatMap((s) => (Array.isArray(s?.rows) ? s.rows : []))
+    : [];
+
+  const source = fromButtons.length ? fromButtons : fromSections;
+  if (source.length) return source;
+
+  return branchKeys.map((key) => ({ id: key, title: _humanizeOptionId(key) || key }));
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Individual executors
 // ─────────────────────────────────────────────────────────────────────────────
@@ -95,9 +121,28 @@ async function executeMessage({ node, variables }) {
  */
 async function executeMenu({ node, input, variables }) {
   const cfg = resolveConfig(node.config, variables);
+  const branchKeys = Object.keys(node.branches ?? {});
+  const normalizedInput = _normalizeMenuInput(input);
 
   // Check if input matches a branch key (button id / list row id)
-  const nextFromBranch = input ? (node.branches?.[input] ?? null) : null;
+  let nextFromBranch = normalizedInput ? (node.branches?.[normalizedInput] ?? null) : null;
+
+  if (!nextFromBranch && normalizedInput) {
+    const caseInsensitive = branchKeys.find(
+      (k) => k.toLowerCase() === normalizedInput.toLowerCase(),
+    );
+    if (caseInsensitive) {
+      nextFromBranch = node.branches?.[caseInsensitive] ?? null;
+    }
+  }
+
+  if (!nextFromBranch && /^\d{1,2}$/.test(normalizedInput)) {
+    const index = Number(normalizedInput) - 1;
+    if (index >= 0 && index < branchKeys.length) {
+      const key = branchKeys[index];
+      nextFromBranch = node.branches?.[key] ?? null;
+    }
+  }
 
   if (nextFromBranch) {
     // Phase 2: valid selection — route silently (no output), engine will auto-advance
@@ -110,13 +155,30 @@ async function executeMenu({ node, input, variables }) {
     };
   }
 
+  const options = _extractMenuOptions(cfg, branchKeys);
+
+  // Guardrail: avoid infinite loops when menu node has no options configured.
+  if (!options.length && node.next) {
+    return {
+      output     : { type: 'text', text: cfg.text ?? 'Continuemos.' },
+      nextNodeId : node.next,
+      updatedVars: {},
+      terminal   : false,
+      fallback   : false,
+    };
+  }
+
+  const sections = Array.isArray(cfg.sections) && cfg.sections.length
+    ? cfg.sections
+    : (options.length > 3 ? [{ title: 'Opciones', rows: options }] : []);
+
   // Phase 1: no valid selection → show menu and stay at this node to wait
   return {
     output: {
-      type    : cfg.buttons?.length <= 3 ? 'buttons' : 'list',
+      type    : options.length <= 3 ? 'buttons' : 'list',
       text    : cfg.text ?? '',
-      buttons : cfg.buttons ?? [],
-      sections: cfg.sections ?? [],
+      buttons : options,
+      sections,
     },
     nextNodeId : node.id,  // Stay here until user makes a valid selection
     updatedVars: {},
