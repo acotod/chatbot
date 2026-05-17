@@ -1046,6 +1046,18 @@ function _buildListFallbackText(response) {
 function _sanitizeWaText(value, { max = 1024, allowNewlines = true } = {}) {
   let text = String(value ?? '');
 
+  // Repair frequent UTF-8 mojibake patterns from legacy payloads.
+  text = text
+    .replace(/Ã¡/g, 'a')
+    .replace(/Ã©/g, 'e')
+    .replace(/Ã­/g, 'i')
+    .replace(/Ã³/g, 'o')
+    .replace(/Ãº/g, 'u')
+    .replace(/Ã±/g, 'n')
+    .replace(/Ã/g, '')
+    .replace(/�/g, '')
+    .replace(/ð/g, '');
+
   // Drop invalid UTF-16 surrogates that can break Graph validation/display.
   text = text
     .replace(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])/g, '')
