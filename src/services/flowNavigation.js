@@ -33,7 +33,28 @@ const DEFAULT_NAVIGATION = {
       salir: 'CIERRE',
     },
   },
+  // After submitting this screen, continue to closing screen.
+  SOLICITUD_ESPACIO: {
+    __next: 'CIERRE',
+  },
 };
+
+function mergeNavigation(override) {
+  if (!override || typeof override !== 'object') return DEFAULT_NAVIGATION;
+
+  const merged = { ...DEFAULT_NAVIGATION };
+  for (const [screen, screenCfg] of Object.entries(override)) {
+    if (screenCfg && typeof screenCfg === 'object' && !Array.isArray(screenCfg)) {
+      merged[screen] = {
+        ...(DEFAULT_NAVIGATION[screen] || {}),
+        ...screenCfg,
+      };
+    } else {
+      merged[screen] = screenCfg;
+    }
+  }
+  return merged;
+}
 
 /**
  * Determine the next screen based on the current screen and request data.
@@ -43,11 +64,14 @@ const DEFAULT_NAVIGATION = {
  * @returns {string|null} Next screen name, or null if not found
  */
 function getNextScreen(screen, data, navigationOverride) {
-  const navigation = navigationOverride || DEFAULT_NAVIGATION;
+  const navigation = mergeNavigation(navigationOverride);
   const screenConfig = navigation[screen];
   if (!screenConfig) return null;
 
+  if (screenConfig.__next) return screenConfig.__next;
+
   for (const field of Object.keys(screenConfig)) {
+    if (field === '__next') continue;
     const value = data[field];
     if (value !== undefined) {
       const next = screenConfig[field][value];
