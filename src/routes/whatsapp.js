@@ -833,6 +833,14 @@ async function _sendChatbotResponse({ tenant, userId, phone, phoneNumberId, acce
           sections,
           accessToken,
         );
+
+        const shouldSendDesktopFallback = process.env.WA_LIST_TEXT_FALLBACK !== '0';
+        if (shouldSendDesktopFallback) {
+          const fallbackText = _buildListFallbackText(response);
+          if (fallbackText) {
+            await wa.sendTextMessage(phoneNumberId, phone, fallbackText, accessToken);
+          }
+        }
       }
     } else {
       // text or end
@@ -998,6 +1006,25 @@ function _buildListPayload(to, response) {
       },
     },
   };
+}
+
+function _buildListFallbackText(response) {
+  const sections = _normalizeListSections(response);
+  if (!sections.length) return '';
+
+  const lines = [];
+  const header = String(response?.text ?? '').trim();
+  if (header) lines.push(header);
+  lines.push('Si no ves el menu en WhatsApp Desktop, responde con el ID de la opcion:');
+
+  for (const sec of sections) {
+    if (sec.title) lines.push(`- ${sec.title}`);
+    for (const row of sec.rows) {
+      lines.push(`  * ${row.title} (ID: ${row.id})`);
+    }
+  }
+
+  return lines.join('\n').slice(0, 3500);
 }
 
 async function _sendText(phoneNumberId, phone, text, accessToken, tenant, userId, correlationId, options = {}) {
