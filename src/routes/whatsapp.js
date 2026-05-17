@@ -115,7 +115,7 @@ async function resolveMetaAppSecrets(req) {
   }
 
   const waSecretRows = await prisma.configuracion.findMany({
-    where: { clave: 'wa_app_secret' },
+    where: { clave: { in: ['wa_app_secret', 'whatsapp_app_secret'] } },
     select: { tenantId: true },
   });
   if (waSecretRows.length === 1) {

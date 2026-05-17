@@ -491,8 +491,13 @@ async function getEmailSettings(tenantId) {
 }
 
 async function getWaAppSecret(tenantId) {
-  const config = await getConfig(tenantId, 'wa_app_secret');
-  return _decryptSecret(config?.valor);
+  const primary = await getConfig(tenantId, 'wa_app_secret');
+  const primarySecret = _decryptSecret(primary?.valor);
+  if (primarySecret) return primarySecret;
+
+  // Backward compatibility for tenants still using the old key name.
+  const legacy = await getConfig(tenantId, 'whatsapp_app_secret');
+  return _decryptSecret(legacy?.valor);
 }
 
 async function getSolicitudesEnterpriseConfig(tenantId) {
