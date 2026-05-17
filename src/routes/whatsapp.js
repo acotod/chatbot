@@ -513,6 +513,14 @@ async function _handleIncomingMessage({ msg, contacts, tenant, phoneNumberId, ac
       contenido = { raw: msg };
   }
 
+  if (tipo === 'text' && typeof userInput === 'string' && userInput.trim()) {
+    userInput = await _normalizeTextMenuSelection({
+      tenantId: tenant.id,
+      userId,
+      rawInput: userInput,
+    });
+  }
+
   // Persist message
   const mensaje = await db.saveMensaje({
     tenantId:  tenant.id,
@@ -1086,15 +1094,17 @@ function _buildListFallbackText(response) {
   const sections = _normalizeListSections(response);
   if (!sections.length) return '';
 
+  let optionIndex = 1;
   const lines = [];
   const header = _sanitizeWaText(response?.text, { max: 512 });
   if (header) lines.push(header);
-  lines.push('Si no ves el menu en WhatsApp Desktop, responde con el ID de la opcion:');
+  lines.push('Responde con el numero o con el ID de la opcion:');
 
   for (const sec of sections) {
     if (sec.title) lines.push(`- ${sec.title}`);
     for (const row of sec.rows) {
-      lines.push(`  * ${row.title} (ID: ${row.id})`);
+      lines.push(`  ${optionIndex}) ${row.title} (ID: ${row.id})`);
+      optionIndex += 1;
     }
   }
 
@@ -1108,17 +1118,96 @@ function _buildButtonsFallbackText(response) {
   const lines = [];
   const header = _sanitizeWaText(response?.text, { max: 512 });
   if (header) lines.push(header);
-  lines.push('Responde con el ID de la opcion:');
+  lines.push('Responde con el numero o con el ID de la opcion:');
 
-  for (const btn of buttons) {
+  for (let i = 0; i < buttons.length; i += 1) {
+    const btn = buttons[i];
     const title = _sanitizeWaText(btn?.title, { max: 80, allowNewlines: false });
     const id = _sanitizeWaText(btn?.id, { max: 80, allowNewlines: false });
     if (title && id) {
-      lines.push(`* ${title} (ID: ${id})`);
+      lines.push(`${i + 1}) ${title} (ID: ${id})`);
     }
   }
 
   return lines.join('\n').slice(0, 3500);
+}
+
+function _parseMenuOptionsFromText(text) {
+  if (!text) return [];
+
+  const options = [];
+  const lines = String(text).split(/\r?\n/);
+
+  for (const line of lines) {
+    const idMatch = line.match(/\(ID:\s*([^\)]+)\)/i);
+    if (!idMatch) continue;
+
+    const id = _sanitizeWaText(idMatch[1], { max: 256, allowNewlines: false });
+    if (!id) continue;
+
+    const numberMatch = line.match(/^\s*(\d+)\s*[\)\.\-:]/);
+    const titleRaw = line
+      .replace(/^\s*(\d+)\s*[\)\.\-:]\s*/, '')
+      .replace(/\(ID:\s*[^\)]+\)/i, '')
+      .trim();
+    const title = _sanitizeWaText(titleRaw, { max: 120, allowNewlines: false });
+
+    options.push({
+      id,
+      title: title || null,
+      number: numberMatch ? Number(numberMatch[1]) : null,
+    });
+  }
+
+  return options;
+}
+
+async function _normalizeTextMenuSelection({ tenantId, userId, rawInput }) {
+  const normalizedInput = _sanitizeWaText(rawInput, { max: 256, allowNewlines: false });
+  if (!normalizedInput) return rawInput;
+
+  try {
+    const recentOutbound = await getPrismaClient().mensaje.findMany({
+      where: {
+        tenantId,
+        userId,
+        direccion: 'salida',
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 5,
+      select: {
+        contenido: true,
+        createdAt: true,
+      },
+    });
+
+    for (const msg of recentOutbound) {
+      const text = msg?.contenido?.text;
+      const options = _parseMenuOptionsFromText(text);
+      if (!options.length) continue;
+
+      const exactId = options.find((opt) => opt.id.toLowerCase() === normalizedInput.toLowerCase());
+      if (exactId) return exactId.id;
+
+      const asNumber = normalizedInput.match(/^\s*(\d{1,2})\s*$/);
+      if (asNumber) {
+        const numeric = Number(asNumber[1]);
+        const byNumber = options.find((opt) => opt.number === numeric) || options[numeric - 1];
+        if (byNumber?.id) return byNumber.id;
+      }
+
+      const byTitle = options.find((opt) => opt.title && opt.title.toLowerCase() === normalizedInput.toLowerCase());
+      if (byTitle?.id) return byTitle.id;
+    }
+  } catch (err) {
+    logger.warn('Could not normalize text menu selection', {
+      tenantId,
+      userId,
+      message: err.message,
+    });
+  }
+
+  return rawInput;
 }
 
 function _sanitizeWaText(value, { max = 1024, allowNewlines = true } = {}) {
