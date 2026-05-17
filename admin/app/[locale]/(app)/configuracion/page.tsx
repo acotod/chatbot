@@ -294,6 +294,7 @@ export default function ConfiguracionPage() {
     if (!tenantSlug) return;
     setIsGeneratingKeys(true);
     try {
+      // Step 1: Generate keys in browser
       const keyPair = await window.crypto.subtle.generateKey(
         { name: "RSA-OAEP", modulusLength: 2048, publicExponent: new Uint8Array([1, 0, 1]), hash: "SHA-256" },
         true,
@@ -309,6 +310,7 @@ export default function ConfiguracionPage() {
       );
       const privateKeyPem = `-----BEGIN PRIVATE KEY-----\n${toBase64(privBuf)}\n-----END PRIVATE KEY-----`;
 
+      // Step 2: Store keys in database via API
       await Promise.all([
         configApi.set(tenantSlug, "flow_endpoint_public_key", {
           publicKey: `-----BEGIN PUBLIC KEY-----\n${toBase64(pubBuf)}\n-----END PUBLIC KEY-----`,
@@ -318,10 +320,25 @@ export default function ConfiguracionPage() {
         }),
       ]);
 
+      // Step 3: Register public key with Meta (automatic after successful save)
+      try {
+        const registerResp = await apiClient.post(
+          `/admin/tenants/${tenantSlug}/flow-keys/register`,
+          {}
+        );
+        if (registerResp.data?.ok) {
+          setFlowEndpointKeySaved(true);
+          setTimeout(() => setFlowEndpointKeySaved(false), 3000);
+        }
+      } catch (regErr: any) {
+        // Registration may fail if WhatsApp credentials not configured
+        // Still mark keys as saved locally even if registration fails
+        setFlowEndpointKeySaved(true);
+        setTimeout(() => setFlowEndpointKeySaved(false), 3000);
+      }
+
       qc.invalidateQueries({ queryKey: ["config", tenantSlug, "flow_endpoint_public_key"] });
       qc.invalidateQueries({ queryKey: ["config", tenantSlug, "flow_endpoint_private_key"] });
-      setFlowEndpointKeySaved(true);
-      setTimeout(() => setFlowEndpointKeySaved(false), 3000);
     } finally {
       setIsGeneratingKeys(false);
     }

@@ -2766,4 +2766,203 @@ router.delete('/tenants/:slug/lockout-policy', requirePermiso('MANAGE_TENANTS'),
     }
 });
 
+// ---------------------------------------------------------------------------
+// Flow Keys (Meta WhatsApp Flows encryption)
+// ---------------------------------------------------------------------------
+
+const flowKeysService = require('../services/flowKeysService');
+
+// GET /admin/tenants/:slug/flow-keys
+// Get current Flow key registration status
+router.get('/tenants/:slug/flow-keys', requirePermiso('MANAGE_TENANTS'), async (req, res, next) => {
+    try {
+        const tenant = await db.findTenantBySlug(req.params.slug);
+        if (!tenant) return res.status(404).json({ error: 'Tenant not found' });
+        if (denyIfWrongTenant(req, res, tenant.id)) return;
+
+        const publicKey = await db.getConfig(tenant.id, 'flow_endpoint_public_key');
+        const registrationStatus = await db.getConfig(tenant.id, 'flow_endpoint_registration_status');
+
+        return res.json({
+            hasPublicKey: Boolean(publicKey?.valor?.publicKey),
+            registrationStatus: registrationStatus?.valor?.status || 'none',
+            lastRegistered: registrationStatus?.valor?.lastRegisteredAt || null,
+        });
+    } catch (err) {
+        next(err);
+    }
+});
+
+// POST /admin/tenants/:slug/flow-keys/generate
+// Generate new RSA-2048 key pair and store in database
+router.post('/tenants/:slug/flow-keys/generate', requirePermiso('MANAGE_TENANTS'), async (req, res, next) => {
+    try {
+        const tenant = await db.findTenantBySlug(req.params.slug);
+        if (!tenant) return res.status(404).json({ error: 'Tenant not found' });
+        if (denyIfWrongTenant(req, res, tenant.id)) return;
+
+        const { publicKey, privateKey } = flowKeysService.generateFlowKeyPair();
+
+        await db.setConfig(tenant.id, 'flow_endpoint_public_key', {
+            publicKey,
+            generatedAt: new Date().toISOString(),
+        });
+
+        await db.setConfig(tenant.id, 'flow_endpoint_private_key', {
+            privateKey,
+            generatedAt: new Date().toISOString(),
+        });
+
+        // Clear registration status since we have new keys
+        await db.setConfig(tenant.id, 'flow_endpoint_registration_status', {
+            status: 'pending_registration',
+            generatedAt: new Date().toISOString(),
+        });
+
+        audit({
+            adminUserId: req.admin?.adminUserId,
+            tenantId: tenant.id,
+            accion: 'GENERATE_FLOW_KEYS',
+            entidad: 'flow_keys',
+            entidadId: tenant.id,
+            ip: req.ip,
+            userAgent: req.headers['user-agent'],
+            metadata: { action: 'generated_new_keypair' },
+        });
+
+        return res.json({
+            ok: true,
+            message: 'Flow keys generated successfully',
+            publicKey: publicKey.substring(0, 50) + '...', // Return partial key for security
+            status: 'pending_registration',
+        });
+    } catch (err) {
+        next(err);
+    }
+});
+
+// POST /admin/tenants/:slug/flow-keys/register
+// Register Flow public key with Meta's Graph API
+router.post('/tenants/:slug/flow-keys/register', requirePermiso('MANAGE_TENANTS'), async (req, res, next) => {
+    try {
+        const tenant = await db.findTenantBySlug(req.params.slug);
+        if (!tenant) return res.status(404).json({ error: 'Tenant not found' });
+        if (denyIfWrongTenant(req, res, tenant.id)) return;
+
+        // Get WhatsApp credentials for this tenant
+        const { phoneNumberId, accessToken } = await db.getWaCredentials(tenant.id);
+        if (!phoneNumberId || !accessToken) {
+            return res.status(422).json({
+                error: 'WhatsApp credentials not configured for this tenant',
+                details: 'Cannot register Flow keys without WhatsApp phone number ID and access token',
+            });
+        }
+
+        // Get the Flow public key from config
+        const publicKeyConfig = await db.getConfig(tenant.id, 'flow_endpoint_public_key');
+        if (!publicKeyConfig?.valor?.publicKey) {
+            return res.status(400).json({
+                error: 'No Flow public key found for this tenant',
+                details: 'Please generate a new key pair first via POST /flow-keys/generate',
+            });
+        }
+
+        const publicKey = publicKeyConfig.valor.publicKey;
+
+        // Register with Meta
+        const result = await flowKeysService.registerFlowPublicKey(
+            phoneNumberId,
+            publicKey,
+            accessToken,
+        );
+
+        if (!result.ok) {
+            audit({
+                adminUserId: req.admin?.adminUserId,
+                tenantId: tenant.id,
+                accion: 'REGISTER_FLOW_KEYS_FAILED',
+                entidad: 'flow_keys',
+                entidadId: tenant.id,
+                ip: req.ip,
+                userAgent: req.headers['user-agent'],
+                metadata: { error: result.error },
+            });
+
+            return res.status(400).json({
+                ok: false,
+                error: result.error,
+                details: result.meta,
+            });
+        }
+
+        // Update registration status in config
+        await db.setConfig(tenant.id, 'flow_endpoint_registration_status', {
+            status: 'registered',
+            lastRegisteredAt: new Date().toISOString(),
+            metaResponse: result.meta,
+        });
+
+        audit({
+            adminUserId: req.admin?.adminUserId,
+            tenantId: tenant.id,
+            accion: 'REGISTER_FLOW_KEYS_SUCCESS',
+            entidad: 'flow_keys',
+            entidadId: tenant.id,
+            ip: req.ip,
+            userAgent: req.headers['user-agent'],
+            metadata: { phoneNumberId, status: result.meta?.business_public_key_signature_status },
+        });
+
+        socketService.emit(tenant.id, 'FLOW_KEYS_REGISTERED', {
+            status: 'registered',
+            phoneNumberId,
+            signatureStatus: result.meta?.business_public_key_signature_status,
+        });
+
+        return res.json({
+            ok: true,
+            message: 'Flow public key registered with Meta successfully',
+            status: 'registered',
+            phoneNumberId,
+            signatureStatus: result.meta?.business_public_key_signature_status,
+        });
+    } catch (err) {
+        next(err);
+    }
+});
+
+// GET /admin/tenants/:slug/flow-keys/status
+// Query current registration status from Meta
+router.get('/tenants/:slug/flow-keys/status', requirePermiso('MANAGE_TENANTS'), async (req, res, next) => {
+    try {
+        const tenant = await db.findTenantBySlug(req.params.slug);
+        if (!tenant) return res.status(404).json({ error: 'Tenant not found' });
+        if (denyIfWrongTenant(req, res, tenant.id)) return;
+
+        const { phoneNumberId, accessToken } = await db.getWaCredentials(tenant.id);
+        if (!phoneNumberId || !accessToken) {
+            return res.status(422).json({
+                error: 'WhatsApp credentials not configured',
+            });
+        }
+
+        const result = await flowKeysService.getFlowPublicKeyStatus(phoneNumberId, accessToken);
+
+        if (!result.ok) {
+            return res.status(400).json({
+                ok: false,
+                error: result.error,
+            });
+        }
+
+        return res.json({
+            ok: true,
+            status: result.status,
+            phoneNumberId,
+        });
+    } catch (err) {
+        next(err);
+    }
+});
+
 module.exports = router;
