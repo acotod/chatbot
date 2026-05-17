@@ -88,21 +88,37 @@ async function executeMessage({ node, variables }) {
 /**
  * menu — sends a button/list menu and waits for selection.
  * Navigation: branches[buttonId] → next node. Falls back to node.next.
+ *
+ * Two-phase execution:
+ *   Phase 1 (show): no branch match → display menu, stay at this node (nextNodeId = node.id)
+ *   Phase 2 (select): branch match → output=null, advance to branch (engine auto-advances)
  */
 async function executeMenu({ node, input, variables }) {
   const cfg = resolveConfig(node.config, variables);
 
-  // If input matches a branch key (button id), route there
-  const nextFromBranch = input ? node.branches[input] ?? null : null;
+  // Check if input matches a branch key (button id / list row id)
+  const nextFromBranch = input ? (node.branches?.[input] ?? null) : null;
 
+  if (nextFromBranch) {
+    // Phase 2: valid selection — route silently (no output), engine will auto-advance
+    return {
+      output     : null,
+      nextNodeId : nextFromBranch,
+      updatedVars: {},
+      terminal   : false,
+      fallback   : false,
+    };
+  }
+
+  // Phase 1: no valid selection → show menu and stay at this node to wait
   return {
     output: {
-      type   : cfg.buttons?.length <= 3 ? 'buttons' : 'list',
-      text   : cfg.text ?? '',
-      buttons: cfg.buttons ?? [],
+      type    : cfg.buttons?.length <= 3 ? 'buttons' : 'list',
+      text    : cfg.text ?? '',
+      buttons : cfg.buttons ?? [],
       sections: cfg.sections ?? [],
     },
-    nextNodeId : nextFromBranch ?? node.next,
+    nextNodeId : node.id,  // Stay here until user makes a valid selection
     updatedVars: {},
     terminal   : false,
     fallback   : false,
@@ -112,49 +128,75 @@ async function executeMenu({ node, input, variables }) {
 /**
  * input — captures user text into a variable.
  * Uses llm_classification if defined and input is free text.
+ *
+ * Two-phase execution:
+ *   Phase 1 (show prompt): variables.__awaiting_input !== node.id
+ *     → display prompt, set __awaiting_input=node.id, stay at this node
+ *   Phase 2 (capture answer): variables.__awaiting_input === node.id
+ *     → capture input into variable, clear __awaiting_input, advance
  */
 async function executeInput({ node, input, variables, llmService, tenantId }) {
   const cfg = resolveConfig(node.config, variables);
   const updatedVars = {};
   const crmTouch = {};
 
-  // Store captured value in named variable
-  if (cfg.variable && input != null) {
-    updatedVars[cfg.variable] = input;
-  }
+  // Phase 2: we already showed the prompt and are now receiving the user's answer
+  const isCapturing = variables.__awaiting_input === node.id;
 
-  // Optional mapping from captured input to CRM contact fields.
-  if (input != null && typeof cfg.crmField === 'string') {
-    const field = cfg.crmField.trim().toLowerCase();
-    if (field === 'nombre') {
-      const normalized = String(input).trim();
-      if (normalized) crmTouch.nombre = normalized;
+  if (isCapturing) {
+    // Capture value into named variable
+    if (cfg.variable && input != null) {
+      updatedVars[cfg.variable] = input;
     }
-  }
 
-  // LLM classification for free-text routing
-  let nextNodeId = node.next;
-  if (node.llm_classification?.intents?.length && input?.trim() && llmService) {
-    try {
-      const intent = await llmService.classifyIntent(
-        tenantId,
-        input.trim(),
-        node.llm_classification.intents,
-      );
-      if (intent && node.branches[intent]) {
-        nextNodeId = node.branches[intent];
+    // Clear the waiting flag
+    updatedVars.__awaiting_input = null;
+
+    // Optional mapping from captured input to CRM contact fields.
+    if (input != null && typeof cfg.crmField === 'string') {
+      const field = cfg.crmField.trim().toLowerCase();
+      if (field === 'nombre') {
+        const normalized = String(input).trim();
+        if (normalized) crmTouch.nombre = normalized;
       }
-    } catch (err) {
-      logger.warn({ tenantId, nodeId: node.id, message: err.message }, 'nodeExecutors.input: classifyIntent failed');
     }
-  } else if (input != null && node.branches[input]) {
-    // Direct branch match (button reply)
-    nextNodeId = node.branches[input];
+
+    // LLM classification for free-text routing
+    let nextNodeId = node.next;
+    if (node.llm_classification?.intents?.length && input?.trim() && llmService) {
+      try {
+        const intent = await llmService.classifyIntent(
+          tenantId,
+          input.trim(),
+          node.llm_classification.intents,
+        );
+        if (intent && node.branches[intent]) {
+          nextNodeId = node.branches[intent];
+        }
+      } catch (err) {
+        logger.warn({ tenantId, nodeId: node.id, message: err.message }, 'nodeExecutors.input: classifyIntent failed');
+      }
+    } else if (input != null && node.branches[input]) {
+      // Direct branch match (button reply)
+      nextNodeId = node.branches[input];
+    }
+
+    return {
+      output     : null,  // Don't show prompt again after capturing
+      nextNodeId,
+      updatedVars,
+      crmTouch,
+      terminal   : false,
+      fallback   : false,
+    };
   }
+
+  // Phase 1: show prompt and stay at this node to wait for user reply
+  updatedVars.__awaiting_input = node.id;
 
   return {
     output     : cfg.prompt ? { type: 'text', text: cfg.prompt } : null,
-    nextNodeId,
+    nextNodeId : node.id,  // Stay here until user replies
     updatedVars,
     crmTouch,
     terminal   : false,
