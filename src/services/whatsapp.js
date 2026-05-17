@@ -91,6 +91,35 @@ async function sendTemplateMessage(phoneNumberId, to, templateName, languageCode
  * @param {string} accessToken
  */
 async function sendListMessage(phoneNumberId, to, bodyText, buttonLabel, sections, accessToken) {
+  const normalizedSections = (Array.isArray(sections) ? sections : [])
+    .map((sec) => {
+      const rows = (Array.isArray(sec?.rows) ? sec.rows : [])
+        .map((r) => ({
+          id: String(r?.id ?? '').trim().slice(0, 200),
+          title: String(r?.title ?? '').trim().slice(0, 24),
+          description: r?.description ? String(r.description).trim().slice(0, 72) : '',
+        }))
+        .filter((r) => r.id && r.title)
+        .slice(0, 10);
+
+      const title = String(sec?.title ?? '').trim().slice(0, 24);
+      return {
+        ...(title ? { title } : {}),
+        rows,
+      };
+    })
+    .filter((sec) => sec.rows.length > 0)
+    .slice(0, 10);
+
+  if (!normalizedSections.length) {
+    const err = new Error('Invalid list payload: no valid rows');
+    err.status = 400;
+    throw err;
+  }
+
+  const safeBodyText = String(bodyText ?? '').trim() || 'Selecciona una opcion';
+  const safeButtonLabel = String(buttonLabel ?? '').trim() || 'Ver opciones';
+
   const payload = {
     messaging_product: 'whatsapp',
     recipient_type: 'individual',
@@ -98,17 +127,10 @@ async function sendListMessage(phoneNumberId, to, bodyText, buttonLabel, section
     type: 'interactive',
     interactive: {
       type: 'list',
-      body: { text: bodyText },
+      body: { text: safeBodyText.slice(0, 1024) },
       action: {
-        button: (buttonLabel || 'Ver opciones').slice(0, 20),
-        sections: sections.map((sec) => ({
-          title: sec.title ?? '',
-          rows: (sec.rows ?? []).slice(0, 10).map((r) => ({
-            id: String(r.id),
-            title: String(r.title).slice(0, 24),
-            ...(r.description ? { description: String(r.description).slice(0, 72) } : {}),
-          })),
-        })),
+        button: safeButtonLabel.slice(0, 20),
+        sections: normalizedSections,
       },
     },
   };

@@ -815,13 +815,25 @@ async function _sendChatbotResponse({ tenant, userId, phone, phoneNumberId, acce
       const buttons = (response.buttons ?? []).slice(0, 3);
       waResp = await wa.sendButtonMessage(phoneNumberId, phone, response.text ?? '', buttons, accessToken);
     } else if (type === 'list') {
-      // Build sections: use response.sections if present, otherwise wrap buttons in a single section
-      let sections = response.sections ?? [];
-      if (!sections.length && (response.buttons ?? []).length) {
-        sections = [{ title: 'Opciones', rows: response.buttons }];
+      const sections = _normalizeListSections(response);
+      if (!sections.length) {
+        waResp = await wa.sendTextMessage(
+          phoneNumberId,
+          phone,
+          String(response.text ?? '').trim() || 'Selecciona una opcion',
+          accessToken,
+        );
+      } else {
+        const buttonLabel = String(response.buttonLabel ?? 'Ver opciones').trim() || 'Ver opciones';
+        waResp = await wa.sendListMessage(
+          phoneNumberId,
+          phone,
+          String(response.text ?? '').trim() || 'Selecciona una opcion',
+          buttonLabel,
+          sections,
+          accessToken,
+        );
       }
-      const buttonLabel = response.buttonLabel ?? 'Ver opciones';
-      waResp = await wa.sendListMessage(phoneNumberId, phone, response.text ?? '', buttonLabel, sections, accessToken);
     } else {
       // text or end
       waResp = await wa.sendTextMessage(phoneNumberId, phone, response.text ?? '', accessToken);
@@ -890,7 +902,9 @@ async function _sendChatbotResponse({ tenant, userId, phone, phoneNumberId, acce
         phone,
         messagePayload: type === 'buttons'
           ? _buildButtonPayload(phone, response)
-          : _buildTextPayload(phone, response.text ?? ''),
+          : type === 'list'
+            ? _buildListPayload(phone, response)
+            : _buildTextPayload(phone, response.text ?? ''),
         attempts: 0,
       };
       await redis.lpush('queue:wa_send', JSON.stringify(queuePayload));
@@ -910,6 +924,7 @@ function _buildTextPayload(to, text) {
 
 function _buildButtonPayload(to, response) {
   const buttons = (response.buttons ?? []).slice(0, 3);
+  const bodyText = String(response.text ?? '').trim() || 'Selecciona una opcion';
   return {
     messaging_product: 'whatsapp',
     recipient_type:    'individual',
@@ -917,9 +932,69 @@ function _buildButtonPayload(to, response) {
     type:              'interactive',
     interactive: {
       type: 'button',
-      body: { text: response.text ?? '' },
+      body: { text: bodyText.slice(0, 1024) },
       action: {
-        buttons: buttons.map((b) => ({ type: 'reply', reply: { id: b.id, title: b.title } })),
+        buttons: buttons
+          .map((b) => ({
+            type: 'reply',
+            reply: {
+              id: String(b.id ?? '').trim().slice(0, 256),
+              title: String(b.title ?? '').trim().slice(0, 20),
+            },
+          }))
+          .filter((b) => b.reply.id && b.reply.title),
+      },
+    },
+  };
+}
+
+function _normalizeListSections(response) {
+  let sections = Array.isArray(response?.sections) ? response.sections : [];
+  if (!sections.length && Array.isArray(response?.buttons) && response.buttons.length) {
+    sections = [{ title: 'Opciones', rows: response.buttons }];
+  }
+
+  return sections
+    .map((sec) => {
+      const rows = (Array.isArray(sec?.rows) ? sec.rows : [])
+        .map((r) => ({
+          id: String(r?.id ?? '').trim().slice(0, 200),
+          title: String(r?.title ?? '').trim().slice(0, 24),
+          description: r?.description ? String(r.description).trim().slice(0, 72) : '',
+        }))
+        .filter((r) => r.id && r.title)
+        .slice(0, 10);
+
+      const title = String(sec?.title ?? '').trim().slice(0, 24);
+      return {
+        ...(title ? { title } : {}),
+        rows,
+      };
+    })
+    .filter((sec) => sec.rows.length > 0)
+    .slice(0, 10);
+}
+
+function _buildListPayload(to, response) {
+  const sections = _normalizeListSections(response);
+  if (!sections.length) {
+    return _buildTextPayload(to, String(response?.text ?? '').trim() || 'Selecciona una opcion');
+  }
+
+  const bodyText = String(response?.text ?? '').trim() || 'Selecciona una opcion';
+  const buttonLabel = String(response?.buttonLabel ?? 'Ver opciones').trim() || 'Ver opciones';
+
+  return {
+    messaging_product: 'whatsapp',
+    recipient_type: 'individual',
+    to,
+    type: 'interactive',
+    interactive: {
+      type: 'list',
+      body: { text: bodyText.slice(0, 1024) },
+      action: {
+        button: buttonLabel.slice(0, 20),
+        sections,
       },
     },
   };
