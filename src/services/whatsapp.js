@@ -82,6 +82,40 @@ async function sendTemplateMessage(phoneNumberId, to, templateName, languageCode
 }
 
 /**
+ * Send an interactive list message (for menus with > 3 options).
+ * @param {string} phoneNumberId
+ * @param {string} to
+ * @param {string} bodyText        - message body
+ * @param {string} buttonLabel     - CTA button label (max 20 chars)
+ * @param {Array<{title:string, rows:Array<{id:string,title:string,description?:string}>}>} sections
+ * @param {string} accessToken
+ */
+async function sendListMessage(phoneNumberId, to, bodyText, buttonLabel, sections, accessToken) {
+  const payload = {
+    messaging_product: 'whatsapp',
+    recipient_type: 'individual',
+    to,
+    type: 'interactive',
+    interactive: {
+      type: 'list',
+      body: { text: bodyText },
+      action: {
+        button: (buttonLabel || 'Ver opciones').slice(0, 20),
+        sections: sections.map((sec) => ({
+          title: sec.title ?? '',
+          rows: (sec.rows ?? []).slice(0, 10).map((r) => ({
+            id: String(r.id),
+            title: String(r.title).slice(0, 24),
+            ...(r.description ? { description: String(r.description).slice(0, 72) } : {}),
+          })),
+        })),
+      },
+    },
+  };
+  return _post(phoneNumberId, payload, accessToken);
+}
+
+/**
  * Mark an incoming message as read.
  * @param {string} phoneNumberId
  * @param {string} waMsgId
@@ -130,4 +164,4 @@ async function _post(phoneNumberId, payload, accessToken) {
   return json;
 }
 
-module.exports = { sendTextMessage, sendButtonMessage, sendTemplateMessage, markAsRead };
+module.exports = { sendTextMessage, sendButtonMessage, sendListMessage, sendTemplateMessage, markAsRead };

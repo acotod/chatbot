@@ -814,6 +814,14 @@ async function _sendChatbotResponse({ tenant, userId, phone, phoneNumberId, acce
     if (type === 'buttons') {
       const buttons = (response.buttons ?? []).slice(0, 3);
       waResp = await wa.sendButtonMessage(phoneNumberId, phone, response.text ?? '', buttons, accessToken);
+    } else if (type === 'list') {
+      // Build sections: use response.sections if present, otherwise wrap buttons in a single section
+      let sections = response.sections ?? [];
+      if (!sections.length && (response.buttons ?? []).length) {
+        sections = [{ title: 'Opciones', rows: response.buttons }];
+      }
+      const buttonLabel = response.buttonLabel ?? 'Ver opciones';
+      waResp = await wa.sendListMessage(phoneNumberId, phone, response.text ?? '', buttonLabel, sections, accessToken);
     } else {
       // text or end
       waResp = await wa.sendTextMessage(phoneNumberId, phone, response.text ?? '', accessToken);
@@ -825,7 +833,7 @@ async function _sendChatbotResponse({ tenant, userId, phone, phoneNumberId, acce
       userId,
       waMsgId:        waResp?.messages?.[0]?.id ?? null,
       direccion:      'salida',
-      tipo:           type === 'buttons' ? 'interactive' : 'text',
+      tipo:           (type === 'buttons' || type === 'list') ? 'interactive' : 'text',
       contenido:      response,
       conversationId: conversationId ?? undefined,
     });
