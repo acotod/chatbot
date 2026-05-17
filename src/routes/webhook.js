@@ -198,7 +198,12 @@ router.post('/', verifyFlowsSignature, webhookValidationRules, validate, async (
     const navigationOverride = flowConfig ? flowConfig.valor : null;
 
     // Navigate to the next screen
-    const nextScreen = getNextScreen(screen, data, navigationOverride);
+    let nextScreen = getNextScreen(screen, data, navigationOverride);
+    if (nextScreen === null && screen === 'SOLICITUD_ESPACIO') {
+      // Defensive fallback: keep flow progressing even if tenant nav override is incomplete.
+      nextScreen = 'CIERRE';
+      logger.warn('Navigation fallback applied: SOLICITUD_ESPACIO -> CIERRE', { tenantId });
+    }
     if (nextScreen === null) {
       logger.warn('Navigation failed: unknown screen or option', { tenantId, screen, data });
       return res.status(400).json({ error: `Unknown screen or option for screen: ${screen}` });

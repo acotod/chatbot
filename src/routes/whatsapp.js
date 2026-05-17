@@ -1299,9 +1299,17 @@ router.post('/flows', verifyMetaSignature, async (req, res, next) => {
     const flowConfig = await db.getConfig(tenant.id, 'flow_navigation');
     const navigationOverride = flowConfig ? flowConfig.valor : null;
 
-    const nextScreen = action === 'INIT' || action === 'BACK'
+    let nextScreen = action === 'INIT' || action === 'BACK'
       ? resolvedScreen
       : getNextScreen(resolvedScreen, data, navigationOverride);
+    if (nextScreen === null && resolvedScreen === 'SOLICITUD_ESPACIO') {
+      // Defensive fallback: never block users after submitting request form.
+      nextScreen = 'CIERRE';
+      logger.warn('Meta Flows fallback applied: SOLICITUD_ESPACIO -> CIERRE', {
+        tenantId: tenant.id,
+        action,
+      });
+    }
     if (nextScreen === null) {
       logger.warn('Meta Flows navigation failed', { tenantId: tenant.id, screen: resolvedScreen });
       return res.status(400).json({ error: `Unknown screen or option for screen: ${resolvedScreen}` });
