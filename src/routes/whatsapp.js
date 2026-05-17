@@ -870,7 +870,9 @@ async function _sendChatbotResponse({ tenant, userId, phone, phoneNumberId, acce
           accessToken,
         );
 
-        const shouldSendDesktopFallback = process.env.WA_LIST_TEXT_FALLBACK !== '0';
+        // Opt-in only: avoid sending a duplicate text version of the list.
+        // Set WA_LIST_TEXT_FALLBACK=1 to also send the text variant alongside the native list.
+        const shouldSendDesktopFallback = process.env.WA_LIST_TEXT_FALLBACK === '1';
         if (shouldSendDesktopFallback) {
           const fallbackText = _buildListFallbackText(response);
           if (fallbackText) {
