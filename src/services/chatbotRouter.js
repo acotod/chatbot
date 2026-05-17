@@ -17,6 +17,10 @@ const { executeStep } = require('./flowEngine');
 const db = require('./database');
 const logger = require('../utils/logger');
 
+// Default inactivity timeout before restarting the flow (in minutes).
+// Can be overridden per tenant via motor_config.inactivity_timeout_minutes.
+const DEFAULT_INACTIVITY_TIMEOUT_MINUTES = 30;
+
 /**
  * Route a WhatsApp user input through the active chatbot engine.
  *
@@ -33,7 +37,28 @@ async function routeMessage({ tenantId, userId, input, phone, conversationMeta }
   }
 
   // Load current conversation context (legacy path still uses currentNodeId)
-  const ctx = await db.getConversationContext(tenantId, userId);
+  let ctx = await db.getConversationContext(tenantId, userId);
+
+  // ── Inactivity timeout: restart flow if context is too old ───────────────
+  const timeoutMinutes =
+    typeof motorCfg?.valor?.inactivity_timeout_minutes === 'number'
+      ? motorCfg.valor.inactivity_timeout_minutes
+      : DEFAULT_INACTIVITY_TIMEOUT_MINUTES;
+
+  if (ctx?.updatedAt) {
+    const ageMinutes = (Date.now() - new Date(ctx.updatedAt).getTime()) / 60000;
+    if (ageMinutes > timeoutMinutes) {
+      logger.info('chatbotRouter: session inactive, restarting flow', {
+        tenantId,
+        userId,
+        ageMinutes: Math.round(ageMinutes),
+        timeoutMinutes,
+      });
+      await db.clearConversationContext(tenantId, userId);
+      ctx = null;
+    }
+  }
+
   const currentNodeId = ctx?.currentNodeId ?? null;
 
   let result;

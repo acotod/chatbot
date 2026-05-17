@@ -2084,6 +2084,18 @@ async function clearConversationContext(tenantId, userId) {
   const client = getPrismaClient();
   if (!client) return;
   try {
+    // Also close any active FlowExecution linked to this user so the engine
+    // creates a fresh one on the next message (avoids stale execution state).
+    const ctx = await client.conversationContext.findUnique({
+      where: { tenantId_userId: { tenantId, userId } },
+      select: { flowExecutionId: true },
+    });
+    if (ctx?.flowExecutionId) {
+      await client.flowExecution.updateMany({
+        where: { id: ctx.flowExecutionId, status: 'active' },
+        data:  { status: 'completed', completedAt: new Date(), currentNodeRef: null },
+      });
+    }
     await client.conversationContext.deleteMany({ where: { tenantId, userId } });
   } catch (err) {
     logger.warn('clearConversationContext failed', { message: err.message });
