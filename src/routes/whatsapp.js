@@ -706,7 +706,9 @@ async function _handleFallbackToHuman({ tenant, userId, phone, response, phoneNu
 
 async function _sendChatbotResponse({ tenant, userId, phone, phoneNumberId, accessToken, response, correlationId, conversationId, conversationMeta }) {
   const type = response?.type ?? 'text';
-  const preferTextMenu = type === 'list' && process.env.WA_PREFER_TEXT_MENU !== '0';
+  const forceTextInteractive = process.env.WA_FORCE_TEXT_INTERACTIONS !== '0';
+  const preferTextMenu = type === 'list' && (forceTextInteractive || process.env.WA_PREFER_TEXT_MENU !== '0');
+  const preferTextButtons = type === 'buttons' && forceTextInteractive;
   const useSandboxOutboundMock =
     conversationMeta?.sandbox === true && conversationMeta?.outboundMetaMock === true;
 
@@ -717,7 +719,7 @@ async function _sendChatbotResponse({ tenant, userId, phone, phoneNumberId, acce
         userId,
         waMsgId: null,
         direccion: 'salida',
-        tipo: (type === 'buttons' || (type === 'list' && !preferTextMenu)) ? 'interactive' : 'text',
+        tipo: ((type === 'buttons' && !preferTextButtons) || (type === 'list' && !preferTextMenu)) ? 'interactive' : 'text',
         contenido: response,
         conversationId: conversationId ?? undefined,
         status: 'failed',
@@ -816,8 +818,17 @@ async function _sendChatbotResponse({ tenant, userId, phone, phoneNumberId, acce
     let persistedContenido = response;
 
     if (type === 'buttons') {
-      const buttons = (response.buttons ?? []).slice(0, 3);
-      waResp = await wa.sendButtonMessage(phoneNumberId, phone, response.text ?? '', buttons, accessToken);
+      if (preferTextButtons) {
+        const fallbackText = _buildButtonsFallbackText(response)
+          || _sanitizeWaText(response.text, { max: 4096 })
+          || 'Selecciona una opcion';
+        waResp = await wa.sendTextMessage(phoneNumberId, phone, fallbackText, accessToken);
+        persistedTipo = 'text';
+        persistedContenido = { type: 'text', text: fallbackText };
+      } else {
+        const buttons = (response.buttons ?? []).slice(0, 3);
+        waResp = await wa.sendButtonMessage(phoneNumberId, phone, response.text ?? '', buttons, accessToken);
+      }
     } else if (type === 'list') {
       if (preferTextMenu) {
         const fallbackText = _buildListFallbackText(response)
@@ -923,6 +934,19 @@ async function _sendChatbotResponse({ tenant, userId, phone, phoneNumberId, acce
           message: fallbackErr.message,
         });
       }
+    } else if (type === 'buttons' && preferTextButtons) {
+      try {
+        const fallbackText = _buildButtonsFallbackText(response);
+        if (fallbackText) {
+          await wa.sendTextMessage(phoneNumberId, phone, fallbackText, accessToken);
+        }
+      } catch (fallbackErr) {
+        logger.warn('Buttons fallback text send failed', {
+          tenantId: tenant.id,
+          phone,
+          message: fallbackErr.message,
+        });
+      }
     }
 
     await persistFailedOutbound(err.message);
@@ -940,7 +964,16 @@ async function _sendChatbotResponse({ tenant, userId, phone, phoneNumberId, acce
         tenantId: tenant.id,
         phone,
         messagePayload: type === 'buttons'
-          ? _buildButtonPayload(phone, response)
+          ? (
+            preferTextButtons
+              ? _buildTextPayload(
+                phone,
+                _buildButtonsFallbackText(response)
+                  || _sanitizeWaText(response.text, { max: 4096 })
+                  || 'Selecciona una opcion',
+              )
+              : _buildButtonPayload(phone, response)
+          )
           : type === 'list'
             ? (
               preferTextMenu
@@ -1062,6 +1095,26 @@ function _buildListFallbackText(response) {
     if (sec.title) lines.push(`- ${sec.title}`);
     for (const row of sec.rows) {
       lines.push(`  * ${row.title} (ID: ${row.id})`);
+    }
+  }
+
+  return lines.join('\n').slice(0, 3500);
+}
+
+function _buildButtonsFallbackText(response) {
+  const buttons = Array.isArray(response?.buttons) ? response.buttons.slice(0, 10) : [];
+  if (!buttons.length) return '';
+
+  const lines = [];
+  const header = _sanitizeWaText(response?.text, { max: 512 });
+  if (header) lines.push(header);
+  lines.push('Responde con el ID de la opcion:');
+
+  for (const btn of buttons) {
+    const title = _sanitizeWaText(btn?.title, { max: 80, allowNewlines: false });
+    const id = _sanitizeWaText(btn?.id, { max: 80, allowNewlines: false });
+    if (title && id) {
+      lines.push(`* ${title} (ID: ${id})`);
     }
   }
 
