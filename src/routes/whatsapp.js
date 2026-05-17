@@ -1299,9 +1299,18 @@ router.post('/flows', verifyMetaSignature, async (req, res, next) => {
     const flowConfig = await db.getConfig(tenant.id, 'flow_navigation');
     const navigationOverride = flowConfig ? flowConfig.valor : null;
 
-    let nextScreen = action === 'INIT' || action === 'BACK'
-      ? resolvedScreen
-      : getNextScreen(resolvedScreen, data, navigationOverride);
+    const normalizedAction = String(action || '').toUpperCase();
+
+    // After submitting this form, always continue to closing screen.
+    // Meta can send different action values depending on client/version.
+    let nextScreen;
+    if (resolvedScreen === 'SOLICITUD_ESPACIO' && normalizedAction !== 'BACK') {
+      nextScreen = 'CIERRE';
+    } else {
+      nextScreen = normalizedAction === 'INIT' || normalizedAction === 'BACK'
+        ? resolvedScreen
+        : getNextScreen(resolvedScreen, data, navigationOverride);
+    }
     if (nextScreen === null && resolvedScreen === 'SOLICITUD_ESPACIO') {
       // Defensive fallback: never block users after submitting request form.
       nextScreen = 'CIERRE';
