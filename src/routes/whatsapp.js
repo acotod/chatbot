@@ -706,6 +706,7 @@ async function _handleFallbackToHuman({ tenant, userId, phone, response, phoneNu
 
 async function _sendChatbotResponse({ tenant, userId, phone, phoneNumberId, accessToken, response, correlationId, conversationId, conversationMeta }) {
   const type = response?.type ?? 'text';
+  const preferTextMenu = type === 'list' && process.env.WA_PREFER_TEXT_MENU !== '0';
   const useSandboxOutboundMock =
     conversationMeta?.sandbox === true && conversationMeta?.outboundMetaMock === true;
 
@@ -716,7 +717,7 @@ async function _sendChatbotResponse({ tenant, userId, phone, phoneNumberId, acce
         userId,
         waMsgId: null,
         direccion: 'salida',
-        tipo: type === 'buttons' ? 'interactive' : 'text',
+        tipo: (type === 'buttons' || (type === 'list' && !preferTextMenu)) ? 'interactive' : 'text',
         contenido: response,
         conversationId: conversationId ?? undefined,
         status: 'failed',
@@ -811,25 +812,32 @@ async function _sendChatbotResponse({ tenant, userId, phone, phoneNumberId, acce
 
   try {
     let waResp;
+    let persistedTipo = (type === 'buttons' || type === 'list') ? 'interactive' : 'text';
+    let persistedContenido = response;
+
     if (type === 'buttons') {
       const buttons = (response.buttons ?? []).slice(0, 3);
       waResp = await wa.sendButtonMessage(phoneNumberId, phone, response.text ?? '', buttons, accessToken);
     } else if (type === 'list') {
-      const preferTextMenu = process.env.WA_PREFER_TEXT_MENU !== '0';
       if (preferTextMenu) {
         const fallbackText = _buildListFallbackText(response)
           || _sanitizeWaText(response.text, { max: 4096 })
           || 'Selecciona una opcion';
         waResp = await wa.sendTextMessage(phoneNumberId, phone, fallbackText, accessToken);
+        persistedTipo = 'text';
+        persistedContenido = { type: 'text', text: fallbackText };
       } else {
       const sections = _normalizeListSections(response);
       if (!sections.length) {
+        const fallbackText = String(response.text ?? '').trim() || 'Selecciona una opcion';
         waResp = await wa.sendTextMessage(
           phoneNumberId,
           phone,
-          String(response.text ?? '').trim() || 'Selecciona una opcion',
+          fallbackText,
           accessToken,
         );
+        persistedTipo = 'text';
+        persistedContenido = { type: 'text', text: fallbackText };
       } else {
         const buttonLabel = String(response.buttonLabel ?? 'Ver opciones').trim() || 'Ver opciones';
         waResp = await wa.sendListMessage(
@@ -861,8 +869,8 @@ async function _sendChatbotResponse({ tenant, userId, phone, phoneNumberId, acce
       userId,
       waMsgId:        waResp?.messages?.[0]?.id ?? null,
       direccion:      'salida',
-      tipo:           (type === 'buttons' || type === 'list') ? 'interactive' : 'text',
-      contenido:      response,
+      tipo:           persistedTipo,
+      contenido:      persistedContenido,
       conversationId: conversationId ?? undefined,
     });
 
@@ -881,7 +889,7 @@ async function _sendChatbotResponse({ tenant, userId, phone, phoneNumberId, acce
           phone,
           waMsgId: outboundMsg.waMsgId,
           tipo: outboundMsg.tipo,
-          contenido: response,
+          contenido: persistedContenido,
         },
         metadata: {
           route: '/whatsapp',
@@ -896,7 +904,7 @@ async function _sendChatbotResponse({ tenant, userId, phone, phoneNumberId, acce
       userId,
       phone,
       tipo:      outboundMsg.tipo,
-      contenido: response,
+      contenido: persistedContenido,
       waMsgId:   outboundMsg.waMsgId,
       createdAt: outboundMsg.createdAt,
       direccion: 'salida',
@@ -934,7 +942,16 @@ async function _sendChatbotResponse({ tenant, userId, phone, phoneNumberId, acce
         messagePayload: type === 'buttons'
           ? _buildButtonPayload(phone, response)
           : type === 'list'
-            ? _buildListPayload(phone, response)
+            ? (
+              preferTextMenu
+                ? _buildTextPayload(
+                  phone,
+                  _buildListFallbackText(response)
+                    || _sanitizeWaText(response.text, { max: 4096 })
+                    || 'Selecciona una opcion',
+                )
+                : _buildListPayload(phone, response)
+            )
             : _buildTextPayload(phone, response.text ?? ''),
         attempts: 0,
       };
