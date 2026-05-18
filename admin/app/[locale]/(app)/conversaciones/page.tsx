@@ -750,6 +750,9 @@ export default function ConversacionesPage() {
                 {activeThread.user?.phone && (
                   <p className="text-xs text-slate-500 mt-0.5">{activeThread.user.phone}</p>
                 )}
+                {activeThread._contactName && (
+                  <p className="text-xs text-slate-600 mt-1">{activeThread._contactName}</p>
+                )}
               </div>
             </div>
 

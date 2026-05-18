@@ -254,6 +254,9 @@ export default function AgentConversacionesPage() {
                   <div>
                     <p className="text-sm font-semibold text-slate-900">{getDisplayName(activeThread, isEn)}</p>
                     <p className="text-xs text-slate-400">{activeThread.user?.phone ?? ""}</p>
+                    {activeThread._contactName && (
+                      <p className="text-xs text-slate-600 mt-1">{activeThread._contactName}</p>
+                    )}
                   </div>
                 </div>
               </div>
