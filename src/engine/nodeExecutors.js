@@ -377,14 +377,50 @@ async function executeTask({ node, variables }) {
 }
 
 /**
- * llm — generates a dynamic text reply via LLM and injects it into the response.
+ * llm — runs one or more LLM prompts per node, stores results in variables,
+ * and optionally produces a user-facing text response.
+ *
+ * Config shape (new multi-prompt):
+ *   {
+ *     prompts: [
+ *       {
+ *         id           : string (optional, for audit)
+ *         systemPrompt : string  (supports {{var}} templates)
+ *         userMessage  : string  (optional override; defaults to user input)
+ *         outputMode   : 'text' | 'json'   default 'text'
+ *         targetVariable: string (variable name to store result; optional for text)
+ *       }
+ *     ]
+ *     composeMode  : 'sequential' | 'parallel' | 'first_match'  default 'sequential'
+ *     fallback_text: string  (shown to user when no text output is produced)
+ *     on_error     : 'continue' | 'halt' | 'handoff'            default 'continue'
+ *     user_template: string  (optional; overrides raw user input as LLM user message)
+ *   }
+ *
+ * Legacy shape (backward compat):
+ *   { prompt: string, system_prompt: string, variable: string }
+ *   → mapped automatically to prompts[0] with outputMode 'text'
  */
 async function executeLlm({ node, input, variables, llmService, tenantId }) {
   const cfg = resolveConfig(node.config, variables);
 
-  if (!llmService || !cfg.system_prompt) {
+  // ── Normalize prompts array ────────────────────────────────────────────────
+  let prompts = [];
+  if (Array.isArray(cfg.prompts) && cfg.prompts.length > 0) {
+    prompts = cfg.prompts;
+  } else if (cfg.system_prompt || cfg.prompt) {
+    // Legacy single-prompt shape
+    prompts = [{
+      id            : 'p1',
+      systemPrompt  : cfg.system_prompt || cfg.prompt,
+      outputMode    : cfg.output_mode || 'text',
+      targetVariable: cfg.variable || null,
+    }];
+  }
+
+  if (!llmService || prompts.length === 0) {
     return {
-      output     : { type: 'text', text: cfg.fallback_text ?? '' },
+      output     : cfg.fallback_text ? { type: 'text', text: cfg.fallback_text } : null,
       nextNodeId : node.next,
       updatedVars: {},
       terminal   : false,
@@ -392,30 +428,119 @@ async function executeLlm({ node, input, variables, llmService, tenantId }) {
     };
   }
 
-  const userMsg = cfg.user_template
+  const composeMode = String(cfg.composeMode || cfg.compose_mode || 'sequential').toLowerCase();
+  const onError     = String(cfg.onError     || cfg.on_error    || 'continue').toLowerCase();
+
+  // Base user message (may be overridden per-prompt via prompt.userMessage)
+  const baseUserMsg = cfg.user_template
     ? resolveTemplate(cfg.user_template, { ...variables, input: input ?? '' })
     : (input ?? '');
 
-  try {
-    const result  = await llmService.callLlm(tenantId, cfg.system_prompt, userMsg);
-    const replyText = result?.text ?? cfg.fallback_text ?? 'No pude generar una respuesta.';
+  const updatedVars = {};
+  let lastTextOutput = null;
+  let anyError       = false;
+
+  // ── Run a single prompt ────────────────────────────────────────────────────
+  const runPrompt = async (prompt, contextVars) => {
+    const sp   = resolveTemplate(String(prompt.systemPrompt || ''), { ...variables, ...contextVars });
+    const um   = prompt.userMessage
+      ? resolveTemplate(String(prompt.userMessage), { ...variables, ...contextVars, input: input ?? '' })
+      : baseUserMsg;
+    const mode = String(prompt.outputMode || 'text').toLowerCase();
+
+    try {
+      if (mode === 'json') {
+        const result = await llmService.callLlmForJson(tenantId, sp, um);
+        if (result?.json !== undefined) {
+          return { success: true, value: result.json, targetVariable: prompt.targetVariable, mode };
+        }
+        return { success: false, value: null, targetVariable: prompt.targetVariable, mode };
+      } else {
+        const result = await llmService.callLlm(tenantId, sp, um);
+        const text   = result?.text ?? null;
+        return { success: !!text, value: text, targetVariable: prompt.targetVariable, mode };
+      }
+    } catch (err) {
+      logger.error(
+        { tenantId, nodeId: node.id, promptId: prompt.id, message: err.message },
+        'nodeExecutors.llm: prompt execution failed',
+      );
+      return { success: false, value: null, targetVariable: prompt.targetVariable, mode, error: err.message };
+    }
+  };
+
+  // ── Execute prompts per composeMode ───────────────────────────────────────
+  if (composeMode === 'parallel') {
+    const results = await Promise.all(prompts.map((p) => runPrompt(p, {})));
+    for (const r of results) {
+      if (r.success) {
+        if (r.targetVariable) updatedVars[r.targetVariable] = r.value;
+        if (r.mode === 'text' && r.value) lastTextOutput = r.value;
+      } else {
+        anyError = true;
+      }
+    }
+
+  } else if (composeMode === 'first_match') {
+    for (const prompt of prompts) {
+      const r = await runPrompt(prompt, updatedVars);
+      if (r.success && r.value != null && r.value !== '') {
+        if (r.targetVariable) updatedVars[r.targetVariable] = r.value;
+        if (r.mode === 'text') lastTextOutput = r.value;
+        break;
+      }
+    }
+
+  } else {
+    // sequential (default): each prompt's results are available to the next
+    for (const prompt of prompts) {
+      const r = await runPrompt(prompt, updatedVars);
+      if (r.success) {
+        if (r.targetVariable) updatedVars[r.targetVariable] = r.value;
+        if (r.mode === 'text' && r.value) lastTextOutput = r.value;
+      } else {
+        anyError = true;
+        if (onError === 'halt' || onError === 'handoff') break;
+      }
+    }
+  }
+
+  // ── Error routing ─────────────────────────────────────────────────────────
+  if (anyError && onError === 'handoff') {
     return {
-      output     : { type: 'text', text: replyText },
-      nextNodeId : node.next,
-      updatedVars: {},
-      terminal   : false,
-      fallback   : false,
+      output     : { type: 'handoff', text: cfg.fallback_text ?? 'Un agente te atenderá.' },
+      nextNodeId : null,
+      updatedVars,
+      terminal   : true,
+      fallback   : true,
     };
-  } catch (err) {
-    logger.error({ tenantId, nodeId: node.id, message: err.message }, 'nodeExecutors.llm: callLlm failed');
+  }
+
+  if (anyError && onError === 'halt' && node.branches?.error) {
     return {
-      output     : { type: 'text', text: cfg.fallback_text ?? 'Un agente te atenderá.' },
-      nextNodeId : node.branches?.error ?? node.next,
-      updatedVars: {},
+      output     : cfg.fallback_text ? { type: 'text', text: cfg.fallback_text } : null,
+      nextNodeId : node.branches.error,
+      updatedVars,
       terminal   : false,
       fallback   : false,
     };
   }
+
+  // ── Determine user-facing output ──────────────────────────────────────────
+  let output = null;
+  if (lastTextOutput) {
+    output = { type: 'text', text: lastTextOutput };
+  } else if (cfg.fallback_text) {
+    output = { type: 'text', text: cfg.fallback_text };
+  }
+
+  return {
+    output,
+    nextNodeId : node.next,
+    updatedVars,
+    terminal   : false,
+    fallback   : false,
+  };
 }
 
 /**

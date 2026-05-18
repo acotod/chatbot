@@ -543,6 +543,13 @@ function coerceToFlowDefinition(value: unknown): FlowDefinition {
   throw new Error("unsupported_json_shape");
 }
 
+interface LlmPromptItem {
+  id: string;
+  systemPrompt: string;
+  outputMode: "text" | "json";
+  targetVariable: string;
+}
+
 interface SimulationStep {
   nodeId?: string;
   nodeType?: string;
@@ -1098,8 +1105,30 @@ function NodeEditModal({
   const [endMsg, setEndMsg]           = useState(String(cfg.message ?? ""));
   const [handoffDept, setHandoffDept] = useState(String(cfg.department ?? ""));
   const [handoffMsg, setHandoffMsg]   = useState(String(cfg.message ?? ""));
-  const [llmPrompt, setLlmPrompt]     = useState(String(cfg.prompt ?? ""));
-  const [llmVar, setLlmVar]           = useState(String(cfg.variable ?? ""));
+  // llm — multi-prompt config
+  const [llmPrompts, setLlmPrompts] = useState<LlmPromptItem[]>(() => {
+    if (Array.isArray((cfg as Record<string, unknown>).prompts) && ((cfg as Record<string, unknown>).prompts as LlmPromptItem[]).length > 0) {
+      return ((cfg as Record<string, unknown>).prompts as LlmPromptItem[]).map((p, i) => ({
+        id: p.id || `p${i + 1}`,
+        systemPrompt: String(p.systemPrompt ?? ""),
+        outputMode: p.outputMode === "json" ? "json" : "text",
+        targetVariable: String(p.targetVariable ?? ""),
+      }));
+    }
+    // legacy single-prompt backward compat
+    return [{
+      id: "p1",
+      systemPrompt: String((cfg as Record<string, unknown>).system_prompt ?? (cfg as Record<string, unknown>).prompt ?? ""),
+      outputMode: "text",
+      targetVariable: String((cfg as Record<string, unknown>).variable ?? ""),
+    }];
+  });
+  const [llmComposeMode, setLlmComposeMode] = useState<"sequential" | "parallel" | "first_match">(
+    (["sequential", "parallel", "first_match"].includes(String((cfg as Record<string, unknown>).composeMode ?? ""))
+      ? (cfg as Record<string, unknown>).composeMode as "sequential" | "parallel" | "first_match"
+      : "sequential")
+  );
+  const [llmFallbackText, setLlmFallbackText] = useState(String((cfg as Record<string, unknown>).fallback_text ?? ""));
   // action
   const [actionRef, setActionRef]       = useState(String(cfg.integration_ref ?? ""));
   const [actionUrl, setActionUrl]       = useState(String((cfg.endpoint ?? (cfg as Record<string,unknown>).url) ?? ""));
@@ -1218,7 +1247,7 @@ function NodeEditModal({
       case "delay":     return { seconds: delaySeconds };
       case "end":       return { message: endMsg, ...actionFragment };
       case "handoff":   return { department: handoffDept, message: handoffMsg, ...actionFragment };
-      case "llm":       return { prompt: llmPrompt, variable: llmVar, ...actionFragment };
+      case "llm":       return { prompts: llmPrompts, composeMode: llmComposeMode, ...(llmFallbackText.trim() ? { fallback_text: llmFallbackText.trim() } : {}), ...actionFragment };
       case "action":    return actionFragment;
       default: { try { return JSON.parse(rawJson); } catch { return {}; } }
     }
@@ -1468,19 +1497,131 @@ function NodeEditModal({
               )}
               {/* llm */}
               {type === "llm" && (
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="bg-slate-50 rounded-lg border border-slate-100 p-4">
-                    <label className="block text-xs font-medium text-slate-600 mb-2">Prompt</label>
-                    <textarea value={llmPrompt} onChange={(e) => setLlmPrompt(e.target.value)} rows={4}
-                      placeholder="Dado el contexto {{variables.contexto}}, genera una respuesta..."
-                      className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                <div className="space-y-4">
+                  {/* Compose mode + fallback */}
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="bg-slate-50 rounded-lg border border-slate-100 p-4">
+                      <label className="block text-xs font-medium text-slate-600 mb-2">Modo de ejecución</label>
+                      <select
+                        value={llmComposeMode}
+                        onChange={(e) => setLlmComposeMode(e.target.value as "sequential" | "parallel" | "first_match")}
+                        className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500 bg-white"
+                      >
+                        <option value="sequential">Secuencial — en orden, contexto acumulado</option>
+                        <option value="parallel">Paralelo — simultáneo, variables independientes</option>
+                        <option value="first_match">Primer resultado — se detiene al primer éxito</option>
+                      </select>
+                    </div>
+                    <div className="bg-slate-50 rounded-lg border border-slate-100 p-4">
+                      <label className="block text-xs font-medium text-slate-600 mb-2">Texto de respaldo (si no hay salida de texto)</label>
+                      <input
+                        type="text"
+                        value={llmFallbackText}
+                        onChange={(e) => setLlmFallbackText(e.target.value)}
+                        placeholder="Procesando tu solicitud..."
+                        className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500"
+                      />
+                    </div>
                   </div>
-                  <div className="bg-slate-50 rounded-lg border border-slate-100 p-4">
-                    <label className="block text-xs font-medium text-slate-600 mb-2">Guardar respuesta en</label>
-                    <VarComboInput value={llmVar} onChange={setLlmVar} placeholder="variables.respuesta_llm"
-                      suggestions={flowVariables.length > 0 ? flowVariables : MENU_VARIABLE_PRESETS}
-                      className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500" />
+
+                  {/* Prompt list */}
+                  <div className="space-y-3">
+                    {llmPrompts.map((prompt, idx) => (
+                      <div key={prompt.id} className="bg-slate-50 rounded-lg border border-slate-200 p-4">
+                        <div className="flex items-center justify-between mb-3">
+                          <span className="text-xs font-semibold text-violet-700 bg-violet-50 border border-violet-100 rounded-full px-2.5 py-0.5">
+                            Prompt {idx + 1}
+                          </span>
+                          <div className="flex items-center gap-1">
+                            <button
+                              disabled={idx === 0}
+                              onClick={() => {
+                                const next = [...llmPrompts];
+                                [next[idx - 1], next[idx]] = [next[idx], next[idx - 1]];
+                                setLlmPrompts(next);
+                              }}
+                              className="p-1 rounded text-slate-400 hover:text-slate-700 disabled:opacity-30 disabled:cursor-not-allowed transition"
+                              title="Subir"
+                            >↑</button>
+                            <button
+                              disabled={idx === llmPrompts.length - 1}
+                              onClick={() => {
+                                const next = [...llmPrompts];
+                                [next[idx], next[idx + 1]] = [next[idx + 1], next[idx]];
+                                setLlmPrompts(next);
+                              }}
+                              className="p-1 rounded text-slate-400 hover:text-slate-700 disabled:opacity-30 disabled:cursor-not-allowed transition"
+                              title="Bajar"
+                            >↓</button>
+                            {llmPrompts.length > 1 && (
+                              <button
+                                onClick={() => setLlmPrompts(llmPrompts.filter((_, i) => i !== idx))}
+                                className="p-1 rounded text-slate-400 hover:text-red-600 transition"
+                                title="Eliminar prompt"
+                              >✕</button>
+                            )}
+                          </div>
+                        </div>
+                        <div className="space-y-3">
+                          <div>
+                            <label className="block text-xs font-medium text-slate-600 mb-1">Prompt del sistema</label>
+                            <textarea
+                              value={prompt.systemPrompt}
+                              onChange={(e) => {
+                                const next = [...llmPrompts];
+                                next[idx] = { ...next[idx], systemPrompt: e.target.value };
+                                setLlmPrompts(next);
+                              }}
+                              rows={4}
+                              placeholder="Analiza el mensaje del usuario y responde con JSON: {intención, sentimiento, urgencia}. Usa {{input}} para el mensaje actual."
+                              className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-violet-500"
+                            />
+                          </div>
+                          <div className="grid grid-cols-2 gap-3">
+                            <div>
+                              <label className="block text-xs font-medium text-slate-600 mb-1">Formato de salida</label>
+                              <select
+                                value={prompt.outputMode}
+                                onChange={(e) => {
+                                  const next = [...llmPrompts];
+                                  next[idx] = { ...next[idx], outputMode: e.target.value as "text" | "json" };
+                                  setLlmPrompts(next);
+                                }}
+                                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500 bg-white"
+                              >
+                                <option value="text">Texto — respuesta al usuario</option>
+                                <option value="json">JSON — guardar en variable</option>
+                              </select>
+                            </div>
+                            <div>
+                              <label className="block text-xs font-medium text-slate-600 mb-1">
+                                {prompt.outputMode === "json" ? "Variable destino (requerida)" : "Variable destino (opcional)"}
+                              </label>
+                              <VarComboInput
+                                value={prompt.targetVariable}
+                                onChange={(v) => {
+                                  const next = [...llmPrompts];
+                                  next[idx] = { ...next[idx], targetVariable: v };
+                                  setLlmPrompts(next);
+                                }}
+                                placeholder="analisis_llm"
+                                suggestions={flowVariables.length > 0 ? flowVariables : MENU_VARIABLE_PRESETS}
+                                className={`w-full rounded-lg border px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-violet-500 ${prompt.outputMode === "json" && !prompt.targetVariable.trim() ? "border-red-300 bg-red-50" : "border-slate-200"}`}
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
                   </div>
+
+                  <button
+                    onClick={() => setLlmPrompts([...llmPrompts, { id: `p${Date.now()}`, systemPrompt: "", outputMode: "text", targetVariable: "" }])}
+                    className="w-full py-2 rounded-lg border border-dashed border-violet-300 text-violet-600 text-sm hover:bg-violet-50 transition"
+                  >
+                    + Agregar prompt
+                  </button>
+                  <p className="text-xs text-slate-400">Las credenciales del modelo LLM se configuran en <strong>Configuración › IA</strong>. Aquí se define la lógica de decisión por nodo.</p>
                 </div>
               )}
               {/* action / menu / input / message webhook call */}
