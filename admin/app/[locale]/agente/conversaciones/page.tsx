@@ -28,6 +28,7 @@ function extractText(msg: Pick<AgentConversationMessage | AgentConversationThrea
       pickText(obj.message) ??
       pickText(obj.caption) ??
       pickText(obj.title) ??
+      pickText(obj.reply) ??
       null
     );
   };

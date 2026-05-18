@@ -113,6 +113,7 @@ function extractText(msg: Pick<Mensaje, "tipo" | "contenido">): string {
       pickText(obj.message) ??
       pickText(obj.caption) ??
       pickText(obj.title) ??
+      pickText(obj.reply) ??
       null
     );
   };

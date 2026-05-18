@@ -57,7 +57,7 @@ function getMessagePreview(contenido: unknown): string {
 		if (typeof value === "string") return value.trim() || null;
 		if (!value || typeof value !== "object") return null;
 		const obj = value as Record<string, unknown>;
-		return pickText(obj.text) ?? pickText(obj.body) ?? pickText(obj.message) ?? pickText(obj.caption) ?? null;
+		return pickText(obj.text) ?? pickText(obj.body) ?? pickText(obj.message) ?? pickText(obj.caption) ?? pickText(obj.title) ?? pickText(obj.reply) ?? null;
 	};
 	const parsed = pickText(contenido);
 	if (parsed) return parsed;
