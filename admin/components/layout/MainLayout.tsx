@@ -57,13 +57,15 @@ export default function MainLayout({
   }, [hasAccessToken, hasAgentAccessToken, isClient, allowAgentSharedRoute, router]);
 
   if (!isClient || (!hasAccessToken && !allowAgentSharedRoute)) {
-    return <div className="min-h-screen bg-slate-50" />;
+    return <div className="min-h-screen bg-[#0a0f14]" />;
   }
 
   return (
-    <div className="flex h-screen bg-slate-50 overflow-hidden">
+    <div className="relative flex h-screen overflow-hidden text-[#e6f5f9]">
+      <div className="pointer-events-none absolute -left-36 -top-36 h-96 w-96 rounded-full bg-[#00BFAE]/12 blur-3xl" />
+      <div className="pointer-events-none absolute -right-28 top-12 h-80 w-80 rounded-full bg-[#39E6D2]/10 blur-3xl" />
       <Sidebar />
-      <div className="flex-1 flex flex-col min-w-0">
+      <div className="relative z-10 flex min-w-0 flex-1 flex-col">
         <Header />
         <main className="flex-1 overflow-y-auto p-6">{children}</main>
       </div>

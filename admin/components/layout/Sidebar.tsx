@@ -281,14 +281,14 @@ export function Sidebar() {
 
   if (!isClient) {
     return (
-      <aside className="w-64 bg-white border-r border-slate-200 flex flex-col h-screen sticky top-0" />
+      <aside className="zentra-surface w-64 flex flex-col h-screen sticky top-0" />
     );
   }
 
   return (
-    <aside className="w-64 bg-white border-r border-slate-200 flex flex-col h-screen sticky top-0">
+    <aside className="zentra-surface w-64 flex flex-col h-screen sticky top-0">
       {/* Logo */}
-      <div className="h-16 flex items-center px-6 border-b border-slate-200">
+      <div className="h-16 flex items-center px-6 border-b border-[#39E6D2]/18">
         <img
           src="/branding/zentra-bot-logo.svg"
           alt="Zentra Bot"
@@ -298,29 +298,29 @@ export function Sidebar() {
 
       {/* Tenant selector — only visible to superAdmin */}
       {superAdmin && !isAgentSession && (
-        <div className="px-3 py-2 border-b border-slate-100" ref={dropdownRef}>
+        <div className="px-3 py-2 border-b border-[#39E6D2]/12" ref={dropdownRef}>
           <button
             onClick={() => setDropdownOpen((o) => !o)}
-            className="w-full flex items-center justify-between gap-2 px-3 py-2 rounded-lg bg-slate-50 hover:bg-slate-100 text-sm text-slate-700 transition"
+            className="w-full flex items-center justify-between gap-2 px-3 py-2 rounded-lg bg-[#0D2B3E]/58 hover:bg-[#0D2B3E]/78 text-sm text-[#EAFBFF] transition border border-[#39E6D2]/16"
           >
             <span className="flex items-center gap-2 min-w-0">
-              <Building2 size={14} className="text-slate-400 shrink-0" />
+              <Building2 size={14} className="text-[#39E6D2] shrink-0" />
               <span className="truncate">{tenantSlug || t("selectCompany")}</span>
             </span>
-            <ChevronDown size={14} className={cn("text-slate-400 shrink-0 transition-transform", dropdownOpen && "rotate-180")} />
+            <ChevronDown size={14} className={cn("text-[#97B6C3] shrink-0 transition-transform", dropdownOpen && "rotate-180")} />
           </button>
           {dropdownOpen && (
-            <div className="mt-1 bg-white border border-slate-200 rounded-lg shadow-md overflow-hidden z-50">
+            <div className="mt-1 bg-[#0D2B3E]/95 border border-[#39E6D2]/20 rounded-lg shadow-md overflow-hidden z-50 backdrop-blur-xl">
               {tenants.length === 0 && (
-                <p className="px-3 py-2 text-xs text-slate-400">{t("noCompanies")}</p>
+                <p className="px-3 py-2 text-xs text-[#97B6C3]">{t("noCompanies")}</p>
               )}
               {tenants.map((t) => (
                 <button
                   key={t.slug}
                   onClick={() => { setTenantSlug(t.slug); setDropdownOpen(false); }}
                   className={cn(
-                    "w-full text-left px-3 py-2 text-sm hover:bg-blue-50 transition",
-                    tenantSlug === t.slug ? "text-blue-700 font-semibold bg-blue-50" : "text-slate-700"
+                    "w-full text-left px-3 py-2 text-sm hover:bg-[#00BFAE]/20 transition",
+                    tenantSlug === t.slug ? "text-[#39E6D2] font-semibold bg-[#00BFAE]/18" : "text-[#EAFBFF]"
                   )}
                 >
                   {normalizeTenantName((t as { nombre?: unknown }).nombre, t.slug)}
@@ -340,14 +340,14 @@ export function Sidebar() {
               className={cn(
                 "flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-medium transition-all",
                 active
-                  ? "bg-blue-50 text-blue-700"
-                  : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+                  ? "bg-[#00BFAE]/20 text-[#39E6D2] zentra-glow"
+                  : "text-[#9FC0CC] hover:bg-[#0D2B3E]/72 hover:text-[#EAFBFF]"
               )}
             >
               <item.icon
                 className={cn(
                   "w-4.5 h-4.5",
-                  active ? "text-blue-600" : "text-slate-400"
+                  active ? "text-[#39E6D2]" : "text-[#6F97A8]"
                 )}
                 size={18}
               />
@@ -363,13 +363,13 @@ export function Sidebar() {
       </nav>
 
       {/* Bottom */}
-      <div className="px-3 py-4 border-t border-slate-100 space-y-1">
+      <div className="px-3 py-4 border-t border-[#39E6D2]/12 space-y-1">
         <button
           type="button"
           onClick={handleLogout}
-          className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-slate-500 hover:bg-red-50 hover:text-red-600 transition"
+          className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-[#9FC0CC] hover:bg-red-500/18 hover:text-red-300 transition"
         >
-          <LogOut size={18} className="text-slate-400" />
+          <LogOut size={18} className="text-[#7FA2AF]" />
           {t("header.logout")}
         </button>
       </div>

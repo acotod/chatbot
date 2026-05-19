@@ -1,18 +1,18 @@
 @import "tailwindcss";
 
 :root {
-  --background: #f8fafc;
-  --foreground: #0f172a;
-  --primary: #2563eb;
-  --primary-foreground: #ffffff;
-  --success: #16a34a;
-  --danger: #dc2626;
-  --warning: #d97706;
-  --sidebar-bg: #ffffff;
-  --card-bg: #ffffff;
-  --border: #e2e8f0;
-  --muted: #94a3b8;
-  --muted-bg: #f1f5f9;
+  --background: #0a0f14;
+  --foreground: #ffffff;
+  --primary: #00bfae;
+  --primary-foreground: #0a0f14;
+  --success: #39e6d2;
+  --danger: #ff6b8b;
+  --warning: #ffc75a;
+  --sidebar-bg: rgba(13, 43, 62, 0.66);
+  --card-bg: rgba(13, 43, 62, 0.58);
+  --border: rgba(57, 230, 210, 0.22);
+  --muted: #97b6c3;
+  --muted-bg: rgba(13, 43, 62, 0.42);
 }
 
 @theme inline {
@@ -27,7 +27,7 @@
   --color-muted-bg: var(--muted-bg);
   --color-sidebar: var(--sidebar-bg);
   --color-card: var(--card-bg);
-  --font-sans: "Inter", system-ui, sans-serif;
+  --font-sans: "Montserrat", "Poppins", system-ui, sans-serif;
 }
 
 * {
@@ -38,14 +38,75 @@ body {
   background: var(--background);
   color: var(--foreground);
   font-family: var(--font-sans);
+  background-image:
+    radial-gradient(920px 420px at 8% -12%, rgba(0, 191, 174, 0.22), transparent 58%),
+    radial-gradient(760px 360px at 92% 2%, rgba(57, 230, 210, 0.16), transparent 62%),
+    linear-gradient(170deg, #0a0f14 0%, #0d2b3e 52%, #0a0f14 100%);
+  background-attachment: fixed;
 }
 
 .scrollbar-thin::-webkit-scrollbar { width: 4px; }
 .scrollbar-thin::-webkit-scrollbar-track { background: transparent; }
-.scrollbar-thin::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 2px; }
+.scrollbar-thin::-webkit-scrollbar-thumb {
+  background: rgba(57, 230, 210, 0.34);
+  border-radius: 999px;
+}
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+.zentra-surface {
+  background: linear-gradient(165deg, rgba(13, 43, 62, 0.72), rgba(10, 15, 20, 0.65));
+  border: 1px solid rgba(57, 230, 210, 0.22);
+  backdrop-filter: blur(14px);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.04),
+    0 14px 40px rgba(10, 15, 20, 0.45);
+}
+
+.zentra-surface-soft {
+  background: rgba(13, 43, 62, 0.38);
+  border: 1px solid rgba(57, 230, 210, 0.16);
+  backdrop-filter: blur(10px);
+}
+
+.zentra-glow {
+  box-shadow: 0 0 0 1px rgba(57, 230, 210, 0.2), 0 0 22px rgba(0, 191, 174, 0.2);
+}
+
+.zentra-theme .text-slate-900,
+.zentra-theme .text-slate-800,
+.zentra-theme .text-slate-700 {
+  color: #e6f5f9;
+}
+
+.zentra-theme .text-slate-600,
+.zentra-theme .text-slate-500,
+.zentra-theme .text-slate-400 {
+  color: #97b6c3;
+}
+
+.zentra-theme .border-slate-200,
+.zentra-theme .border-slate-100 {
+  border-color: rgba(57, 230, 210, 0.18);
+}
+
+.zentra-theme .bg-slate-50,
+.zentra-theme .bg-white {
+  background-color: rgba(13, 43, 62, 0.48);
+}
+
+.zentra-theme .bg-blue-50,
+.zentra-theme .bg-blue-50\/50 {
+  background-color: rgba(0, 191, 174, 0.15);
+}
+
+.zentra-theme .text-blue-700,
+.zentra-theme .text-blue-600 {
+  color: #39e6d2;
+}
+
+.zentra-theme .hover\:bg-slate-100:hover {
+  background-color: rgba(57, 230, 210, 0.14);
+}
+
+.zentra-theme .hover\:bg-blue-50:hover {
+  background-color: rgba(0, 191, 174, 0.2);
 }
