@@ -457,6 +457,17 @@ export default function ConversacionesPage() {
     staleTime: 30_000,
   });
   const convHistory: ConvRecord[] = (convHistoryData as { data?: ConvRecord[] })?.data ?? (Array.isArray(convHistoryData) ? convHistoryData : []);
+  const activeConversation = convHistory.find((conv) => conv.status === "active") ?? null;
+
+  const closeConversationMutation = useMutation({
+    mutationFn: (conversationId: string) => conversationsApi.updateStatus(conversationId, "completed"),
+    onSuccess: async () => {
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: ["convHistory", tenantId, activeThread?.user?.phone] }),
+        qc.invalidateQueries({ queryKey: ["conversaciones", effectiveTenantSlug, tenantId] }),
+      ]);
+    },
+  });
 
   // Scroll to top on new messages (newest first display)
   useEffect(() => {
@@ -777,6 +788,24 @@ export default function ConversacionesPage() {
                 <AlertTriangle size={13} />
                 {t("quickActions.urgent")}
               </button>
+            </div>
+            <div className="mt-2">
+              <button
+                onClick={() => {
+                  if (!activeConversation) return;
+                  closeConversationMutation.mutate(activeConversation.id);
+                }}
+                disabled={!activeConversation || closeConversationMutation.isPending}
+                className="w-full flex items-center justify-center gap-1.5 text-xs font-medium bg-[#0D2B3E]/72 hover:bg-[#0D2B3E]/92 text-[#CBE7EF] py-1.5 px-2 rounded-lg border border-[#39E6D2]/18 transition disabled:opacity-50"
+              >
+                <X size={13} />
+                {closeConversationMutation.isPending ? t("quickActions.closing") : t("quickActions.closeConversation")}
+              </button>
+              {!activeConversation && (
+                <p className="mt-1 text-[11px] text-[#6D8B99] text-center">
+                  {t("quickActions.noActiveConversation")}
+                </p>
+              )}
             </div>
 
             {/* Escalation form */}

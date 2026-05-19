@@ -18,7 +18,10 @@
   },
   "quickActions": {
     "escalate": "Escalar",
-    "urgent": "Urgente"
+    "urgent": "Urgente",
+    "closeConversation": "Cerrar conversación",
+    "closing": "Cerrando...",
+    "noActiveConversation": "No hay conversación activa para cerrar"
   },
   "escalationForm": {
     "title": "Asignar agente",
