@@ -41,10 +41,10 @@ const LOGIN_REDIRECT_ORDER: Array<{ href: string; permission: Permission }> = [
   { href: "/usuarios-admin", permission: "MANAGE_USERS" },
   { href: "/tenants", permission: "MANAGE_TENANTS" },
   { href: "/integraciones", permission: "MANAGE_TENANTS" },
-  { href: "/variables", permission: "EDIT_FLUJOS" },
   { href: "/waba-flujos", permission: "VIEW_FLUJOS" },
   { href: "/webhooks", permission: "MANAGE_WEBHOOKS" },
   { href: "/sandbox", permission: "VIEW_SANDBOX" },
+  // Note: /variables removed (requires proper tenant context set after login)
 ];
 
 function resolvePostLoginRoute(superAdmin: boolean, permissions: Permission[]): string {
