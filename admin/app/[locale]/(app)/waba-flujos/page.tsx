@@ -338,6 +338,15 @@ function normalizeFlowDefinition(definition: FlowDefinition): FlowDefinition {
   const routingModel = metadata?.routing_model;
   const normalizedNodes = definition.nodes.map(function normalizeNode(node): NodeDef {
     const normalizedChildren = node.children?.map(normalizeNode);
+    if (node.type === "end") {
+      return {
+        ...node,
+        next: null,
+        branches: undefined,
+        children: normalizedChildren && normalizedChildren.length > 0 ? normalizedChildren : undefined,
+      };
+    }
+
     const nodeScreenId = getNodeScreenId(node) ?? "";
     const routeTargets = nodeScreenId ? resolveRouteTargets(routingModel, nodeScreenId) : [];
 
@@ -452,7 +461,7 @@ function convertWabaJsonToFlowDefinition(value: unknown): FlowDefinition {
     const isTerminal = screen.terminal === true || index === screens.length - 1;
 
     let nodeType = "message";
-    if (isTerminal && !hasMenu && !hasInput) nodeType = "end";
+    if (isTerminal) nodeType = "end";
     else if (hasMenu) nodeType = "menu";
     else if (hasInput) nodeType = "input";
 
@@ -496,6 +505,9 @@ function convertWabaJsonToFlowDefinition(value: unknown): FlowDefinition {
         )
       : {};
 
+    const normalizedNext = nodeType === "end" ? null : next;
+    const normalizedBranches = nodeType === "end" ? {} : branches;
+
     return {
       id: nodeId,
       type: nodeType,
@@ -504,8 +516,8 @@ function convertWabaJsonToFlowDefinition(value: unknown): FlowDefinition {
         ...(nodeType === "menu" ? { options } : {}),
         _waba_screen: screen,
       },
-      next,
-      branches,
+      next: normalizedNext,
+      branches: normalizedBranches,
       _waba_screen_id: screenId,
     } as NodeDef;
   });
