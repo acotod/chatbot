@@ -955,12 +955,69 @@ function NodeCard({
 const NODE_TYPES = ["message", "input", "menu", "condition", "action", "delay", "end", "handoff", "llm"];
 const HTTP_METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE"];
 const CONDITION_OPS = ["equals", "not_equals", "contains", "starts_with", "ends_with", "greater_than", "less_than", "is_empty", "is_not_empty"];
+const CONDITION_TRUE_ALIASES = ["true", "si", "sí", "yes"];
+const CONDITION_FALSE_ALIASES = ["false", "no", "else", "default", "otherwise", "fallback"];
 const MENU_VARIABLE_PRESETS = [
   "variables.opcion_menu",
   "variables.menu_seleccion",
   "variables.menu_opcion_id",
   "variables.menu_opcion_titulo",
 ];
+
+function parseConditionExpression(expression: string): { variable: string; operator: string; value: string } | null {
+  const expr = String(expression ?? "").trim();
+  if (!expr) return null;
+
+  const binary = expr.match(/^\s*\{\{\s*([^}]+)\s*\}\}\s*(==|!=|>=|<=|>|<)\s*(.+?)\s*$/);
+  if (!binary) return null;
+
+  const rawVar = binary[1].trim();
+  const symbol = binary[2];
+  const rawVal = binary[3].trim();
+
+  const opMap: Record<string, string> = {
+    "==": "equals",
+    "!=": "not_equals",
+    ">": "greater_than",
+    "<": "less_than",
+  };
+
+  const value = rawVal.replace(/^['\"](.*)['\"]$/, "$1");
+  return {
+    variable: rawVar,
+    operator: opMap[symbol] ?? "equals",
+    value,
+  };
+}
+
+function buildConditionExpression(variable: string, operator: string, value: string): string {
+  const rawVar = variable.trim();
+  if (!rawVar) return "";
+
+  const wrappedVar = rawVar.startsWith("{{") && rawVar.endsWith("}}")
+    ? rawVar
+    : `{{${rawVar}}}`;
+
+  const normalizedOp = operator.trim();
+  const trimmedVal = value.trim();
+
+  switch (normalizedOp) {
+    case "equals":
+      return `${wrappedVar} == ${trimmedVal}`;
+    case "not_equals":
+      return `${wrappedVar} != ${trimmedVal}`;
+    case "greater_than":
+      return `${wrappedVar} > ${trimmedVal}`;
+    case "less_than":
+      return `${wrappedVar} < ${trimmedVal}`;
+    case "is_empty":
+      return `${wrappedVar} == ""`;
+    case "is_not_empty":
+      return `${wrappedVar} != ""`;
+    default:
+      return `${wrappedVar} == ${trimmedVal}`;
+  }
+}
 
 // ─── VarComboInput ────────────────────────────────────────────────────────────
 // Input with a click-to-open dropdown showing available flow variables.
@@ -1047,6 +1104,12 @@ function NodeEditModal({
   const t = useTranslations("wabaFlows");
   const cfg = (node.config ?? {}) as Record<string, unknown>;
   const initialBranches = (node.branches ?? {}) as Record<string, string>;
+  const parsedCondition = parseConditionExpression(String(cfg.expression ?? ""));
+
+  function pickConditionBranchTarget(branches: Record<string, string>, aliases: string[]): string {
+    const target = Object.entries(branches).find(([key]) => aliases.includes(key.trim().toLowerCase()));
+    return target?.[1] ?? "";
+  }
 
   function nodeLabel(nid: string): string {
     const found = allNodes?.find((n) => n.id === nid);
@@ -1110,9 +1173,11 @@ function NodeEditModal({
         })
       : []
   );
-  const [condVar, setCondVar]         = useState(String(cfg.variable ?? ""));
-  const [condOp, setCondOp]           = useState(String(cfg.operator ?? "equals"));
-  const [condVal, setCondVal]         = useState(String(cfg.value ?? ""));
+  const [condVar, setCondVar]         = useState(String(cfg.variable ?? parsedCondition?.variable ?? ""));
+  const [condOp, setCondOp]           = useState(String(cfg.operator ?? parsedCondition?.operator ?? "equals"));
+  const [condVal, setCondVal]         = useState(String(cfg.value ?? parsedCondition?.value ?? ""));
+  const [condTrueNext, setCondTrueNext] = useState(pickConditionBranchTarget(initialBranches, CONDITION_TRUE_ALIASES));
+  const [condFalseNext, setCondFalseNext] = useState(pickConditionBranchTarget(initialBranches, CONDITION_FALSE_ALIASES));
   const [delaySeconds, setDelaySeconds] = useState(Number(cfg.seconds ?? 3));
   const [endMsg, setEndMsg]           = useState(String(cfg.message ?? ""));
   const [handoffDept, setHandoffDept] = useState(String(cfg.department ?? ""));
@@ -1209,6 +1274,31 @@ function NodeEditModal({
     })));
   }, [branchesJson, type]);
 
+  useEffect(() => {
+    if (type !== "condition") return;
+    const parsed = parseBranchesSafely(branchesJson);
+    if (!parsed) return;
+    setCondTrueNext(pickConditionBranchTarget(parsed, CONDITION_TRUE_ALIASES));
+    setCondFalseNext(pickConditionBranchTarget(parsed, CONDITION_FALSE_ALIASES));
+  }, [branchesJson, type]);
+
+  useEffect(() => {
+    if (type !== "condition") return;
+    const parsed = parseBranchesSafely(branchesJson) ?? {};
+    const nextBranches = Object.fromEntries(
+      Object.entries(parsed).filter(([key]) => {
+        const normalized = key.trim().toLowerCase();
+        return !CONDITION_TRUE_ALIASES.includes(normalized) && !CONDITION_FALSE_ALIASES.includes(normalized);
+      })
+    );
+
+    if (condTrueNext.trim()) nextBranches.true = condTrueNext.trim();
+    if (condFalseNext.trim()) nextBranches.false = condFalseNext.trim();
+
+    const serialized = JSON.stringify(nextBranches, null, 2);
+    setBranchesJson((prev) => (prev === serialized ? prev : serialized));
+  }, [type, condTrueNext, condFalseNext]);
+
   function applyEndpoint(ep: CatalogEndpoint) {
     setActionRef(ep.id);
     setActionUrl(ep.url);
@@ -1255,7 +1345,16 @@ function NodeEditModal({
       case "open_response":
         return { text: inputText, variable: inputVar, ...actionFragment };
       case "menu":      return { text: menuText, options: menuOptions, ...(menuVar.trim() ? { variable: menuVar.trim() } : {}), ...actionFragment };
-      case "condition": return { variable: condVar, operator: condOp, value: condVal, ...actionFragment };
+      case "condition": {
+        const expression = buildConditionExpression(condVar, condOp, condVal);
+        return {
+          variable: condVar,
+          operator: condOp,
+          value: condVal,
+          ...(expression ? { expression } : {}),
+          ...actionFragment,
+        };
+      }
       case "delay":     return { seconds: delaySeconds };
       case "end":       return { message: endMsg, ...actionFragment };
       case "handoff":   return { department: handoffDept, message: handoffMsg, ...actionFragment };
@@ -1272,7 +1371,17 @@ function NodeEditModal({
       return;
     }
     let branches: Record<string, string>;
-    if (type === "menu" && !showJson) {
+    if (type === "condition" && !showJson) {
+      const parsed = parseBranchesSafely(branchesJson) ?? {};
+      branches = Object.fromEntries(
+        Object.entries(parsed).filter(([key]) => {
+          const normalized = key.trim().toLowerCase();
+          return !CONDITION_TRUE_ALIASES.includes(normalized) && !CONDITION_FALSE_ALIASES.includes(normalized);
+        })
+      );
+      if (condTrueNext.trim()) branches.true = condTrueNext.trim();
+      if (condFalseNext.trim()) branches.false = condFalseNext.trim();
+    } else if (type === "menu" && !showJson) {
       branches = buildBranchesFromOptions(menuOptions);
     } else {
       try {
@@ -1453,7 +1562,7 @@ function NodeEditModal({
               )}
               {/* condition */}
               {type === "condition" && (
-                <div className="grid grid-cols-3 gap-4">
+                <div className="grid grid-cols-5 gap-4">
                   <div className="bg-slate-50 rounded-lg border border-slate-100 p-4">
                     <label className="block text-xs font-medium text-slate-600 mb-2">Variable</label>
                     <VarComboInput value={condVar} onChange={setCondVar} placeholder="variables.estatus"
@@ -1471,6 +1580,26 @@ function NodeEditModal({
                     <label className="block text-xs font-medium text-slate-600 mb-2">Valor</label>
                     <input value={condVal} onChange={(e) => setCondVal(e.target.value)} placeholder="activo"
                       className="w-full rounded-lg border border-slate-200 px-2 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                  </div>
+                  <div className="bg-slate-50 rounded-lg border border-slate-100 p-4">
+                    <label className="block text-xs font-medium text-slate-600 mb-2">Si cumple (true)</label>
+                    <select value={condTrueNext} onChange={(e) => setCondTrueNext(e.target.value)}
+                      className="w-full rounded-lg border border-slate-200 px-2 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white">
+                      <option value="">— ninguno —</option>
+                      {allNodeIds.filter((nid) => nid !== id).map((nid) => (
+                        <option key={nid} value={nid}>{nodeLabel(nid)}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="bg-slate-50 rounded-lg border border-slate-100 p-4">
+                    <label className="block text-xs font-medium text-slate-600 mb-2">Si no cumple (false)</label>
+                    <select value={condFalseNext} onChange={(e) => setCondFalseNext(e.target.value)}
+                      className="w-full rounded-lg border border-slate-200 px-2 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white">
+                      <option value="">— ninguno —</option>
+                      {allNodeIds.filter((nid) => nid !== id).map((nid) => (
+                        <option key={nid} value={nid}>{nodeLabel(nid)}</option>
+                      ))}
+                    </select>
                   </div>
                 </div>
               )}

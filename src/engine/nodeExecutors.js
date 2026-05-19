@@ -292,31 +292,111 @@ async function executeInput({ node, input, variables, llmService, tenantId }) {
  * Branches: node.branches.true → next if truthy, node.branches.false → next if falsy.
  */
 async function executeCondition({ node, variables }) {
-  const expr     = node.config?.expression ?? '';
-  const resolved = resolveTemplate(expr, variables);
+  const expr     = String(node.config?.expression ?? '').trim();
+  const resolved = expr ? resolveTemplate(expr, variables) : '';
   let   result   = false;
 
-  try {
-    // Safe evaluation: only allow simple comparisons, no eval()
-    const match = resolved.match(/^(.+?)\s*(==|!=|>=|<=|>|<)\s*(.+)$/);
-    if (match) {
-      const [, lhs, op, rhs] = match;
-      const l = _coerce(lhs.trim());
-      const r = _coerce(rhs.trim());
+  const readVariableValue = (rawPath) => {
+    const path = String(rawPath ?? '').trim().replace(/^\{\{\s*/, '').replace(/\s*\}\}$/, '');
+    if (!path) return undefined;
+
+    const direct = variables[path];
+    if (direct !== undefined) return direct;
+
+    const normalized = path.startsWith('variables.') ? path.slice('variables.'.length) : path;
+    if (variables[normalized] !== undefined) return variables[normalized];
+
+    const tryNested = (base, parts) => {
+      let cursor = base;
+      for (const part of parts) {
+        if (!cursor || typeof cursor !== 'object') return undefined;
+        cursor = cursor[part];
+      }
+      return cursor;
+    };
+
+    const directNested = tryNested(variables, path.split('.'));
+    if (directNested !== undefined) return directNested;
+
+    if (normalized !== path) {
+      return tryNested(variables, normalized.split('.'));
+    }
+
+    return undefined;
+  };
+
+  const evaluateFromFields = () => {
+    const variable = String(node.config?.variable ?? '').trim();
+    const operator = String(node.config?.operator ?? '').trim().toLowerCase();
+    const rawValue = node.config?.value;
+
+    if (!variable || !operator) return null;
+
+    const actualRaw = readVariableValue(variable);
+    const actual = typeof actualRaw === 'string' ? _coerce(actualRaw.trim()) : actualRaw;
+    const expected = typeof rawValue === 'string' ? _coerce(rawValue.trim()) : rawValue;
+
+    if (operator === 'equals') {
       // eslint-disable-next-line eqeqeq
-      if (op === '==')  result = l == r;
-      else if (op === '!=')  result = l != r;  // eslint-disable-line eqeqeq
-      else if (op === '>')   result = l > r;
-      else if (op === '>=')  result = l >= r;
-      else if (op === '<')   result = l < r;
-      else if (op === '<=')  result = l <= r;
+      return actual == expected;
+    }
+    if (operator === 'not_equals') {
+      // eslint-disable-next-line eqeqeq
+      return actual != expected;
+    }
+    if (operator === 'greater_than') {
+      return Number(actual) > Number(expected);
+    }
+    if (operator === 'less_than') {
+      return Number(actual) < Number(expected);
+    }
+    if (operator === 'contains') {
+      return String(actual ?? '').toLowerCase().includes(String(expected ?? '').toLowerCase());
+    }
+    if (operator === 'starts_with') {
+      return String(actual ?? '').toLowerCase().startsWith(String(expected ?? '').toLowerCase());
+    }
+    if (operator === 'ends_with') {
+      return String(actual ?? '').toLowerCase().endsWith(String(expected ?? '').toLowerCase());
+    }
+    if (operator === 'is_empty') {
+      return actual == null || String(actual).trim() === '';
+    }
+    if (operator === 'is_not_empty') {
+      return !(actual == null || String(actual).trim() === '');
+    }
+
+    return null;
+  };
+
+  const fieldResult = evaluateFromFields();
+  if (typeof fieldResult === 'boolean') {
+    result = fieldResult;
+  }
+
+  try {
+    // Fallback to expression syntax when variable/operator/value is absent.
+    if (typeof fieldResult !== 'boolean' && resolved) {
+      const match = resolved.match(/^(.+?)\s*(==|!=|>=|<=|>|<)\s*(.+)$/);
+      if (match) {
+        const [, lhs, op, rhs] = match;
+        const l = _coerce(lhs.trim());
+        const r = _coerce(rhs.trim());
+        // eslint-disable-next-line eqeqeq
+        if (op === '==')  result = l == r;
+        else if (op === '!=')  result = l != r;  // eslint-disable-line eqeqeq
+        else if (op === '>')   result = l > r;
+        else if (op === '>=')  result = l >= r;
+        else if (op === '<')   result = l < r;
+        else if (op === '<=')  result = l <= r;
+      }
     }
   } catch (err) {
-    logger.warn({ nodeId: node.id, expr, message: err.message }, 'nodeExecutors.condition: eval error');
+    logger.warn({ nodeId: node.id, expr: resolved || expr, message: err.message }, 'nodeExecutors.condition: eval error');
   }
 
   const branch   = result ? 'true' : 'false';
-  const nextNodeId = node.branches[branch] ?? node.next;
+  const nextNodeId = node.branches?.[branch] ?? node.next;
 
   return { output: null, nextNodeId, updatedVars: {}, terminal: false, fallback: false };
 }
