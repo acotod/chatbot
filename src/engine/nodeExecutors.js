@@ -69,12 +69,19 @@ function _humanizeOptionId(id) {
 }
 
 function _extractMenuOptions(cfg, branchKeys) {
+  const fromConfigOptions = Array.isArray(cfg?.options)
+    ? cfg.options.map((opt) => {
+        const id = String(opt?.id ?? '').trim();
+        const title = String(opt?.title ?? opt?.label ?? '').trim();
+        return id ? { id, title: title || id } : null;
+      }).filter(Boolean)
+    : [];
   const fromButtons = Array.isArray(cfg?.buttons) ? cfg.buttons : [];
   const fromSections = Array.isArray(cfg?.sections)
     ? cfg.sections.flatMap((s) => (Array.isArray(s?.rows) ? s.rows : []))
     : [];
 
-  const source = fromButtons.length ? fromButtons : fromSections;
+  const source = fromButtons.length ? fromButtons : (fromSections.length ? fromSections : fromConfigOptions);
   if (source.length) return source;
 
   return branchKeys.map((key) => ({ id: key, title: _humanizeOptionId(key) || key }));
@@ -121,18 +128,31 @@ async function executeMessage({ node, variables }) {
  */
 async function executeMenu({ node, input, variables }) {
   const cfg = resolveConfig(node.config, variables);
-  const branchKeys = Object.keys(node.branches ?? {});
+  const derivedBranchesFromOptions = Array.isArray(cfg?.options)
+    ? Object.fromEntries(
+        cfg.options.flatMap((opt) => {
+          const id = String(opt?.id ?? '').trim();
+          const next = String(opt?.next ?? '').trim();
+          return id && next ? [[id, next]] : [];
+        }),
+      )
+    : {};
+  const branches = {
+    ...derivedBranchesFromOptions,
+    ...(node.branches ?? {}),
+  };
+  const branchKeys = Object.keys(branches);
   const normalizedInput = _normalizeMenuInput(input);
 
   // Check if input matches a branch key (button id / list row id)
-  let nextFromBranch = normalizedInput ? (node.branches?.[normalizedInput] ?? null) : null;
+  let nextFromBranch = normalizedInput ? (branches[normalizedInput] ?? null) : null;
 
   if (!nextFromBranch && normalizedInput) {
     const caseInsensitive = branchKeys.find(
       (k) => k.toLowerCase() === normalizedInput.toLowerCase(),
     );
     if (caseInsensitive) {
-      nextFromBranch = node.branches?.[caseInsensitive] ?? null;
+      nextFromBranch = branches[caseInsensitive] ?? null;
     }
   }
 
@@ -140,7 +160,7 @@ async function executeMenu({ node, input, variables }) {
     const index = Number(normalizedInput) - 1;
     if (index >= 0 && index < branchKeys.length) {
       const key = branchKeys[index];
-      nextFromBranch = node.branches?.[key] ?? null;
+      nextFromBranch = branches[key] ?? null;
     }
   }
 
