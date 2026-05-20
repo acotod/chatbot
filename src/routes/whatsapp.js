@@ -22,6 +22,11 @@ const { getNextScreen } = require('../services/flowNavigation');
 const { ingestEvent } = require('../services/eventGateway');
 const crmSync = require('../services/crmSync');
 const { getPrismaClient } = require('../services/database');
+const {
+  DEFAULT_TRANSCRIPTION_CONFIG,
+  getTenantTranscriptionConfig,
+  transcribeAudioBuffer,
+} = require('../services/audioTranscription');
 
 const router = express.Router();
 
@@ -68,6 +73,122 @@ async function _ingestUegBestEffort({ tenantId, correlationId, idempotencyKey, r
       tenantId,
       context,
       message: uegErr.message,
+    });
+  }
+}
+
+function _extractMediaFromContenido(tipo, contenido) {
+  const payload = (contenido && typeof contenido === 'object') ? contenido : {};
+  if (!['image', 'audio', 'document'].includes(tipo)) return null;
+  const media = payload[tipo];
+  if (!media || typeof media !== 'object') return null;
+  return media;
+}
+
+async function _transcribeAudioMessageBestEffort({
+  tenant,
+  mensaje,
+  phone,
+  userId,
+  phoneNumberId,
+  accessToken,
+  correlationId,
+  conversationMeta,
+}) {
+  try {
+    const config = await getTenantTranscriptionConfig(tenant.id);
+    if (!config.enabled) return;
+
+    const audioPayload = _extractMediaFromContenido('audio', mensaje?.contenido);
+    const mediaId = String(audioPayload?.id ?? '').trim();
+    if (!mediaId) return;
+    if (!accessToken) {
+      logger.warn('Audio transcription skipped: missing access token', { tenantId: tenant.id, mensajeId: mensaje.id });
+      return;
+    }
+
+    const startedContenido = {
+      ...(mensaje.contenido || {}),
+      audioTranscript: {
+        status: 'processing',
+        provider: config.provider,
+        updatedAt: new Date().toISOString(),
+      },
+    };
+
+    const prisma = getPrismaClient();
+    if (!prisma) return;
+
+    await prisma.mensaje.update({
+      where: { id: mensaje.id },
+      data: { contenido: startedContenido },
+    });
+
+    socketService.emit(tenant.id, 'mensaje_actualizado', {
+      id: mensaje.id,
+      userId,
+      tipo: 'audio',
+      contenido: startedContenido,
+      createdAt: mensaje.createdAt,
+      direccion: mensaje.direccion,
+    });
+
+    const media = await wa.downloadMediaById(mediaId, accessToken);
+    const transcript = await transcribeAudioBuffer({
+      buffer: media.buffer,
+      mimeType: media.mimeType || audioPayload?.mime_type || 'audio/ogg',
+      tenantId: tenant.id,
+      config,
+    });
+
+    const completedContenido = {
+      ...(mensaje.contenido || {}),
+      audioTranscript: {
+        status: transcript.ok ? 'completed' : 'failed',
+        provider: transcript.provider || config.provider,
+        text: transcript.text || null,
+        error: transcript.error || null,
+        meta: transcript.meta || {},
+        updatedAt: new Date().toISOString(),
+      },
+    };
+
+    await prisma.mensaje.update({
+      where: { id: mensaje.id },
+      data: { contenido: completedContenido },
+    });
+
+    socketService.emit(tenant.id, 'mensaje_actualizado', {
+      id: mensaje.id,
+      userId,
+      tipo: 'audio',
+      contenido: completedContenido,
+      createdAt: mensaje.createdAt,
+      direccion: mensaje.direccion,
+    });
+
+    if (transcript.ok && transcript.text && config.useForBotInput && userId !== null) {
+      _runChatbot({
+        tenant,
+        userId,
+        phone,
+        userInput: transcript.text,
+        phoneNumberId,
+        accessToken,
+        correlationId,
+        inboundMensajeId: mensaje.id,
+        conversationMeta,
+      }).catch((err) => logger.error('_runChatbot(audio transcript) error', {
+        tenantId: tenant.id,
+        mensajeId: mensaje.id,
+        message: err.message,
+      }));
+    }
+  } catch (err) {
+    logger.warn('Audio transcription best-effort failed', {
+      tenantId: tenant?.id,
+      mensajeId: mensaje?.id,
+      message: err.message,
     });
   }
 }
@@ -533,6 +654,12 @@ async function _handleIncomingMessage({ msg, contacts, tenant, phoneNumberId, ac
   // Store mensaje.id so we can back-fill conversationId after the chatbot runs
   const mensajeId = mensaje.id;
 
+  const messageWithContenido = {
+    ...mensaje,
+    contenido,
+    direccion: 'entrada',
+  };
+
   await _ingestUegBestEffort({
     tenantId: tenant.id,
     correlationId,
@@ -631,6 +758,21 @@ async function _handleIncomingMessage({ msg, contacts, tenant, phoneNumberId, ac
       _runChatbot({ tenant, userId, phone, userInput, phoneNumberId, accessToken, correlationId, inboundMensajeId: mensajeId, conversationMeta })
         .catch((err) => logger.error('_runChatbot error', { tenantId: tenant.id, message: err.message }));
     }
+  }
+
+  if (tipo === 'audio') {
+    setImmediate(() => {
+      _transcribeAudioMessageBestEffort({
+        tenant,
+        mensaje: messageWithContenido,
+        phone,
+        userId,
+        phoneNumberId,
+        accessToken,
+        correlationId,
+        conversationMeta,
+      });
+    });
   }
 
   return {
@@ -1526,6 +1668,86 @@ router.get('/mensajes', requireJwt, async (req, res, next) => {
     return res.json({ data: mensajes, page: page ? Number(page) : 1, limit: parsedLimit, count: mensajes.length });
   } catch (err) {
     next(err);
+  }
+});
+
+/**
+ * GET /whatsapp/media/:messageId?tenantId= | ?tenantSlug=
+ * Streams message media (image/audio/document) to admin UI.
+ * Requires JWT.
+ */
+router.get('/media/:messageId', requireJwt, async (req, res, next) => {
+  try {
+    const parsedMessageId = Number(req.params.messageId);
+    if (!Number.isInteger(parsedMessageId) || parsedMessageId <= 0) {
+      return res.status(400).json({ error: 'Invalid messageId' });
+    }
+
+    const fromQueryTenantId = typeof req.query.tenantId === 'string' ? req.query.tenantId.trim() : '';
+    const resolvedTenantId = await resolveTenantId(req, req.query.tenantSlug);
+    const tenantId = fromQueryTenantId || resolvedTenantId;
+    if (!tenantId) {
+      return res.status(400).json({ error: 'tenantId or tenantSlug is required' });
+    }
+
+    const prisma = getPrismaClient();
+    if (!prisma) {
+      return res.status(503).json({ error: 'Database unavailable' });
+    }
+
+    const mensaje = await prisma.mensaje.findFirst({
+      where: {
+        id: parsedMessageId,
+        tenantId,
+      },
+      select: {
+        id: true,
+        tipo: true,
+        contenido: true,
+      },
+    });
+
+    if (!mensaje) {
+      return res.status(404).json({ error: 'Message not found' });
+    }
+
+    if (!['image', 'audio', 'document'].includes(mensaje.tipo)) {
+      return res.status(400).json({ error: `Message type ${mensaje.tipo} has no media` });
+    }
+
+    const mediaPayload = _extractMediaFromContenido(mensaje.tipo, mensaje.contenido);
+    if (!mediaPayload) {
+      return res.status(404).json({ error: 'Media metadata not found in message' });
+    }
+
+    const creds = await db.getWaCredentials(tenantId);
+    if (!creds?.accessToken) {
+      return res.status(422).json({ error: 'WhatsApp access token not configured for tenant' });
+    }
+
+    let mediaUrl = String(mediaPayload.link ?? '').trim();
+    let contentType = String(mediaPayload.mime_type ?? '').trim();
+
+    if (!mediaUrl) {
+      const mediaId = String(mediaPayload.id ?? '').trim();
+      if (!mediaId) {
+        return res.status(404).json({ error: 'Media id not available for this message' });
+      }
+      const meta = await wa.getMediaMetadata(mediaId, creds.accessToken);
+      mediaUrl = meta.url;
+      if (!contentType) contentType = meta.mimeType || contentType;
+    }
+
+    const file = await wa.downloadMediaBuffer(mediaUrl, creds.accessToken);
+    res.setHeader('Content-Type', contentType || file.contentType || 'application/octet-stream');
+    res.setHeader('Cache-Control', 'private, max-age=300');
+    return res.status(200).send(file.buffer);
+  } catch (err) {
+    const status = Number(err?.status) || 502;
+    if (status >= 400 && status < 500) {
+      return res.status(status).json({ error: err.message || 'Media unavailable' });
+    }
+    return next(err);
   }
 });
 

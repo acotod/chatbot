@@ -452,6 +452,12 @@ export const whatsappApi = {
     apiClient.get("/whatsapp/mensajes", {
       params: { page: 1, limit: 100, ...params },
     }),
+  /** Download message media as blob (image/audio/document) */
+  getMediaBlob: (messageId: number, params: { tenantId?: string; tenantSlug?: string }) =>
+    apiClient.get(`/whatsapp/media/${messageId}`, {
+      params,
+      responseType: "blob",
+    }),
   /** Send an outbound text message */
   send: (tenantId: string, to: string, text: string) =>
     apiClient.post("/whatsapp/send", { tenantId, to, text }),

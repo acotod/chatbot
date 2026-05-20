@@ -57,6 +57,15 @@ export interface WaStatusEvent {
   timestamp: string;
 }
 
+export interface WaMensajeActualizadoEvent {
+  id: number;
+  userId: number | null;
+  tipo?: string;
+  contenido?: Record<string, unknown>;
+  createdAt?: string;
+  direccion?: 'entrada' | 'salida';
+}
+
 /**
  * Hook that subscribes to WhatsApp real-time events and keeps React Query
  * caches up to date without triggering a network refetch.
@@ -116,6 +125,18 @@ export function useWaSocket(tenantId: string | null) {
     [qc, tenantId]
   );
 
+  const onMensajeActualizado = useCallback(
+    (raw: unknown) => {
+      const ev = raw as WaMensajeActualizadoEvent;
+      if (!ev?.id) return;
+      // Query keys in this codebase vary by tenant slug/id, so invalidate broadly.
+      qc.invalidateQueries({ queryKey: ['mensajes'] });
+      qc.invalidateQueries({ queryKey: ['conversaciones'] });
+    },
+    [qc]
+  );
+
   useSocket(tenantId, 'nuevo_mensaje', onNuevoMensaje as EventCallback);
   useSocket(tenantId, 'wa_status', onWaStatus as EventCallback);
+  useSocket(tenantId, 'mensaje_actualizado', onMensajeActualizado as EventCallback);
 }

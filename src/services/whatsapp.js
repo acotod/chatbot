@@ -152,6 +152,108 @@ async function markAsRead(phoneNumberId, waMsgId, accessToken) {
   return _post(phoneNumberId, payload, accessToken);
 }
 
+/**
+ * Resolve a media id (image/audio/document) to a temporary Graph download URL.
+ * @param {string} mediaId
+ * @param {string} accessToken
+ */
+async function getMediaMetadata(mediaId, accessToken) {
+  const normalizedId = String(mediaId ?? '').trim();
+  if (!normalizedId) {
+    const err = new Error('mediaId is required');
+    err.status = 400;
+    throw err;
+  }
+
+  const url = `${GRAPH_URL}/${normalizedId}`;
+  let response;
+  try {
+    response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    });
+  } catch (err) {
+    logger.error('WhatsApp media metadata network error', { mediaId: normalizedId, message: err.message });
+    throw err;
+  }
+
+  const json = await response.json();
+  if (!response.ok) {
+    logger.error('WhatsApp media metadata error', { mediaId: normalizedId, status: response.status, body: json });
+    const err = new Error(json?.error?.message || 'WhatsApp media metadata error');
+    err.status = response.status;
+    err.waError = json?.error;
+    throw err;
+  }
+
+  return {
+    url: json?.url ? String(json.url) : '',
+    mimeType: json?.mime_type ? String(json.mime_type) : '',
+    sha256: json?.sha256 ? String(json.sha256) : '',
+    fileSize: Number(json?.file_size ?? 0) || null,
+    id: normalizedId,
+  };
+}
+
+/**
+ * Download media content from a Graph temporary media URL.
+ * @param {string} mediaUrl
+ * @param {string} accessToken
+ */
+async function downloadMediaBuffer(mediaUrl, accessToken) {
+  const url = String(mediaUrl ?? '').trim();
+  if (!url) {
+    const err = new Error('mediaUrl is required');
+    err.status = 400;
+    throw err;
+  }
+
+  let response;
+  try {
+    response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    });
+  } catch (err) {
+    logger.error('WhatsApp media download network error', { message: err.message });
+    throw err;
+  }
+
+  if (!response.ok) {
+    const text = await response.text().catch(() => '');
+    logger.error('WhatsApp media download error', { status: response.status, body: text.slice(0, 500) });
+    const err = new Error('WhatsApp media download error');
+    err.status = response.status;
+    throw err;
+  }
+
+  const contentType = response.headers.get('content-type') || 'application/octet-stream';
+  const arrayBuffer = await response.arrayBuffer();
+
+  return {
+    buffer: Buffer.from(arrayBuffer),
+    contentType,
+  };
+}
+
+/**
+ * Resolve media metadata and download media in one call.
+ * @param {string} mediaId
+ * @param {string} accessToken
+ */
+async function downloadMediaById(mediaId, accessToken) {
+  const meta = await getMediaMetadata(mediaId, accessToken);
+  const file = await downloadMediaBuffer(meta.url, accessToken);
+  return {
+    ...file,
+    ...meta,
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Private helpers
 // ---------------------------------------------------------------------------
@@ -186,4 +288,13 @@ async function _post(phoneNumberId, payload, accessToken) {
   return json;
 }
 
-module.exports = { sendTextMessage, sendButtonMessage, sendListMessage, sendTemplateMessage, markAsRead };
+module.exports = {
+  sendTextMessage,
+  sendButtonMessage,
+  sendListMessage,
+  sendTemplateMessage,
+  markAsRead,
+  getMediaMetadata,
+  downloadMediaBuffer,
+  downloadMediaById,
+};

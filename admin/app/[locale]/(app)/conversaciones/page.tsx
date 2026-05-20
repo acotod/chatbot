@@ -136,6 +136,109 @@ function getDisplayName(thread: Thread): string {
   return thread._contactName ?? thread.user?.phone ?? `Usuario ${thread.userId}`;
 }
 
+function getAudioTranscript(msg: Pick<Mensaje, "contenido">):
+  | { status: string; text: string | null; error: string | null }
+  | null {
+  const raw = (msg.contenido as Record<string, unknown>)?.audioTranscript;
+  if (!raw || typeof raw !== "object") return null;
+  const obj = raw as Record<string, unknown>;
+  return {
+    status: String(obj.status ?? "").trim() || "unknown",
+    text: typeof obj.text === "string" ? obj.text.trim() || null : null,
+    error: typeof obj.error === "string" ? obj.error.trim() || null : null,
+  };
+}
+
+function MessageMediaContent({
+  msg,
+  tenantId,
+  tenantSlug,
+}: {
+  msg: Mensaje;
+  tenantId: string | null;
+  tenantSlug: string | null;
+}) {
+  const [blobUrl, setBlobUrl] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const isMedia = msg.tipo === "image" || msg.tipo === "audio" || msg.tipo === "document";
+  const transcript = msg.tipo === "audio" ? getAudioTranscript(msg) : null;
+
+  useEffect(() => {
+    if (!isMedia || (!tenantId && !tenantSlug)) {
+      setBlobUrl(null);
+      setLoading(false);
+      setError(null);
+      return;
+    }
+
+    let cancelled = false;
+    let localUrl: string | null = null;
+
+    (async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const response = await whatsappApi.getMediaBlob(msg.id, {
+          tenantId: tenantId ?? undefined,
+          tenantSlug: tenantSlug ?? undefined,
+        });
+        localUrl = URL.createObjectURL(response.data as Blob);
+        if (!cancelled) {
+          setBlobUrl(localUrl);
+        }
+      } catch {
+        if (!cancelled) setError("media_unavailable");
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      if (localUrl) URL.revokeObjectURL(localUrl);
+    };
+  }, [isMedia, msg.id, tenantId, tenantSlug]);
+
+  if (msg.tipo === "image") {
+    if (loading) return <p className="text-xs text-[#5B6670]">Cargando imagen...</p>;
+    if (error || !blobUrl) return <p className="text-xs text-[#5B6670]">Imagen no disponible</p>;
+    return <img src={blobUrl} alt="WhatsApp media" className="max-h-72 rounded-xl border border-[#00BFAE]/20 object-contain" />;
+  }
+
+  if (msg.tipo === "audio") {
+    return (
+      <div className="space-y-1.5">
+        {loading && <p className="text-xs text-[#5B6670]">Cargando audio...</p>}
+        {!loading && blobUrl && <audio controls src={blobUrl} className="max-w-full" preload="metadata" />}
+        {!loading && !blobUrl && <p className="text-xs text-[#5B6670]">Audio no disponible</p>}
+        {transcript?.status === "processing" && (
+          <p className="text-xs text-[#5B6670]">Transcribiendo audio...</p>
+        )}
+        {transcript?.text && (
+          <p className="text-xs text-[#0D2B3E] whitespace-pre-wrap">{transcript.text}</p>
+        )}
+        {transcript?.status === "failed" && (
+          <p className="text-xs text-[#5B6670]">No se pudo transcribir este audio</p>
+        )}
+      </div>
+    );
+  }
+
+  if (msg.tipo === "document") {
+    if (loading) return <p className="text-xs text-[#5B6670]">Cargando documento...</p>;
+    if (error || !blobUrl) return <p className="text-xs text-[#5B6670]">Documento no disponible</p>;
+    return (
+      <a href={blobUrl} target="_blank" rel="noreferrer" className="text-xs text-[#00BFAE] hover:underline">
+        Abrir documento
+      </a>
+    );
+  }
+
+  return <p className="whitespace-pre-wrap">{extractText(msg)}</p>;
+}
+
 // ── Socket indicator ──────────────────────────────────────────────────────────
 
 function SocketIndicator({ tenantId }: { tenantId: string | null }) {
@@ -701,7 +804,11 @@ export default function ConversacionesPage() {
                         : "bg-[#F4F7F9]/72 text-[#0D2B3E] rounded-tl-sm border border-[#00BFAE]/18"
                     )}
                   >
-                    <p className="whitespace-pre-wrap">{extractText(msg)}</p>
+                    <MessageMediaContent
+                      msg={msg}
+                      tenantId={tenantId}
+                      tenantSlug={effectiveTenantSlug ?? null}
+                    />
                     <p className={cn("text-xs mt-1", isOutbound ? "text-[#065E67]" : "text-[#5B6670]")}>
                       {new Date(msg.createdAt).toLocaleTimeString("es", { hour: "2-digit", minute: "2-digit" })}
                     </p>
