@@ -7,7 +7,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
-const INACTIVITY_TIMEOUT_MS = 3 * 60 * 1000;
+const INACTIVITY_TIMEOUT_MS = 60 * 60 * 1000;
 const INACTIVITY_CHECK_INTERVAL_MS = 5000;
 
 function stripLocalePrefix(pathname: string) {
