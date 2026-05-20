@@ -288,7 +288,7 @@ export function Sidebar() {
   return (
     <aside className="zentra-surface w-64 flex flex-col h-screen sticky top-0">
       {/* Logo */}
-      <div className="h-16 flex items-center px-6 border-b border-[#39E6D2]/18">
+      <div className="h-16 flex items-center px-6 border-b border-[#E7EEF2]">
         <img
           src="/branding/zentra-bot-logo.svg"
           alt="Zentra Bot"
@@ -298,29 +298,29 @@ export function Sidebar() {
 
       {/* Tenant selector — only visible to superAdmin */}
       {superAdmin && !isAgentSession && (
-        <div className="px-3 py-2 border-b border-[#39E6D2]/12" ref={dropdownRef}>
+        <div className="px-3 py-2 border-b border-[#E7EEF2]" ref={dropdownRef}>
           <button
             onClick={() => setDropdownOpen((o) => !o)}
-            className="w-full flex items-center justify-between gap-2 px-3 py-2 rounded-lg bg-[#0D2B3E]/58 hover:bg-[#0D2B3E]/78 text-sm text-[#EAFBFF] transition border border-[#39E6D2]/16"
+            className="w-full flex items-center justify-between gap-2 px-3 py-2 rounded-lg bg-[#FFFFFF] hover:bg-[#F4F7F9] text-sm text-[#0D2B3E] transition border border-[#D9E5EB]"
           >
             <span className="flex items-center gap-2 min-w-0">
-              <Building2 size={14} className="text-[#39E6D2] shrink-0" />
+              <Building2 size={14} className="text-[#00BFAE] shrink-0" />
               <span className="truncate">{tenantSlug || t("selectCompany")}</span>
             </span>
-            <ChevronDown size={14} className={cn("text-[#97B6C3] shrink-0 transition-transform", dropdownOpen && "rotate-180")} />
+            <ChevronDown size={14} className={cn("text-[#5B6670] shrink-0 transition-transform", dropdownOpen && "rotate-180")} />
           </button>
           {dropdownOpen && (
-            <div className="mt-1 bg-[#0D2B3E]/95 border border-[#39E6D2]/20 rounded-lg shadow-md overflow-hidden z-50 backdrop-blur-xl">
+            <div className="mt-1 bg-[#FFFFFF] border border-[#D9E5EB] rounded-lg shadow-md overflow-hidden z-50">
               {tenants.length === 0 && (
-                <p className="px-3 py-2 text-xs text-[#97B6C3]">{t("noCompanies")}</p>
+                <p className="px-3 py-2 text-xs text-[#5B6670]">{t("noCompanies")}</p>
               )}
               {tenants.map((t) => (
                 <button
                   key={t.slug}
                   onClick={() => { setTenantSlug(t.slug); setDropdownOpen(false); }}
                   className={cn(
-                    "w-full text-left px-3 py-2 text-sm hover:bg-[#00BFAE]/20 transition",
-                    tenantSlug === t.slug ? "text-[#39E6D2] font-semibold bg-[#00BFAE]/18" : "text-[#EAFBFF]"
+                    "w-full text-left px-3 py-2 text-sm hover:bg-[#EEF9F7] transition",
+                    tenantSlug === t.slug ? "text-[#0D2B3E] font-semibold bg-[#EEF9F7]" : "text-[#5B6670]"
                   )}
                 >
                   {normalizeTenantName((t as { nombre?: unknown }).nombre, t.slug)}
@@ -340,14 +340,14 @@ export function Sidebar() {
               className={cn(
                 "flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-medium transition-all",
                 active
-                  ? "bg-[#00BFAE]/20 text-[#39E6D2] zentra-glow"
-                  : "text-[#9FC0CC] hover:bg-[#0D2B3E]/72 hover:text-[#EAFBFF]"
+                  ? "bg-[#EEF9F7] text-[#0D2B3E]"
+                  : "text-[#5B6670] hover:bg-[#F4F7F9] hover:text-[#0D2B3E]"
               )}
             >
               <item.icon
                 className={cn(
                   "w-4.5 h-4.5",
-                  active ? "text-[#39E6D2]" : "text-[#6F97A8]"
+                  active ? "text-[#00BFAE]" : "text-[#7A8792]"
                 )}
                 size={18}
               />
@@ -363,13 +363,13 @@ export function Sidebar() {
       </nav>
 
       {/* Bottom */}
-      <div className="px-3 py-4 border-t border-[#39E6D2]/12 space-y-1">
+      <div className="px-3 py-4 border-t border-[#E7EEF2] space-y-1">
         <button
           type="button"
           onClick={handleLogout}
-          className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-[#9FC0CC] hover:bg-red-500/18 hover:text-red-300 transition"
+          className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-[#5B6670] hover:bg-red-50 hover:text-red-600 transition"
         >
-          <LogOut size={18} className="text-[#7FA2AF]" />
+          <LogOut size={18} className="text-[#7A8792]" />
           {t("header.logout")}
         </button>
       </div>

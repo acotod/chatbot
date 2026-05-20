@@ -261,9 +261,9 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="relative min-h-screen overflow-hidden bg-gradient-to-br from-[#0A0F14] via-[#0D2B3E] to-[#0A0F14] flex items-center justify-center p-4">
-      <div className="pointer-events-none absolute -top-24 -left-24 h-64 w-64 rounded-full bg-[#00BFAE]/20 blur-3xl" />
-      <div className="pointer-events-none absolute -bottom-24 -right-24 h-64 w-64 rounded-full bg-[#39E6D2]/14 blur-3xl" />
+    <div className="relative min-h-screen overflow-hidden bg-[#FFFFFF] flex items-center justify-center p-4">
+      <div className="pointer-events-none absolute -top-24 -left-24 h-64 w-64 rounded-full bg-[#00BFAE]/10 blur-3xl" />
+      <div className="pointer-events-none absolute -bottom-24 -right-24 h-64 w-64 rounded-full bg-[#39E6D2]/8 blur-3xl" />
 
       <div className="relative zentra-surface rounded-3xl w-full max-w-md p-8 sm:p-9">
         {/* Logo */}
@@ -274,32 +274,32 @@ export default function LoginPage() {
             className="h-10 w-auto"
           />
           <div>
-            <p className="text-xs text-[#97B6C3]">{copy.logoSubtitle}</p>
+            <p className="text-xs text-[#5B6670]">{copy.logoSubtitle}</p>
           </div>
         </div>
 
-        <h2 className="text-3xl font-semibold tracking-tight text-[#EAFBFF] mb-2">
+        <h2 className="text-3xl font-semibold tracking-tight text-[#0D2B3E] mb-2">
           {copy.title}
         </h2>
-        <p className="text-[#B6D0D9] text-base mb-7">
+        <p className="text-[#5B6670] text-base mb-7">
           {copy.subtitle}
         </p>
 
         <form onSubmit={handleSubmit} className="space-y-4.5">
           <div className="flex flex-col gap-1.5">
-            <label className="text-sm font-medium text-[#CBE7EF]">{copy.emailLabel}</label>
+            <label className="text-sm font-medium text-[#0D2B3E]">{copy.emailLabel}</label>
             <input
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder={copy.emailPlaceholder}
               required
-              className="px-4 py-3 rounded-xl border border-[#39E6D2]/20 bg-[#0D2B3E]/72 text-[#EAFBFF] placeholder:text-[#97B6C3] text-sm focus:outline-none focus:ring-2 focus:ring-[#00BFAE]/30 focus:border-[#39E6D2] transition-all"
+              className="px-4 py-3 rounded-xl border border-[#D9E5EB] bg-[#FFFFFF] text-[#0D2B3E] placeholder:text-[#5B6670] text-sm focus:outline-none focus:ring-2 focus:ring-[#00BFAE]/25 focus:border-[#00BFAE] transition-all"
             />
           </div>
 
           <div className="flex flex-col gap-1.5">
-            <label className="text-sm font-medium text-[#CBE7EF]">
+            <label className="text-sm font-medium text-[#0D2B3E]">
               {copy.passwordLabel}
             </label>
             <input
@@ -308,7 +308,7 @@ export default function LoginPage() {
               onChange={(e) => setPassword(e.target.value)}
               placeholder="••••••••"
               required
-              className="px-4 py-3 rounded-xl border border-[#39E6D2]/20 bg-[#0D2B3E]/72 text-[#EAFBFF] placeholder:text-[#97B6C3] text-sm focus:outline-none focus:ring-2 focus:ring-[#00BFAE]/30 focus:border-[#39E6D2] transition-all"
+              className="px-4 py-3 rounded-xl border border-[#D9E5EB] bg-[#FFFFFF] text-[#0D2B3E] placeholder:text-[#5B6670] text-sm focus:outline-none focus:ring-2 focus:ring-[#00BFAE]/25 focus:border-[#00BFAE] transition-all"
             />
           </div>
 
@@ -328,10 +328,10 @@ export default function LoginPage() {
 
           <div className="relative py-1">
             <div className="absolute inset-0 flex items-center">
-              <div className="w-full border-t border-[#39E6D2]/18" />
+              <div className="w-full border-t border-[#E7EEF2]" />
             </div>
             <div className="relative flex justify-center text-xs uppercase">
-              <span className="bg-[#0D2B3E] px-2 text-[#97B6C3]">{copy.or}</span>
+              <span className="bg-[#FFFFFF] px-2 text-[#5B6670]">{copy.or}</span>
             </div>
           </div>
 
@@ -345,7 +345,7 @@ export default function LoginPage() {
           </button>
         </form>
 
-        <p className="mt-7 text-center text-xs text-[#97B6C3]">
+        <p className="mt-7 text-center text-xs text-[#5B6670]">
           {copy.footer}
         </p>
       </div>

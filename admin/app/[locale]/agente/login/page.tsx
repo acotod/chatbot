@@ -155,9 +155,9 @@ function AgentLoginScreen({ reason, nextPath }: AgentLoginScreenProps) {
   // Show tenant selector
   if (tenantOptions) {
     return (
-      <div className="relative min-h-screen overflow-hidden bg-gradient-to-br from-[#0A0F14] via-[#0D2B3E] to-[#0A0F14] flex items-center justify-center p-4">
-        <div className="pointer-events-none absolute -top-24 -left-24 h-64 w-64 rounded-full bg-[#00BFAE]/20 blur-3xl" />
-        <div className="pointer-events-none absolute -bottom-24 -right-24 h-64 w-64 rounded-full bg-[#39E6D2]/14 blur-3xl" />
+      <div className="relative min-h-screen overflow-hidden bg-[#FFFFFF] flex items-center justify-center p-4">
+        <div className="pointer-events-none absolute -top-24 -left-24 h-64 w-64 rounded-full bg-[#00BFAE]/10 blur-3xl" />
+        <div className="pointer-events-none absolute -bottom-24 -right-24 h-64 w-64 rounded-full bg-[#39E6D2]/8 blur-3xl" />
 
         <div className="relative zentra-surface rounded-3xl w-full max-w-md p-8 sm:p-9">
           <div className="flex items-center gap-3 mb-9">
@@ -167,15 +167,15 @@ function AgentLoginScreen({ reason, nextPath }: AgentLoginScreenProps) {
               className="h-10 w-auto"
             />
             <div>
-              <h1 className="text-xl font-bold tracking-tight text-[#EAFBFF]">{t("title")}</h1>
-              <p className="text-xs text-[#97B6C3]">{t("subtitle")}</p>
+              <h1 className="text-xl font-bold tracking-tight text-[#0D2B3E]">{t("title")}</h1>
+              <p className="text-xs text-[#5B6670]">{t("subtitle")}</p>
             </div>
           </div>
 
-          <h2 className="text-3xl font-semibold tracking-tight text-[#EAFBFF] mb-2">
+          <h2 className="text-3xl font-semibold tracking-tight text-[#0D2B3E] mb-2">
             {t("tenantSelectHeading")}
           </h2>
-          <p className="text-[#B6D0D9] text-base mb-7">
+          <p className="text-[#5B6670] text-base mb-7">
             {t("tenantSelectDescription")}
           </p>
 
@@ -197,10 +197,10 @@ function AgentLoginScreen({ reason, nextPath }: AgentLoginScreenProps) {
                 key={tenant.tenantSlug}
                 onClick={() => handleTenantSelection(tenant.tenantSlug)}
                 disabled={loading}
-                className="w-full px-4 py-4 bg-[#0D2B3E]/70 hover:bg-[#0D2B3E]/90 border border-[#39E6D2]/22 rounded-xl transition-all text-left disabled:opacity-50 disabled:cursor-not-allowed"
+                className="w-full px-4 py-4 bg-[#FFFFFF] hover:bg-[#F4F7F9] border border-[#D9E5EB] rounded-xl transition-all text-left disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                <div className="font-semibold text-[#EAFBFF]">{tenant.tenantNombre}</div>
-                <div className="text-xs text-[#97B6C3] mt-1">{tenant.tenantSlug}</div>
+                <div className="font-semibold text-[#0D2B3E]">{tenant.tenantNombre}</div>
+                <div className="text-xs text-[#5B6670] mt-1">{tenant.tenantSlug}</div>
               </button>
             ))}
           </div>
@@ -212,7 +212,7 @@ function AgentLoginScreen({ reason, nextPath }: AgentLoginScreenProps) {
               setPassword("");
               setError("");
             }}
-            className="w-full mt-6 py-2 text-sm text-[#39E6D2] hover:text-[#6FF5E8] transition font-medium"
+            className="w-full mt-6 py-2 text-sm text-[#00BFAE] hover:text-[#0D2B3E] transition font-medium"
           >
             {t("backToLogin")}
           </button>
@@ -222,9 +222,9 @@ function AgentLoginScreen({ reason, nextPath }: AgentLoginScreenProps) {
   }
 
   return (
-    <div className="relative min-h-screen overflow-hidden bg-gradient-to-br from-[#0A0F14] via-[#0D2B3E] to-[#0A0F14] flex items-center justify-center p-4">
-      <div className="pointer-events-none absolute -top-24 -left-24 h-64 w-64 rounded-full bg-[#00BFAE]/20 blur-3xl" />
-      <div className="pointer-events-none absolute -bottom-24 -right-24 h-64 w-64 rounded-full bg-[#39E6D2]/14 blur-3xl" />
+    <div className="relative min-h-screen overflow-hidden bg-[#FFFFFF] flex items-center justify-center p-4">
+      <div className="pointer-events-none absolute -top-24 -left-24 h-64 w-64 rounded-full bg-[#00BFAE]/10 blur-3xl" />
+      <div className="pointer-events-none absolute -bottom-24 -right-24 h-64 w-64 rounded-full bg-[#39E6D2]/8 blur-3xl" />
 
       <div className="relative zentra-surface rounded-3xl w-full max-w-md p-8 sm:p-9">
         <div className="flex items-center gap-3 mb-9">
@@ -234,15 +234,15 @@ function AgentLoginScreen({ reason, nextPath }: AgentLoginScreenProps) {
             className="h-10 w-auto"
           />
           <div>
-            <h1 className="text-xl font-bold tracking-tight text-[#EAFBFF]">{t("title")}</h1>
-            <p className="text-xs text-[#97B6C3]">{t("subtitle")}</p>
+            <h1 className="text-xl font-bold tracking-tight text-[#0D2B3E]">{t("title")}</h1>
+            <p className="text-xs text-[#5B6670]">{t("subtitle")}</p>
           </div>
         </div>
 
-        <h2 className="text-3xl font-semibold tracking-tight text-[#EAFBFF] mb-2">
+        <h2 className="text-3xl font-semibold tracking-tight text-[#0D2B3E] mb-2">
           {t("heading")}
         </h2>
-        <p className="text-[#B6D0D9] text-base mb-7">
+        <p className="text-[#5B6670] text-base mb-7">
           {t("description")}
         </p>
 
@@ -254,26 +254,26 @@ function AgentLoginScreen({ reason, nextPath }: AgentLoginScreenProps) {
 
         <form onSubmit={handleSubmit} className="space-y-4.5">
           <div className="flex flex-col gap-1.5">
-            <label className="text-sm font-medium text-[#CBE7EF]">{t("emailLabel")}</label>
+            <label className="text-sm font-medium text-[#0D2B3E]">{t("emailLabel")}</label>
             <input
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder={t("emailPlaceholder")}
               required
-              className="px-4 py-3 rounded-xl border border-[#39E6D2]/20 bg-[#0D2B3E]/72 text-[#EAFBFF] placeholder:text-[#97B6C3] text-sm focus:outline-none focus:ring-2 focus:ring-[#00BFAE]/30 focus:border-[#39E6D2] transition-all"
+              className="px-4 py-3 rounded-xl border border-[#D9E5EB] bg-[#FFFFFF] text-[#0D2B3E] placeholder:text-[#5B6670] text-sm focus:outline-none focus:ring-2 focus:ring-[#00BFAE]/25 focus:border-[#00BFAE] transition-all"
             />
           </div>
 
           <div className="flex flex-col gap-1.5">
-            <label className="text-sm font-medium text-[#CBE7EF]">{t("passwordLabel")}</label>
+            <label className="text-sm font-medium text-[#0D2B3E]">{t("passwordLabel")}</label>
             <input
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder={t("passwordPlaceholder")}
               required
-              className="px-4 py-3 rounded-xl border border-[#39E6D2]/20 bg-[#0D2B3E]/72 text-[#EAFBFF] placeholder:text-[#97B6C3] text-sm focus:outline-none focus:ring-2 focus:ring-[#00BFAE]/30 focus:border-[#39E6D2] transition-all"
+              className="px-4 py-3 rounded-xl border border-[#D9E5EB] bg-[#FFFFFF] text-[#0D2B3E] placeholder:text-[#5B6670] text-sm focus:outline-none focus:ring-2 focus:ring-[#00BFAE]/25 focus:border-[#00BFAE] transition-all"
             />
           </div>
 
@@ -322,7 +322,7 @@ function AgentLoginScreen({ reason, nextPath }: AgentLoginScreenProps) {
             type="button"
             onClick={handleForgotPassword}
             disabled={forgotLoading}
-            className="w-full text-sm font-medium text-[#39E6D2] hover:text-[#6FF5E8] transition disabled:opacity-50"
+            className="w-full text-sm font-medium text-[#00BFAE] hover:text-[#0D2B3E] transition disabled:opacity-50"
           >
             {forgotLoading ? t("forgotPasswordLoading") : t("forgotPassword")}
           </button>

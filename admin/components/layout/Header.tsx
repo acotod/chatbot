@@ -161,7 +161,7 @@ export function Header() {
 
   return (
     <header className="zentra-surface h-16 flex items-center justify-between px-6 shrink-0">
-      <h1 className="text-[#EAFBFF] font-semibold tracking-wide text-lg">{title}</h1>
+      <h1 className="text-[#0D2B3E] font-semibold tracking-wide text-lg">{title}</h1>
 
       <div className="flex items-center gap-3">
         {/* Tenant selector */}
@@ -170,7 +170,7 @@ export function Header() {
           <select
             value={tenantSlug}
             onChange={(e) => setTenantSlug(e.target.value)}
-            className="px-3 py-2 rounded-xl bg-[#0D2B3E]/70 border border-[#39E6D2]/25 text-sm text-[#EAFBFF] focus:outline-none focus:ring-2 focus:ring-[#00BFAE]/35 min-w-44"
+            className="px-3 py-2 rounded-xl bg-[#FFFFFF] border border-[#D9E5EB] text-sm text-[#0D2B3E] focus:outline-none focus:ring-2 focus:ring-[#00BFAE]/25 min-w-44"
           >
             {tenants.length === 0 && <option value="">{t("noCompanies")}</option>}
             {tenants.map((tenant) => (
@@ -185,10 +185,10 @@ export function Header() {
         {/* Search */}
         {!isAgentSession && (
         <div className="relative hidden md:block">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#97B6C3]" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#5B6670]" />
           <input
             placeholder={t("buttons.search")}
-            className="pl-9 pr-4 py-2 rounded-xl bg-[#0D2B3E]/65 border border-[#39E6D2]/22 text-sm text-[#EAFBFF] placeholder:text-[#97B6C3] focus:outline-none focus:ring-2 focus:ring-[#00BFAE]/35 w-56"
+            className="pl-9 pr-4 py-2 rounded-xl bg-[#FFFFFF] border border-[#D9E5EB] text-sm text-[#0D2B3E] placeholder:text-[#5B6670] focus:outline-none focus:ring-2 focus:ring-[#00BFAE]/25 w-56"
           />
         </div>
         )}
@@ -202,9 +202,9 @@ export function Header() {
             type="button"
             onClick={() => setNotificationsOpen((v) => !v)}
             title={t("header.notifications")}
-            className="relative p-2 rounded-xl bg-[#0D2B3E]/60 border border-[#39E6D2]/20 hover:bg-[#0D2B3E]/85 zentra-glow"
+            className="relative p-2 rounded-xl bg-[#FFFFFF] border border-[#D9E5EB] hover:bg-[#F4F7F9]"
           >
-            <Bell className="w-5 h-5 text-[#39E6D2]" />
+            <Bell className="w-5 h-5 text-[#00BFAE]" />
             {unreadCount > 0 && (
               <span className="absolute -top-1 -right-1 min-w-5 h-5 px-1 rounded-full bg-red-600 text-white text-[10px] font-semibold flex items-center justify-center">
                 {unreadCount > 99 ? "99+" : unreadCount}
@@ -214,17 +214,17 @@ export function Header() {
           </button>
 
           {notificationsOpen && (
-            <div className="absolute right-0 mt-2 w-96 max-w-[calc(100vw-2rem)] rounded-2xl border border-[#39E6D2]/24 bg-[#0D2B3E]/94 shadow-2xl z-40 overflow-hidden backdrop-blur-xl">
-              <div className="px-4 py-3 border-b border-[#39E6D2]/18 flex items-center justify-between">
+            <div className="absolute right-0 mt-2 w-96 max-w-[calc(100vw-2rem)] rounded-2xl border border-[#D9E5EB] bg-[#FFFFFF] shadow-xl z-40 overflow-hidden">
+              <div className="px-4 py-3 border-b border-[#E7EEF2] flex items-center justify-between">
                 <div>
-                  <p className="text-sm font-semibold text-[#EAFBFF]">{t("header.notifications")}</p>
-                  <p className="text-xs text-[#97B6C3]">{t("header.unreadCount", { count: unreadCount })}</p>
+                  <p className="text-sm font-semibold text-[#0D2B3E]">{t("header.notifications")}</p>
+                  <p className="text-xs text-[#5B6670]">{t("header.unreadCount", { count: unreadCount })}</p>
                 </div>
                 <button
                   type="button"
                   onClick={() => markAllAsRead()}
                   disabled={isMarkingAll || unreadCount === 0}
-                  className="text-xs text-[#39E6D2] disabled:text-[#5A7582]"
+                  className="text-xs text-[#00BFAE] disabled:text-[#9AA7B1]"
                 >
                   {t("header.markAll")}
                 </button>
@@ -232,23 +232,23 @@ export function Header() {
 
               <div className="max-h-96 overflow-y-auto">
                 {isLoadingNotifications && (
-                  <div className="px-4 py-6 text-sm text-[#97B6C3]">{t("header.loadingNotifications")}</div>
+                  <div className="px-4 py-6 text-sm text-[#5B6670]">{t("header.loadingNotifications")}</div>
                 )}
 
                 {!isLoadingNotifications && notifications.length === 0 && (
-                  <div className="px-4 py-6 text-sm text-[#97B6C3]">{t("header.noNotifications")}</div>
+                  <div className="px-4 py-6 text-sm text-[#5B6670]">{t("header.noNotifications")}</div>
                 )}
 
                 {!isLoadingNotifications && notifications.map((item) => (
                   <div
                     key={item.id}
-                    className={`px-4 py-3 border-b border-[#39E6D2]/12 ${item.readAt ? "bg-transparent" : "bg-[#00BFAE]/10"}`}
+                    className={`px-4 py-3 border-b border-[#EDF2F5] ${item.readAt ? "bg-transparent" : "bg-[#EEF9F7]"}`}
                   >
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
-                        <p className="text-sm font-medium text-[#EAFBFF] truncate">{item.title}</p>
-                        <p className="text-xs text-[#9DC2CE] mt-1 break-words">{item.message}</p>
-                        <p className="text-[11px] text-[#7292A1] mt-1">
+                        <p className="text-sm font-medium text-[#0D2B3E] truncate">{item.title}</p>
+                        <p className="text-xs text-[#5B6670] mt-1 break-words">{item.message}</p>
+                        <p className="text-[11px] text-[#7A8792] mt-1">
                           {new Date(item.createdAt).toLocaleString(locale === "en" ? "en-US" : "es-CR")}
                         </p>
                       </div>
@@ -256,7 +256,7 @@ export function Header() {
                         <button
                           type="button"
                           onClick={() => markAsRead(item.id)}
-                          className="text-xs text-[#39E6D2] whitespace-nowrap"
+                          className="text-xs text-[#00BFAE] whitespace-nowrap"
                         >
                           {t("header.markRead")}
                         </button>
@@ -271,23 +271,23 @@ export function Header() {
         )}
 
         {/* Tenant identity */}
-        <div className="flex items-center gap-2 pl-3 border-l border-[#39E6D2]/20">
+        <div className="flex items-center gap-2 pl-3 border-l border-[#E7EEF2]">
           {tenantLogoSrc ? (
             <img
               src={tenantLogoSrc}
               alt={`Logo ${tenantDisplayName}`}
-              className="w-8 h-8 rounded-full object-cover border border-[#39E6D2]/28"
+              className="w-8 h-8 rounded-full object-cover border border-[#D9E5EB]"
             />
           ) : (
             <img
               src="/branding/zentra-bot-logo.svg"
               alt="Zentra Bot"
-              className="h-8 w-auto max-w-24 rounded-md border border-[#39E6D2]/22 bg-[#0D2B3E]/50 px-1"
+              className="h-8 w-auto max-w-24 rounded-md border border-[#D9E5EB] bg-[#FFFFFF] px-1"
             />
           )}
           <div className="hidden md:flex flex-col leading-tight">
-            <span className="text-sm text-[#EAFBFF]">{tenantDisplayName}</span>
-            <span className="text-xs text-[#97B6C3]">{identityEmail}</span>
+            <span className="text-sm text-[#0D2B3E]">{tenantDisplayName}</span>
+            <span className="text-xs text-[#5B6670]">{identityEmail}</span>
           </div>
         </div>
       </div>

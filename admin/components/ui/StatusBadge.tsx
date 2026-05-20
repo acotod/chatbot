@@ -9,13 +9,13 @@ interface BadgeProps {
 }
 
 const STATUS_STYLES: Record<string, string> = {
-  pendiente: "bg-[#F6C244]/16 text-[#F6D57D] border border-[#F6C244]/22",
-  atendida: "bg-[#00BFAE]/16 text-[#39E6D2] border border-[#39E6D2]/22",
-  urgente: "bg-red-500/15 text-red-300 border border-red-400/28",
-  cancelada: "bg-[#0D2B3E]/72 text-[#97B6C3] border border-[#39E6D2]/14",
-  confirmado: "bg-[#00BFAE]/16 text-[#39E6D2] border border-[#39E6D2]/22",
-  activo: "bg-[#00BFAE]/18 text-[#39E6D2] border border-[#39E6D2]/24",
-  inactivo: "bg-[#0D2B3E]/72 text-[#97B6C3] border border-[#39E6D2]/14",
+  pendiente: "bg-amber-50 text-amber-700 border border-amber-200",
+  atendida: "bg-[#EEF9F7] text-[#0D2B3E] border border-[#BFEDE7]",
+  urgente: "bg-red-50 text-red-700 border border-red-200",
+  cancelada: "bg-[#F4F7F9] text-[#5B6670] border border-[#D9E5EB]",
+  confirmado: "bg-[#EEF9F7] text-[#0D2B3E] border border-[#BFEDE7]",
+  activo: "bg-[#EEF9F7] text-[#0D2B3E] border border-[#BFEDE7]",
+  inactivo: "bg-[#F4F7F9] text-[#5B6670] border border-[#D9E5EB]",
 };
 
 const STATUS_LABELS: Record<string, string> = {
@@ -49,7 +49,7 @@ const STATUS_LABELS_EN: Record<string, string> = {
 
 export function StatusBadge({ status, className }: BadgeProps) {
   const locale = useCurrentLocale();
-  const style = STATUS_STYLES[status] ?? "bg-[#0D2B3E]/72 text-[#97B6C3] border border-[#39E6D2]/14";
+  const style = STATUS_STYLES[status] ?? "bg-[#F4F7F9] text-[#5B6670] border border-[#D9E5EB]";
   const label = (locale === "en" ? STATUS_LABELS_EN[status] : STATUS_LABELS[status]) ?? status;
 
   return (
