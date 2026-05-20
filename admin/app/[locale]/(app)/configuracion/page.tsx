@@ -74,6 +74,26 @@ interface SolicitudesTenantConfig {
   webhooksEnabled: boolean;
 }
 
+type AudioTranscriptionProvider = "openai" | "custom";
+
+interface AudioTranscriptionTenantConfig {
+  enabled: boolean;
+  provider: AudioTranscriptionProvider;
+  useForBotInput: boolean;
+  model: string;
+  languageHint: string;
+  timeoutMs: number;
+}
+
+const DEFAULT_AUDIO_TRANSCRIPTION_CONFIG: AudioTranscriptionTenantConfig = {
+  enabled: false,
+  provider: "openai",
+  useForBotInput: false,
+  model: "gpt-4o-mini-transcribe",
+  languageHint: "",
+  timeoutMs: 30000,
+};
+
 const DEFAULT_SOLICITUDES_CONFIG: SolicitudesTenantConfig = {
   enterpriseEnabled: true,
   advancedSearchEnabled: true,
@@ -182,6 +202,10 @@ export default function ConfiguracionPage() {
   const [flowEndpointPublicKey, setFlowEndpointPublicKey] = useState("");
   const [flowEndpointKeySaved, setFlowEndpointKeySaved] = useState(false);
   const [isGeneratingKeys, setIsGeneratingKeys] = useState(false);
+  const [audioTranscriptionConfig, setAudioTranscriptionConfig] = useState<AudioTranscriptionTenantConfig>(
+    DEFAULT_AUDIO_TRANSCRIPTION_CONFIG
+  );
+  const [audioTranscriptionSaved, setAudioTranscriptionSaved] = useState(false);
   const [emailSettings, setEmailSettings] = useState({
     smtpUrl: "",
     smtpHost: "",
@@ -289,6 +313,26 @@ export default function ConfiguracionPage() {
     enabled: !!tenantSlug,
   });
   void flowEndpointPublicKeyData;
+
+  const { data: audioTranscriptionConfigData } = useQuery({
+    queryKey: ["config", tenantSlug, "wa_audio_transcription"],
+    queryFn: () =>
+      configApi.get(tenantSlug!, "wa_audio_transcription").then((r) => {
+        const raw = r?.data?.valor;
+        const cfg = (raw && typeof raw === "object") ? raw : {};
+        setAudioTranscriptionConfig({
+          enabled: Boolean(cfg.enabled),
+          provider: (cfg.provider === "custom" ? "custom" : "openai") as AudioTranscriptionProvider,
+          useForBotInput: Boolean(cfg.useForBotInput),
+          model: String(cfg.model ?? DEFAULT_AUDIO_TRANSCRIPTION_CONFIG.model),
+          languageHint: String(cfg.languageHint ?? ""),
+          timeoutMs: Number(cfg.timeoutMs ?? DEFAULT_AUDIO_TRANSCRIPTION_CONFIG.timeoutMs) || DEFAULT_AUDIO_TRANSCRIPTION_CONFIG.timeoutMs,
+        });
+        return r?.data;
+      }),
+    enabled: !!tenantSlug,
+  });
+  void audioTranscriptionConfigData;
 
   async function generateFlowKeyPair() {
     if (!tenantSlug) return;
@@ -450,6 +494,23 @@ export default function ConfiguracionPage() {
       qc.invalidateQueries({ queryKey: ["config", tenantSlug, "flow_endpoint_public_key"] });
       setFlowEndpointKeySaved(true);
       setTimeout(() => setFlowEndpointKeySaved(false), 3000);
+    },
+  });
+
+  const saveAudioTranscriptionMutation = useMutation({
+    mutationFn: () =>
+      configApi.set(tenantSlug!, "wa_audio_transcription", {
+        enabled: audioTranscriptionConfig.enabled,
+        provider: audioTranscriptionConfig.provider,
+        useForBotInput: audioTranscriptionConfig.useForBotInput,
+        model: audioTranscriptionConfig.model.trim() || DEFAULT_AUDIO_TRANSCRIPTION_CONFIG.model,
+        languageHint: audioTranscriptionConfig.languageHint.trim() || null,
+        timeoutMs: Math.min(Math.max(Number(audioTranscriptionConfig.timeoutMs) || 30000, 1000), 120000),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["config", tenantSlug, "wa_audio_transcription"] });
+      setAudioTranscriptionSaved(true);
+      setTimeout(() => setAudioTranscriptionSaved(false), 3000);
     },
   });
 
@@ -667,6 +728,7 @@ export default function ConfiguracionPage() {
           qc.invalidateQueries({ queryKey: ["config", tenantSlug, "flow_endpoint_public_key"] }),
           qc.invalidateQueries({ queryKey: ["config", tenantSlug, "wa_credentials"] }),
           qc.invalidateQueries({ queryKey: ["config", tenantSlug, "wa_app_secret"] }),
+          qc.invalidateQueries({ queryKey: ["config", tenantSlug, "wa_audio_transcription"] }),
         ]);
         return;
       }
@@ -957,6 +1019,108 @@ export default function ConfiguracionPage() {
                   {waSaved ? (
                     <><Check size={16} /> {t("whatsapp.saved")}</>
                   ) : saveWaMutation.isPending ? t("whatsapp.saving") : t("whatsapp.saveButton")}
+                </Button>
+              </div>
+            </div>
+          </ConfigSection>
+
+          <ConfigSection
+            title={t("audioTranscription.title")}
+            description={t("audioTranscription.description")}
+          >
+            <div className="space-y-4">
+              <label className="flex items-center justify-between rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm text-slate-700">
+                <span>{t("audioTranscription.enabled")}</span>
+                <input
+                  type="checkbox"
+                  checked={audioTranscriptionConfig.enabled}
+                  onChange={(e) =>
+                    setAudioTranscriptionConfig((prev) => ({ ...prev, enabled: e.target.checked }))
+                  }
+                  className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                />
+              </label>
+
+              <label className="flex items-center justify-between rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm text-slate-700">
+                <span>{t("audioTranscription.useForBotInput")}</span>
+                <input
+                  type="checkbox"
+                  checked={audioTranscriptionConfig.useForBotInput}
+                  onChange={(e) =>
+                    setAudioTranscriptionConfig((prev) => ({ ...prev, useForBotInput: e.target.checked }))
+                  }
+                  className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                />
+              </label>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-sm font-medium text-slate-700">{t("audioTranscription.provider")}</label>
+                  <select
+                    value={audioTranscriptionConfig.provider}
+                    onChange={(e) =>
+                      setAudioTranscriptionConfig((prev) => ({
+                        ...prev,
+                        provider: (e.target.value === "custom" ? "custom" : "openai") as AudioTranscriptionProvider,
+                      }))
+                    }
+                    className="px-3.5 py-2.5 rounded-xl border border-slate-200 bg-white text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 transition-all"
+                  >
+                    <option value="openai">OpenAI</option>
+                    <option value="custom">Custom</option>
+                  </select>
+                </div>
+                <Input
+                  label={t("audioTranscription.model")}
+                  value={audioTranscriptionConfig.model}
+                  onChange={(e) =>
+                    setAudioTranscriptionConfig((prev) => ({ ...prev, model: e.target.value }))
+                  }
+                  placeholder="gpt-4o-mini-transcribe"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <Input
+                  label={t("audioTranscription.languageHint")}
+                  value={audioTranscriptionConfig.languageHint}
+                  onChange={(e) =>
+                    setAudioTranscriptionConfig((prev) => ({ ...prev, languageHint: e.target.value }))
+                  }
+                  placeholder="es"
+                />
+                <Input
+                  label={t("audioTranscription.timeoutMs")}
+                  type="number"
+                  min="1000"
+                  max="120000"
+                  value={audioTranscriptionConfig.timeoutMs}
+                  onChange={(e) =>
+                    setAudioTranscriptionConfig((prev) => ({
+                      ...prev,
+                      timeoutMs: Math.min(
+                        Math.max(parseInt(e.target.value || "30000", 10) || 30000, 1000),
+                        120000
+                      ),
+                    }))
+                  }
+                />
+              </div>
+
+              <p className="text-xs text-slate-400">{t("audioTranscription.hint")}</p>
+
+              <div className="flex justify-end">
+                <Button
+                  onClick={() => saveAudioTranscriptionMutation.mutate()}
+                  disabled={saveAudioTranscriptionMutation.isPending}
+                >
+                  {audioTranscriptionSaved ? (
+                    <><Check size={16} /> {t("audioTranscription.saved")}</>
+                  ) : saveAudioTranscriptionMutation.isPending ? (
+                    t("audioTranscription.saving")
+                  ) : (
+                    t("audioTranscription.saveButton")
+                  )}
                 </Button>
               </div>
             </div>

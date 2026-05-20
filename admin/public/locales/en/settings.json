@@ -57,6 +57,20 @@
     "saving": "Saving...",
     "saved": "Saved 💙"
   },
+  "audioTranscription": {
+    "title": "Audio transcription",
+    "description": "Configure per-tenant inbound audio transcription and whether the bot should use it as input.",
+    "enabled": "Enable transcription",
+    "useForBotInput": "Use transcript as bot input",
+    "provider": "Provider",
+    "model": "Model",
+    "languageHint": "Language hint (optional)",
+    "timeoutMs": "Timeout (ms)",
+    "hint": "Provider key is read from secure tenant config or backend environment variables.",
+    "saveButton": "Save transcription",
+    "saving": "Saving...",
+    "saved": "Saved 💙"
+  },
   "setupGuide": {
     "title": "Setup assistant (for dummies)",
     "description": "Follow these steps in order to connect Meta Flows without signature errors.",
