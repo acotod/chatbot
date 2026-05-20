@@ -129,7 +129,35 @@ function extractText(msg: Pick<Mensaje, "tipo" | "contenido">): string {
     pickText(c.raw);
 
   if (direct) return direct;
+  const mediaType = inferMediaType(msg);
+  if (mediaType === "image") return "Imagen";
+  if (mediaType === "audio") return "Audio";
+  if (mediaType === "document") return "Documento";
   return `[${msg.tipo}]`;
+}
+
+function inferMediaType(msg: Pick<Mensaje, "tipo" | "contenido">): "image" | "audio" | "document" | null {
+  const normalizedTipo = String(msg.tipo ?? "").trim().toLowerCase();
+  if (normalizedTipo === "image" || normalizedTipo === "audio" || normalizedTipo === "document") {
+    return normalizedTipo;
+  }
+
+  const contenido = (msg.contenido && typeof msg.contenido === "object")
+    ? (msg.contenido as Record<string, unknown>)
+    : {};
+
+  if (contenido.image && typeof contenido.image === "object") return "image";
+  if (contenido.audio && typeof contenido.audio === "object") return "audio";
+  if (contenido.document && typeof contenido.document === "object") return "document";
+
+  const raw = (contenido.raw && typeof contenido.raw === "object")
+    ? (contenido.raw as Record<string, unknown>)
+    : null;
+  if (raw?.image && typeof raw.image === "object") return "image";
+  if (raw?.audio && typeof raw.audio === "object") return "audio";
+  if (raw?.document && typeof raw.document === "object") return "document";
+
+  return null;
 }
 
 function getDisplayName(thread: Thread): string {
@@ -162,8 +190,9 @@ function MessageMediaContent({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const isMedia = msg.tipo === "image" || msg.tipo === "audio" || msg.tipo === "document";
-  const transcript = msg.tipo === "audio" ? getAudioTranscript(msg) : null;
+  const mediaType = inferMediaType(msg);
+  const isMedia = mediaType !== null;
+  const transcript = mediaType === "audio" ? getAudioTranscript(msg) : null;
 
   useEffect(() => {
     if (!isMedia || (!tenantId && !tenantSlug)) {
@@ -201,13 +230,13 @@ function MessageMediaContent({
     };
   }, [isMedia, msg.id, tenantId, tenantSlug]);
 
-  if (msg.tipo === "image") {
+  if (mediaType === "image") {
     if (loading) return <p className="text-xs text-[#5B6670]">Cargando imagen...</p>;
     if (error || !blobUrl) return <p className="text-xs text-[#5B6670]">Imagen no disponible</p>;
     return <img src={blobUrl} alt="WhatsApp media" className="max-h-72 rounded-xl border border-[#00BFAE]/20 object-contain" />;
   }
 
-  if (msg.tipo === "audio") {
+  if (mediaType === "audio") {
     return (
       <div className="space-y-1.5">
         {loading && <p className="text-xs text-[#5B6670]">Cargando audio...</p>}
@@ -226,7 +255,7 @@ function MessageMediaContent({
     );
   }
 
-  if (msg.tipo === "document") {
+  if (mediaType === "document") {
     if (loading) return <p className="text-xs text-[#5B6670]">Cargando documento...</p>;
     if (error || !blobUrl) return <p className="text-xs text-[#5B6670]">Documento no disponible</p>;
     return (

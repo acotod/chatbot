@@ -79,10 +79,34 @@ async function _ingestUegBestEffort({ tenantId, correlationId, idempotencyKey, r
 
 function _extractMediaFromContenido(tipo, contenido) {
   const payload = (contenido && typeof contenido === 'object') ? contenido : {};
-  if (!['image', 'audio', 'document'].includes(tipo)) return null;
-  const media = payload[tipo];
-  if (!media || typeof media !== 'object') return null;
-  return media;
+  const normalizedTipo = String(tipo ?? '').trim().toLowerCase();
+  const candidates = ['image', 'audio', 'document'];
+
+  if (candidates.includes(normalizedTipo)) {
+    const media = payload[normalizedTipo];
+    if (media && typeof media === 'object') {
+      return { type: normalizedTipo, media };
+    }
+  }
+
+  for (const candidate of candidates) {
+    const media = payload[candidate];
+    if (media && typeof media === 'object') {
+      return { type: candidate, media };
+    }
+  }
+
+  const raw = (payload.raw && typeof payload.raw === 'object') ? payload.raw : null;
+  if (raw) {
+    for (const candidate of candidates) {
+      const media = raw[candidate];
+      if (media && typeof media === 'object') {
+        return { type: candidate, media };
+      }
+    }
+  }
+
+  return null;
 }
 
 async function _transcribeAudioMessageBestEffort({
@@ -99,7 +123,8 @@ async function _transcribeAudioMessageBestEffort({
     const config = await getTenantTranscriptionConfig(tenant.id);
     if (!config.enabled) return;
 
-    const audioPayload = _extractMediaFromContenido('audio', mensaje?.contenido);
+    const audioMatch = _extractMediaFromContenido('audio', mensaje?.contenido);
+    const audioPayload = audioMatch?.type === 'audio' ? audioMatch.media : null;
     const mediaId = String(audioPayload?.id ?? '').trim();
     if (!mediaId) return;
     if (!accessToken) {
@@ -1711,14 +1736,13 @@ router.get('/media/:messageId', requireJwt, async (req, res, next) => {
       return res.status(404).json({ error: 'Message not found' });
     }
 
-    if (!['image', 'audio', 'document'].includes(mensaje.tipo)) {
-      return res.status(400).json({ error: `Message type ${mensaje.tipo} has no media` });
-    }
-
-    const mediaPayload = _extractMediaFromContenido(mensaje.tipo, mensaje.contenido);
-    if (!mediaPayload) {
+    const mediaMatch = _extractMediaFromContenido(mensaje.tipo, mensaje.contenido);
+    if (!mediaMatch) {
       return res.status(404).json({ error: 'Media metadata not found in message' });
     }
+
+    const mediaPayload = mediaMatch.media;
+    const mediaType = mediaMatch.type;
 
     const creds = await db.getWaCredentials(tenantId);
     if (!creds?.accessToken) {
@@ -1739,6 +1763,12 @@ router.get('/media/:messageId', requireJwt, async (req, res, next) => {
     }
 
     const file = await wa.downloadMediaBuffer(mediaUrl, creds.accessToken);
+    if (!contentType) {
+      if (mediaType === 'image') contentType = 'image/jpeg';
+      else if (mediaType === 'audio') contentType = 'audio/ogg';
+      else if (mediaType === 'document') contentType = 'application/octet-stream';
+    }
+
     res.setHeader('Content-Type', contentType || file.contentType || 'application/octet-stream');
     res.setHeader('Cache-Control', 'private, max-age=300');
     return res.status(200).send(file.buffer);
