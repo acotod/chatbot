@@ -155,11 +155,11 @@ function AgentLoginScreen({ reason, nextPath }: AgentLoginScreenProps) {
   // Show tenant selector
   if (tenantOptions) {
     return (
-      <div className="relative min-h-screen overflow-hidden bg-gradient-to-br from-slate-100 via-cyan-50 to-slate-100 flex items-center justify-center p-4">
-        <div className="pointer-events-none absolute -top-24 -left-24 h-64 w-64 rounded-full bg-cyan-200/30 blur-3xl" />
-        <div className="pointer-events-none absolute -bottom-24 -right-24 h-64 w-64 rounded-full bg-slate-300/30 blur-3xl" />
+      <div className="relative min-h-screen overflow-hidden bg-gradient-to-br from-[#0A0F14] via-[#0D2B3E] to-[#0A0F14] flex items-center justify-center p-4">
+        <div className="pointer-events-none absolute -top-24 -left-24 h-64 w-64 rounded-full bg-[#00BFAE]/20 blur-3xl" />
+        <div className="pointer-events-none absolute -bottom-24 -right-24 h-64 w-64 rounded-full bg-[#39E6D2]/14 blur-3xl" />
 
-        <div className="relative bg-white rounded-3xl shadow-xl border border-slate-200/80 w-full max-w-md p-8 sm:p-9">
+        <div className="relative zentra-surface rounded-3xl w-full max-w-md p-8 sm:p-9">
           <div className="flex items-center gap-3 mb-9">
             <img
               src="/branding/zentra-bot-logo.svg"
@@ -167,15 +167,15 @@ function AgentLoginScreen({ reason, nextPath }: AgentLoginScreenProps) {
               className="h-10 w-auto"
             />
             <div>
-              <h1 className="text-xl font-bold tracking-tight text-slate-900">{t("title")}</h1>
-              <p className="text-xs text-slate-500">{t("subtitle")}</p>
+              <h1 className="text-xl font-bold tracking-tight text-[#EAFBFF]">{t("title")}</h1>
+              <p className="text-xs text-[#97B6C3]">{t("subtitle")}</p>
             </div>
           </div>
 
-          <h2 className="text-3xl font-semibold tracking-tight text-slate-900 mb-2">
+          <h2 className="text-3xl font-semibold tracking-tight text-[#EAFBFF] mb-2">
             {t("tenantSelectHeading")}
           </h2>
-          <p className="text-slate-600 text-base mb-7">
+          <p className="text-[#B6D0D9] text-base mb-7">
             {t("tenantSelectDescription")}
           </p>
 
@@ -197,10 +197,10 @@ function AgentLoginScreen({ reason, nextPath }: AgentLoginScreenProps) {
                 key={tenant.tenantSlug}
                 onClick={() => handleTenantSelection(tenant.tenantSlug)}
                 disabled={loading}
-                className="w-full px-4 py-4 bg-gradient-to-r from-cyan-50 to-slate-50 hover:from-cyan-100 hover:to-slate-100 border border-cyan-200 rounded-xl transition-all text-left disabled:opacity-50 disabled:cursor-not-allowed"
+                className="w-full px-4 py-4 bg-[#0D2B3E]/70 hover:bg-[#0D2B3E]/90 border border-[#39E6D2]/22 rounded-xl transition-all text-left disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                <div className="font-semibold text-slate-900">{tenant.tenantNombre}</div>
-                <div className="text-xs text-slate-500 mt-1">{tenant.tenantSlug}</div>
+                <div className="font-semibold text-[#EAFBFF]">{tenant.tenantNombre}</div>
+                <div className="text-xs text-[#97B6C3] mt-1">{tenant.tenantSlug}</div>
               </button>
             ))}
           </div>
@@ -212,7 +212,7 @@ function AgentLoginScreen({ reason, nextPath }: AgentLoginScreenProps) {
               setPassword("");
               setError("");
             }}
-            className="w-full mt-6 py-2 text-sm text-cyan-700 hover:text-cyan-800 transition font-medium"
+            className="w-full mt-6 py-2 text-sm text-[#39E6D2] hover:text-[#6FF5E8] transition font-medium"
           >
             {t("backToLogin")}
           </button>
@@ -222,11 +222,11 @@ function AgentLoginScreen({ reason, nextPath }: AgentLoginScreenProps) {
   }
 
   return (
-    <div className="relative min-h-screen overflow-hidden bg-gradient-to-br from-slate-100 via-cyan-50 to-slate-100 flex items-center justify-center p-4">
-      <div className="pointer-events-none absolute -top-24 -left-24 h-64 w-64 rounded-full bg-cyan-200/30 blur-3xl" />
-      <div className="pointer-events-none absolute -bottom-24 -right-24 h-64 w-64 rounded-full bg-slate-300/30 blur-3xl" />
+    <div className="relative min-h-screen overflow-hidden bg-gradient-to-br from-[#0A0F14] via-[#0D2B3E] to-[#0A0F14] flex items-center justify-center p-4">
+      <div className="pointer-events-none absolute -top-24 -left-24 h-64 w-64 rounded-full bg-[#00BFAE]/20 blur-3xl" />
+      <div className="pointer-events-none absolute -bottom-24 -right-24 h-64 w-64 rounded-full bg-[#39E6D2]/14 blur-3xl" />
 
-      <div className="relative bg-white rounded-3xl shadow-xl border border-slate-200/80 w-full max-w-md p-8 sm:p-9">
+      <div className="relative zentra-surface rounded-3xl w-full max-w-md p-8 sm:p-9">
         <div className="flex items-center gap-3 mb-9">
           <img
             src="/branding/zentra-bot-logo.svg"
@@ -234,15 +234,15 @@ function AgentLoginScreen({ reason, nextPath }: AgentLoginScreenProps) {
             className="h-10 w-auto"
           />
           <div>
-            <h1 className="text-xl font-bold tracking-tight text-slate-900">{t("title")}</h1>
-            <p className="text-xs text-slate-500">{t("subtitle")}</p>
+            <h1 className="text-xl font-bold tracking-tight text-[#EAFBFF]">{t("title")}</h1>
+            <p className="text-xs text-[#97B6C3]">{t("subtitle")}</p>
           </div>
         </div>
 
-        <h2 className="text-3xl font-semibold tracking-tight text-slate-900 mb-2">
+        <h2 className="text-3xl font-semibold tracking-tight text-[#EAFBFF] mb-2">
           {t("heading")}
         </h2>
-        <p className="text-slate-600 text-base mb-7">
+        <p className="text-[#B6D0D9] text-base mb-7">
           {t("description")}
         </p>
 
@@ -254,26 +254,26 @@ function AgentLoginScreen({ reason, nextPath }: AgentLoginScreenProps) {
 
         <form onSubmit={handleSubmit} className="space-y-4.5">
           <div className="flex flex-col gap-1.5">
-            <label className="text-sm font-medium text-slate-700">{t("emailLabel")}</label>
+            <label className="text-sm font-medium text-[#CBE7EF]">{t("emailLabel")}</label>
             <input
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder={t("emailPlaceholder")}
               required
-              className="px-4 py-3 rounded-xl border border-slate-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-cyan-500/30 focus:border-cyan-500 transition-all"
+              className="px-4 py-3 rounded-xl border border-[#39E6D2]/20 bg-[#0D2B3E]/72 text-[#EAFBFF] placeholder:text-[#97B6C3] text-sm focus:outline-none focus:ring-2 focus:ring-[#00BFAE]/30 focus:border-[#39E6D2] transition-all"
             />
           </div>
 
           <div className="flex flex-col gap-1.5">
-            <label className="text-sm font-medium text-slate-700">{t("passwordLabel")}</label>
+            <label className="text-sm font-medium text-[#CBE7EF]">{t("passwordLabel")}</label>
             <input
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder={t("passwordPlaceholder")}
               required
-              className="px-4 py-3 rounded-xl border border-slate-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-cyan-500/30 focus:border-cyan-500 transition-all"
+              className="px-4 py-3 rounded-xl border border-[#39E6D2]/20 bg-[#0D2B3E]/72 text-[#EAFBFF] placeholder:text-[#97B6C3] text-sm focus:outline-none focus:ring-2 focus:ring-[#00BFAE]/30 focus:border-[#39E6D2] transition-all"
             />
           </div>
 
@@ -313,7 +313,7 @@ function AgentLoginScreen({ reason, nextPath }: AgentLoginScreenProps) {
           <button
             type="submit"
             disabled={loading}
-            className="w-full py-3.5 bg-cyan-600 hover:bg-cyan-700 text-white font-medium rounded-xl transition-all shadow-sm shadow-cyan-100 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-full py-3.5 bg-gradient-to-r from-[#00BFAE] to-[#39E6D2] hover:brightness-105 text-[#063743] font-medium rounded-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {loading ? t("submitting") : t("submit")}
           </button>
@@ -322,7 +322,7 @@ function AgentLoginScreen({ reason, nextPath }: AgentLoginScreenProps) {
             type="button"
             onClick={handleForgotPassword}
             disabled={forgotLoading}
-            className="w-full text-sm font-medium text-cyan-700 hover:text-cyan-800 transition disabled:opacity-50"
+            className="w-full text-sm font-medium text-[#39E6D2] hover:text-[#6FF5E8] transition disabled:opacity-50"
           >
             {forgotLoading ? t("forgotPasswordLoading") : t("forgotPassword")}
           </button>
