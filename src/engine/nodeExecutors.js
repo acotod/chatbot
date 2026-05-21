@@ -128,6 +128,7 @@ async function executeMessage({ node, variables }) {
  */
 async function executeMenu({ node, input, variables }) {
   const cfg = resolveConfig(node.config, variables);
+  const options = _extractMenuOptions(cfg, Object.keys(node.branches ?? {}));
   const derivedBranchesFromOptions = Array.isArray(cfg?.options)
     ? Object.fromEntries(
         cfg.options.flatMap((opt) => {
@@ -147,6 +148,16 @@ async function executeMenu({ node, input, variables }) {
   // Check if input matches a branch key (button id / list row id)
   let nextFromBranch = normalizedInput ? (branches[normalizedInput] ?? null) : null;
 
+  // Also accept option title text as selection (common in text fallbacks).
+  if (!nextFromBranch && normalizedInput && options.length) {
+    const exactTitle = options.find(
+      (opt) => String(opt?.title ?? '').trim().toLowerCase() === normalizedInput.toLowerCase(),
+    );
+    if (exactTitle?.id) {
+      nextFromBranch = branches[String(exactTitle.id).trim()] ?? null;
+    }
+  }
+
   if (!nextFromBranch && normalizedInput) {
     const caseInsensitive = branchKeys.find(
       (k) => k.toLowerCase() === normalizedInput.toLowerCase(),
@@ -164,6 +175,18 @@ async function executeMenu({ node, input, variables }) {
     }
   }
 
+  // Accept hour-like text inputs (e.g. "8:00", "8 am") for menu options with numeric IDs.
+  if (!nextFromBranch && normalizedInput && options.length) {
+    const hourMatch = normalizedInput.match(/^(\d{1,2})\b/);
+    if (hourMatch) {
+      const hourId = hourMatch[1];
+      const byId = options.find((opt) => String(opt?.id ?? '').trim() === hourId);
+      if (byId?.id) {
+        nextFromBranch = branches[String(byId.id).trim()] ?? null;
+      }
+    }
+  }
+
   if (nextFromBranch) {
     // Phase 2: valid selection — route silently (no output), engine will auto-advance
     return {
@@ -175,7 +198,17 @@ async function executeMenu({ node, input, variables }) {
     };
   }
 
-  const options = _extractMenuOptions(cfg, branchKeys);
+  // Defensive fallback: if a user answered something but this menu has no branch map,
+  // continue through node.next instead of looping forever asking to choose an option.
+  if (!nextFromBranch && normalizedInput && branchKeys.length === 0 && node.next) {
+    return {
+      output     : null,
+      nextNodeId : node.next,
+      updatedVars: {},
+      terminal   : false,
+      fallback   : false,
+    };
+  }
 
   // Guardrail: avoid infinite loops when menu node has no options configured.
   if (!options.length && node.next) {
