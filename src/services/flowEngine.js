@@ -234,7 +234,8 @@ async function executeStep({ tenantId, currentNodeId, input, userId, sessionKey,
     return executeStep({
       tenantId,
       currentNodeId  : _toIntOrNull(execResult.nextNodeId),
-      input,
+      // Do not forward previous user input when auto-advancing internal nodes.
+      input: null,
       userId,
       sessionKey,
       _conversationId: conversationId,
@@ -248,7 +249,8 @@ async function executeStep({ tenantId, currentNodeId, input, userId, sessionKey,
       return executeStep({
         tenantId,
         currentNodeId  : _toIntOrNull(execResult.nextNodeId),
-        input,
+        // Avoid consuming the same user input in the next node (e.g. menu -> input).
+        input: null,
         userId,
         sessionKey,
         _conversationId: conversationId,

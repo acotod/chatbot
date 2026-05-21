@@ -87,6 +87,21 @@ function _extractMenuOptions(cfg, branchKeys) {
   return branchKeys.map((key) => ({ id: key, title: _humanizeOptionId(key) || key }));
 }
 
+function _toHour24(rawHour, rawMeridiem) {
+  const hour = Number(rawHour);
+  if (!Number.isFinite(hour)) return null;
+  const meridiem = String(rawMeridiem ?? '').toLowerCase().replace(/\./g, '');
+  if (meridiem === 'am') return hour === 12 ? 0 : hour;
+  if (meridiem === 'pm') return hour === 12 ? 12 : hour + 12;
+  return hour;
+}
+
+function _extractHourFromText(text) {
+  const m = String(text ?? '').match(/\b(\d{1,2})(?::\d{2})?\s*([ap]\.?m\.?)?\b/i);
+  if (!m) return null;
+  return _toHour24(m[1], m[2]);
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Individual executors
 // ─────────────────────────────────────────────────────────────────────────────
@@ -175,14 +190,30 @@ async function executeMenu({ node, input, variables }) {
     }
   }
 
-  // Accept hour-like text inputs (e.g. "8:00", "8 am") for menu options with numeric IDs.
+  // Accept hour-like text inputs (e.g. "8:00", "8 am", "14") and match
+  // either option IDs or option titles (e.g. "Lunes 2:00 p.m").
   if (!nextFromBranch && normalizedInput && options.length) {
-    const hourMatch = normalizedInput.match(/^(\d{1,2})\b/);
+    const hourMatch = normalizedInput.match(/^(\d{1,2})(?::\d{2})?\s*([ap]\.?m\.?)?\b/i);
     if (hourMatch) {
-      const hourId = hourMatch[1];
-      const byId = options.find((opt) => String(opt?.id ?? '').trim() === hourId);
-      if (byId?.id) {
-        nextFromBranch = branches[String(byId.id).trim()] ?? null;
+      const inputHour24 = _toHour24(hourMatch[1], hourMatch[2]);
+      const inputHourRaw = Number(hourMatch[1]);
+
+      const byId = options.find((opt) => {
+        const id = String(opt?.id ?? '').trim();
+        if (!/^\d{1,2}$/.test(id)) return false;
+        const idHour = Number(id);
+        return idHour === inputHourRaw || idHour === inputHour24;
+      });
+
+      const byTitle = options.find((opt) => {
+        const optionHour24 = _extractHourFromText(opt?.title);
+        if (optionHour24 == null || inputHour24 == null) return false;
+        return optionHour24 === inputHour24;
+      });
+
+      const match = byId ?? byTitle;
+      if (match?.id) {
+        nextFromBranch = branches[String(match.id).trim()] ?? null;
       }
     }
   }
