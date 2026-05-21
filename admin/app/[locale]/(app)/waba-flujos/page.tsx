@@ -2132,6 +2132,17 @@ function FlowBuilder({
     setJsonText(JSON.stringify(normalizedDefinition, null, 2));
   }
 
+  function handleAutoArrange() {
+    setDefinition((prev) => {
+      if (!prev) return prev;
+
+      // Force a fresh hierarchical layout by clearing persisted positions first.
+      const newDef = normalizeFlowDefinition({ ...prev, nodePositions: {} });
+      setJsonText(JSON.stringify(newDef, null, 2));
+      return newDef;
+    });
+  }
+
   async function handleValidate() {
     if (!definition) return;
     setValidating(true);
@@ -2203,6 +2214,14 @@ function FlowBuilder({
           >
             <FileJson className="w-3.5 h-3.5" />
             {jsonView ? t("builder.toggleVisual") : t("builder.toggleJson")}
+          </button>
+          <button
+            onClick={handleAutoArrange}
+            disabled={!definition}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium bg-slate-50 text-slate-700 hover:bg-slate-100 border border-slate-200 disabled:opacity-50"
+          >
+            <RefreshCw className="w-3.5 h-3.5" />
+            {t("builder.autoArrange")}
           </button>
           <button
             onClick={handleValidate}
