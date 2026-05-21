@@ -289,7 +289,7 @@ async function executeInput({ node, input, variables, llmService, tenantId }) {
   // Phase 2: we already showed the prompt and are now receiving the user's answer
   const isCapturing = variables.__awaiting_input === node.id;
 
-  if (isCapturing) {
+  if (isCapturing && input != null) {
     // Capture value into named variable
     if (cfg.variable && input != null) {
       updatedVars[cfg.variable] = input;
@@ -316,13 +316,13 @@ async function executeInput({ node, input, variables, llmService, tenantId }) {
           input.trim(),
           node.llm_classification.intents,
         );
-        if (intent && node.branches[intent]) {
+        if (intent && node.branches?.[intent]) {
           nextNodeId = node.branches[intent];
         }
       } catch (err) {
         logger.warn({ tenantId, nodeId: node.id, message: err.message }, 'nodeExecutors.input: classifyIntent failed');
       }
-    } else if (input != null && node.branches[input]) {
+    } else if (input != null && node.branches?.[input]) {
       // Direct branch match (button reply)
       nextNodeId = node.branches[input];
     }
@@ -339,9 +339,10 @@ async function executeInput({ node, input, variables, llmService, tenantId }) {
 
   // Phase 1: show prompt and stay at this node to wait for user reply
   updatedVars.__awaiting_input = node.id;
+  const promptText = cfg.prompt ?? cfg.text ?? '';
 
   return {
-    output     : cfg.prompt ? { type: 'text', text: cfg.prompt } : null,
+    output     : promptText ? { type: 'text', text: promptText } : null,
     nextNodeId : node.id,  // Stay here until user replies
     updatedVars,
     crmTouch,
