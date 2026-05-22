@@ -6,6 +6,7 @@
  * GET    /crm/contacts/:id              Single contact with 360 view
  * POST   /crm/contacts                  Create contact
  * PATCH  /crm/contacts/:id              Update contact profile
+ * PATCH  /crm/contacts/by-cedula        Update contact profile by cedula
  * DELETE /crm/contacts/:id              Delete contact
  *
  * GET    /crm/deals                     List deals
@@ -198,6 +199,70 @@ router.patch('/contacts/:id', [
 
     const updated = await prisma.user.update({ where: { id: req.params.id }, data });
     audit({ adminUserId: req.admin.adminUserId, tenantId: existing.tenantId, accion: 'UPDATE_CONTACT', entidad: 'user', entidadId: String(req.params.id) });
+    res.json(updated);
+  } catch (err) { next(err); }
+});
+
+router.patch('/contacts/by-cedula', [
+  body('tenantSlug').optional().isString(),
+  body('cedula').optional().isString().trim().notEmpty(),
+  body('identificacion').optional().isString().trim().notEmpty(),
+  body('nombre').optional().isString().isLength({ max: 120 }),
+  body('email').optional().isEmail(),
+  body('empresa').optional().isString().isLength({ max: 120 }),
+  body('cargo').optional().isString().isLength({ max: 100 }),
+  body('etiquetas').optional().isArray(),
+  body('notas').optional().isString(),
+  body('leadScore').optional().isInt({ min: 0, max: 100 }),
+  body('customFields').optional().isObject(),
+], async (req, res, next) => {
+  if (!validate(req, res)) return;
+  try {
+    const tenantId = await resolveBySlug(req, req.body.tenantSlug);
+    if (!tenantId) return res.status(400).json({ error: 'tenantSlug required' });
+
+    const cedula = String(req.body.cedula ?? req.body.identificacion ?? '').trim();
+    const normalizedCedula = normalizeCedula(cedula);
+    if (!normalizedCedula) {
+      return res.status(400).json({ error: 'cedula or identificacion is required' });
+    }
+
+    const existing = await findContactByCedula(tenantId, cedula, normalizedCedula);
+    if (!existing) return res.status(404).json({ error: 'Contact not found by cedula' });
+    if (!req.admin.superAdmin && existing.tenantId !== req.admin.tenantId) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+
+    const allowedFields = ['nombre','email','empresa','cargo','canalOrigen','etiquetas','notas','leadScore','phone'];
+    const data = {};
+    for (const f of allowedFields) {
+      if (req.body[f] !== undefined) data[f] = req.body[f];
+    }
+
+    const incomingCustomFields = (req.body.customFields && typeof req.body.customFields === 'object')
+      ? req.body.customFields
+      : {};
+    const existingCustomFields = (existing.customFields && typeof existing.customFields === 'object')
+      ? existing.customFields
+      : {};
+
+    data.customFields = {
+      ...existingCustomFields,
+      ...incomingCustomFields,
+      cedula,
+      identificacion: cedula,
+      cedulaNormalizada: normalizedCedula,
+      identificacionNormalizada: normalizedCedula,
+    };
+
+    const hasDirectFieldUpdate = allowedFields.some((field) => req.body[field] !== undefined);
+    const hasCustomFieldsUpdate = Object.keys(incomingCustomFields).length > 0;
+    if (!hasDirectFieldUpdate && !hasCustomFieldsUpdate) {
+      return res.status(400).json({ error: 'No contact fields provided to update' });
+    }
+
+    const updated = await prisma.user.update({ where: { id: existing.id }, data });
+    audit({ adminUserId: req.admin.adminUserId, tenantId: existing.tenantId, accion: 'UPDATE_CONTACT_BY_CEDULA', entidad: 'user', entidadId: String(existing.id) });
     res.json(updated);
   } catch (err) { next(err); }
 });
@@ -479,6 +544,71 @@ async function resolveBySlug(req, slug) {
     return req.admin.tenantId ?? null;
   }
   return req.admin.tenantId ?? null;
+}
+
+function normalizeCedula(value) {
+  return String(value ?? '').replace(/[^0-9A-Za-z]/g, '').toUpperCase();
+}
+
+function getCedulaCandidates(customFields) {
+  if (!customFields || typeof customFields !== 'object' || Array.isArray(customFields)) return [];
+
+  const keys = ['cedula', 'cedulaNumero', 'identificacion', 'identification', 'documento', 'dni', 'passport'];
+  const values = [];
+
+  for (const key of keys) {
+    const raw = customFields[key];
+    if (raw == null) continue;
+    values.push(String(raw));
+  }
+
+  return values;
+}
+
+async function findContactByCedula(tenantId, cedula, normalizedCedula) {
+  const searchValues = [...new Set([String(cedula).trim(), normalizedCedula].filter(Boolean))];
+  const jsonKeys = ['cedula', 'cedulaNumero', 'identificacion', 'identification', 'documento', 'dni', 'passport', 'cedulaNormalizada', 'identificacionNormalizada'];
+  const or = [];
+
+  for (const key of jsonKeys) {
+    for (const value of searchValues) {
+      or.push({ customFields: { path: [key], equals: value } });
+    }
+  }
+
+  if (or.length > 0) {
+    const exact = await prisma.user.findFirst({
+      where: { tenantId, OR: or },
+      orderBy: { updatedAt: 'desc' },
+    });
+    if (exact) return exact;
+  }
+
+  const candidates = await prisma.user.findMany({
+    where: { tenantId },
+    select: {
+      id: true,
+      tenantId: true,
+      customFields: true,
+      updatedAt: true,
+    },
+    orderBy: { updatedAt: 'desc' },
+    take: 3000,
+  });
+
+  for (const candidate of candidates) {
+    const values = getCedulaCandidates(candidate.customFields);
+    const matched = values.some((value) => {
+      const raw = String(value).trim();
+      const normalized = normalizeCedula(value);
+      return searchValues.includes(raw) || searchValues.includes(normalized);
+    });
+    if (!matched) continue;
+
+    return prisma.user.findUnique({ where: { id: candidate.id } });
+  }
+
+  return null;
 }
 
 module.exports = router;

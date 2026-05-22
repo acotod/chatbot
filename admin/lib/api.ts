@@ -587,6 +587,8 @@ export const crmApi = {
     apiClient.post('/crm/contacts', data),
   updateContact: (id: number, data: Record<string, unknown>) =>
     apiClient.patch(`/crm/contacts/${id}`, data),
+  updateContactByCedula: (data: Record<string, unknown>) =>
+    apiClient.patch('/crm/contacts/by-cedula', data),
   deleteContact: (id: number) =>
     apiClient.delete(`/crm/contacts/${id}`),
   listDeals: (params?: Record<string, unknown>) =>
