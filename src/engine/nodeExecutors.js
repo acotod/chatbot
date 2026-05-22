@@ -102,6 +102,55 @@ function _extractHourFromText(text) {
   return _toHour24(m[1], m[2]);
 }
 
+function _buildInputValidation(cfg) {
+  const validationType = String(cfg?.validationType ?? '').trim().toLowerCase();
+  const customPattern = String(cfg?.validationPattern ?? cfg?.pattern ?? cfg?.regex ?? '').trim();
+  const customFlags = String(cfg?.validationFlags ?? '').trim();
+  const customMessage = String(cfg?.validationMessage ?? cfg?.invalidMessage ?? '').trim();
+
+  const byType = {
+    cedula: {
+      regex: /^\d{6,13}$/,
+      message: 'Formato invalido. Ingresa solo numeros de cedula (6 a 13 digitos).',
+    },
+    numeric: {
+      regex: /^\d+$/,
+      message: 'Formato invalido. Ingresa solo numeros.',
+    },
+    email: {
+      regex: /^[^\s@]+@[^\s@]+\.[^\s@]+$/,
+      message: 'Formato invalido. Ingresa un correo valido (ej: nombre@dominio.com).',
+    },
+  };
+
+  if (validationType && validationType !== 'none' && validationType !== 'regex' && byType[validationType]) {
+    return {
+      isEnabled: true,
+      regex: byType[validationType].regex,
+      message: customMessage || byType[validationType].message,
+    };
+  }
+
+  if (validationType === 'regex' || customPattern) {
+    try {
+      return {
+        isEnabled: true,
+        regex: new RegExp(customPattern, customFlags || undefined),
+        message: customMessage || 'Formato invalido. Intentalo de nuevo.',
+      };
+    } catch (err) {
+      logger.warn({ err: err.message, customPattern, customFlags }, 'nodeExecutors.input: invalid validation regex');
+      return {
+        isEnabled: false,
+      };
+    }
+  }
+
+  return {
+    isEnabled: false,
+  };
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Individual executors
 // ─────────────────────────────────────────────────────────────────────────────
@@ -290,9 +339,27 @@ async function executeInput({ node, input, variables, llmService, tenantId }) {
   const isCapturing = variables.__awaiting_input === node.id;
 
   if (isCapturing && input != null) {
+    const capturedInput = String(input).trim();
+    const validation = _buildInputValidation(cfg);
+
+    if (validation.isEnabled && !validation.regex.test(capturedInput)) {
+      updatedVars.__awaiting_input = node.id;
+      return {
+        output: {
+          type: 'text',
+          text: validation.message,
+        },
+        nextNodeId : node.id,
+        updatedVars,
+        crmTouch,
+        terminal   : false,
+        fallback   : false,
+      };
+    }
+
     // Capture value into named variable
     if (cfg.variable && input != null) {
-      updatedVars[cfg.variable] = input;
+      updatedVars[cfg.variable] = capturedInput;
     }
 
     // Clear the waiting flag
@@ -302,18 +369,18 @@ async function executeInput({ node, input, variables, llmService, tenantId }) {
     if (input != null && typeof cfg.crmField === 'string') {
       const field = cfg.crmField.trim().toLowerCase();
       if (field === 'nombre') {
-        const normalized = String(input).trim();
+        const normalized = capturedInput;
         if (normalized) crmTouch.nombre = normalized;
       }
     }
 
     // LLM classification for free-text routing
     let nextNodeId = node.next;
-    if (node.llm_classification?.intents?.length && input?.trim() && llmService) {
+    if (node.llm_classification?.intents?.length && capturedInput && llmService) {
       try {
         const intent = await llmService.classifyIntent(
           tenantId,
-          input.trim(),
+          capturedInput,
           node.llm_classification.intents,
         );
         if (intent && node.branches?.[intent]) {
@@ -322,9 +389,9 @@ async function executeInput({ node, input, variables, llmService, tenantId }) {
       } catch (err) {
         logger.warn({ tenantId, nodeId: node.id, message: err.message }, 'nodeExecutors.input: classifyIntent failed');
       }
-    } else if (input != null && node.branches?.[input]) {
+    } else if (capturedInput && node.branches?.[capturedInput]) {
       // Direct branch match (button reply)
-      nextNodeId = node.branches[input];
+      nextNodeId = node.branches[capturedInput];
     }
 
     return {

@@ -1159,6 +1159,12 @@ function NodeEditModal({
   const [text, setText]               = useState(String(cfg.text ?? ""));
   const [inputText, setInputText]     = useState(String(cfg.text ?? ""));
   const [inputVar, setInputVar]       = useState(String(cfg.variable ?? ""));
+  const [inputValidationType, setInputValidationType] = useState(
+    String(cfg.validationType ?? ((cfg.validationPattern ?? cfg.regex ?? cfg.pattern) ? "regex" : "none"))
+  );
+  const [inputValidationPattern, setInputValidationPattern] = useState(String(cfg.validationPattern ?? cfg.regex ?? cfg.pattern ?? ""));
+  const [inputValidationFlags, setInputValidationFlags] = useState(String(cfg.validationFlags ?? ""));
+  const [inputValidationMessage, setInputValidationMessage] = useState(String(cfg.validationMessage ?? cfg.invalidMessage ?? ""));
   const [menuText, setMenuText]       = useState(String(cfg.text ?? ""));
   const [menuVar, setMenuVar]         = useState(String(cfg.variable ?? "variables.opcion_menu"));
   const [menuOptions, setMenuOptions] = useState<{ id: string; title: string; next: string }[]>(
@@ -1342,8 +1348,23 @@ function NodeEditModal({
       case "message":
       case "text":      return { text, ...actionFragment };
       case "input":
-      case "open_response":
-        return { text: inputText, variable: inputVar, ...actionFragment };
+      case "open_response": {
+        const baseConfig: Record<string, unknown> = { text: inputText, variable: inputVar, ...actionFragment };
+        const normalizedValidationType = String(inputValidationType ?? "none").trim() || "none";
+        if (normalizedValidationType !== "none") {
+          baseConfig.validationType = normalizedValidationType;
+        }
+        if (normalizedValidationType === "regex" && inputValidationPattern.trim()) {
+          baseConfig.validationPattern = inputValidationPattern.trim();
+        }
+        if (normalizedValidationType === "regex" && inputValidationFlags.trim()) {
+          baseConfig.validationFlags = inputValidationFlags.trim();
+        }
+        if (inputValidationMessage.trim()) {
+          baseConfig.validationMessage = inputValidationMessage.trim();
+        }
+        return baseConfig;
+      }
       case "menu":      return { text: menuText, options: menuOptions, ...(menuVar.trim() ? { variable: menuVar.trim() } : {}), ...actionFragment };
       case "condition": {
         const expression = buildConditionExpression(condVar, condOp, condVal);
@@ -1484,7 +1505,8 @@ function NodeEditModal({
               )}
               {/* input */}
               {type === "input" && (
-                <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-4">
+                  <div className="grid grid-cols-2 gap-4">
                   <div className="bg-slate-50 rounded-lg border border-slate-100 p-4">
                     <label className="block text-xs font-medium text-slate-600 mb-2">Pregunta al usuario</label>
                     <textarea value={inputText} onChange={(e) => setInputText(e.target.value)} rows={3}
@@ -1496,6 +1518,62 @@ function NodeEditModal({
                     <VarComboInput value={inputVar} onChange={setInputVar} placeholder="variables.cedula"
                       suggestions={flowVariables.length > 0 ? flowVariables : MENU_VARIABLE_PRESETS}
                       className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                  </div>
+                </div>
+
+                  <div className="bg-slate-50 rounded-lg border border-slate-100 p-4">
+                    <label className="block text-xs font-medium text-slate-600 mb-2">{t("nodeModal.inputValidationType")}</label>
+                    <select
+                      value={inputValidationType}
+                      onChange={(e) => setInputValidationType(String(e.target.value ?? "none"))}
+                      className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                      <option value="none">{t("nodeModal.inputValidationNone")}</option>
+                      <option value="cedula">{t("nodeModal.inputValidationCedula")}</option>
+                      <option value="numeric">{t("nodeModal.inputValidationNumeric")}</option>
+                      <option value="email">{t("nodeModal.inputValidationEmail")}</option>
+                      <option value="regex">{t("nodeModal.inputValidationRegex")}</option>
+                    </select>
+
+                    {inputValidationType === "regex" && (
+                      <div className="grid grid-cols-3 gap-3 mt-3">
+                        <div className="col-span-2">
+                          <label className="block text-xs font-medium text-slate-600 mb-2">{t("nodeModal.inputValidationPattern")}</label>
+                          <input
+                            value={inputValidationPattern}
+                            onChange={(e) => setInputValidationPattern(e.target.value)}
+                            placeholder="^\\d{6,13}$"
+                            className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-medium text-slate-600 mb-2">{t("nodeModal.inputValidationFlags")}</label>
+                          <input
+                            value={inputValidationFlags}
+                            onChange={(e) => setInputValidationFlags(e.target.value)}
+                            placeholder="i"
+                            className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          />
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="mt-3">
+                      <label className="block text-xs font-medium text-slate-600 mb-2">{t("nodeModal.inputValidationMessage")}</label>
+                      <input
+                        value={inputValidationMessage}
+                        onChange={(e) => setInputValidationMessage(e.target.value)}
+                        placeholder={t("nodeModal.inputValidationMessagePlaceholder")}
+                        className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+
+                    <div className="mt-3 rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-800">
+                      <p className="font-semibold mb-1">{t("nodeModal.inputValidationHelpTitle")}</p>
+                      <p>{t("nodeModal.inputValidationHelpBody")}</p>
+                      <p className="mt-1 font-mono">{t("nodeModal.inputValidationExampleCedula")}</p>
+                      <p className="mt-1 font-mono">{t("nodeModal.inputValidationExampleEmail")}</p>
+                    </div>
                   </div>
                 </div>
               )}

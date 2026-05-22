@@ -80,4 +80,48 @@ describe('nodeExecutors root-cause guards', () => {
       }),
     );
   });
+
+  test('input node validates format and retries when invalid', async () => {
+    const node = {
+      id: 'node_input',
+      type: 'input',
+      next: 'node_next',
+      config: {
+        text: 'Dame tu numero de cedula',
+        variable: 'cedula',
+        validationType: 'regex',
+        validationPattern: '^\\d{6,13}$',
+        validationMessage: 'Cedula invalida. Intenta de nuevo.',
+      },
+    };
+
+    const invalid = await executeNode(node, {
+      input: 'abc',
+      variables: { __awaiting_input: 'node_input' },
+      tenantId: 'tenant-1',
+    });
+
+    const valid = await executeNode(node, {
+      input: '12345678',
+      variables: { __awaiting_input: 'node_input' },
+      tenantId: 'tenant-1',
+    });
+
+    expect(invalid.output).toEqual({ type: 'text', text: 'Cedula invalida. Intenta de nuevo.' });
+    expect(invalid.nextNodeId).toBe('node_input');
+    expect(invalid.updatedVars).toEqual(
+      expect.objectContaining({
+        __awaiting_input: 'node_input',
+      }),
+    );
+
+    expect(valid.output).toBeNull();
+    expect(valid.nextNodeId).toBe('node_next');
+    expect(valid.updatedVars).toEqual(
+      expect.objectContaining({
+        cedula: '12345678',
+        __awaiting_input: null,
+      }),
+    );
+  });
 });
