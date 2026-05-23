@@ -29,6 +29,7 @@ const { audit } = require('../services/audit');
 
 const prisma = new PrismaClient();
 const router = express.Router();
+const TSE_CONFIG_KEY = 'tse_config';
 
 router.use(requireJwt);
 router.use(requirePermiso('VIEW_CRM'));
@@ -232,43 +233,51 @@ router.patch('/contacts/by-cedula', [
       return res.status(400).json({ error: 'cedula or identificacion is required' });
     }
 
-    let existing = null;
-    if (tenantId) {
-      existing = await findContactByCedula(tenantId, cedula, normalizedCedula);
-    } else {
-      const candidates = await findContactsByCedulaAnyTenant(cedula, normalizedCedula, 2);
-      if (candidates.length > 1) {
-        return res.status(409).json({ error: 'Multiple contacts found for identificacion; provide tenantSlug' });
-      }
-      existing = candidates[0] ?? null;
+    const targetTenantId = resolveTenantId(req, tenantId);
+    if (!targetTenantId) {
+      return res.status(400).json({ error: 'tenantSlug required to sync with TSE' });
     }
 
-    if (!existing) {
-      const targetTenantId = resolveTenantId(req, tenantId);
-      if (!targetTenantId) {
-        return res.status(400).json({ error: 'tenantSlug required to upsert contact by identificacion' });
+    const tseLookup = await fetchTseProfileByCedula(targetTenantId, cedula);
+    if (!tseLookup.ok) {
+      if (tseLookup.notFound) {
+        return res.status(404).json({ error: 'Cedula not found in TSE', detail: tseLookup.error ?? null });
       }
+      return res.status(502).json({ error: 'TSE lookup failed', detail: tseLookup.error ?? 'Unable to fetch data from TSE API' });
+    }
 
+    const tseProfile = tseLookup.profile ?? {};
+    const resolvedNombre = req.body.nombre ?? tseProfile.nombre ?? null;
+    const resolvedEmail = req.body.email ?? tseProfile.email ?? null;
+    const resolvedEmpresa = req.body.empresa ?? tseProfile.empresa ?? null;
+    const resolvedCargo = req.body.cargo ?? tseProfile.cargo ?? null;
+    const resolvedPhone = req.body.phone ?? req.body.telefono ?? tseProfile.phone ?? null;
+
+    const existing = await findContactByCedula(targetTenantId, cedula, normalizedCedula);
+
+    if (!existing) {
       const incomingCustomFields = (req.body.customFields && typeof req.body.customFields === 'object')
         ? req.body.customFields
         : {};
 
       const createData = {
         tenantId: targetTenantId,
-        nombre: req.body.nombre ?? `Contacto ${cedula}`,
-        email: req.body.email ?? null,
-        empresa: req.body.empresa ?? null,
-        cargo: req.body.cargo ?? null,
+        nombre: resolvedNombre ?? `Contacto ${cedula}`,
+        email: resolvedEmail,
+        empresa: resolvedEmpresa,
+        cargo: resolvedCargo,
         etiquetas: Array.isArray(req.body.etiquetas) ? req.body.etiquetas : [],
         notas: req.body.notas ?? null,
         leadScore: Number.isInteger(req.body.leadScore) ? req.body.leadScore : 0,
-        phone: req.body.phone ?? req.body.telefono ?? null,
+        phone: resolvedPhone,
         customFields: {
           ...incomingCustomFields,
           cedula,
           identificacion: cedula,
           cedulaNormalizada: normalizedCedula,
           identificacionNormalizada: normalizedCedula,
+          tseSyncedAt: new Date().toISOString(),
+          tseData: tseProfile,
         },
         ultimoContacto: new Date(),
       };
@@ -286,6 +295,8 @@ router.patch('/contacts/by-cedula', [
         ok: true,
         found: false,
         created: true,
+        tseSynced: true,
+        tseSynced: true,
         contactId: created.id,
         tenantId: created.tenantId,
         identificacion: cedula,
@@ -302,14 +313,16 @@ router.patch('/contacts/by-cedula', [
       return res.status(403).json({ error: 'Forbidden' });
     }
 
-    const allowedFields = ['nombre','email','empresa','cargo','canalOrigen','etiquetas','notas','leadScore','phone'];
     const data = {};
-    for (const f of allowedFields) {
-      if (req.body[f] !== undefined) data[f] = req.body[f];
-    }
-    if (req.body.telefono !== undefined && req.body.phone === undefined) {
-      data.phone = req.body.telefono;
-    }
+    if (resolvedNombre != null) data.nombre = resolvedNombre;
+    if (resolvedEmail != null) data.email = resolvedEmail;
+    if (resolvedEmpresa != null) data.empresa = resolvedEmpresa;
+    if (resolvedCargo != null) data.cargo = resolvedCargo;
+    if (resolvedPhone != null) data.phone = resolvedPhone;
+    if (req.body.canalOrigen !== undefined) data.canalOrigen = req.body.canalOrigen;
+    if (req.body.etiquetas !== undefined) data.etiquetas = req.body.etiquetas;
+    if (req.body.notas !== undefined) data.notas = req.body.notas;
+    if (req.body.leadScore !== undefined) data.leadScore = req.body.leadScore;
 
     const incomingCustomFields = (req.body.customFields && typeof req.body.customFields === 'object')
       ? req.body.customFields
@@ -325,9 +338,13 @@ router.patch('/contacts/by-cedula', [
       identificacion: cedula,
       cedulaNormalizada: normalizedCedula,
       identificacionNormalizada: normalizedCedula,
+      tseSyncedAt: new Date().toISOString(),
+      tseData: tseProfile,
     };
 
-    const hasDirectFieldUpdate = allowedFields.some((field) => req.body[field] !== undefined) || req.body.telefono !== undefined;
+    const hasDirectFieldUpdate = ['nombre', 'email', 'empresa', 'cargo', 'canalOrigen', 'etiquetas', 'notas', 'leadScore', 'phone', 'telefono']
+      .some((field) => req.body[field] !== undefined)
+      || Object.keys(tseProfile).length > 0;
     const hasCustomFieldsUpdate = Object.keys(incomingCustomFields).length > 0;
     if (!hasDirectFieldUpdate && !hasCustomFieldsUpdate) {
       // Single-input TSE mode: allow touching the contact when only identification is provided.
@@ -340,6 +357,7 @@ router.patch('/contacts/by-cedula', [
       ok: true,
       found: true,
       created: false,
+      tseSynced: true,
       contactId: updated.id,
       tenantId: updated.tenantId,
       identificacion: cedula,
@@ -745,6 +763,253 @@ async function findContactsByCedulaAnyTenant(cedula, normalizedCedula, limit = 2
   }
 
   return matches;
+}
+
+async function fetchTseProfileByCedula(tenantId, cedula) {
+  const cfg = await loadTseConfig(tenantId);
+  if (!cfg.url) {
+    return {
+      ok: false,
+      error: 'TSE config missing (set tenant config key "tse_config" with url/baseUrl+endpoint from the interface)',
+    };
+  }
+  if (!cfg.fieldMap) {
+    return {
+      ok: false,
+      error: 'TSE config missing fieldMap (configure response mapping in tenant tse_config from the interface)',
+    };
+  }
+
+  const method = String(cfg.method ?? 'GET').toUpperCase();
+  const timeoutMs = Number.isFinite(Number(cfg.timeoutMs)) ? Number(cfg.timeoutMs) : 10000;
+  const paramName = String(cfg.paramName || 'identificacion');
+  const url = buildTseUrl(cfg.url, cedula, method, paramName);
+
+  const headers = {
+    Accept: 'application/json',
+  };
+  if (method !== 'GET') headers['Content-Type'] = 'application/json';
+
+  const token = String(cfg.token || '').trim();
+  const authType = String(cfg.authType || (token ? 'bearer' : 'none')).toLowerCase();
+  if (token) {
+    if (authType === 'apikey') {
+      headers[cfg.authHeader || 'x-api-key'] = token;
+    } else if (authType === 'raw') {
+      headers[cfg.authHeader || 'Authorization'] = token;
+    } else {
+      headers.Authorization = `Bearer ${token}`;
+    }
+  }
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const reqOptions = {
+      method,
+      headers,
+      signal: controller.signal,
+    };
+
+    if (method !== 'GET') {
+      reqOptions.body = JSON.stringify({ [paramName]: cedula });
+    }
+
+    const response = await fetch(url, reqOptions);
+    const bodyText = await response.text();
+    const payload = safeJsonParse(bodyText);
+
+    if (!response.ok) {
+      return {
+        ok: false,
+        notFound: response.status === 404,
+        error: extractRemoteError(payload, bodyText, response.status),
+      };
+    }
+
+    if (looksLikeNotFound(payload)) {
+      return {
+        ok: false,
+        notFound: true,
+        error: extractRemoteError(payload, bodyText, response.status),
+      };
+    }
+
+    const profile = normalizeTsePayload(payload, cfg.fieldMap);
+    const hasUsableProfile = ['nombre', 'email', 'phone', 'empresa', 'cargo']
+      .some((key) => {
+        const value = profile[key];
+        return value != null && String(value).trim() !== '';
+      });
+    if (!hasUsableProfile) {
+      return {
+        ok: false,
+        error: 'TSE response did not include usable contact fields (configure tse_config.fieldMap if needed)',
+      };
+    }
+
+    return {
+      ok: true,
+      profile,
+      raw: payload,
+    };
+  } catch (err) {
+    return {
+      ok: false,
+      error: err?.name === 'AbortError'
+        ? `TSE lookup timed out after ${timeoutMs}ms`
+        : String(err?.message || err),
+    };
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
+async function loadTseConfig(tenantId) {
+  const row = await prisma.configuracion.findUnique({
+    where: { tenantId_clave: { tenantId, clave: TSE_CONFIG_KEY } },
+    select: { valor: true },
+  });
+  const value = row?.valor && typeof row.valor === 'object' && !Array.isArray(row.valor)
+    ? row.valor
+    : {};
+
+  const baseUrl = String(value.baseUrl || '').trim();
+  const endpoint = String(value.endpoint || '').trim();
+  const directUrl = String(value.url || '').trim();
+
+  let url = directUrl;
+  if (!url && baseUrl && endpoint) {
+    url = `${baseUrl.replace(/\/$/, '')}/${endpoint.replace(/^\//, '')}`;
+  }
+
+  return {
+    url,
+    method: value.method || 'GET',
+    timeoutMs: value.timeoutMs || 10000,
+    paramName: value.identificacionParam || value.paramName || 'identificacion',
+    token: value.token || value.apiKey || '',
+    authType: value.authType || '',
+    authHeader: value.authHeader || value.apiKeyHeader || '',
+    fieldMap: value.fieldMap && typeof value.fieldMap === 'object' && !Array.isArray(value.fieldMap)
+      ? value.fieldMap
+      : null,
+  };
+}
+
+function buildTseUrl(base, cedula, method, paramName) {
+  const templateResolved = String(base)
+    .replace(/\{\{\s*identificacion\s*\}\}/gi, encodeURIComponent(cedula))
+    .replace(/\{\{\s*cedula\s*\}\}/gi, encodeURIComponent(cedula));
+
+  if (method !== 'GET') return templateResolved;
+  if (/\{\{\s*(identificacion|cedula)\s*\}\}/i.test(base)) return templateResolved;
+
+  const url = new URL(templateResolved);
+  if (!url.searchParams.has(paramName)) {
+    url.searchParams.set(paramName, cedula);
+  }
+  return url.toString();
+}
+
+function safeJsonParse(rawText) {
+  if (typeof rawText !== 'string') return rawText;
+  try {
+    return JSON.parse(rawText);
+  } catch {
+    return rawText;
+  }
+}
+
+function extractRemoteError(payload, bodyText, statusCode) {
+  if (payload && typeof payload === 'object') {
+    const candidate = payload.error || payload.message || payload.detail || payload.mensaje;
+    if (candidate) return String(candidate);
+  }
+  if (typeof payload === 'string' && payload.trim()) return payload.trim();
+  if (typeof bodyText === 'string' && bodyText.trim()) return bodyText.trim();
+  return `TSE API request failed with status ${statusCode}`;
+}
+
+function looksLikeNotFound(payload) {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return false;
+
+  const boolFlags = ['found', 'encontrado', 'exists', 'existe'];
+  for (const key of boolFlags) {
+    if (payload[key] === false) return true;
+  }
+
+  const msg = String(payload.error || payload.message || payload.mensaje || '').toLowerCase();
+  if (msg.includes('not found') || msg.includes('no encontrado') || msg.includes('sin resultados')) {
+    return true;
+  }
+
+  return false;
+}
+
+function normalizeTsePayload(payload, fieldMap = null) {
+  const source = getPrimaryObject(payload);
+
+  return {
+    nombre: pickFromMap(source, fieldMap?.nombre),
+    email: pickFromMap(source, fieldMap?.email),
+    phone: pickFromMap(source, fieldMap?.phone),
+    empresa: pickFromMap(source, fieldMap?.empresa),
+    cargo: pickFromMap(source, fieldMap?.cargo),
+  };
+}
+
+function getPrimaryObject(payload) {
+  if (Array.isArray(payload)) {
+    return payload.find((item) => item && typeof item === 'object' && !Array.isArray(item)) || {};
+  }
+  if (!payload || typeof payload !== 'object') return {};
+
+  const candidates = [
+    payload.data,
+    payload.result,
+    payload.persona,
+    payload.person,
+    Array.isArray(payload.results) ? payload.results[0] : null,
+    Array.isArray(payload.data) ? payload.data[0] : null,
+  ];
+
+  for (const candidate of candidates) {
+    if (candidate && typeof candidate === 'object' && !Array.isArray(candidate)) {
+      return candidate;
+    }
+  }
+
+  return payload;
+}
+
+function pickFromMap(source, mapping) {
+  if (!mapping) return null;
+  const paths = Array.isArray(mapping) ? mapping : [mapping];
+  return pickFirst(source, paths.map((path) => String(path)));
+}
+
+function pickFirst(source, paths) {
+  for (const path of paths) {
+    const value = getByPath(source, path);
+    if (value == null) continue;
+    const normalized = String(value).trim();
+    if (!normalized) continue;
+    return normalized;
+  }
+  return null;
+}
+
+function getByPath(source, path) {
+  if (!source || typeof source !== 'object') return undefined;
+  const keys = String(path).split('.');
+  let cursor = source;
+  for (const key of keys) {
+    if (!cursor || typeof cursor !== 'object') return undefined;
+    cursor = cursor[key];
+  }
+  return cursor;
 }
 
 module.exports = router;
