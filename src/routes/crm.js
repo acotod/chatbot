@@ -282,7 +282,20 @@ router.patch('/contacts/by-cedula', [
 
     const updated = await prisma.user.update({ where: { id: existing.id }, data });
     audit({ adminUserId: req.admin.adminUserId, tenantId: existing.tenantId, accion: 'UPDATE_CONTACT_BY_CEDULA', entidad: 'user', entidadId: String(existing.id) });
-    res.json({ ok: true, contactoActualizado: updated });
+    res.json({
+      ok: true,
+      found: true,
+      contactId: updated.id,
+      tenantId: updated.tenantId,
+      identificacion: cedula,
+      nombre: updated.nombre ?? null,
+      email: updated.email ?? null,
+      empresa: updated.empresa ?? null,
+      cargo: updated.cargo ?? null,
+      phone: updated.phone ?? null,
+      updatedAt: updated.updatedAt,
+      contactoActualizado: updated,
+    });
   } catch (err) { next(err); }
 });
 
