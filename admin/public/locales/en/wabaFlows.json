@@ -107,6 +107,7 @@
     "versionFallback": "Version {number}",
     "publishedOn": "Published {date}",
     "validationErrors": "{count} error(s)",
+    "moreErrors": "+{count} more error(s)",
     "rollback": "Rollback to this version",
     "published": "Published",
     "publish": "Publish"

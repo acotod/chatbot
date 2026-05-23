@@ -46,7 +46,7 @@ interface FlowVersion {
   changelog?: string;
   wabaValidationStatus: "draft" | "valid" | "invalid" | "exported";
   wabaValidatedAt?: string;
-  wabaValidationErrors?: string[];
+  wabaValidationErrors?: unknown[];
   createdAt: string;
   _count?: { executions: number };
 }
@@ -147,6 +147,21 @@ function asObjectRecord(value: unknown): Record<string, unknown> | null {
 
 function asArray(value: unknown): unknown[] {
   return Array.isArray(value) ? value : [];
+}
+
+function extractValidationErrorMessages(rawErrors: unknown): string[] {
+  if (!Array.isArray(rawErrors)) return [];
+
+  return rawErrors
+    .map((entry) => {
+      if (typeof entry === "string") return entry.trim();
+      if (entry && typeof entry === "object") {
+        const message = (entry as { message?: unknown }).message;
+        if (typeof message === "string") return message.trim();
+      }
+      return "";
+    })
+    .filter(Boolean);
 }
 
 function getDataSource(component: unknown): unknown[] {
@@ -2576,9 +2591,25 @@ function VersionsPanel({ flow, onRefresh, tenantSlug }: { flow: WabaFlow; onRefr
               {v.published && v.publishedAt && (
                 <p className="text-xs text-green-600 mt-0.5">{t("versions.publishedOn", { date: fmtDate(v.publishedAt) })}</p>
               )}
-              {v.wabaValidationErrors && v.wabaValidationErrors.length > 0 && (
-                <p className="text-xs text-red-500 mt-0.5">⚠ {t("versions.validationErrors", { count: v.wabaValidationErrors.length })}</p>
-              )}
+              {(() => {
+                const errorMessages = extractValidationErrorMessages(v.wabaValidationErrors);
+                if (errorMessages.length === 0) return null;
+
+                const visibleErrors = errorMessages.slice(0, 2);
+                const remaining = errorMessages.length - visibleErrors.length;
+
+                return (
+                  <div className="mt-1.5 space-y-0.5">
+                    <p className="text-xs text-red-500">⚠ {t("versions.validationErrors", { count: errorMessages.length })}</p>
+                    {visibleErrors.map((msg, idx) => (
+                      <p key={`${v.id}-err-${idx}`} className="text-xs text-red-600">• {msg}</p>
+                    ))}
+                    {remaining > 0 && (
+                      <p className="text-xs text-red-500">{t("versions.moreErrors", { count: remaining })}</p>
+                    )}
+                  </div>
+                );
+              })()}
             </div>
           </div>
           <div className="flex items-center gap-2">
