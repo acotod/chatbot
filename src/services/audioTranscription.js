@@ -43,6 +43,31 @@ function resolveOpenAiKey(configValue) {
   return String(process.env.OPENAI_API_KEY || '').trim();
 }
 
+async function resolveOpenAiKeyForTenant(tenantId, configValue) {
+  const directKey = resolveOpenAiKey(configValue);
+  if (directKey) {
+    return { key: directKey, source: 'audio_transcription_provider' };
+  }
+
+  try {
+    const llmCfg = await db.getConfig(tenantId, 'llm_config');
+    const provider = String(llmCfg?.valor?.provider || '').trim().toLowerCase();
+    const llmApiKey = String(llmCfg?.valor?.api_key || '').trim();
+
+    // Reuse tenant LLM key only when it's clearly OpenAI-based.
+    if (llmApiKey && (!provider || provider === 'openai')) {
+      return { key: llmApiKey, source: 'llm_config' };
+    }
+  } catch (err) {
+    logger.warn('Could not resolve llm_config fallback for audio transcription', {
+      tenantId,
+      message: err.message,
+    });
+  }
+
+  return { key: '', source: null };
+}
+
 async function transcribeAudioBuffer({ buffer, mimeType, tenantId, config }) {
   if (!Buffer.isBuffer(buffer) || buffer.length === 0) {
     return {
@@ -75,7 +100,7 @@ async function transcribeAudioBuffer({ buffer, mimeType, tenantId, config }) {
   }
 
   const providerCfgRow = await db.getConfig(tenantId, 'wa_audio_transcription_provider');
-  const apiKey = resolveOpenAiKey(providerCfgRow?.valor);
+  const { key: apiKey, source: apiKeySource } = await resolveOpenAiKeyForTenant(tenantId, providerCfgRow?.valor);
   if (!apiKey) {
     return {
       ok: false,
@@ -125,6 +150,7 @@ async function transcribeAudioBuffer({ buffer, mimeType, tenantId, config }) {
         meta: {
           model: config.model,
           status: response.status,
+          keySource: apiKeySource,
         },
       };
     }
@@ -138,6 +164,7 @@ async function transcribeAudioBuffer({ buffer, mimeType, tenantId, config }) {
       meta: {
         model: config.model,
         language: bodyJson?.language || config.languageHint || null,
+        keySource: apiKeySource,
       },
     };
   } catch (err) {
@@ -149,6 +176,7 @@ async function transcribeAudioBuffer({ buffer, mimeType, tenantId, config }) {
       provider: 'openai',
       meta: {
         model: config.model,
+        keySource: apiKeySource,
       },
     };
   } finally {
