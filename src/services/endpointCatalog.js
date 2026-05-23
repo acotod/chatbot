@@ -26,6 +26,9 @@ const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
 
 const CONFIG_KEY = 'flow_endpoints_catalog';
+const MANAGED_ENDPOINT_IDS = new Set([
+  'updateContactByIdentification',
+]);
 
 /** Built-in catalog served when no tenant catalog is configured */
 const DEFAULT_CATALOG = {
@@ -161,13 +164,31 @@ function mergeCatalogWithDefaults(catalog) {
       ...(endpoint.inputDefaults && typeof endpoint.inputDefaults === 'object' ? endpoint.inputDefaults : {}),
     };
 
-    return {
+    const mergedEndpoint = {
       ...base,
       ...endpoint,
       inputs: Array.isArray(endpoint.inputs) ? endpoint.inputs : base.inputs,
       outputs: Array.isArray(endpoint.outputs) ? endpoint.outputs : base.outputs,
       ...(Object.keys(inputDefaults).length ? { inputDefaults } : {}),
     };
+
+    // Managed endpoints must keep platform contract stable even when tenant
+    // catalog contains outdated overrides.
+    if (MANAGED_ENDPOINT_IDS.has(endpoint.id)) {
+      return {
+        ...mergedEndpoint,
+        id: base.id,
+        name: base.name,
+        method: base.method,
+        url: base.url,
+        inputs: base.inputs,
+        outputs: base.outputs,
+        description: base.description,
+        sessionInit: base.sessionInit,
+      };
+    }
+
+    return mergedEndpoint;
   });
 
   const knownIds = new Set(customEndpoints.map((endpoint) => endpoint?.id).filter(Boolean));
