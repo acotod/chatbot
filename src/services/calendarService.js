@@ -38,6 +38,7 @@ function getRedis() {
 const SLOT_CACHE_TTL_SEC = 60;
 
 const GOOGLE_CALENDAR_API_BASE = 'https://www.googleapis.com/calendar/v3';
+const GOOGLE_OAUTH_TOKEN_URL = 'https://oauth2.googleapis.com/token';
 
 async function cacheGet(key) {
   try {
@@ -77,6 +78,20 @@ function getCalendarProviderConfig(calendar) {
     provider,
     syncEnabled: config.sync !== false,
     accessToken: credentials.access_token || credentials.accessToken || null,
+    refreshToken: credentials.refresh_token || credentials.refreshToken || null,
+    tokenUri: credentials.token_uri || credentials.tokenUri || GOOGLE_OAUTH_TOKEN_URL,
+    clientId:
+      credentials.client_id ||
+      credentials.clientId ||
+      process.env.GOOGLE_CLIENT_ID ||
+      process.env.GOOGLE_OAUTH_CLIENT_ID ||
+      null,
+    clientSecret:
+      credentials.client_secret ||
+      credentials.clientSecret ||
+      process.env.GOOGLE_CLIENT_SECRET ||
+      process.env.GOOGLE_OAUTH_CLIENT_SECRET ||
+      null,
     calendarExternalId:
       credentials.calendar_id ||
       credentials.calendarId ||
@@ -85,6 +100,134 @@ function getCalendarProviderConfig(calendar) {
       config.google_calendar_id ||
       'primary',
   };
+}
+
+async function persistGoogleAccessToken(calendarId, newAccessToken, expiresInSec = null) {
+  const calendar = await prisma.calendar.findUnique({
+    where: { id: calendarId },
+    select: { config: true },
+  });
+  if (!calendar) return;
+
+  const config = asObject(calendar.config);
+  const providerCredentials = asObject(config.provider_credentials || config.providerCredentials);
+  const nextProviderCredentials = {
+    ...providerCredentials,
+    access_token: newAccessToken,
+  };
+
+  if (Number.isFinite(expiresInSec) && Number(expiresInSec) > 0) {
+    const expiresAtIso = new Date(Date.now() + Number(expiresInSec) * 1000).toISOString();
+    nextProviderCredentials.expires_at = expiresAtIso;
+  }
+
+  await prisma.calendar.update({
+    where: { id: calendarId },
+    data: {
+      config: {
+        ...config,
+        provider_credentials: nextProviderCredentials,
+      },
+    },
+  });
+}
+
+async function refreshGoogleAccessToken(calendar) {
+  const providerCfg = getCalendarProviderConfig(calendar);
+  if (providerCfg.provider !== 'google' || !providerCfg.syncEnabled) return null;
+
+  if (!providerCfg.refreshToken || !providerCfg.clientId || !providerCfg.clientSecret) {
+    logger.warn(
+      {
+        calendarId: calendar.id,
+        hasRefreshToken: Boolean(providerCfg.refreshToken),
+        hasClientId: Boolean(providerCfg.clientId),
+        hasClientSecret: Boolean(providerCfg.clientSecret),
+      },
+      'calendarService.google refresh skipped: missing oauth credentials'
+    );
+    return null;
+  }
+
+  const tokenEndpoint = providerCfg.tokenUri || GOOGLE_OAUTH_TOKEN_URL;
+  const body = new URLSearchParams({
+    client_id: providerCfg.clientId,
+    client_secret: providerCfg.clientSecret,
+    grant_type: 'refresh_token',
+    refresh_token: providerCfg.refreshToken,
+  });
+
+  const resp = await fetch(tokenEndpoint, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body,
+  });
+
+  const json = await resp.json().catch(() => ({}));
+  if (!resp.ok || !json.access_token) {
+    throw new Error(`google_refresh_token_failed:${resp.status}:${JSON.stringify(json).slice(0, 400)}`);
+  }
+
+  await persistGoogleAccessToken(calendar.id, json.access_token, json.expires_in);
+  return json.access_token;
+}
+
+async function googleRequestWithRefresh({ calendar, method, path, body, metadata }) {
+  const providerCfg = getCalendarProviderConfig(calendar);
+  if (providerCfg.provider !== 'google' || !providerCfg.syncEnabled) return null;
+  if (!providerCfg.accessToken) {
+    logger.warn({ calendarId: calendar.id, path }, 'calendarService.google request skipped: missing access token');
+    return { ok: false, skipped: true, status: 0, bodyText: '' };
+  }
+
+  const makeRequest = async (token) => {
+    const resp = await fetch(`${GOOGLE_CALENDAR_API_BASE}${path}`, {
+      method,
+      headers: {
+        Authorization: `Bearer ${token}`,
+        ...(body ? { 'Content-Type': 'application/json' } : {}),
+      },
+      ...(body ? { body: JSON.stringify(body) } : {}),
+    });
+    const text = await resp.text();
+    return { ok: resp.ok, status: resp.status, bodyText: text };
+  };
+
+  let result = await makeRequest(providerCfg.accessToken);
+  if (result.ok) return result;
+
+  const shouldRetry = result.status === 401 || result.status === 403;
+  if (!shouldRetry) return result;
+
+  try {
+    const refreshedToken = await refreshGoogleAccessToken(calendar);
+    if (!refreshedToken) return result;
+    result = await makeRequest(refreshedToken);
+    if (!result.ok) {
+      logger.warn(
+        {
+          calendarId: calendar.id,
+          path,
+          status: result.status,
+          response: result.bodyText.slice(0, 400),
+          metadata,
+        },
+        'calendarService.google request failed after token refresh'
+      );
+    }
+    return result;
+  } catch (refreshErr) {
+    logger.error(
+      {
+        calendarId: calendar.id,
+        path,
+        message: refreshErr.message,
+        metadata,
+      },
+      'calendarService.google token refresh failed'
+    );
+    return result;
+  }
 }
 
 function getExternalEventId(metadata) {
@@ -104,10 +247,6 @@ function withExternalEventId(metadata, eventId) {
 async function createGoogleCalendarEvent({ calendar, appointment }) {
   const providerCfg = getCalendarProviderConfig(calendar);
   if (providerCfg.provider !== 'google' || !providerCfg.syncEnabled) return null;
-  if (!providerCfg.accessToken) {
-    logger.warn({ calendarId: calendar.id }, 'calendarService.google sync skipped: missing access token');
-    return null;
-  }
 
   const eventPayload = {
     summary: `Cita ${appointment?.metadata?.user_name ? `- ${appointment.metadata.user_name}` : ''}`.trim(),
@@ -126,22 +265,25 @@ async function createGoogleCalendarEvent({ calendar, appointment }) {
     },
   };
 
-  const url = `${GOOGLE_CALENDAR_API_BASE}/calendars/${encodeURIComponent(providerCfg.calendarExternalId)}/events`;
-  const resp = await fetch(url, {
+  const response = await googleRequestWithRefresh({
+    calendar,
     method: 'POST',
-    headers: {
-      Authorization: `Bearer ${providerCfg.accessToken}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(eventPayload),
+    path: `/calendars/${encodeURIComponent(providerCfg.calendarExternalId)}/events`,
+    body: eventPayload,
+    metadata: { appointmentId: appointment.id, operation: 'create_event' },
   });
 
-  if (!resp.ok) {
-    const body = await resp.text();
-    throw new Error(`google_create_event_failed:${resp.status}:${body.slice(0, 400)}`);
+  if (!response || response.skipped) return null;
+  if (!response.ok) {
+    throw new Error(`google_create_event_failed:${response.status}:${response.bodyText.slice(0, 400)}`);
   }
 
-  const json = await resp.json();
+  let json = {};
+  try {
+    json = JSON.parse(response.bodyText || '{}');
+  } catch (_) {
+    json = {};
+  }
   return json?.id || null;
 }
 
@@ -151,23 +293,18 @@ async function cancelGoogleCalendarEvent({ calendar, metadata }) {
 
   const externalEventId = getExternalEventId(metadata);
   if (!externalEventId) return;
-  if (!providerCfg.accessToken) {
-    logger.warn({ calendarId: calendar.id, externalEventId }, 'calendarService.google cancel skipped: missing access token');
-    return;
-  }
 
-  const url = `${GOOGLE_CALENDAR_API_BASE}/calendars/${encodeURIComponent(providerCfg.calendarExternalId)}/events/${encodeURIComponent(externalEventId)}`;
-  const resp = await fetch(url, {
+  const response = await googleRequestWithRefresh({
+    calendar,
     method: 'DELETE',
-    headers: {
-      Authorization: `Bearer ${providerCfg.accessToken}`,
-    },
+    path: `/calendars/${encodeURIComponent(providerCfg.calendarExternalId)}/events/${encodeURIComponent(externalEventId)}`,
+    metadata: { externalEventId, operation: 'cancel_event' },
   });
 
-  if (resp.status === 404 || resp.status === 410) return;
-  if (!resp.ok) {
-    const body = await resp.text();
-    throw new Error(`google_cancel_event_failed:${resp.status}:${body.slice(0, 400)}`);
+  if (!response || response.skipped) return;
+  if (response.status === 404 || response.status === 410) return;
+  if (!response.ok) {
+    throw new Error(`google_cancel_event_failed:${response.status}:${response.bodyText.slice(0, 400)}`);
   }
 }
 
