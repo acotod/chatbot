@@ -788,6 +788,12 @@ async function fetchTseProfileByCedula(tenantId, cedula) {
   const headers = {
     Accept: 'application/json',
   };
+  if (cfg.headers && typeof cfg.headers === 'object' && !Array.isArray(cfg.headers)) {
+    for (const [key, value] of Object.entries(cfg.headers)) {
+      if (!key || value == null) continue;
+      headers[String(key)] = String(value);
+    }
+  }
   if (method !== 'GET') headers['Content-Type'] = 'application/json';
 
   const token = String(cfg.token || '').trim();
@@ -892,6 +898,9 @@ async function loadTseConfig(tenantId) {
     token: value.token || value.apiKey || '',
     authType: value.authType || '',
     authHeader: value.authHeader || value.apiKeyHeader || '',
+    headers: value.headers && typeof value.headers === 'object' && !Array.isArray(value.headers)
+      ? value.headers
+      : null,
     fieldMap: value.fieldMap && typeof value.fieldMap === 'object' && !Array.isArray(value.fieldMap)
       ? value.fieldMap
       : null,
