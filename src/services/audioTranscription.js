@@ -113,75 +113,123 @@ async function transcribeAudioBuffer({ buffer, mimeType, tenantId, config }) {
 
   const baseUrl = String(process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1').replace(/\/$/, '');
   const url = `${baseUrl}/audio/transcriptions`;
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), config.timeoutMs);
+  const maxAttempts = 2;
+  const retryStatuses = new Set([429, 500, 502, 503, 504]);
 
-  try {
-    const filename = mimeType && mimeType.includes('ogg') ? 'audio.ogg' : 'audio.wav';
-    const form = new FormData();
-    form.append('file', new Blob([buffer], { type: mimeType || 'application/octet-stream' }), filename);
-    form.append('model', config.model || DEFAULT_TRANSCRIPTION_CONFIG.model);
-    if (config.languageHint) form.append('language', config.languageHint);
+  const shouldRetryException = (err) => {
+    if (!err) return false;
+    if (err.name === 'AbortError') return true;
+    const message = String(err.message || '').toLowerCase();
+    return message.includes('network') || message.includes('fetch failed') || message.includes('socket');
+  };
 
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: form,
-      signal: controller.signal,
-    });
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), config.timeoutMs);
 
-    const bodyText = await response.text();
-    let bodyJson = null;
     try {
-      bodyJson = JSON.parse(bodyText);
-    } catch {
-      bodyJson = null;
-    }
+      const filename = mimeType && mimeType.includes('ogg') ? 'audio.ogg' : 'audio.wav';
+      const form = new FormData();
+      form.append('file', new Blob([buffer], { type: mimeType || 'application/octet-stream' }), filename);
+      form.append('model', config.model || DEFAULT_TRANSCRIPTION_CONFIG.model);
+      if (config.languageHint) form.append('language', config.languageHint);
 
-    if (!response.ok) {
-      const errorText = bodyJson?.error?.message || bodyText || 'OpenAI transcription failed';
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: form,
+        signal: controller.signal,
+      });
+
+      const bodyText = await response.text();
+      let bodyJson = null;
+      try {
+        bodyJson = JSON.parse(bodyText);
+      } catch {
+        bodyJson = null;
+      }
+
+      if (!response.ok) {
+        const errorText = bodyJson?.error?.message || bodyText || 'OpenAI transcription failed';
+        if (attempt < maxAttempts && retryStatuses.has(response.status)) {
+          logger.warn('Retrying audio transcription after provider error', {
+            tenantId,
+            status: response.status,
+            attempt,
+          });
+          continue;
+        }
+        return {
+          ok: false,
+          text: null,
+          error: String(errorText).slice(0, 500),
+          provider: 'openai',
+          meta: {
+            model: config.model,
+            status: response.status,
+            keySource: apiKeySource,
+            attempts: attempt,
+          },
+        };
+      }
+
+      const text = String(bodyJson?.text ?? '').trim();
       return {
-        ok: false,
-        text: null,
-        error: String(errorText).slice(0, 500),
+        ok: Boolean(text),
+        text: text || null,
+        error: text ? null : 'Empty transcript',
         provider: 'openai',
         meta: {
           model: config.model,
-          status: response.status,
+          language: bodyJson?.language || config.languageHint || null,
           keySource: apiKeySource,
+          attempts: attempt,
         },
       };
-    }
+    } catch (err) {
+      const timeoutError = err?.name === 'AbortError'
+        ? `Transcription request timed out after ${config.timeoutMs}ms`
+        : String(err?.message || 'Audio transcription failed');
 
-    const text = String(bodyJson?.text ?? '').trim();
-    return {
-      ok: Boolean(text),
-      text: text || null,
-      error: text ? null : 'Empty transcript',
-      provider: 'openai',
-      meta: {
-        model: config.model,
-        language: bodyJson?.language || config.languageHint || null,
-        keySource: apiKeySource,
-      },
-    };
-  } catch (err) {
-    logger.warn('Audio transcription failed', { tenantId, message: err.message });
-    return {
-      ok: false,
-      text: null,
-      error: err.message,
-      provider: 'openai',
-      meta: {
-        model: config.model,
-        keySource: apiKeySource,
-      },
-    };
-  } finally {
-    clearTimeout(timer);
+      if (attempt < maxAttempts && shouldRetryException(err)) {
+        logger.warn('Retrying audio transcription after transient failure', {
+          tenantId,
+          attempt,
+          message: timeoutError,
+        });
+        continue;
+      }
+
+      logger.warn('Audio transcription failed', { tenantId, message: timeoutError });
+      return {
+        ok: false,
+        text: null,
+        error: timeoutError,
+        provider: 'openai',
+        meta: {
+          model: config.model,
+          keySource: apiKeySource,
+          attempts: attempt,
+        },
+      };
+    } finally {
+      clearTimeout(timer);
+    }
   }
+
+  return {
+    ok: false,
+    text: null,
+    error: 'Audio transcription exhausted retries',
+    provider: 'openai',
+    meta: {
+      model: config.model,
+      keySource: apiKeySource,
+      attempts: maxAttempts,
+    },
+  };
 }
 
 module.exports = {

@@ -169,7 +169,14 @@ function getDisplayName(thread: Thread): string {
 function getAudioTranscript(msg: Pick<Mensaje, "contenido">):
   | { status: string; text: string | null; error: string | null }
   | null {
-  const raw = (msg.contenido as Record<string, unknown>)?.audioTranscript;
+  const contenido = (msg.contenido && typeof msg.contenido === "object")
+    ? (msg.contenido as Record<string, unknown>)
+    : {};
+  const direct = contenido.audioTranscript;
+  const rawContainer = (contenido.raw && typeof contenido.raw === "object")
+    ? (contenido.raw as Record<string, unknown>)
+    : null;
+  const raw = direct ?? rawContainer?.audioTranscript;
   if (!raw || typeof raw !== "object") return null;
   const obj = raw as Record<string, unknown>;
   return {
@@ -251,7 +258,14 @@ function MessageMediaContent({
           <p className="text-xs text-[#0D2B3E] whitespace-pre-wrap">{transcript.text}</p>
         )}
         {transcript?.status === "failed" && (
-          <p className="text-xs text-[#5B6670]">No se pudo transcribir este audio</p>
+          <div className="space-y-1">
+            <p className="text-xs text-[#5B6670]">No se pudo transcribir este audio</p>
+            {transcript.error && (
+              <p className="text-[11px] text-[#5B6670]/90 whitespace-pre-wrap">
+                Motivo: {transcript.error}
+              </p>
+            )}
+          </div>
         )}
       </div>
     );
