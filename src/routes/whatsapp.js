@@ -120,6 +120,21 @@ async function _transcribeAudioMessageBestEffort({
   conversationMeta,
 }) {
   try {
+    const existingAudioTranscript = (mensaje?.contenido && typeof mensaje.contenido === 'object')
+      ? mensaje.contenido.audioTranscript
+      : null;
+    if (existingAudioTranscript && typeof existingAudioTranscript === 'object') {
+      const existingStatus = String(existingAudioTranscript.status || '').trim().toLowerCase();
+      if (existingStatus === 'processing' || existingStatus === 'completed') {
+        logger.info('Audio transcription skipped: already processed', {
+          tenantId: tenant?.id,
+          mensajeId: mensaje?.id,
+          status: existingStatus,
+        });
+        return;
+      }
+    }
+
     const config = await getTenantTranscriptionConfig(tenant.id);
     if (!config.enabled) return;
 
