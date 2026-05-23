@@ -471,20 +471,26 @@ export const configApi = {
     apiClient.put(`/admin/tenants/${slug}/config/${clave}`, { valor }),
 };
 
+function withTenantSlugParams(params?: Record<string, unknown>) {
+  const tenantSlug = useAuthStore.getState().tenantSlug;
+  if (!tenantSlug) return params;
+  return { ...(params ?? {}), tenantSlug };
+}
+
 // ── Integrations ──────────────────────────────────────────────────────────────
 export const integrationsApi = {
   list: (params?: { tipo?: string; activo?: boolean }) =>
-    apiClient.get("/integrations", { params }),
-  get: (id: number) => apiClient.get(`/integrations/${id}`),
+    apiClient.get("/integrations", { params: withTenantSlugParams(params) }),
+  get: (id: number) => apiClient.get(`/integrations/${id}`, { params: withTenantSlugParams() }),
   create: (data: { nombre: string; tipo: string; config: unknown; activo?: boolean }) =>
-    apiClient.post("/integrations", data),
+    apiClient.post("/integrations", { ...data, ...withTenantSlugParams() }),
   update: (id: number, data: { nombre?: string; tipo?: string; config?: unknown; activo?: boolean }) =>
-    apiClient.put(`/integrations/${id}`, data),
-  remove: (id: number) => apiClient.delete(`/integrations/${id}`),
-  test: (id: number) => apiClient.post(`/integrations/${id}/test`),
-  getCatalog: () => apiClient.get("/integrations/catalog/endpoints"),
+    apiClient.put(`/integrations/${id}`, { ...data, ...withTenantSlugParams() }),
+  remove: (id: number) => apiClient.delete(`/integrations/${id}`, { params: withTenantSlugParams() }),
+  test: (id: number) => apiClient.post(`/integrations/${id}/test`, withTenantSlugParams()),
+  getCatalog: () => apiClient.get("/integrations/catalog/endpoints", { params: withTenantSlugParams() }),
   saveCatalog: (endpoints: unknown[]) =>
-    apiClient.put("/integrations/catalog/endpoints", { endpoints }),
+    apiClient.put("/integrations/catalog/endpoints", { endpoints, ...withTenantSlugParams() }),
 };
 
 // ── Flows ─────────────────────────────────────────────────────────────────────

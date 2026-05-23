@@ -73,7 +73,7 @@ export default function IntegracionesPage() {
   const [saveMsg, setSaveMsg] = useState("");
 
   const { data, isLoading } = useQuery({
-    queryKey: ["endpoint-catalog"],
+    queryKey: ["endpoint-catalog", tenantSlug ?? "default"],
     queryFn: () => integrationsApi.getCatalog().then(r => r.data),
   });
 
@@ -82,7 +82,7 @@ export default function IntegracionesPage() {
   const saveMutation = useMutation({
     mutationFn: (eps: EndpointDef[]) => integrationsApi.saveCatalog(eps),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["endpoint-catalog"] });
+      qc.invalidateQueries({ queryKey: ["endpoint-catalog", tenantSlug ?? "default"] });
       qc.invalidateQueries({ queryKey: ["endpoints-catalog"] });
       setSaveMsg("Guardado ✓");
       setTimeout(() => setSaveMsg(""), 3000);

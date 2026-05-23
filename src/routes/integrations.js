@@ -25,13 +25,39 @@ const prisma = new PrismaClient();
 router.use(requireJwt);
 
 function tid(req) {
-  return req.user?.tenantId ?? req.user?.tenant_id;
+  return req.admin?.tenantId ?? req.user?.tenantId ?? req.user?.tenant_id;
+}
+
+async function resolveTenantId(req, explicitTenantSlug) {
+  if (!req.admin?.superAdmin) {
+    return tid(req) ?? null;
+  }
+  if (req.admin?.tenantId) return req.admin.tenantId;
+  if (explicitTenantSlug) {
+    const tenant = await prisma.tenant.findUnique({
+      where: { slug: explicitTenantSlug },
+      select: { id: true },
+    });
+    return tenant?.id ?? null;
+  }
+  return null;
+}
+
+async function requireTenantId(req, res) {
+  const tenantSlug = req.query?.tenantSlug || req.body?.tenantSlug;
+  const tenantId = await resolveTenantId(req, tenantSlug);
+  if (!tenantId) {
+    res.status(400).json({ error: 'tenantId is required — pass ?tenantSlug= or use a tenant-scoped account' });
+    return null;
+  }
+  return tenantId;
 }
 
 // GET /integrations
 router.get('/', async (req, res, next) => {
   try {
-    const tenantId = tid(req);
+    const tenantId = await requireTenantId(req, res);
+    if (!tenantId) return;
     const { tipo, activo } = req.query;
     const where = { tenantId };
     if (tipo) where.tipo = tipo;
@@ -50,7 +76,8 @@ router.get('/', async (req, res, next) => {
 // GET /integrations/:id
 router.get('/:id', async (req, res, next) => {
   try {
-    const tenantId = tid(req);
+    const tenantId = await requireTenantId(req, res);
+    if (!tenantId) return;
     const integration = await prisma.integration.findFirst({
       where: { id: Number(req.params.id), tenantId },
     });
@@ -64,7 +91,8 @@ router.get('/:id', async (req, res, next) => {
 // POST /integrations
 router.post('/', async (req, res, next) => {
   try {
-    const tenantId = tid(req);
+    const tenantId = await requireTenantId(req, res);
+    if (!tenantId) return;
     const { nombre, tipo, config, activo = true } = req.body;
 
     if (!nombre || nombre.trim() === '')
@@ -96,7 +124,8 @@ router.post('/', async (req, res, next) => {
 // PUT /integrations/:id
 router.put('/:id', async (req, res, next) => {
   try {
-    const tenantId = tid(req);
+    const tenantId = await requireTenantId(req, res);
+    if (!tenantId) return;
     const existing = await prisma.integration.findFirst({
       where: { id: Number(req.params.id), tenantId },
     });
@@ -122,7 +151,8 @@ router.put('/:id', async (req, res, next) => {
 // DELETE /integrations/:id
 router.delete('/:id', async (req, res, next) => {
   try {
-    const tenantId = tid(req);
+    const tenantId = await requireTenantId(req, res);
+    if (!tenantId) return;
     const existing = await prisma.integration.findFirst({
       where: { id: Number(req.params.id), tenantId },
     });
@@ -137,7 +167,8 @@ router.delete('/:id', async (req, res, next) => {
 // POST /integrations/:id/test  — live HTTP connectivity check
 router.post('/:id/test', async (req, res, next) => {
   try {
-    const tenantId = tid(req);
+    const tenantId = await requireTenantId(req, res);
+    if (!tenantId) return;
     const integration = await prisma.integration.findFirst({
       where: { id: Number(req.params.id), tenantId },
     });
@@ -176,7 +207,8 @@ router.post('/:id/test', async (req, res, next) => {
 // GET /integrations/catalog/endpoints — get endpoint catalog for tenant
 router.get('/catalog/endpoints', async (req, res, next) => {
   try {
-    const tenantId = tid(req);
+    const tenantId = await requireTenantId(req, res);
+    if (!tenantId) return;
     const catalog = await getCatalog(tenantId);
     res.json({ data: catalog });
   } catch (err) {
@@ -187,7 +219,8 @@ router.get('/catalog/endpoints', async (req, res, next) => {
 // PUT /integrations/catalog/endpoints — upsert endpoint catalog for tenant
 router.put('/catalog/endpoints', async (req, res, next) => {
   try {
-    const tenantId = tid(req);
+    const tenantId = await requireTenantId(req, res);
+    if (!tenantId) return;
     const { endpoints } = req.body;
     if (!Array.isArray(endpoints)) {
       return res.status(400).json({ error: '"endpoints" must be an array' });
