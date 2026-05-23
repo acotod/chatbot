@@ -37,6 +37,8 @@ function getRedis() {
 
 const SLOT_CACHE_TTL_SEC = 60;
 
+const GOOGLE_CALENDAR_API_BASE = 'https://www.googleapis.com/calendar/v3';
+
 async function cacheGet(key) {
   try {
     const r = getRedis();
@@ -60,6 +62,113 @@ async function cacheDel(key) {
     if (!r) return;
     await r.del(key);
   } catch (_) { /* best-effort */ }
+}
+
+function asObject(value) {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+}
+
+function getCalendarProviderConfig(calendar) {
+  const config = asObject(calendar?.config);
+  const provider = String(config.provider || 'internal').toLowerCase();
+  const credentials = asObject(config.provider_credentials || config.providerCredentials);
+
+  return {
+    provider,
+    syncEnabled: config.sync !== false,
+    accessToken: credentials.access_token || credentials.accessToken || null,
+    calendarExternalId:
+      credentials.calendar_id ||
+      credentials.calendarId ||
+      config.calendar_external_id ||
+      config.external_calendar_id ||
+      config.google_calendar_id ||
+      'primary',
+  };
+}
+
+function getExternalEventId(metadata) {
+  const m = asObject(metadata);
+  return m.external_event_id || m.google_event_id || null;
+}
+
+function withExternalEventId(metadata, eventId) {
+  const m = asObject(metadata);
+  return {
+    ...m,
+    external_event_id: eventId,
+    google_event_id: eventId,
+  };
+}
+
+async function createGoogleCalendarEvent({ calendar, appointment }) {
+  const providerCfg = getCalendarProviderConfig(calendar);
+  if (providerCfg.provider !== 'google' || !providerCfg.syncEnabled) return null;
+  if (!providerCfg.accessToken) {
+    logger.warn({ calendarId: calendar.id }, 'calendarService.google sync skipped: missing access token');
+    return null;
+  }
+
+  const eventPayload = {
+    summary: `Cita ${appointment?.metadata?.user_name ? `- ${appointment.metadata.user_name}` : ''}`.trim(),
+    description: [
+      `Appointment ID: ${appointment.id}`,
+      `User: ${appointment.userKey}`,
+      appointment.conversationId ? `Conversation: ${appointment.conversationId}` : null,
+    ].filter(Boolean).join('\n'),
+    start: {
+      dateTime: appointment.startTime.toISOString(),
+      timeZone: calendar.timezone || 'UTC',
+    },
+    end: {
+      dateTime: appointment.endTime.toISOString(),
+      timeZone: calendar.timezone || 'UTC',
+    },
+  };
+
+  const url = `${GOOGLE_CALENDAR_API_BASE}/calendars/${encodeURIComponent(providerCfg.calendarExternalId)}/events`;
+  const resp = await fetch(url, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${providerCfg.accessToken}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(eventPayload),
+  });
+
+  if (!resp.ok) {
+    const body = await resp.text();
+    throw new Error(`google_create_event_failed:${resp.status}:${body.slice(0, 400)}`);
+  }
+
+  const json = await resp.json();
+  return json?.id || null;
+}
+
+async function cancelGoogleCalendarEvent({ calendar, metadata }) {
+  const providerCfg = getCalendarProviderConfig(calendar);
+  if (providerCfg.provider !== 'google' || !providerCfg.syncEnabled) return;
+
+  const externalEventId = getExternalEventId(metadata);
+  if (!externalEventId) return;
+  if (!providerCfg.accessToken) {
+    logger.warn({ calendarId: calendar.id, externalEventId }, 'calendarService.google cancel skipped: missing access token');
+    return;
+  }
+
+  const url = `${GOOGLE_CALENDAR_API_BASE}/calendars/${encodeURIComponent(providerCfg.calendarExternalId)}/events/${encodeURIComponent(externalEventId)}`;
+  const resp = await fetch(url, {
+    method: 'DELETE',
+    headers: {
+      Authorization: `Bearer ${providerCfg.accessToken}`,
+    },
+  });
+
+  if (resp.status === 404 || resp.status === 410) return;
+  if (!resp.ok) {
+    const body = await resp.text();
+    throw new Error(`google_cancel_event_failed:${resp.status}:${body.slice(0, 400)}`);
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -289,6 +398,34 @@ async function bookSlot({ calendarId, slotId, tenantId, userKey, conversationId,
       return appointment;
     });
 
+    const calendar = await prisma.calendar.findFirst({
+      where: { id: calendarId, tenantId },
+      select: { id: true, name: true, timezone: true, config: true },
+    });
+
+    if (calendar) {
+      try {
+        const externalEventId = await createGoogleCalendarEvent({ calendar, appointment: result });
+        if (externalEventId) {
+          const updatedMetadata = withExternalEventId(result.metadata, externalEventId);
+          const updatedAppointment = await prisma.appointment.update({
+            where: { id: result.id },
+            data: { metadata: updatedMetadata },
+          });
+          result.metadata = updatedAppointment.metadata;
+        }
+      } catch (syncErr) {
+        logger.error(
+          {
+            calendarId,
+            appointmentId: result.id,
+            message: syncErr.message,
+          },
+          'calendarService.bookSlot google sync failed'
+        );
+      }
+    }
+
     // Invalidate availability cache for this calendar
     await cacheDel(`slots:${calendarId}:default`);
     await cacheDel(`slots:${calendarId}:5`);
@@ -316,14 +453,27 @@ async function bookSlot({ calendarId, slotId, tenantId, userKey, conversationId,
  */
 async function cancelAppointment(appointmentId, tenantId) {
   try {
-    await prisma.$transaction(async (tx) => {
-      const appt = await tx.appointment.findFirst({
-        where : { id: appointmentId, tenantId },
-        select: { id: true, status: true },
-      });
-      if (!appt) throw Object.assign(new Error('NOT_FOUND'), { code: 'NOT_FOUND' });
-      if (appt.status === 'cancelled') throw Object.assign(new Error('ALREADY_CANCELLED'), { code: 'ALREADY_CANCELLED' });
+    const existing = await prisma.appointment.findFirst({
+      where: { id: appointmentId, tenantId },
+      select: {
+        id: true,
+        status: true,
+        metadata: true,
+        calendar: {
+          select: {
+            id: true,
+            name: true,
+            timezone: true,
+            config: true,
+          },
+        },
+      },
+    });
 
+    if (!existing) return { error: 'NOT_FOUND' };
+    if (existing.status === 'cancelled') return { error: 'ALREADY_CANCELLED' };
+
+    await prisma.$transaction(async (tx) => {
       await tx.appointment.update({
         where: { id: appointmentId },
         data : { status: 'cancelled', updatedAt: new Date() },
@@ -336,10 +486,22 @@ async function cancelAppointment(appointmentId, tenantId) {
         WHERE appointment_id = ${appointmentId}::uuid
       `;
     });
+
+    try {
+      await cancelGoogleCalendarEvent({ calendar: existing.calendar, metadata: existing.metadata });
+    } catch (syncErr) {
+      logger.error(
+        {
+          appointmentId,
+          calendarId: existing.calendar?.id,
+          message: syncErr.message,
+        },
+        'calendarService.cancelAppointment google sync failed'
+      );
+    }
+
     return { ok: true };
   } catch (err) {
-    if (err.code === 'NOT_FOUND')        return { error: 'NOT_FOUND' };
-    if (err.code === 'ALREADY_CANCELLED') return { error: 'ALREADY_CANCELLED' };
     logger.error({ appointmentId, message: err.message }, 'calendarService.cancelAppointment failed');
     throw err;
   }
