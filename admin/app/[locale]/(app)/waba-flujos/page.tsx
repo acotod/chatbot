@@ -2210,7 +2210,21 @@ function FlowBuilder({
 
   function handleAddNode() {
     const ids = definition ? flattenNodes(definition.nodes).map((n) => n.id) : [];
-    const nextId = `node_${ids.length + 1}`;
+    const usedIds = new Set(ids);
+
+    const maxNodeNumber = ids.reduce((max, id) => {
+      const match = id.match(/^node_(\d+)$/i);
+      if (!match) return max;
+      const value = Number(match[1]);
+      return Number.isFinite(value) ? Math.max(max, value) : max;
+    }, 0);
+
+    let candidate = Math.max(1, maxNodeNumber + 1);
+    while (usedIds.has(`node_${candidate}`)) {
+      candidate += 1;
+    }
+
+    const nextId = `node_${candidate}`;
     setEditingNode({ id: nextId, type: "message", config: { text: "" }, next: null, branches: {} });
   }
 
