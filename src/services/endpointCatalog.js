@@ -107,6 +107,15 @@ const DEFAULT_CATALOG = {
       description: 'Actualiza el estado de un ticket existente',
     },
     {
+      id:          'updateContactByIdentification',
+      name:        'Actualizar Contacto TSE',
+      method:      'PATCH',
+      url:         '/crm/contacts/by-cedula',
+      inputs:      ['tenantSlug', 'identificacion', 'nombre', 'email', 'empresa', 'cargo', 'telefono', 'etiquetas', 'notas', 'leadScore'],
+      outputs:     ['id', 'nombre', 'email', 'empresa', 'cargo', 'phone', 'customFields'],
+      description: 'Actualiza el contacto por identificacion (cedula) en CRM/TSE.',
+    },
+    {
       id:          'sendNotification',
       name:        'Enviar Notificación',
       method:      'POST',
