@@ -135,9 +135,6 @@ export function Header() {
   const identityEmail = isAgentSession
     ? (agentProfile?.email ?? t("agentSession"))
     : (sessionEmail ?? t("noSession"));
-  const identityInitial = isAgentSession
-    ? ((agentProfile?.nombre || "Agente").charAt(0).toUpperCase())
-    : tenantDisplayName.charAt(0).toUpperCase();
   const {
     notifications,
     unreadCount,
@@ -160,7 +157,7 @@ export function Header() {
   }, [notificationsOpen]);
 
   return (
-    <header className="zentra-surface h-16 flex items-center justify-between px-6 shrink-0">
+    <header className="h-16 flex items-center justify-between px-6 shrink-0 border-b border-[#E7EEF2] bg-[radial-gradient(520px_140px_at_15%_-30%,rgba(0,191,174,0.12),transparent_72%),#FFFFFF]">
       <h1 className="text-[#0D2B3E] font-semibold tracking-wide text-lg">{title}</h1>
 
       <div className="flex items-center gap-3">
@@ -170,7 +167,7 @@ export function Header() {
           <select
             value={tenantSlug}
             onChange={(e) => setTenantSlug(e.target.value)}
-            className="px-3 py-2 rounded-xl bg-[#FFFFFF] border border-[#D9E5EB] text-sm text-[#0D2B3E] focus:outline-none focus:ring-2 focus:ring-[#00BFAE]/25 min-w-44"
+            className="px-3 py-2 rounded-xl bg-[#FFFFFF] border border-[#D9E5EB] text-sm text-[#0D2B3E] shadow-sm focus:outline-none focus:ring-2 focus:ring-[#00BFAE]/25 min-w-44"
           >
             {tenants.length === 0 && <option value="">{t("noCompanies")}</option>}
             {tenants.map((tenant) => (
@@ -188,7 +185,7 @@ export function Header() {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#5B6670]" />
           <input
             placeholder={t("buttons.search")}
-            className="pl-9 pr-4 py-2 rounded-xl bg-[#FFFFFF] border border-[#D9E5EB] text-sm text-[#0D2B3E] placeholder:text-[#5B6670] focus:outline-none focus:ring-2 focus:ring-[#00BFAE]/25 w-56"
+            className="pl-9 pr-4 py-2 rounded-xl bg-[#FFFFFF] border border-[#D9E5EB] shadow-sm text-sm text-[#0D2B3E] placeholder:text-[#5B6670] focus:outline-none focus:ring-2 focus:ring-[#00BFAE]/25 w-56"
           />
         </div>
         )}
@@ -202,7 +199,7 @@ export function Header() {
             type="button"
             onClick={() => setNotificationsOpen((v) => !v)}
             title={t("header.notifications")}
-            className="relative p-2 rounded-xl bg-[#FFFFFF] border border-[#D9E5EB] hover:bg-[#F4F7F9]"
+            className="relative p-2 rounded-xl bg-[#FFFFFF] border border-[#D9E5EB] shadow-sm hover:bg-[#F4F7F9]"
           >
             <Bell className="w-5 h-5 text-[#00BFAE]" />
             {unreadCount > 0 && (

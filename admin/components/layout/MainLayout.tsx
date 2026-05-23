@@ -65,7 +65,7 @@ export default function MainLayout({
       <Sidebar />
       <div className="relative z-10 flex min-w-0 flex-1 flex-col">
         <Header />
-        <main className="flex-1 overflow-y-auto bg-[#FFFFFF] p-6">{children}</main>
+        <main className="flex-1 overflow-y-auto bg-[radial-gradient(820px_360px_at_10%_-20%,rgba(0,191,174,0.09),transparent_58%),#FFFFFF] p-6">{children}</main>
       </div>
     </div>
   );
