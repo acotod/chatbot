@@ -397,6 +397,42 @@ function withMissingNodePositions(definition: FlowDefinition, flatNodes: NodeDef
   };
 }
 
+function withUniqueNodePositions(definition: FlowDefinition, flatNodes: NodeDef[]): FlowDefinition {
+  const currentPositions = definition.nodePositions ?? {};
+  if (Object.keys(currentPositions).length === 0) return definition;
+
+  const occupied = new Set<string>();
+  const dedupedPositions: Record<string, { x: number; y: number }> = { ...currentPositions };
+  let changed = false;
+
+  for (const node of flatNodes) {
+    const original = dedupedPositions[node.id];
+    if (!original) continue;
+
+    let x = Number(original.x) || 0;
+    let y = Number(original.y) || 0;
+    let key = `${Math.round(x)}:${Math.round(y)}`;
+
+    // If another node already uses this exact coordinate, shift until free.
+    while (occupied.has(key)) {
+      x += 40;
+      y += 40;
+      key = `${Math.round(x)}:${Math.round(y)}`;
+      changed = true;
+    }
+
+    dedupedPositions[node.id] = { x, y };
+    occupied.add(key);
+  }
+
+  if (!changed) return definition;
+
+  return {
+    ...definition,
+    nodePositions: dedupedPositions,
+  };
+}
+
 function normalizeFlowDefinition(definition: FlowDefinition): FlowDefinition {
   const flatNodes = flattenNodes(definition.nodes);
   const nodeIds = new Set(flatNodes.map((node) => node.id));
@@ -454,17 +490,19 @@ function normalizeFlowDefinition(definition: FlowDefinition): FlowDefinition {
   };
 
   const withFilledPositions = withMissingNodePositions(normalizedDefinition, flatNodes);
-  const filledPositionCount = Object.keys(withFilledPositions.nodePositions || {}).length;
+  const withDedupedPositions = withUniqueNodePositions(withFilledPositions, flatNodes);
+  const filledPositionCount = Object.keys(withDedupedPositions.nodePositions || {}).length;
   if (filledPositionCount >= flatNodes.length && flatNodes.length > 0) {
-    return withFilledPositions;
+    return withDedupedPositions;
   }
 
-  const positionCount = Object.keys(normalizedDefinition.nodePositions || {}).length;
+  const positionCount = Object.keys(withDedupedPositions.nodePositions || {}).length;
   if (positionCount >= flatNodes.length && flatNodes.length > 0) {
-    return normalizedDefinition;
+    return withDedupedPositions;
   }
 
-  return layoutAsHierarchy(normalizedDefinition as never) as unknown as FlowDefinition;
+  const withAutoLayout = layoutAsHierarchy(withDedupedPositions as never) as unknown as FlowDefinition;
+  return withUniqueNodePositions(withAutoLayout, flatNodes);
 }
 
 function parseJsonLenient(raw: string): unknown {
