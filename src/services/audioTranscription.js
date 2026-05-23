@@ -35,132 +35,44 @@ async function getTenantTranscriptionConfig(tenantId) {
   return normalized;
 }
 
-function resolveAnthropicKey(configValue) {
-  if (configValue && typeof configValue === 'object' && configValue.anthropicApiKey) {
-    const key = String(configValue.anthropicApiKey).trim();
-    if (key) return key;
-  }
-  return String(process.env.ANTHROPIC_API_KEY || '').trim();
-}
-
 function resolveOpenAiKey(configValue) {
   if (configValue && typeof configValue === 'object' && configValue.openaiApiKey) {
     const key = String(configValue.openaiApiKey).trim();
     if (key) return key;
   }
-  return String(process.env.OPENAI_API_KEY || '').trim();
+  return '';
 }
 
-async function resolveOpenAiKeyForTenant(tenantId, configValue) {
+async function resolveOpenAiKeyForTenant(_tenantId, configValue) {
   const directKey = resolveOpenAiKey(configValue);
   if (directKey) {
     return { key: directKey, source: 'audio_transcription_provider', reason: null };
   }
-
-  try {
-    const llmCfg = await db.getConfig(tenantId, 'llm_config');
-    const provider = String(llmCfg?.valor?.provider || '').trim().toLowerCase();
-    const llmApiKey = String(llmCfg?.valor?.api_key || '').trim();
-
-    // Reuse tenant LLM key only when it's clearly OpenAI-based.
-    if (llmApiKey && (!provider || provider === 'openai')) {
-      return { key: llmApiKey, source: 'llm_config', reason: null };
-    }
-
-    if (llmApiKey && provider && provider !== 'openai') {
-      return {
-        key: '',
-        source: null,
-        reason: `LLM provider '${provider}' is configured for tenant, but audio transcription currently requires an OpenAI key`,
-      };
-    }
-  } catch (err) {
-    logger.warn('Could not resolve llm_config fallback for audio transcription', {
-      tenantId,
-      message: err.message,
-    });
-  }
-
-  return { key: '', source: null, reason: null };
-}
-
-async function resolveAnthropicKeyForTenant(tenantId, configValue) {
-  const directKey = resolveAnthropicKey(configValue);
-  if (directKey) {
-    return { key: directKey, source: 'audio_transcription_provider', reason: null, llmModel: null };
-  }
-
-  try {
-    const llmCfg = await db.getConfig(tenantId, 'llm_config');
-    const provider = String(llmCfg?.valor?.provider || '').trim().toLowerCase();
-    const llmApiKey = String(llmCfg?.valor?.api_key || '').trim();
-    const llmModel = String(llmCfg?.valor?.model || '').trim() || null;
-
-    // Reuse tenant LLM key when provider is Anthropic-based.
-    if (llmApiKey && provider === 'anthropic') {
-      return { key: llmApiKey, source: 'llm_config', reason: null, llmModel };
-    }
-
-    if (llmApiKey && provider && provider !== 'anthropic') {
-      return {
-        key: '',
-        source: null,
-        reason: `LLM provider '${provider}' is configured for tenant, but Anthropic transcription requires an Anthropic key`,
-        llmModel,
-      };
-    }
-  } catch (err) {
-    logger.warn('Could not resolve llm_config fallback for anthropic transcription', {
-      tenantId,
-      message: err.message,
-    });
-  }
-
-  return { key: '', source: null, reason: null, llmModel: null };
+  return {
+    key: '',
+    source: null,
+    reason: 'Per-tenant transcription key missing. Configure wa_audio_transcription_provider.openaiApiKey for this tenant.',
+  };
 }
 
 async function resolveTranscriptionCredentials(tenantId, providerCfgValue, requestedProvider) {
-  if (requestedProvider === 'anthropic') {
-    const anthropic = await resolveAnthropicKeyForTenant(tenantId, providerCfgValue);
+  if (requestedProvider !== 'openai') {
     return {
-      provider: 'anthropic',
-      key: anthropic.key,
-      source: anthropic.source,
-      reason: anthropic.reason,
-      llmModel: anthropic.llmModel,
-    };
-  }
-
-  const openai = await resolveOpenAiKeyForTenant(tenantId, providerCfgValue);
-  if (openai.key) {
-    return {
-      provider: 'openai',
-      key: openai.key,
-      source: openai.source,
-      reason: openai.reason,
+      provider: requestedProvider,
+      key: '',
+      source: null,
+      reason: 'Only provider=openai is supported for audio transcription. Configure wa_audio_transcription.provider=openai and set wa_audio_transcription_provider.openaiApiKey per tenant.',
       llmModel: null,
     };
   }
 
-  // Automatic fallback: if tenant only has Anthropic configured in llm_config,
-  // use it for transcription to avoid forcing an extra OpenAI credential.
-  const anthropic = await resolveAnthropicKeyForTenant(tenantId, providerCfgValue);
-  if (anthropic.key) {
-    return {
-      provider: 'anthropic',
-      key: anthropic.key,
-      source: anthropic.source,
-      reason: null,
-      llmModel: anthropic.llmModel,
-    };
-  }
-
+  const openai = await resolveOpenAiKeyForTenant(tenantId, providerCfgValue);
   return {
     provider: 'openai',
-    key: '',
-    source: null,
-    reason: openai.reason || anthropic.reason || null,
-    llmModel: anthropic.llmModel,
+    key: openai.key,
+    source: openai.source,
+    reason: openai.reason,
+    llmModel: null,
   };
 }
 
@@ -288,158 +200,6 @@ async function transcribeWithOpenAi({ buffer, mimeType, config, apiKey, apiKeySo
   };
 }
 
-async function transcribeWithAnthropic({
-  buffer,
-  mimeType,
-  config,
-  apiKey,
-  apiKeySource,
-  llmModel,
-  tenantId,
-}) {
-  const baseUrl = String(process.env.ANTHROPIC_BASE_URL || 'https://api.anthropic.com').replace(/\/$/, '');
-  const url = `${baseUrl}/v1/messages`;
-  const maxAttempts = 2;
-  const retryStatuses = new Set([429, 500, 502, 503, 504, 529]);
-  const selectedModel = (config.model && config.model.toLowerCase().includes('claude'))
-    ? config.model
-    : (llmModel || 'claude-3-5-sonnet-latest');
-
-  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), config.timeoutMs);
-
-    try {
-      const audioB64 = buffer.toString('base64');
-      const payload = {
-        model: selectedModel,
-        max_tokens: 2048,
-        temperature: 0,
-        messages: [
-          {
-            role: 'user',
-            content: [
-              {
-                type: 'text',
-                text: 'Transcribe this audio exactly. Return only the transcription text with no explanations.',
-              },
-              {
-                type: 'input_audio',
-                source: {
-                  type: 'base64',
-                  media_type: mimeType || 'audio/ogg',
-                  data: audioB64,
-                },
-              },
-            ],
-          },
-        ],
-      };
-
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'x-api-key': apiKey,
-          'anthropic-version': String(process.env.ANTHROPIC_VERSION || '2023-06-01'),
-          'content-type': 'application/json',
-        },
-        body: JSON.stringify(payload),
-        signal: controller.signal,
-      });
-
-      const bodyText = await response.text();
-      let bodyJson = null;
-      try {
-        bodyJson = JSON.parse(bodyText);
-      } catch {
-        bodyJson = null;
-      }
-
-      if (!response.ok) {
-        const errorText = bodyJson?.error?.message || bodyText || 'Anthropic transcription failed';
-        if (attempt < maxAttempts && retryStatuses.has(response.status)) {
-          logger.warn('Retrying audio transcription after provider error', {
-            tenantId,
-            status: response.status,
-            attempt,
-            provider: 'anthropic',
-          });
-          continue;
-        }
-        return {
-          ok: false,
-          text: null,
-          error: String(errorText).slice(0, 500),
-          provider: 'anthropic',
-          meta: {
-            model: selectedModel,
-            status: response.status,
-            keySource: apiKeySource,
-            attempts: attempt,
-          },
-        };
-      }
-
-      const contentBlocks = Array.isArray(bodyJson?.content) ? bodyJson.content : [];
-      const textBlock = contentBlocks.find((item) => item && item.type === 'text');
-      const text = String(textBlock?.text || '').trim();
-
-      return {
-        ok: Boolean(text),
-        text: text || null,
-        error: text ? null : 'Empty transcript',
-        provider: 'anthropic',
-        meta: {
-          model: selectedModel,
-          keySource: apiKeySource,
-          attempts: attempt,
-        },
-      };
-    } catch (err) {
-      const timeoutError = err?.name === 'AbortError'
-        ? `Transcription request timed out after ${config.timeoutMs}ms`
-        : String(err?.message || 'Anthropic transcription failed');
-
-      if (attempt < maxAttempts && shouldRetryException(err)) {
-        logger.warn('Retrying audio transcription after transient failure', {
-          tenantId,
-          attempt,
-          message: timeoutError,
-          provider: 'anthropic',
-        });
-        continue;
-      }
-
-      logger.warn('Audio transcription failed', { tenantId, message: timeoutError, provider: 'anthropic' });
-      return {
-        ok: false,
-        text: null,
-        error: timeoutError,
-        provider: 'anthropic',
-        meta: {
-          model: selectedModel,
-          keySource: apiKeySource,
-          attempts: attempt,
-        },
-      };
-    } finally {
-      clearTimeout(timer);
-    }
-  }
-
-  return {
-    ok: false,
-    text: null,
-    error: 'Audio transcription exhausted retries',
-    provider: 'anthropic',
-    meta: {
-      model: selectedModel,
-      keySource: apiKeySource,
-      attempts: maxAttempts,
-    },
-  };
-}
-
 async function transcribeAudioBuffer({ buffer, mimeType, tenantId, config }) {
   if (!Buffer.isBuffer(buffer) || buffer.length === 0) {
     return {
@@ -461,11 +221,11 @@ async function transcribeAudioBuffer({ buffer, mimeType, tenantId, config }) {
     };
   }
 
-  if (config.provider !== 'openai' && config.provider !== 'anthropic') {
+  if (config.provider !== 'openai') {
     return {
       ok: false,
       text: null,
-      error: `Unsupported transcription provider: ${config.provider}`,
+      error: 'Only provider=openai is supported for audio transcription. Configure it per tenant in wa_audio_transcription_provider.openaiApiKey.',
       provider: config.provider,
       meta: {},
     };
@@ -477,28 +237,15 @@ async function transcribeAudioBuffer({ buffer, mimeType, tenantId, config }) {
     key: apiKey,
     source: apiKeySource,
     reason: keyMissingReason,
-    llmModel,
   } = await resolveTranscriptionCredentials(tenantId, providerCfgRow?.valor, config.provider);
   if (!apiKey) {
     return {
       ok: false,
       text: null,
-      error: keyMissingReason || 'OPENAI_API_KEY is not configured',
+      error: keyMissingReason || 'Per-tenant transcription key missing. Configure wa_audio_transcription_provider.openaiApiKey for this tenant.',
       provider: resolvedProvider,
       meta: {},
     };
-  }
-
-  if (resolvedProvider === 'anthropic') {
-    return transcribeWithAnthropic({
-      buffer,
-      mimeType,
-      config,
-      apiKey,
-      apiKeySource,
-      llmModel,
-      tenantId,
-    });
   }
 
   return transcribeWithOpenAi({
