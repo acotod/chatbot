@@ -129,6 +129,8 @@ function extractText(msg: Pick<Mensaje, "tipo" | "contenido">): string {
     pickText(c.raw);
 
   if (direct) return direct;
+  const transcript = getAudioTranscript({ contenido: msg.contenido });
+  if (transcript?.text) return transcript.text;
   const mediaType = inferMediaType(msg);
   if (mediaType === "image") return "Imagen";
   if (mediaType === "audio") return "Audio";

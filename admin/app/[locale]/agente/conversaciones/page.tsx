@@ -43,7 +43,47 @@ function extractText(msg: Pick<AgentConversationMessage | AgentConversationThrea
     pickText(c.raw);
 
   if (direct) return direct;
+  const transcript = getAudioTranscript(msg.contenido);
+  if (transcript) return transcript;
+  const mediaType = inferMediaType(msg);
+  if (mediaType === "image") return "Imagen";
+  if (mediaType === "audio") return "Audio";
+  if (mediaType === "document") return "Documento";
   return `[${msg.tipo}]`;
+}
+
+function getAudioTranscript(contenido: unknown): string | null {
+  if (!contenido || typeof contenido !== "object") return null;
+  const transcriptRaw = (contenido as Record<string, unknown>).audioTranscript;
+  if (!transcriptRaw || typeof transcriptRaw !== "object") return null;
+  const text = (transcriptRaw as Record<string, unknown>).text;
+  if (typeof text !== "string") return null;
+  const trimmed = text.trim();
+  return trimmed || null;
+}
+
+function inferMediaType(msg: Pick<AgentConversationMessage | AgentConversationThread, "tipo" | "contenido">): "image" | "audio" | "document" | null {
+  const normalizedTipo = String(msg.tipo ?? "").trim().toLowerCase();
+  if (normalizedTipo === "image" || normalizedTipo === "audio" || normalizedTipo === "document") {
+    return normalizedTipo;
+  }
+
+  const contenido = (msg.contenido && typeof msg.contenido === "object")
+    ? (msg.contenido as Record<string, unknown>)
+    : {};
+
+  if (contenido.image && typeof contenido.image === "object") return "image";
+  if (contenido.audio && typeof contenido.audio === "object") return "audio";
+  if (contenido.document && typeof contenido.document === "object") return "document";
+
+  const raw = (contenido.raw && typeof contenido.raw === "object")
+    ? (contenido.raw as Record<string, unknown>)
+    : null;
+  if (raw?.image && typeof raw.image === "object") return "image";
+  if (raw?.audio && typeof raw.audio === "object") return "audio";
+  if (raw?.document && typeof raw.document === "object") return "document";
+
+  return null;
 }
 
 function getDisplayName(thread: AgentConversationThread, isEn: boolean): string {

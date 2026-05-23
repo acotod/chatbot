@@ -4,9 +4,9 @@ const logger = require('../utils/logger');
 const db = require('./database');
 
 const DEFAULT_TRANSCRIPTION_CONFIG = Object.freeze({
-  enabled: false,
+  enabled: true,
   provider: 'openai',
-  useForBotInput: false,
+  useForBotInput: true,
   model: 'gpt-4o-mini-transcribe',
   languageHint: null,
   timeoutMs: 30000,
@@ -16,9 +16,13 @@ function normalizeTranscriptionConfig(raw) {
   const cfg = (raw && typeof raw === 'object') ? raw : {};
   const timeout = Number(cfg.timeoutMs ?? DEFAULT_TRANSCRIPTION_CONFIG.timeoutMs);
   return {
-    enabled: Boolean(cfg.enabled),
+    enabled: (cfg.enabled === undefined || cfg.enabled === null)
+      ? DEFAULT_TRANSCRIPTION_CONFIG.enabled
+      : Boolean(cfg.enabled),
     provider: String(cfg.provider ?? DEFAULT_TRANSCRIPTION_CONFIG.provider).trim().toLowerCase(),
-    useForBotInput: Boolean(cfg.useForBotInput),
+    useForBotInput: (cfg.useForBotInput === undefined || cfg.useForBotInput === null)
+      ? DEFAULT_TRANSCRIPTION_CONFIG.useForBotInput
+      : Boolean(cfg.useForBotInput),
     model: String(cfg.model ?? DEFAULT_TRANSCRIPTION_CONFIG.model).trim(),
     languageHint: cfg.languageHint ? String(cfg.languageHint).trim() : null,
     timeoutMs: Number.isFinite(timeout) && timeout > 0 ? Math.min(timeout, 120000) : DEFAULT_TRANSCRIPTION_CONFIG.timeoutMs,
