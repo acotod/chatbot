@@ -790,7 +790,7 @@ async function executeDelay({ node }) {
 async function executeEnd({ node, variables }) {
   const cfg = resolveConfig(node.config, variables);
   return {
-    output     : { type: 'end', text: cfg.text ?? '' },
+    output     : { type: 'end', text: cfg.text ?? cfg.message ?? '' },
     nextNodeId : null,
     updatedVars: {},
     terminal   : true,
@@ -804,7 +804,7 @@ async function executeEnd({ node, variables }) {
 async function executeHandoff({ node, variables }) {
   const cfg = resolveConfig(node.config, variables);
   return {
-    output     : { type: 'handoff', text: cfg.text ?? 'Un agente te atenderá.' },
+    output     : { type: 'handoff', text: cfg.text ?? cfg.message ?? 'Un agente te atenderá.' },
     nextNodeId : null,
     updatedVars: {},
     terminal   : true,

@@ -614,7 +614,7 @@ function simulateFlow(definition, inputs = []) {
         break;
 
       case 'end':
-        step.output = { type: 'end', text: node.config?.text ?? 'Conversación finalizada' };
+        step.output = { type: 'end', text: node.config?.text ?? node.config?.message ?? 'Conversación finalizada' };
         currentId = null;
         break;
 
@@ -864,7 +864,7 @@ async function simulateAllPaths(definition, options = {}) {
     } else if (node.type === 'end') {
       const step = {
         ...baseStep,
-        output: { type: 'end', text: node.config?.text ?? 'Conversación finalizada' },
+        output: { type: 'end', text: node.config?.text ?? node.config?.message ?? 'Conversación finalizada' },
       };
       nextStates.push({ step, nextId: null, variables: state.variables });
     } else {

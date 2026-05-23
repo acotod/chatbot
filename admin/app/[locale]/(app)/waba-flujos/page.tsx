@@ -1185,9 +1185,9 @@ function NodeEditModal({
   const [condTrueNext, setCondTrueNext] = useState(pickConditionBranchTarget(initialBranches, CONDITION_TRUE_ALIASES));
   const [condFalseNext, setCondFalseNext] = useState(pickConditionBranchTarget(initialBranches, CONDITION_FALSE_ALIASES));
   const [delaySeconds, setDelaySeconds] = useState(Number(cfg.seconds ?? 3));
-  const [endMsg, setEndMsg]           = useState(String(cfg.message ?? ""));
+  const [endMsg, setEndMsg]           = useState(String(cfg.text ?? cfg.message ?? ""));
   const [handoffDept, setHandoffDept] = useState(String(cfg.department ?? ""));
-  const [handoffMsg, setHandoffMsg]   = useState(String(cfg.message ?? ""));
+  const [handoffMsg, setHandoffMsg]   = useState(String(cfg.text ?? cfg.message ?? ""));
   // llm — multi-prompt config
   const [llmPrompts, setLlmPrompts] = useState<LlmPromptItem[]>(() => {
     if (Array.isArray((cfg as Record<string, unknown>).prompts) && ((cfg as Record<string, unknown>).prompts as LlmPromptItem[]).length > 0) {
@@ -1377,8 +1377,8 @@ function NodeEditModal({
         };
       }
       case "delay":     return { seconds: delaySeconds };
-      case "end":       return { message: endMsg, ...actionFragment };
-      case "handoff":   return { department: handoffDept, message: handoffMsg, ...actionFragment };
+      case "end":       return { text: endMsg, ...(endMsg.trim() ? { message: endMsg } : {}), ...actionFragment };
+      case "handoff":   return { department: handoffDept, text: handoffMsg, ...(handoffMsg.trim() ? { message: handoffMsg } : {}), ...actionFragment };
       case "llm":       return { prompts: llmPrompts, composeMode: llmComposeMode, ...(llmFallbackText.trim() ? { fallback_text: llmFallbackText.trim() } : {}), ...actionFragment };
       case "action":    return actionFragment;
       default: { try { return JSON.parse(rawJson); } catch { return {}; } }
