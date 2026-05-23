@@ -243,7 +243,61 @@ router.patch('/contacts/by-cedula', [
       existing = candidates[0] ?? null;
     }
 
-    if (!existing) return res.status(404).json({ error: 'Contact not found by cedula' });
+    if (!existing) {
+      const targetTenantId = resolveTenantId(req, tenantId);
+      if (!targetTenantId) {
+        return res.status(400).json({ error: 'tenantSlug required to upsert contact by identificacion' });
+      }
+
+      const incomingCustomFields = (req.body.customFields && typeof req.body.customFields === 'object')
+        ? req.body.customFields
+        : {};
+
+      const createData = {
+        tenantId: targetTenantId,
+        nombre: req.body.nombre ?? `Contacto ${cedula}`,
+        email: req.body.email ?? null,
+        empresa: req.body.empresa ?? null,
+        cargo: req.body.cargo ?? null,
+        etiquetas: Array.isArray(req.body.etiquetas) ? req.body.etiquetas : [],
+        notas: req.body.notas ?? null,
+        leadScore: Number.isInteger(req.body.leadScore) ? req.body.leadScore : 0,
+        phone: req.body.phone ?? req.body.telefono ?? null,
+        customFields: {
+          ...incomingCustomFields,
+          cedula,
+          identificacion: cedula,
+          cedulaNormalizada: normalizedCedula,
+          identificacionNormalizada: normalizedCedula,
+        },
+        ultimoContacto: new Date(),
+      };
+
+      const created = await prisma.user.create({ data: createData });
+      audit({
+        adminUserId: req.admin.adminUserId,
+        tenantId: created.tenantId,
+        accion: 'CREATE_CONTACT_BY_CEDULA',
+        entidad: 'user',
+        entidadId: String(created.id),
+      });
+
+      return res.json({
+        ok: true,
+        found: false,
+        created: true,
+        contactId: created.id,
+        tenantId: created.tenantId,
+        identificacion: cedula,
+        nombre: created.nombre ?? null,
+        email: created.email ?? null,
+        empresa: created.empresa ?? null,
+        cargo: created.cargo ?? null,
+        phone: created.phone ?? null,
+        updatedAt: created.updatedAt,
+        contactoActualizado: created,
+      });
+    }
     if (!req.admin.superAdmin && existing.tenantId !== req.admin.tenantId) {
       return res.status(403).json({ error: 'Forbidden' });
     }
@@ -285,6 +339,7 @@ router.patch('/contacts/by-cedula', [
     res.json({
       ok: true,
       found: true,
+      created: false,
       contactId: updated.id,
       tenantId: updated.tenantId,
       identificacion: cedula,
