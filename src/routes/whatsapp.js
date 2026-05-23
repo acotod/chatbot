@@ -192,12 +192,16 @@ async function _transcribeAudioMessageBestEffort({
       direccion: mensaje.direccion,
     });
 
-    if (transcript.ok && transcript.text && config.useForBotInput && userId !== null) {
+    if (config.useForBotInput && userId !== null) {
+      const transcriptInput = transcript.ok && transcript.text
+        ? transcript.text
+        : '__voice_note__';
+
       _runChatbot({
         tenant,
         userId,
         phone,
-        userInput: transcript.text,
+        userInput: transcriptInput,
         phoneNumberId,
         accessToken,
         correlationId,
