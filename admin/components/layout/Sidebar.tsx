@@ -281,27 +281,27 @@ export function Sidebar() {
 
   if (!isClient) {
     return (
-      <aside className="w-64 flex flex-col h-screen sticky top-0 border-r border-[#D9E5EB] bg-[#FFFFFF]" />
+      <aside className="w-64 flex flex-col h-screen sticky top-0 border-r border-[#D9E5EB] bg-[#FFFFFF] shadow-[8px_0_28px_rgba(13,43,62,0.04)]" />
     );
   }
 
   return (
-    <aside className="w-64 flex flex-col h-screen sticky top-0 border-r border-[#D9E5EB] bg-[#FFFFFF]">
+    <aside className="w-64 flex flex-col h-screen sticky top-0 border-r border-[#D9E5EB] bg-[#FFFFFF] shadow-[8px_0_28px_rgba(13,43,62,0.04)]">
       {/* Logo */}
       <div className="h-16 flex items-center px-6 border-b border-[#E7EEF2] bg-[radial-gradient(320px_120px_at_10%_0%,rgba(0,191,174,0.12),transparent_70%),#FFFFFF]">
         <img
           src="/branding/zentra-bot-logo.svg"
           alt="Zentra Bot"
-          className="h-8 w-auto"
+          className="h-8 w-auto drop-shadow-[0_4px_14px_rgba(0,191,174,0.12)]"
         />
       </div>
 
       {/* Tenant selector — only visible to superAdmin */}
       {superAdmin && !isAgentSession && (
-        <div className="px-3 py-2 border-b border-[#E7EEF2]" ref={dropdownRef}>
+        <div className="px-3 py-2 border-b border-[#E7EEF2] bg-[#F9FCFD]" ref={dropdownRef}>
           <button
             onClick={() => setDropdownOpen((o) => !o)}
-            className="w-full flex items-center justify-between gap-2 px-3 py-2 rounded-lg bg-[#FFFFFF] hover:bg-[#F4F7F9] text-sm text-[#0D2B3E] transition border border-[#D9E5EB]"
+            className="w-full flex items-center justify-between gap-2 px-3 py-2.5 rounded-xl bg-[#FFFFFF] hover:bg-[#F4F7F9] text-sm text-[#0D2B3E] transition border border-[#D9E5EB] shadow-sm"
           >
             <span className="flex items-center gap-2 min-w-0">
               <Building2 size={14} className="text-[#00BFAE] shrink-0" />
@@ -310,7 +310,7 @@ export function Sidebar() {
             <ChevronDown size={14} className={cn("text-[#5B6670] shrink-0 transition-transform", dropdownOpen && "rotate-180")} />
           </button>
           {dropdownOpen && (
-            <div className="mt-1 bg-[#FFFFFF] border border-[#D9E5EB] rounded-lg shadow-md overflow-hidden z-50">
+            <div className="mt-2 bg-[#FFFFFF] border border-[#D9E5EB] rounded-xl shadow-lg overflow-hidden z-50">
               {tenants.length === 0 && (
                 <p className="px-3 py-2 text-xs text-[#5B6670]">{t("noCompanies")}</p>
               )}
@@ -363,11 +363,11 @@ export function Sidebar() {
       </nav>
 
       {/* Bottom */}
-      <div className="px-3 py-4 border-t border-[#E7EEF2] space-y-1">
+      <div className="px-3 py-4 border-t border-[#E7EEF2] bg-[#F9FCFD]">
         <button
           type="button"
           onClick={handleLogout}
-          className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-[#5B6670] hover:bg-rose-50 hover:text-rose-600 transition"
+          className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-[#5B6670] hover:bg-rose-50 hover:text-rose-600 transition border border-[#D9E5EB] bg-white shadow-sm"
         >
           <LogOut size={18} className="text-[#7A8792]" />
           {t("header.logout")}
