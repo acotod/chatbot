@@ -154,10 +154,18 @@ export function layoutAsHierarchy(
   });
 
   // For any nodes not visited (orphaned), use grid layout
-  definition.nodes.forEach((node) => {
-    if (!nodePositions[node.id]) {
-      nodePositions[node.id] = { x: startX, y: startY + 600 };
-    }
+  const orphanIds = definition.nodes
+    .map((node) => node.id)
+    .filter((nodeId) => !nodePositions[nodeId]);
+
+  orphanIds.forEach((nodeId, orphanIndex) => {
+    const col = orphanIndex % COLS_PER_ROW;
+    const row = Math.floor(orphanIndex / COLS_PER_ROW);
+
+    nodePositions[nodeId] = {
+      x: startX + col * spacingX,
+      y: startY + 600 + row * spacingY,
+    };
   });
 
   return {
