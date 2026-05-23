@@ -52,7 +52,7 @@ function KpiCard({
   const vcls = valueClasses[accent ?? "cyan"];
 
   const inner = (
-    <div className={`rounded-2xl border p-5 flex flex-col gap-1 ${cls} transition hover:shadow-sm`}>
+    <div className={`rounded-2xl border p-5 flex flex-col gap-1 ${cls} transition hover:shadow-sm hover:-translate-y-[1px]`}>
       <p className="text-xs font-semibold uppercase tracking-widest opacity-70">{label}</p>
       <p className={`text-4xl font-bold tracking-tight ${vcls}`}>{value}</p>
       {sublabel && <p className="text-xs opacity-60 mt-0.5">{sublabel}</p>}
@@ -252,26 +252,26 @@ export default function AgentDashboardPage() {
   });
 
   return (
-    <div className="min-h-screen bg-slate-100">
+    <div className="min-h-screen bg-white">
       <Header />
       <div className="mx-auto max-w-5xl space-y-6 px-4 py-8 sm:px-6 lg:px-8">
 
         {/* Header */}
-        <div className="rounded-3xl bg-white border border-slate-200 shadow-sm p-6 sm:p-8">
+        <div className="zentra-chat-shell rounded-3xl p-6 sm:p-8 border border-[#D9E5EB]">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <p className="text-sm font-medium uppercase tracking-[0.2em] text-cyan-600 capitalize">{dateLabel}</p>
+              <p className="text-sm font-medium uppercase tracking-[0.2em] text-[#00BFAE] capitalize">{dateLabel}</p>
               {profile ? (
                 <>
-                  <h1 className="mt-1 text-2xl font-semibold tracking-tight text-slate-900">
+                  <h1 className="mt-1 text-2xl font-semibold tracking-tight text-[#0D2B3E]">
                     {isEn ? "Hi" : "Hola"}, {profile.nombre.split(" ")[0]} 👋
                   </h1>
-                  <p className="mt-1 text-sm text-slate-500">
+                  <p className="mt-1 text-sm text-[#5B6670]">
                     {profile.puesto?.nombre ?? (isEn ? "Agent" : "Agente")} · {profile.tenantNombre || profile.tenantSlug}
                   </p>
                 </>
               ) : (
-                <h1 className="mt-1 text-2xl font-semibold tracking-tight text-slate-900">
+                <h1 className="mt-1 text-2xl font-semibold tracking-tight text-[#0D2B3E]">
                   {isEn ? "Agent panel" : "Panel de agente"}
                 </h1>
               )}
@@ -279,7 +279,7 @@ export default function AgentDashboardPage() {
             <button
               type="button"
               onClick={handleLogout}
-              className="self-start rounded-xl border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 hover:border-red-200 hover:bg-red-50 hover:text-red-600 transition"
+              className="self-start rounded-xl border border-[#D9E5EB] px-4 py-2 text-sm font-medium text-[#5B6670] hover:border-red-200 hover:bg-red-50 hover:text-red-600 transition"
             >
               {isEn ? "Sign out" : "Cerrar sesión"}
             </button>
@@ -336,14 +336,14 @@ export default function AgentDashboardPage() {
 
             <div className="grid gap-4 lg:grid-cols-2">
               {/* Solicitudes recientes */}
-              <div className="rounded-3xl bg-white border border-slate-200 shadow-sm p-6 flex flex-col gap-4">
+              <div className="rounded-3xl bg-white border border-[#D9E5EB] shadow-sm p-6 flex flex-col gap-4">
                 <div className="flex items-center justify-between">
-                  <p className="text-xs font-semibold uppercase tracking-widest text-slate-400">
+                  <p className="text-xs font-semibold uppercase tracking-widest text-[#5B6670]">
                     {isEn ? "Assigned requests" : "Solicitudes asignadas"}
                   </p>
                   <Link
                     href="/agente/solicitudes"
-                    className="text-xs font-medium text-cyan-600 hover:text-cyan-700 transition"
+                    className="text-xs font-medium text-[#00BFAE] hover:text-[#0D2B3E] transition"
                   >
                     {isEn ? "View all" : "Ver todas"} →
                   </Link>
@@ -353,7 +353,7 @@ export default function AgentDashboardPage() {
                     {isEn ? "No active requests" : "Sin solicitudes activas"}
                   </p>
                 ) : (
-                  <ul className="divide-y divide-slate-100">
+                  <ul className="divide-y divide-[#E7EEF2]">
                     {solicitudes.map((s) => (
                       <li key={s.id} className="py-3">
                         <Link
@@ -361,7 +361,7 @@ export default function AgentDashboardPage() {
                           className="flex items-start justify-between gap-3 group"
                         >
                           <div className="min-w-0">
-                            <p className="text-sm font-medium text-slate-800 truncate group-hover:text-cyan-700 transition">
+                              <p className="text-sm font-medium text-[#0D2B3E] truncate group-hover:text-[#00BFAE] transition">
                               {s.titulo || s.nombre || `${isEn ? "Request" : "Solicitud"} #${s.id}`}
                             </p>
                             <div className="flex items-center gap-2 mt-1 flex-wrap">
@@ -376,11 +376,11 @@ export default function AgentDashboardPage() {
                                 </span>
                               )}
                               {s.categoria && (
-                                <span className="text-[11px] text-slate-400">{s.categoria}</span>
+                                  <span className="text-[11px] text-[#5B6670]">{s.categoria}</span>
                               )}
                             </div>
                           </div>
-                          <span className="shrink-0 text-[11px] text-slate-400 pt-0.5">
+                            <span className="shrink-0 text-[11px] text-[#5B6670] pt-0.5">
                             {new Date(s.updatedAt).toLocaleDateString(isEn ? "en-US" : "es-ES", { day: "numeric", month: "short" })}
                           </span>
                         </Link>
@@ -391,14 +391,14 @@ export default function AgentDashboardPage() {
               </div>
 
               {/* Próximos eventos */}
-              <div className="rounded-3xl bg-white border border-slate-200 shadow-sm p-6 flex flex-col gap-4">
+              <div className="rounded-3xl bg-white border border-[#D9E5EB] shadow-sm p-6 flex flex-col gap-4">
                 <div className="flex items-center justify-between">
-                  <p className="text-xs font-semibold uppercase tracking-widest text-slate-400">
+                  <p className="text-xs font-semibold uppercase tracking-widest text-[#5B6670]">
                     {isEn ? "Upcoming events" : "Próximos eventos"}
                   </p>
                   <Link
                     href="/agente/agenda"
-                    className="text-xs font-medium text-cyan-600 hover:text-cyan-700 transition"
+                    className="text-xs font-medium text-[#00BFAE] hover:text-[#0D2B3E] transition"
                   >
                     {isEn ? "View agenda" : "Ver agenda"} →
                   </Link>
@@ -408,7 +408,7 @@ export default function AgentDashboardPage() {
                     {isEn ? "No upcoming events" : "Sin eventos próximos"}
                   </p>
                 ) : (
-                  <ul className="divide-y divide-slate-100">
+                  <ul className="divide-y divide-[#E7EEF2]">
                     {agenda.map((e) => {
                       const start = new Date(e.startAt);
                       const isToday =
@@ -424,20 +424,20 @@ export default function AgentDashboardPage() {
                                 style={{ backgroundColor: e.color || "#06b6d4" }}
                               />
                               <div className="min-w-0">
-                                <p className="text-sm font-medium text-slate-800 truncate">{e.titulo}</p>
+                                <p className="text-sm font-medium text-[#0D2B3E] truncate">{e.titulo}</p>
                                 <div className="flex items-center gap-2 mt-1 flex-wrap">
                                   <span className={`inline-block rounded-full px-2 py-0.5 text-[11px] font-semibold ${agendaEstadoColor(e.estado)}`}>
                                     {agendaStatusLabel(e.estado, isEn)}
                                   </span>
-                                  <span className="text-[11px] text-slate-400">{agendaTypeLabel(e.tipo, isEn)}</span>
+                                  <span className="text-[11px] text-[#5B6670]">{agendaTypeLabel(e.tipo, isEn)}</span>
                                 </div>
                               </div>
                             </div>
                             <div className="shrink-0 text-right">
-                              <p className={`text-[11px] font-semibold ${isToday ? "text-cyan-600" : "text-slate-500"}`}>
+                              <p className={`text-[11px] font-semibold ${isToday ? "text-[#00BFAE]" : "text-[#5B6670]"}`}>
                                 {isToday ? (isEn ? "Today" : "Hoy") : start.toLocaleDateString(isEn ? "en-US" : "es-ES", { day: "numeric", month: "short" })}
                               </p>
-                              <p className="text-[11px] text-slate-400">
+                              <p className="text-[11px] text-[#5B6670]">
                                 {start.toLocaleTimeString(isEn ? "en-US" : "es-ES", { hour: "2-digit", minute: "2-digit" })}
                               </p>
                             </div>
@@ -454,48 +454,48 @@ export default function AgentDashboardPage() {
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
               <Link
                 href="/agente/conversaciones"
-                className="rounded-2xl bg-white border border-slate-200 px-5 py-4 flex items-center gap-3 hover:border-blue-300 hover:bg-blue-50 transition group"
+                  className="rounded-2xl bg-white border border-[#D9E5EB] px-5 py-4 flex items-center gap-3 hover:border-[#BCE8E1] hover:bg-[#EEF9F7] transition group"
               >
-                <span className="text-2xl">💬</span>
+                  <span className="w-9 h-9 rounded-xl bg-[#EEF9F7] border border-[#CDEFEA] text-[#00BFAE] flex items-center justify-center text-sm font-bold">CV</span>
                 <div>
-                  <p className="text-sm font-semibold text-slate-800 group-hover:text-blue-700">
+                    <p className="text-sm font-semibold text-[#0D2B3E] group-hover:text-[#00BFAE]">
                     {isEn ? "Conversations" : "Conversaciones"}
                   </p>
-                  <p className="text-xs text-slate-400">{isEn ? "Real-time chat" : "Chat en tiempo real"}</p>
+                    <p className="text-xs text-[#5B6670]">{isEn ? "Real-time chat" : "Chat en tiempo real"}</p>
                 </div>
               </Link>
               <Link
                 href="/agente/solicitudes"
-                className="rounded-2xl bg-white border border-slate-200 px-5 py-4 flex items-center gap-3 hover:border-cyan-300 hover:bg-cyan-50 transition group"
+                  className="rounded-2xl bg-white border border-[#D9E5EB] px-5 py-4 flex items-center gap-3 hover:border-[#BCE8E1] hover:bg-[#EEF9F7] transition group"
               >
-                <span className="text-2xl">📋</span>
+                  <span className="w-9 h-9 rounded-xl bg-[#EEF9F7] border border-[#CDEFEA] text-[#00BFAE] flex items-center justify-center text-sm font-bold">SQ</span>
                 <div>
-                  <p className="text-sm font-semibold text-slate-800 group-hover:text-cyan-700">
+                    <p className="text-sm font-semibold text-[#0D2B3E] group-hover:text-[#00BFAE]">
                     {isEn ? "My requests" : "Mis solicitudes"}
                   </p>
-                  <p className="text-xs text-slate-400">{isEn ? "Manage and respond" : "Gestionar y responder"}</p>
+                    <p className="text-xs text-[#5B6670]">{isEn ? "Manage and respond" : "Gestionar y responder"}</p>
                 </div>
               </Link>
               <Link
                 href="/agente/agenda"
-                className="rounded-2xl bg-white border border-slate-200 px-5 py-4 flex items-center gap-3 hover:border-amber-300 hover:bg-amber-50 transition group"
+                  className="rounded-2xl bg-white border border-[#D9E5EB] px-5 py-4 flex items-center gap-3 hover:border-[#BCE8E1] hover:bg-[#EEF9F7] transition group"
               >
-                <span className="text-2xl">📅</span>
+                  <span className="w-9 h-9 rounded-xl bg-[#EEF9F7] border border-[#CDEFEA] text-[#00BFAE] flex items-center justify-center text-sm font-bold">AG</span>
                 <div>
-                  <p className="text-sm font-semibold text-slate-800 group-hover:text-amber-700">{isEn ? "Agenda" : "Agenda"}</p>
-                  <p className="text-xs text-slate-400">{isEn ? "Appointments and events" : "Citas y eventos"}</p>
+                    <p className="text-sm font-semibold text-[#0D2B3E] group-hover:text-[#00BFAE]">{isEn ? "Agenda" : "Agenda"}</p>
+                    <p className="text-xs text-[#5B6670]">{isEn ? "Appointments and events" : "Citas y eventos"}</p>
                 </div>
               </Link>
               <Link
                 href="/agente/contactos"
-                className="rounded-2xl bg-white border border-slate-200 px-5 py-4 flex items-center gap-3 hover:border-emerald-300 hover:bg-emerald-50 transition group"
+                  className="rounded-2xl bg-white border border-[#D9E5EB] px-5 py-4 flex items-center gap-3 hover:border-[#BCE8E1] hover:bg-[#EEF9F7] transition group"
               >
-                <span className="text-2xl">👥</span>
+                  <span className="w-9 h-9 rounded-xl bg-[#EEF9F7] border border-[#CDEFEA] text-[#00BFAE] flex items-center justify-center text-sm font-bold">CT</span>
                 <div>
-                  <p className="text-sm font-semibold text-slate-800 group-hover:text-emerald-700">
+                    <p className="text-sm font-semibold text-[#0D2B3E] group-hover:text-[#00BFAE]">
                     {isEn ? "Contacts" : "Contactos"}
                   </p>
-                  <p className="text-xs text-slate-400">{isEn ? "Customers and leads" : "Clientes y leads"}</p>
+                    <p className="text-xs text-[#5B6670]">{isEn ? "Customers and leads" : "Clientes y leads"}</p>
                 </div>
               </Link>
             </div>

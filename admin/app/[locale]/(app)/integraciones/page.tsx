@@ -19,11 +19,11 @@ interface EndpointDef {
 
 const METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE"] as const;
 const METHOD_COLORS: Record<string, string> = {
-  GET: "bg-green-100 text-green-700",
-  POST: "bg-blue-100 text-blue-700",
-  PUT: "bg-yellow-100 text-yellow-700",
-  PATCH: "bg-orange-100 text-orange-700",
-  DELETE: "bg-red-100 text-red-700",
+  GET: "bg-emerald-50 text-emerald-700 border border-emerald-200",
+  POST: "bg-cyan-50 text-cyan-700 border border-cyan-200",
+  PUT: "bg-amber-50 text-amber-700 border border-amber-200",
+  PATCH: "bg-orange-50 text-orange-700 border border-orange-200",
+  DELETE: "bg-rose-50 text-rose-700 border border-rose-200",
 };
 
 function emptyEndpoint(): EndpointDef {
@@ -46,9 +46,9 @@ function TagInput({
     setInput("");
   }
   return (
-    <div className="flex flex-wrap gap-1 items-center border border-gray-200 rounded-lg px-2 py-1.5 min-h-[36px] focus-within:ring-2 focus-within:ring-blue-400">
+    <div className="flex flex-wrap gap-1 items-center border border-[#D9E5EB] rounded-xl px-2 py-1.5 min-h-[38px] bg-white focus-within:ring-2 focus-within:ring-[#00BFAE]/25">
       {tags.map(t => (
-        <span key={t} className="flex items-center gap-1 bg-blue-50 text-blue-700 text-xs font-mono px-2 py-0.5 rounded-full">
+        <span key={t} className="flex items-center gap-1 bg-[#EEF9F7] text-[#00BFAE] text-xs font-mono px-2 py-0.5 rounded-full border border-[#CDEFEA]">
           {t}
           <button type="button" onClick={() => onChange(tags.filter(x => x !== t))} className="hover:text-red-500">×</button>
         </span>
@@ -117,40 +117,40 @@ export default function IntegracionesPage() {
     saveMutation.mutate(updated);
   }
 
-  const inputCls = "w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400";
-  const labelCls = "text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1";
+  const inputCls = "w-full border border-[#D9E5EB] rounded-xl px-3 py-2 text-sm bg-white text-[#0D2B3E] focus:outline-none focus:ring-2 focus:ring-[#00BFAE]/25";
+  const labelCls = "text-xs font-semibold text-[#5B6670] uppercase tracking-[0.12em] mb-1";
 
   return (
-    <div className="p-6 max-w-5xl mx-auto space-y-6">
+    <div className="zentra-chat-shell rounded-3xl p-5 sm:p-6 max-w-6xl mx-auto space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-blue-50 flex items-center justify-center">
-            <Plug className="w-5 h-5 text-blue-600" />
+          <div className="w-11 h-11 rounded-2xl bg-[#EEF9F7] border border-[#CDEFEA] flex items-center justify-center">
+            <Plug className="w-5 h-5 text-[#00BFAE]" />
           </div>
           <div>
-            <h1 className="text-xl font-bold text-gray-900">Catálogo de Endpoints</h1>
-            <p className="text-sm text-gray-500">Servicios disponibles para nodos webhook en flujos</p>
+            <h1 className="text-xl font-bold text-[#0D2B3E]">Catálogo de Endpoints</h1>
+            <p className="text-sm text-[#5B6670]">Servicios disponibles para nodos webhook en flujos</p>
           </div>
         </div>
         <button
           onClick={openNew}
-          className="flex items-center gap-2 bg-blue-600 text-white text-sm font-medium px-4 py-2 rounded-xl hover:bg-blue-700 transition"
+          className="flex items-center gap-2 bg-gradient-to-r from-[#00BFAE] to-[#39E6D2] text-[#063743] text-sm font-semibold px-4 py-2 rounded-xl hover:brightness-105 transition"
         >
           <Plus className="w-4 h-4" /> Nuevo endpoint
         </button>
       </div>
 
       {saveMsg && (
-        <div className="bg-green-50 border border-green-200 text-green-700 text-sm px-4 py-2 rounded-xl">{saveMsg}</div>
+        <div className="bg-[#EEF9F7] border border-[#CDEFEA] text-[#0D2B3E] text-sm px-4 py-2 rounded-xl">{saveMsg}</div>
       )}
 
       {/* List */}
       {isLoading ? (
-        <p className="text-sm text-gray-400">Cargando...</p>
+        <p className="text-sm text-[#5B6670]">Cargando...</p>
       ) : endpoints.length === 0 ? (
-        <div className="text-center py-16 text-gray-400">
-          <Globe className="w-10 h-10 mx-auto mb-3 opacity-30" />
+        <div className="text-center py-16 text-[#5B6670]">
+          <Globe className="w-10 h-10 mx-auto mb-3 opacity-40 text-[#00BFAE]" />
           <p className="text-sm">No hay endpoints configurados. Agrega uno para usarlo en flujos.</p>
         </div>
       ) : (
@@ -158,50 +158,50 @@ export default function IntegracionesPage() {
           {endpoints.map((ep, idx) => (
             <div
               key={ep.id || idx}
-              className="bg-white rounded-xl border border-gray-100 shadow-sm px-5 py-4 flex items-start gap-4 hover:border-blue-100 transition"
+              className="bg-white rounded-2xl border border-[#D9E5EB] shadow-sm px-5 py-4 flex items-start gap-4 hover:border-[#BCE8E1] transition"
             >
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 mb-1">
                   <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${METHOD_COLORS[ep.method] ?? "bg-gray-100 text-gray-600"}`}>
                     {ep.method}
                   </span>
-                  <span className="font-semibold text-gray-800 text-sm">{ep.name}</span>
-                  <span className="text-[10px] font-mono text-gray-400 truncate">{ep.url}</span>
+                  <span className="font-semibold text-[#0D2B3E] text-sm">{ep.name}</span>
+                  <span className="text-[10px] font-mono text-[#5B6670] truncate">{ep.url}</span>
                   {ep.sessionInit && (
-                    <span className="flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-100 text-purple-700">
-                      <Zap className="w-2.5 h-2.5" /> Sesión Init
+                    <span className="flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-[#EEF9F7] text-[#00BFAE] border border-[#CDEFEA]">
+                      <Zap className="w-2.5 h-2.5" /> Session Init
                     </span>
                   )}
                 </div>
                 {ep.description && (
-                  <p className="text-xs text-gray-400 mb-2">{ep.description}</p>
+                  <p className="text-xs text-[#5B6670] mb-2">{ep.description}</p>
                 )}
                 <div className="flex items-center gap-3 text-[11px]">
-                  <div className="flex items-center gap-1 text-blue-600">
+                  <div className="flex items-center gap-1 text-[#00BFAE]">
                     <span className="font-semibold">Inputs:</span>
                     {ep.inputs.length ? ep.inputs.map(i => (
-                      <span key={i} className="bg-blue-50 font-mono px-1.5 py-0.5 rounded">{i}</span>
-                    )) : <span className="text-gray-300">ninguno</span>}
+                      <span key={i} className="bg-[#EEF9F7] border border-[#CDEFEA] font-mono px-1.5 py-0.5 rounded">{i}</span>
+                    )) : <span className="text-[#A3AFB8]">ninguno</span>}
                   </div>
-                  <ArrowRight className="w-3 h-3 text-gray-300" />
-                  <div className="flex items-center gap-1 text-green-600">
+                  <ArrowRight className="w-3 h-3 text-[#A3AFB8]" />
+                  <div className="flex items-center gap-1 text-emerald-600">
                     <span className="font-semibold">Outputs:</span>
                     {ep.outputs.length ? ep.outputs.map(o => (
-                      <span key={o} className="bg-green-50 font-mono px-1.5 py-0.5 rounded">{o}</span>
-                    )) : <span className="text-gray-300">ninguno</span>}
+                      <span key={o} className="bg-emerald-50 border border-emerald-200 font-mono px-1.5 py-0.5 rounded">{o}</span>
+                    )) : <span className="text-[#A3AFB8]">ninguno</span>}
                   </div>
                 </div>
               </div>
               <div className="flex gap-2 shrink-0">
                 <button
                   onClick={() => openEdit(ep, idx)}
-                  className="text-xs text-blue-600 border border-blue-100 rounded-lg px-3 py-1.5 hover:bg-blue-50 transition"
+                  className="text-xs text-[#00BFAE] border border-[#CDEFEA] rounded-lg px-3 py-1.5 hover:bg-[#EEF9F7] transition"
                 >
                   Editar
                 </button>
                 <button
                   onClick={() => deleteEndpoint(idx)}
-                  className="text-xs text-red-400 border border-red-100 rounded-lg px-2 py-1.5 hover:bg-red-50 transition"
+                  className="text-xs text-rose-500 border border-rose-200 rounded-lg px-2 py-1.5 hover:bg-rose-50 transition"
                 >
                   <Trash2 className="w-3.5 h-3.5" />
                 </button>
@@ -214,8 +214,8 @@ export default function IntegracionesPage() {
       {/* Editor modal */}
       {editing && (
         <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg p-6 space-y-4">
-            <h2 className="text-base font-bold text-gray-900">
+          <div className="bg-white rounded-3xl border border-[#D9E5EB] shadow-xl w-full max-w-lg p-6 space-y-4">
+            <h2 className="text-base font-bold text-[#0D2B3E]">
               {editIdx !== null ? "Editar endpoint" : "Nuevo endpoint"}
             </h2>
 
@@ -253,14 +253,14 @@ export default function IntegracionesPage() {
                     type="checkbox"
                     checked={!!editing.sessionInit}
                     onChange={e => setEditing(p => ({ ...p!, sessionInit: e.target.checked }))}
-                    className="w-4 h-4 accent-purple-600"
+                    className="w-4 h-4 accent-[#00BFAE]"
                   />
-                  <span className="text-sm font-medium text-gray-700 flex items-center gap-1">
-                    <Zap className="w-3.5 h-3.5 text-purple-600" />
+                  <span className="text-sm font-medium text-[#0D2B3E] flex items-center gap-1">
+                    <Zap className="w-3.5 h-3.5 text-[#00BFAE]" />
                     Session Init — llamar al inicio de cada conversación
                   </span>
                 </label>
-                <p className="text-[11px] text-gray-400 mt-0.5 ml-6">Sus outputs quedarán disponibles como variables en todos los nodos del flujo.</p>
+                <p className="text-[11px] text-[#5B6670] mt-0.5 ml-6">Sus outputs quedarán disponibles como variables en todos los nodos del flujo.</p>
               </div>
               <div className="col-span-2">
                 <p className={labelCls}>Parámetros de entrada (inputs) — Enter para agregar</p>
@@ -276,13 +276,13 @@ export default function IntegracionesPage() {
               <button
                 onClick={saveEndpoint}
                 disabled={!editing.id || !editing.name || !editing.url}
-                className="flex-1 flex items-center justify-center gap-2 bg-blue-600 text-white text-sm font-medium rounded-xl py-2.5 hover:bg-blue-700 disabled:opacity-40 transition"
+                className="flex-1 flex items-center justify-center gap-2 bg-gradient-to-r from-[#00BFAE] to-[#39E6D2] text-[#063743] text-sm font-semibold rounded-xl py-2.5 hover:brightness-105 disabled:opacity-40 transition"
               >
                 <Save className="w-4 h-4" /> Guardar
               </button>
               <button
                 onClick={() => { setEditing(null); setEditIdx(null); }}
-                className="px-4 py-2.5 text-sm text-gray-500 border border-gray-200 rounded-xl hover:bg-gray-50 transition"
+                className="px-4 py-2.5 text-sm text-[#5B6670] border border-[#D9E5EB] rounded-xl hover:bg-[#F4F7F9] transition"
               >
                 Cancelar
               </button>
