@@ -111,9 +111,9 @@ const DEFAULT_CATALOG = {
       name:        'Actualizar Contacto TSE',
       method:      'PATCH',
       url:         '/crm/contacts/by-cedula',
-      inputs:      ['tenantSlug', 'identificacion', 'nombre', 'email', 'empresa', 'cargo', 'telefono', 'etiquetas', 'notas', 'leadScore'],
-      outputs:     ['id', 'nombre', 'email', 'empresa', 'cargo', 'phone', 'customFields'],
-      description: 'Actualiza el contacto por identificacion (cedula) en CRM/TSE.',
+      inputs:      ['identificacion'],
+      outputs:     ['ok', 'contactoActualizado'],
+      description: 'Actualiza la informacion del contacto en TSE usando solo la identificacion (cedula).',
     },
     {
       id:          'sendNotification',
