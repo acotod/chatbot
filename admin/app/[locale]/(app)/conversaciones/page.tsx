@@ -710,13 +710,13 @@ export default function ConversacionesPage() {
   );
 
   return (
-    <div className="zentra-surface flex gap-0 h-[calc(100vh-7rem)] rounded-2xl overflow-hidden shadow-sm">
+    <div className="zentra-chat-shell zentra-soft-grid flex gap-0 h-[calc(100vh-7rem)] rounded-3xl overflow-hidden">
 
       {/* ── Thread list ── */}
-      <div className="w-80 shrink-0 border-r border-[#00BFAE]/15 flex flex-col bg-[#F4F7F9]/28">
-        <div className="p-4 border-b border-[#00BFAE]/10 space-y-2">
+      <div className="w-80 shrink-0 border-r border-[#D9E5EB] flex flex-col bg-white/90 backdrop-blur-sm">
+        <div className="p-4 border-b border-[#D9E5EB] space-y-3">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-[#5B6670] uppercase tracking-wide">
+            <span className="text-[11px] font-semibold text-[#5B6670] uppercase tracking-[0.18em]">
               {t("header")}
             </span>
             <SocketIndicator tenantId={tenantId} />
@@ -727,7 +727,7 @@ export default function ConversacionesPage() {
               placeholder={t("searchPlaceholder")}
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="w-full pl-9 pr-3 py-2 rounded-xl bg-[#F4F7F9]/72 border border-[#00BFAE]/20 text-[#0D2B3E] placeholder:text-[#5B6670] text-sm focus:outline-none focus:ring-2 focus:ring-[#00BFAE]/30"
+              className="w-full pl-9 pr-3 py-2.5 rounded-2xl bg-white border border-[#D9E5EB] text-[#0D2B3E] placeholder:text-[#5B6670] text-sm focus:outline-none focus:ring-2 focus:ring-[#00BFAE]/25"
             />
           </div>
         </div>
@@ -736,11 +736,11 @@ export default function ConversacionesPage() {
           {threadsLoading && (
             <div className="flex flex-col gap-2 p-4">
               {[1, 2, 3].map((i) => (
-                <div key={i} className="animate-pulse flex gap-3 p-1">
-                  <div className="w-10 h-10 rounded-full bg-[#0D2B3E] shrink-0" />
+                  <div key={i} className="animate-pulse flex gap-3 p-2">
+                  <div className="w-10 h-10 rounded-full bg-[#D9E5EB] shrink-0" />
                   <div className="flex-1 space-y-2 py-1">
-                    <div className="h-3 bg-[#0D2B3E] rounded w-3/4" />
-                    <div className="h-2 bg-[#0A0F14] rounded w-full" />
+                    <div className="h-3 bg-[#D9E5EB] rounded w-3/4" />
+                    <div className="h-2 bg-[#E9F0F4] rounded w-full" />
                   </div>
                 </div>
               ))}
@@ -771,16 +771,16 @@ export default function ConversacionesPage() {
                   setHasMore(false);
                 }}
                 className={cn(
-                  "w-full flex items-start gap-3 px-4 py-3.5 hover:bg-[#F4F7F9]/72 transition text-left border-b border-[#00BFAE]/8",
-                  isActive && "bg-[#00BFAE]/16 hover:bg-[#00BFAE]/16"
+                  "w-full flex items-start gap-3 px-4 py-3.5 hover:bg-[#F4F7F9] transition text-left border-b border-[#E7EEF2]",
+                  isActive && "bg-[#EEF9F7] hover:bg-[#EEF9F7]"
                 )}
               >
-                <div className="w-10 h-10 rounded-full bg-[#0D2B3E] border border-[#00BFAE]/16 flex items-center justify-center text-[#0D2B3E] font-semibold text-sm shrink-0">
+                <div className="w-10 h-10 rounded-full bg-[#0D2B3E] border border-[#00BFAE]/16 flex items-center justify-center text-white font-semibold text-sm shrink-0">
                   {name.charAt(0).toUpperCase()}
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between">
-                    <span className={cn("text-sm font-medium truncate", isActive ? "text-[#00BFAE]" : "text-[#0D2B3E]")}>
+                    <span className={cn("text-sm font-semibold truncate", isActive ? "text-[#00BFAE]" : "text-[#0D2B3E]")}>
                       {name}
                     </span>
                     <span className="text-xs text-[#7D9AA8] shrink-0 ml-2">
@@ -798,7 +798,7 @@ export default function ConversacionesPage() {
       {/* ── Active conversation ── */}
       {!activeThread ? (
         <div className="flex-1 flex flex-col items-center justify-center text-[#5B6670] gap-3">
-          <div className="w-16 h-16 rounded-2xl bg-[#F4F7F9]/62 border border-[#00BFAE]/18 flex items-center justify-center">
+          <div className="w-16 h-16 rounded-2xl bg-white border border-[#D9E5EB] flex items-center justify-center shadow-sm">
             <MessageCircle size={28} className="text-[#00BFAE]" />
           </div>
           <p className="font-medium text-[#0D2B3E]">{t("selectConversation")}</p>
@@ -807,9 +807,9 @@ export default function ConversacionesPage() {
       ) : (
         <div className="flex-1 flex flex-col min-w-0">
           {/* Header */}
-          <div className="h-16 px-5 border-b border-[#00BFAE]/15 flex items-center bg-[#F4F7F9]/28">
+          <div className="h-16 px-5 border-b border-[#D9E5EB] flex items-center bg-white/85 backdrop-blur-sm">
             <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-full bg-[#0D2B3E] border border-[#00BFAE]/16 flex items-center justify-center text-[#0D2B3E] font-semibold text-sm">
+              <div className="w-9 h-9 rounded-full bg-[#0D2B3E] border border-[#00BFAE]/16 flex items-center justify-center text-white font-semibold text-sm">
                 {getDisplayName(activeThread).charAt(0).toUpperCase()}
               </div>
               <div>
@@ -820,12 +820,12 @@ export default function ConversacionesPage() {
           </div>
 
           {/* Messages */}
-          <div className="flex-1 overflow-y-auto p-5 space-y-3 bg-[#0A0F14]/45">
+          <div className="flex-1 overflow-y-auto p-5 space-y-3 bg-gradient-to-b from-[#FFFFFF] to-[#F8FBFD]">
             {mensajesLoading && (
               <div className="flex flex-col gap-3">
                 {[1, 2, 3].map((i) => (
                   <div key={i} className={cn("animate-pulse flex", i % 2 === 0 ? "justify-end" : "justify-start")}>
-                    <div className="h-10 w-48 bg-[#0D2B3E] rounded-2xl" />
+                    <div className="h-10 w-48 bg-[#E7EEF2] rounded-2xl" />
                   </div>
                 ))}
               </div>
@@ -843,10 +843,10 @@ export default function ConversacionesPage() {
                 <div key={msg.id} className={cn("flex", isOutbound ? "justify-end" : "justify-start")}>
                   <div
                     className={cn(
-                      "max-w-xs lg:max-w-md px-4 py-2.5 rounded-2xl text-sm shadow-sm",
+                      "max-w-xs lg:max-w-md px-4 py-2.5 rounded-2xl text-sm shadow-sm border",
                       isOutbound
-                        ? "bg-gradient-to-br from-[#00BFAE] to-[#00BFAE] text-[#062A34] rounded-tr-sm"
-                        : "bg-[#F4F7F9]/72 text-[#0D2B3E] rounded-tl-sm border border-[#00BFAE]/18"
+                        ? "bg-gradient-to-br from-[#00BFAE] to-[#39E6D2] border-[#00BFAE]/25 text-[#063743] rounded-tr-sm"
+                        : "bg-white text-[#0D2B3E] rounded-tl-sm border-[#D9E5EB]"
                     )}
                   >
                     <MessageMediaContent
@@ -866,7 +866,7 @@ export default function ConversacionesPage() {
                 <button
                   onClick={loadMoreMessages}
                   disabled={loadingMore}
-                  className="text-xs text-[#00BFAE] hover:text-[#6FF5E8] bg-[#F4F7F9]/72 hover:bg-[#F4F7F9]/92 px-4 py-1.5 rounded-full border border-[#00BFAE]/22 transition disabled:opacity-50"
+                  className="text-xs text-[#00BFAE] hover:text-[#0D2B3E] bg-white hover:bg-[#EEF9F7] px-4 py-1.5 rounded-full border border-[#D9E5EB] transition disabled:opacity-50"
                 >
                   {loadingMore ? t("loading") : t("loadMore")}
                 </button>
@@ -876,7 +876,7 @@ export default function ConversacionesPage() {
           </div>
 
           {/* Input */}
-          <div className="px-4 py-3 bg-[#F4F7F9]/28 border-t border-[#00BFAE]/12">
+          <div className="px-4 py-3 bg-white/85 border-t border-[#D9E5EB] backdrop-blur-sm">
             {!activeThread.user?.phone ? (
               <p className="text-xs text-[#5B6670] text-center py-1">
                 {t("noPhone")}
@@ -889,12 +889,12 @@ export default function ConversacionesPage() {
                   onKeyDown={(e) => e.key === "Enter" && handleSend()}
                   placeholder={t("inputPlaceholder")}
                   disabled={sendMutation.isPending}
-                  className="flex-1 px-4 py-2.5 rounded-xl bg-[#F4F7F9]/72 border border-[#00BFAE]/20 text-[#0D2B3E] placeholder:text-[#5B6670] text-sm focus:outline-none focus:ring-2 focus:ring-[#00BFAE]/30 disabled:opacity-60"
+                  className="flex-1 px-4 py-2.5 rounded-xl bg-white border border-[#D9E5EB] text-[#0D2B3E] placeholder:text-[#5B6670] text-sm focus:outline-none focus:ring-2 focus:ring-[#00BFAE]/25 disabled:opacity-60"
                 />
                 <button
                   onClick={handleSend}
                   disabled={!input.trim() || sendMutation.isPending}
-                  className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#00BFAE] to-[#00BFAE] hover:brightness-105 text-[#063743] flex items-center justify-center transition disabled:opacity-50"
+                  className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#00BFAE] to-[#39E6D2] hover:brightness-105 text-[#063743] flex items-center justify-center transition disabled:opacity-50"
                 >
                   <Send size={16} />
                 </button>
@@ -906,11 +906,11 @@ export default function ConversacionesPage() {
 
       {/* ── Context panel ── */}
       {activeThread && (
-        <div className="w-72 shrink-0 border-l border-[#00BFAE]/15 bg-[#F4F7F9]/34 flex flex-col overflow-hidden hidden xl:flex">
+        <div className="w-72 shrink-0 border-l border-[#D9E5EB] bg-white/92 flex flex-col overflow-hidden hidden xl:flex backdrop-blur-sm">
           {/* Contact header */}
-          <div className="p-4 border-b border-[#00BFAE]/10">
+          <div className="p-4 border-b border-[#D9E5EB]">
             <div className="flex flex-col items-center gap-2">
-              <div className="w-12 h-12 rounded-full bg-[#0D2B3E] border border-[#00BFAE]/20 text-[#00BFAE] flex items-center justify-center text-lg font-bold">
+              <div className="w-12 h-12 rounded-full bg-[#0D2B3E] border border-[#00BFAE]/20 text-white flex items-center justify-center text-lg font-bold">
                 {getDisplayName(activeThread).charAt(0).toUpperCase()}
               </div>
               <div className="text-center">
@@ -935,7 +935,7 @@ export default function ConversacionesPage() {
               </button>
               <button
                 onClick={handleMarcarUrgente}
-                className="flex-1 flex items-center justify-center gap-1.5 text-xs font-medium bg-red-500/12 hover:bg-red-500/20 text-red-300 py-1.5 px-2 rounded-lg transition"
+                className="flex-1 flex items-center justify-center gap-1.5 text-xs font-medium bg-red-50 hover:bg-red-100 text-red-600 py-1.5 px-2 rounded-lg transition"
               >
                 <AlertTriangle size={13} />
                 {t("quickActions.urgent")}
@@ -948,7 +948,7 @@ export default function ConversacionesPage() {
                   closeConversationMutation.mutate(activeConversation.id);
                 }}
                 disabled={!activeConversation || closeConversationMutation.isPending}
-                className="w-full flex items-center justify-center gap-1.5 text-xs font-medium bg-[#F4F7F9]/72 hover:bg-[#F4F7F9]/92 text-[#0D2B3E] py-1.5 px-2 rounded-lg border border-[#00BFAE]/18 transition disabled:opacity-50"
+                className="w-full flex items-center justify-center gap-1.5 text-xs font-medium bg-white hover:bg-[#F4F7F9] text-[#0D2B3E] py-1.5 px-2 rounded-lg border border-[#D9E5EB] transition disabled:opacity-50"
               >
                 <X size={13} />
                 {closeConversationMutation.isPending ? t("quickActions.closing") : t("quickActions.closeConversation")}
@@ -962,7 +962,7 @@ export default function ConversacionesPage() {
 
             {/* Escalation form */}
             {showEscalarForm && (
-              <div className="mt-3 p-3 bg-[#F4F7F9]/60 rounded-xl border border-[#00BFAE]/18 space-y-2">
+              <div className="mt-3 p-3 bg-white rounded-xl border border-[#D9E5EB] space-y-2 shadow-sm">
                 <div className="flex items-center justify-between">
                   <p className="text-xs font-semibold text-[#5B6670]">{t("escalationForm.title")}</p>
                   <button onClick={() => setShowEscalarForm(false)} className="text-[#5B6670] hover:text-[#0D2B3E]">
@@ -973,7 +973,7 @@ export default function ConversacionesPage() {
                   <select
                     value={escalarAgenteId}
                     onChange={(e) => setEscalarAgenteId(e.target.value ? Number(e.target.value) : "")}
-                    className="w-full text-xs bg-[#0A0F14]/62 text-[#0D2B3E] border border-[#00BFAE]/20 rounded-lg px-2 py-1.5 pr-6 appearance-none focus:outline-none focus:ring-2 focus:ring-[#00BFAE]/30"
+                    className="w-full text-xs bg-white text-[#0D2B3E] border border-[#D9E5EB] rounded-lg px-2 py-1.5 pr-6 appearance-none focus:outline-none focus:ring-2 focus:ring-[#00BFAE]/25"
                   >
                     <option value="">{t("escalationForm.placeholder")}</option>
                     {agentes.map((a) => (
@@ -985,7 +985,7 @@ export default function ConversacionesPage() {
                 <button
                   disabled={!escalarAgenteId || !!escalandoId}
                   onClick={handleEscalar}
-                  className="w-full text-xs font-medium bg-gradient-to-r from-[#00BFAE] to-[#00BFAE] hover:brightness-105 text-[#063743] py-1.5 rounded-lg transition disabled:opacity-50"
+                  className="w-full text-xs font-medium bg-gradient-to-r from-[#00BFAE] to-[#39E6D2] hover:brightness-105 text-[#063743] py-1.5 rounded-lg transition disabled:opacity-50"
                 >
                   {escalandoId ? t("escalationForm.creating") : t("escalationForm.createAndAssign")}
                 </button>
@@ -994,7 +994,7 @@ export default function ConversacionesPage() {
           </div>
 
           {/* Tabs */}
-          <div className="flex border-b border-[#00BFAE]/10">
+          <div className="flex border-b border-[#D9E5EB] bg-white">
             {(["solicitudes", "agentes", "notas", "historial"] as const).map((tab) => {
               const icons = { solicitudes: ClipboardList, agentes: UserCheck, notas: StickyNote, historial: GitBranch };
               const labels = { solicitudes: t("tabs.solicitudes"), agentes: t("tabs.agentes"), notas: t("tabs.notas"), historial: t("tabs.historial") };
@@ -1006,8 +1006,8 @@ export default function ConversacionesPage() {
                   className={cn(
                     "flex-1 flex flex-col items-center gap-0.5 py-2 text-xs transition",
                     contextTab === tab
-                      ? "text-[#00BFAE] border-b-2 border-[#00BFAE] font-medium"
-                      : "text-[#5B6670] hover:text-[#0D2B3E]"
+                      ? "text-[#00BFAE] border-b-2 border-[#00BFAE] font-medium bg-[#EEF9F7]"
+                      : "text-[#5B6670] hover:text-[#0D2B3E] hover:bg-[#F4F7F9]"
                   )}
                 >
                   <Icon size={13} />
@@ -1025,7 +1025,7 @@ export default function ConversacionesPage() {
                 {solicitudesLoading && (
                   <div className="space-y-2">
                     {[1, 2].map((i) => (
-                      <div key={i} className="animate-pulse h-14 bg-[#0D2B3E] rounded-xl" />
+                      <div key={i} className="animate-pulse h-14 bg-[#E7EEF2] rounded-xl" />
                     ))}
                   </div>
                 )}
@@ -1037,17 +1037,17 @@ export default function ConversacionesPage() {
                   </div>
                 )}
                 {solicitudes.map((s) => (
-                  <div key={s.id} className="p-2.5 bg-[#F4F7F9]/55 rounded-xl border border-[#00BFAE]/18 space-y-1.5">
+                  <div key={s.id} className="p-2.5 bg-white rounded-xl border border-[#D9E5EB] space-y-1.5 shadow-sm">
                     <div className="flex items-start justify-between gap-1">
                       <p className="text-xs font-medium text-[#0D2B3E] truncate flex-1">
                         {s.nombre ?? `Solicitud #${s.id}`}
                       </p>
                       <span className={cn(
                         "text-[10px] font-semibold px-1.5 py-0.5 rounded-full shrink-0",
-                        s.estado === "in_progress" ? "bg-red-500/16 text-red-300" :
+                        s.estado === "in_progress" ? "bg-red-50 text-red-600" :
                         s.estado === "completed" ? "bg-[#00BFAE]/18 text-[#00BFAE]" :
-                        s.estado === "rejected" ? "bg-[#F4F7F9]/72 text-[#5B6670]" :
-                        "bg-[#F6C244]/18 text-[#F6D57D]"
+                        s.estado === "rejected" ? "bg-[#F4F7F9] text-[#5B6670]" :
+                        "bg-[#FFF7E6] text-[#B26B00]"
                       )}>
                         {s.estado ? (solicitudStatusLabels[s.estado] ?? s.estado) : solicitudStatusLabels["open"]}
                       </span>
@@ -1098,8 +1098,8 @@ export default function ConversacionesPage() {
                   </div>
                 )}
                 {agentes.map((a) => (
-                  <div key={a.id} className="flex items-center gap-2.5 p-2.5 bg-[#F4F7F9]/55 rounded-xl border border-[#00BFAE]/18">
-                    <div className="w-7 h-7 rounded-full bg-[#0A0F14]/70 text-[#00BFAE] border border-[#00BFAE]/18 flex items-center justify-center text-xs font-bold shrink-0">
+                  <div key={a.id} className="flex items-center gap-2.5 p-2.5 bg-white rounded-xl border border-[#D9E5EB]">
+                    <div className="w-7 h-7 rounded-full bg-[#0D2B3E] text-white border border-[#00BFAE]/18 flex items-center justify-center text-xs font-bold shrink-0">
                       {a.nombre.charAt(0).toUpperCase()}
                     </div>
                     <div className="flex-1 min-w-0">
@@ -1122,8 +1122,8 @@ export default function ConversacionesPage() {
             {contextTab === "notas" && (
               <div className="p-3 space-y-2">
                 {savedNota && (
-                  <div className="p-2.5 bg-[#F6C244]/14 border border-[#F6C244]/24 rounded-xl">
-                    <p className="text-xs text-[#F6D57D] whitespace-pre-wrap">{savedNota}</p>
+                  <div className="p-2.5 bg-[#EEF9F7] border border-[#CDEFEA] rounded-xl">
+                    <p className="text-xs text-[#0D2B3E] whitespace-pre-wrap">{savedNota}</p>
                   </div>
                 )}
                 <textarea
@@ -1131,12 +1131,12 @@ export default function ConversacionesPage() {
                   onChange={(e) => setNota(e.target.value)}
                   placeholder={t("notasTab.placeholder")}
                   rows={4}
-                  className="w-full text-xs bg-[#F4F7F9]/62 border border-[#00BFAE]/18 rounded-xl px-3 py-2 resize-none text-[#0D2B3E] placeholder:text-[#5B6670] focus:outline-none focus:ring-2 focus:ring-[#00BFAE]/30"
+                  className="w-full text-xs bg-white border border-[#D9E5EB] rounded-xl px-3 py-2 resize-none text-[#0D2B3E] placeholder:text-[#5B6670] focus:outline-none focus:ring-2 focus:ring-[#00BFAE]/25"
                 />
                 <button
                   onClick={() => { if (nota.trim()) { setSavedNota(nota.trim()); setNota(""); } }}
                   disabled={!nota.trim()}
-                  className="w-full text-xs font-medium bg-gradient-to-r from-[#00BFAE] to-[#00BFAE] hover:brightness-105 text-[#063743] py-1.5 rounded-lg transition disabled:opacity-40"
+                  className="w-full text-xs font-medium bg-gradient-to-r from-[#00BFAE] to-[#39E6D2] hover:brightness-105 text-[#063743] py-1.5 rounded-lg transition disabled:opacity-40"
                 >
                   {t("notasTab.save")}
                 </button>

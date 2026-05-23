@@ -15,7 +15,7 @@ import interactionPlugin from "@fullcalendar/interaction";
 import FullCalendar from "@fullcalendar/react";
 import timeGridPlugin from "@fullcalendar/timegrid";
 import { EventInput } from "@fullcalendar/core";
-import { CalendarDays, Moon, Plus, Sun } from "lucide-react";
+import { CalendarDays, Plus } from "lucide-react";
 import { useSocket } from "@/hooks/useSocket";
 import { useCurrentLocale, useTranslations } from "@/lib/i18n/client";
 import { useMemo, useRef, useState } from "react";
@@ -100,7 +100,6 @@ export default function AgendaPage() {
   const [filterTipo, setFilterTipo] = useState<string>("");
   const [filterEstado, setFilterEstado] = useState<string>("");
   const [filterAgenteId, setFilterAgenteId] = useState<string>("");
-  const [theme, setTheme] = useState<"light" | "dark">("light");
   const [agentAgendaRange] = useState(() => {
     const start = new Date();
     const end = new Date(start.getTime() + 30 * 24 * 60 * 60 * 1000);
@@ -400,22 +399,22 @@ export default function AgendaPage() {
   }
 
   return (
-    <div className={theme === "dark" ? "agenda-dark" : ""}>
+    <div className="zentra-chat-shell rounded-3xl p-4 sm:p-5">
+      <div className="mb-4 rounded-2xl border border-[#D9E5EB] bg-white/90 px-4 py-3 sm:px-5">
+        <h1 className="text-lg sm:text-xl font-semibold text-[#0D2B3E]">{t("pageTitle")}</h1>
+        <p className="mt-1 text-xs sm:text-sm text-[#5B6670]">{t("weeklyAgendaSubtitle")}</p>
+      </div>
+
       <div className="grid grid-cols-1 xl:grid-cols-[320px_minmax(0,1fr)] gap-5">
-        <Card className="h-fit">
-          <CardHeader className="flex flex-row items-center justify-between">
-            <h2 className="text-sm font-semibold text-slate-900">{t("agendaPanel")}</h2>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setTheme((prev) => (prev === "light" ? "dark" : "light"))}
-            >
-              {theme === "light" ? <Moon size={14} /> : <Sun size={14} />}
-              {theme === "light" ? t("darkMode") : t("lightMode")}
-            </Button>
+        <Card className="h-fit zentra-panel rounded-2xl shadow-sm">
+          <CardHeader className="flex flex-row items-center justify-between border-b border-[#D9E5EB]">
+            <h2 className="text-sm font-semibold text-[#0D2B3E] tracking-wide">{t("agendaPanel")}</h2>
+            <span className="text-[11px] font-medium text-[#5B6670] px-2 py-1 rounded-full bg-[#F4F7F9] border border-[#D9E5EB]">
+              {t("weeklyAgenda")}
+            </span>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="rounded-xl border border-slate-200 overflow-hidden">
+            <div className="rounded-2xl border border-[#D9E5EB] overflow-hidden bg-white">
               <FullCalendar
                 plugins={[dayGridPlugin, interactionPlugin]}
                 initialView="dayGridMonth"
@@ -429,9 +428,9 @@ export default function AgendaPage() {
             </div>
 
             <div className="space-y-2">
-              <label className="text-xs font-medium text-slate-600">{t("granularity")}</label>
+              <label className="text-xs font-medium text-[#5B6670]">{t("granularity")}</label>
               <select
-                className="h-10 w-full rounded-xl border border-slate-200 px-3 text-sm"
+                className="h-10 w-full rounded-xl border border-[#D9E5EB] bg-white px-3 text-sm text-[#0D2B3E] focus:outline-none focus:ring-2 focus:ring-[#00BFAE]/25"
                 value={slotMinutes}
                 onChange={(e) => setSlotMinutes(Number(e.target.value) as SlotMinutes)}
               >
@@ -442,9 +441,9 @@ export default function AgendaPage() {
             </div>
 
             <div className="space-y-2">
-              <label className="text-xs font-medium text-slate-600">{t("filterByOwner")}</label>
+              <label className="text-xs font-medium text-[#5B6670]">{t("filterByOwner")}</label>
               <select
-                className="h-10 w-full rounded-xl border border-slate-200 px-3 text-sm"
+                className="h-10 w-full rounded-xl border border-[#D9E5EB] bg-white px-3 text-sm text-[#0D2B3E] focus:outline-none focus:ring-2 focus:ring-[#00BFAE]/25"
                 value={filterAgenteId}
                 onChange={(e) => setFilterAgenteId(e.target.value)}
               >
@@ -456,9 +455,9 @@ export default function AgendaPage() {
             </div>
 
             <div className="space-y-2">
-              <label className="text-xs font-medium text-slate-600">{t("filterByType")}</label>
+              <label className="text-xs font-medium text-[#5B6670]">{t("filterByType")}</label>
               <select
-                className="h-10 w-full rounded-xl border border-slate-200 px-3 text-sm"
+                className="h-10 w-full rounded-xl border border-[#D9E5EB] bg-white px-3 text-sm text-[#0D2B3E] focus:outline-none focus:ring-2 focus:ring-[#00BFAE]/25"
                 value={filterTipo}
                 onChange={(e) => setFilterTipo(e.target.value)}
               >
@@ -471,9 +470,9 @@ export default function AgendaPage() {
             </div>
 
             <div className="space-y-2">
-              <label className="text-xs font-medium text-slate-600">{t("filterByStatus")}</label>
+              <label className="text-xs font-medium text-[#5B6670]">{t("filterByStatus")}</label>
               <select
-                className="h-10 w-full rounded-xl border border-slate-200 px-3 text-sm"
+                className="h-10 w-full rounded-xl border border-[#D9E5EB] bg-white px-3 text-sm text-[#0D2B3E] focus:outline-none focus:ring-2 focus:ring-[#00BFAE]/25"
                 value={filterEstado}
                 onChange={(e) => setFilterEstado(e.target.value)}
               >
@@ -486,19 +485,19 @@ export default function AgendaPage() {
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between">
+        <Card className="zentra-panel rounded-2xl shadow-sm">
+          <CardHeader className="flex flex-row items-center justify-between border-b border-[#D9E5EB]">
             <div>
-              <h1 className="text-lg font-semibold text-slate-900">{t("weeklyAgenda")}</h1>
-              <p className="text-xs text-slate-500 mt-0.5">{t("weeklyAgendaSubtitle")}</p>
+              <h1 className="text-lg font-semibold text-[#0D2B3E]">{t("weeklyAgenda")}</h1>
+              <p className="text-xs text-[#5B6670] mt-0.5">{t("weeklyAgendaSubtitle")}</p>
             </div>
-            <Button onClick={() => openCreateFromRange(new Date(), new Date(Date.now() + slotMinutes * 60 * 1000))}>
+            <Button className="bg-gradient-to-r from-[#00BFAE] to-[#39E6D2] text-[#063743] border-0 hover:brightness-105" onClick={() => openCreateFromRange(new Date(), new Date(Date.now() + slotMinutes * 60 * 1000))}>
               <Plus size={14} />
               {t("newEvent")}
             </Button>
           </CardHeader>
           <CardContent className="px-2 pb-3">
-            <div className="agenda-calendar rounded-xl border border-slate-200 overflow-hidden">
+            <div className="agenda-calendar rounded-2xl border border-[#D9E5EB] overflow-hidden bg-white">
               <FullCalendar
                 ref={calendarRef}
                 plugins={[timeGridPlugin, interactionPlugin]}
@@ -526,7 +525,7 @@ export default function AgendaPage() {
                 headerToolbar={{ left: "prev,next today", center: "title", right: "" }}
               />
             </div>
-            {eventsQuery.isLoading && <p className="text-xs text-slate-500 mt-2">{t("loadingEvents")}</p>}
+            {eventsQuery.isLoading && <p className="text-xs text-[#5B6670] mt-2">{t("loadingEvents")}</p>}
           </CardContent>
         </Card>
       </div>
@@ -555,7 +554,7 @@ export default function AgendaPage() {
         .agenda-calendar .fc .fc-timegrid-slot,
         .agenda-calendar .fc .fc-timegrid-col,
         .agenda-calendar .fc .fc-scrollgrid-section > * {
-          background: var(--agenda-bg, #ffffff);
+          background: #ffffff;
         }
 
         .agenda-calendar .fc .fc-event {
@@ -571,29 +570,41 @@ export default function AgendaPage() {
           box-shadow: 0 10px 20px rgba(2, 6, 23, 0.12);
         }
 
+        .agenda-calendar .fc .fc-toolbar-title {
+          color: #0d2b3e;
+          font-weight: 700;
+          letter-spacing: 0.01em;
+        }
+
+        .agenda-calendar .fc .fc-button-primary {
+          background: #ffffff;
+          border: 1px solid #d9e5eb;
+          color: #0d2b3e;
+          box-shadow: none;
+        }
+
+        .agenda-calendar .fc .fc-button-primary:hover {
+          background: #eef9f7;
+          border-color: #bce8e1;
+          color: #0d2b3e;
+        }
+
+        .agenda-calendar .fc .fc-button-primary:disabled {
+          background: #f4f7f9;
+          color: #8b99a3;
+          border-color: #d9e5eb;
+        }
+
+        .agenda-calendar .fc .fc-col-header-cell-cushion,
+        .agenda-calendar .fc .fc-timegrid-axis-cushion,
+        .agenda-calendar .fc .fc-timegrid-slot-label-cushion {
+          color: #5b6670;
+          font-weight: 500;
+        }
+
         .agenda-calendar .fc .fc-now-indicator-line {
           border-color: #dc2626;
           border-width: 2px;
-        }
-
-        .agenda-dark {
-          --agenda-bg: #111827;
-        }
-
-        .agenda-dark .bg-white,
-        .agenda-dark .fc,
-        .agenda-dark .fc-theme-standard td,
-        .agenda-dark .fc-theme-standard th {
-          background: #111827 !important;
-          color: #e5e7eb;
-          border-color: #1f2937 !important;
-        }
-
-        .agenda-dark .text-slate-900,
-        .agenda-dark .text-slate-700,
-        .agenda-dark .text-slate-600,
-        .agenda-dark .text-slate-500 {
-          color: #e5e7eb !important;
         }
       `}</style>
     </div>
