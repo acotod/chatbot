@@ -345,6 +345,58 @@ function buildMenuBranchesFromRouteTargets(
   return result;
 }
 
+function withMissingNodePositions(definition: FlowDefinition, flatNodes: NodeDef[]): FlowDefinition {
+  const currentPositions = definition.nodePositions ?? {};
+  const existingKeys = Object.keys(currentPositions);
+  if (existingKeys.length === 0) return definition;
+
+  const missingNodeIds = flatNodes
+    .map((node) => node.id)
+    .filter((nodeId) => !currentPositions[nodeId]);
+
+  if (missingNodeIds.length === 0) return definition;
+
+  const occupied = new Set(
+    Object.values(currentPositions).map((p) => `${Math.round(p.x)}:${Math.round(p.y)}`)
+  );
+
+  const existingValues = Object.values(currentPositions);
+  const maxX = existingValues.length ? Math.max(...existingValues.map((p) => p.x)) : 50;
+  const minY = existingValues.length ? Math.min(...existingValues.map((p) => p.y)) : 50;
+
+  const spacingX = 360;
+  const spacingY = 240;
+  const startX = maxX + spacingX;
+  const startY = minY;
+  const cols = 3;
+
+  const nextPositions: Record<string, { x: number; y: number }> = { ...currentPositions };
+
+  missingNodeIds.forEach((nodeId, index) => {
+    let candidateIndex = index;
+    while (true) {
+      const col = candidateIndex % cols;
+      const row = Math.floor(candidateIndex / cols);
+      const x = startX + (col * spacingX);
+      const y = startY + (row * spacingY);
+      const key = `${Math.round(x)}:${Math.round(y)}`;
+
+      if (!occupied.has(key)) {
+        nextPositions[nodeId] = { x, y };
+        occupied.add(key);
+        break;
+      }
+
+      candidateIndex += 1;
+    }
+  });
+
+  return {
+    ...definition,
+    nodePositions: nextPositions,
+  };
+}
+
 function normalizeFlowDefinition(definition: FlowDefinition): FlowDefinition {
   const flatNodes = flattenNodes(definition.nodes);
   const nodeIds = new Set(flatNodes.map((node) => node.id));
@@ -400,6 +452,12 @@ function normalizeFlowDefinition(definition: FlowDefinition): FlowDefinition {
     ...definition,
     nodes: normalizedNodes,
   };
+
+  const withFilledPositions = withMissingNodePositions(normalizedDefinition, flatNodes);
+  const filledPositionCount = Object.keys(withFilledPositions.nodePositions || {}).length;
+  if (filledPositionCount >= flatNodes.length && flatNodes.length > 0) {
+    return withFilledPositions;
+  }
 
   const positionCount = Object.keys(normalizedDefinition.nodePositions || {}).length;
   if (positionCount >= flatNodes.length && flatNodes.length > 0) {
