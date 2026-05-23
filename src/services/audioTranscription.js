@@ -46,7 +46,7 @@ function resolveOpenAiKey(configValue) {
 async function resolveOpenAiKeyForTenant(tenantId, configValue) {
   const directKey = resolveOpenAiKey(configValue);
   if (directKey) {
-    return { key: directKey, source: 'audio_transcription_provider' };
+    return { key: directKey, source: 'audio_transcription_provider', reason: null };
   }
 
   try {
@@ -56,7 +56,15 @@ async function resolveOpenAiKeyForTenant(tenantId, configValue) {
 
     // Reuse tenant LLM key only when it's clearly OpenAI-based.
     if (llmApiKey && (!provider || provider === 'openai')) {
-      return { key: llmApiKey, source: 'llm_config' };
+      return { key: llmApiKey, source: 'llm_config', reason: null };
+    }
+
+    if (llmApiKey && provider && provider !== 'openai') {
+      return {
+        key: '',
+        source: null,
+        reason: `LLM provider '${provider}' is configured for tenant, but audio transcription currently requires an OpenAI key`,
+      };
     }
   } catch (err) {
     logger.warn('Could not resolve llm_config fallback for audio transcription', {
@@ -65,7 +73,7 @@ async function resolveOpenAiKeyForTenant(tenantId, configValue) {
     });
   }
 
-  return { key: '', source: null };
+  return { key: '', source: null, reason: null };
 }
 
 async function transcribeAudioBuffer({ buffer, mimeType, tenantId, config }) {
@@ -100,12 +108,16 @@ async function transcribeAudioBuffer({ buffer, mimeType, tenantId, config }) {
   }
 
   const providerCfgRow = await db.getConfig(tenantId, 'wa_audio_transcription_provider');
-  const { key: apiKey, source: apiKeySource } = await resolveOpenAiKeyForTenant(tenantId, providerCfgRow?.valor);
+  const {
+    key: apiKey,
+    source: apiKeySource,
+    reason: keyMissingReason,
+  } = await resolveOpenAiKeyForTenant(tenantId, providerCfgRow?.valor);
   if (!apiKey) {
     return {
       ok: false,
       text: null,
-      error: 'OPENAI_API_KEY is not configured',
+      error: keyMissingReason || 'OPENAI_API_KEY is not configured',
       provider: 'openai',
       meta: {},
     };
