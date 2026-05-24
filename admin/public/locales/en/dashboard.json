@@ -1,4 +1,6 @@
 {
+  "pageTitle": "Dashboard",
+  "pageSubtitle": "Overview of requests, conversations, and recent activity.",
   "agentPanel": {
     "eyebrow": "Panel",
     "title": "Agent Panel",

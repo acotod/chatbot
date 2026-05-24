@@ -1,4 +1,6 @@
 {
+  "pageTitle": "Dashboard",
+  "pageSubtitle": "Vista general de solicitudes, conversaciones y actividad reciente.",
   "agentPanel": {
     "eyebrow": "Panel",
     "title": "Panel de agente",
