@@ -210,15 +210,6 @@ router.patch('/contacts/by-cedula', [
   body('tenantSlug').optional().isString(),
   body('cedula').optional().isString().trim().notEmpty(),
   body('identificacion').optional().isString().trim().notEmpty(),
-  body('telefono').optional().isString(),
-  body('nombre').optional().isString().isLength({ max: 120 }),
-  body('email').optional().isEmail(),
-  body('empresa').optional().isString().isLength({ max: 120 }),
-  body('cargo').optional().isString().isLength({ max: 100 }),
-  body('etiquetas').optional().isArray(),
-  body('notas').optional().isString(),
-  body('leadScore').optional().isInt({ min: 0, max: 100 }),
-  body('customFields').optional().isObject(),
 ], async (req, res, next) => {
   if (!validate(req, res)) return;
   try {
@@ -247,31 +238,26 @@ router.patch('/contacts/by-cedula', [
     }
 
     const tseProfile = tseLookup.profile ?? {};
-    const resolvedNombre = req.body.nombre ?? tseProfile.nombre ?? null;
-    const resolvedEmail = req.body.email ?? tseProfile.email ?? null;
-    const resolvedEmpresa = req.body.empresa ?? tseProfile.empresa ?? null;
-    const resolvedCargo = req.body.cargo ?? tseProfile.cargo ?? null;
-    const resolvedPhone = req.body.phone ?? req.body.telefono ?? tseProfile.phone ?? null;
+    const resolvedNombre = tseProfile.nombre ?? null;
+    const resolvedEmail = tseProfile.email ?? null;
+    const resolvedEmpresa = tseProfile.empresa ?? null;
+    const resolvedCargo = tseProfile.cargo ?? null;
+    const resolvedPhone = tseProfile.phone ?? null;
 
     const existing = await findContactByCedula(targetTenantId, cedula, normalizedCedula);
 
     if (!existing) {
-      const incomingCustomFields = (req.body.customFields && typeof req.body.customFields === 'object')
-        ? req.body.customFields
-        : {};
-
       const createData = {
         tenantId: targetTenantId,
         nombre: resolvedNombre ?? `Contacto ${cedula}`,
         email: resolvedEmail,
         empresa: resolvedEmpresa,
         cargo: resolvedCargo,
-        etiquetas: Array.isArray(req.body.etiquetas) ? req.body.etiquetas : [],
-        notas: req.body.notas ?? null,
-        leadScore: Number.isInteger(req.body.leadScore) ? req.body.leadScore : 0,
+        etiquetas: [],
+        notas: null,
+        leadScore: 0,
         phone: resolvedPhone,
         customFields: {
-          ...incomingCustomFields,
           cedula,
           identificacion: cedula,
           cedulaNormalizada: normalizedCedula,
@@ -296,7 +282,6 @@ router.patch('/contacts/by-cedula', [
         found: false,
         created: true,
         tseSynced: true,
-        tseSynced: true,
         contactId: created.id,
         tenantId: created.tenantId,
         identificacion: cedula,
@@ -319,21 +304,12 @@ router.patch('/contacts/by-cedula', [
     if (resolvedEmpresa != null) data.empresa = resolvedEmpresa;
     if (resolvedCargo != null) data.cargo = resolvedCargo;
     if (resolvedPhone != null) data.phone = resolvedPhone;
-    if (req.body.canalOrigen !== undefined) data.canalOrigen = req.body.canalOrigen;
-    if (req.body.etiquetas !== undefined) data.etiquetas = req.body.etiquetas;
-    if (req.body.notas !== undefined) data.notas = req.body.notas;
-    if (req.body.leadScore !== undefined) data.leadScore = req.body.leadScore;
-
-    const incomingCustomFields = (req.body.customFields && typeof req.body.customFields === 'object')
-      ? req.body.customFields
-      : {};
     const existingCustomFields = (existing.customFields && typeof existing.customFields === 'object')
       ? existing.customFields
       : {};
 
     data.customFields = {
       ...existingCustomFields,
-      ...incomingCustomFields,
       cedula,
       identificacion: cedula,
       cedulaNormalizada: normalizedCedula,
@@ -341,15 +317,7 @@ router.patch('/contacts/by-cedula', [
       tseSyncedAt: new Date().toISOString(),
       tseData: tseProfile,
     };
-
-    const hasDirectFieldUpdate = ['nombre', 'email', 'empresa', 'cargo', 'canalOrigen', 'etiquetas', 'notas', 'leadScore', 'phone', 'telefono']
-      .some((field) => req.body[field] !== undefined)
-      || Object.keys(tseProfile).length > 0;
-    const hasCustomFieldsUpdate = Object.keys(incomingCustomFields).length > 0;
-    if (!hasDirectFieldUpdate && !hasCustomFieldsUpdate) {
-      // Single-input TSE mode: allow touching the contact when only identification is provided.
-      data.ultimoContacto = new Date();
-    }
+    data.ultimoContacto = new Date();
 
     const updated = await prisma.user.update({ where: { id: existing.id }, data });
     audit({ adminUserId: req.admin.adminUserId, tenantId: existing.tenantId, accion: 'UPDATE_CONTACT_BY_CEDULA', entidad: 'user', entidadId: String(existing.id) });
@@ -767,6 +735,12 @@ async function findContactsByCedulaAnyTenant(cedula, normalizedCedula, limit = 2
 
 async function fetchTseProfileByCedula(tenantId, cedula) {
   const cfg = await loadTseConfig(tenantId);
+  if (!cfg.exists) {
+    return {
+      ok: false,
+      error: 'Tenant config "tse_config" is required to sync contacts by cedula',
+    };
+  }
   if (!cfg.url) {
     return {
       ok: false,
@@ -891,6 +865,7 @@ async function loadTseConfig(tenantId) {
   }
 
   return {
+    exists: !!row,
     url,
     method: value.method || 'GET',
     timeoutMs: value.timeoutMs || 10000,
