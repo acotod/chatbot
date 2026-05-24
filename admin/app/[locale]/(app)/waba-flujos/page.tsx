@@ -2690,8 +2690,22 @@ function FlowBuilder({
 
   function handleCanvasChange(nextDefinition: FlowDefinition) {
     const normalizedDefinition = normalizeFlowDefinition(nextDefinition);
-    setDefinition(normalizedDefinition);
-    setJsonText(JSON.stringify(normalizedDefinition, null, 2));
+    const nextSerialized = JSON.stringify(normalizedDefinition);
+
+    setDefinition((prev) => {
+      if (!prev) {
+        setJsonText(JSON.stringify(normalizedDefinition, null, 2));
+        return normalizedDefinition;
+      }
+
+      const prevSerialized = JSON.stringify(prev);
+      if (prevSerialized === nextSerialized) {
+        return prev;
+      }
+
+      setJsonText(JSON.stringify(normalizedDefinition, null, 2));
+      return normalizedDefinition;
+    });
   }
 
   function handleAutoArrange() {

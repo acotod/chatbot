@@ -7,7 +7,7 @@
 
 'use client';
 
-import React, { useCallback, useState, useEffect } from 'react';
+import React, { useCallback, useState, useEffect, useRef } from 'react';
 import ReactFlow, {
   Node,
   addEdge,
@@ -91,14 +91,24 @@ function CanvasEditorInner({
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; nodeId: string } | null>(null);
   const [jsonViewNode, setJsonViewNode] = useState<string | null>(null);
+  const isSyncingFromDefinitionRef = useRef(false);
 
   // Initialize nodes and edges from definition
   useEffect(() => {
+    isSyncingFromDefinitionRef.current = true;
     const rfNodes = toReactFlowNodes(definition);
     const rfEdges = toReactFlowEdges(definition);
 
     setNodes(rfNodes);
     setEdges(rfEdges);
+
+    const resetSyncFlag = window.setTimeout(() => {
+      isSyncingFromDefinitionRef.current = false;
+    }, 0);
+
+    return () => {
+      window.clearTimeout(resetSyncFlag);
+    };
   }, [definition, setNodes, setEdges]);
 
   // Handle node position changes
@@ -106,6 +116,10 @@ function CanvasEditorInner({
     (changes: NodeChange[]) => {
       const nextNodes = applyNodeChanges(changes, nodes);
       setNodes(nextNodes);
+
+      if (isSyncingFromDefinitionRef.current) {
+        return;
+      }
 
       // Detect if this is a position change
       const positionChanges = changes.filter((c) => c.type === 'position' && 'position' in c);
@@ -123,6 +137,10 @@ function CanvasEditorInner({
       const nextEdges = applyEdgeChanges(changes, edges);
       setEdges(nextEdges);
 
+      if (isSyncingFromDefinitionRef.current) {
+        return;
+      }
+
       // Keep flow routing in sync after edge mutations
       const structuralChanges = changes.some((change) => change.type !== 'select');
       if (structuralChanges) {
@@ -138,6 +156,10 @@ function CanvasEditorInner({
     (connection: Connection) => {
       const newEdge = addEdge(connection, edges);
       setEdges(newEdge);
+
+      if (isSyncingFromDefinitionRef.current) {
+        return;
+      }
 
       // Update definition
       const updatedDef = fromReactFlowEdges(newEdge, definition);
