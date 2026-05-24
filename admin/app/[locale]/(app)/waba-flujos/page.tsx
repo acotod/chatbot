@@ -1433,6 +1433,30 @@ function NodeEditModal({
     return url.startsWith("/crm/") || url.includes("tenant");
   }
 
+  function normalizeTenantBodyForEndpoint(
+    rows: { key: string; value: string }[],
+    endpoint?: CatalogEndpoint | null
+  ): { key: string; value: string }[] {
+    if (endpoint?.id !== "updateContactByIdentification") return rows;
+
+    const tenantSlugVar = pickBestVariableForKey("tenantSlug");
+    const normalized = [...rows];
+
+    const tenantSlugIndex = normalized.findIndex((row) => row.key.trim().toLowerCase() === "tenantslug");
+    if (tenantSlugIndex >= 0) {
+      if (!normalized[tenantSlugIndex].value?.trim()) {
+        normalized[tenantSlugIndex] = { ...normalized[tenantSlugIndex], value: tenantSlugVar };
+      }
+    } else {
+      normalized.push({ key: "tenantSlug", value: tenantSlugVar });
+    }
+
+    return normalized.filter((row) => {
+      const key = row.key.trim().toLowerCase();
+      return key !== "tenantid" && key !== "tenant_id" && key !== "tenantuuid" && key !== "tenant_uuid";
+    });
+  }
+
   function ensureTenantBody(rows: { key: string; value: string }[], endpoint?: CatalogEndpoint | null): { key: string; value: string }[] {
     if (!endpointNeedsTenant(endpoint, actionUrl)) return rows;
 
@@ -1461,7 +1485,7 @@ function NodeEditModal({
       return { key: inputKey, value: mapped };
     });
 
-    setActionBody(ensureTenantBody(nextBody, endpoint));
+    setActionBody(normalizeTenantBodyForEndpoint(ensureTenantBody(nextBody, endpoint), endpoint));
     setActionResponse(endpoint.outputs.map((f) => ({ key: f, value: actionResponse.find((r) => r.key === f)?.value ?? `variables.${f}` })));
   }
 
@@ -1563,6 +1587,16 @@ function NodeEditModal({
       if (!hasTenantField) {
         body.tenantSlug = pickBestVariableForKey("tenantSlug");
       }
+    }
+
+    if (endpointForValidation?.id === "updateContactByIdentification") {
+      if (!body.tenantSlug || !String(body.tenantSlug).trim()) {
+        body.tenantSlug = pickBestVariableForKey("tenantSlug");
+      }
+      delete body.tenantId;
+      delete body.tenant_id;
+      delete body.tenantUuid;
+      delete body.tenant_uuid;
     }
 
     const response_mapping: Record<string, string> = {};
