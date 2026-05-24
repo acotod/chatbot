@@ -255,6 +255,19 @@ function _fetch(url, method, headers, body, timeoutMs) {
       let data = '';
       res.on('data', (chunk) => { data += chunk; });
       res.on('end', () => {
+        const statusCode = Number(res.statusCode || 0);
+        const contentType = String(res.headers?.['content-type'] || '');
+
+        // Treat upstream 4xx/5xx as hard failures so flow action nodes
+        // can follow their error branch instead of continuing as success.
+        if (statusCode >= 400) {
+          const err = new Error(`HTTP ${statusCode} from integration endpoint`);
+          err.statusCode = statusCode;
+          err.contentType = contentType;
+          err.responseBody = data;
+          return reject(err);
+        }
+
         try {
           resolve(JSON.parse(data));
         } catch {
