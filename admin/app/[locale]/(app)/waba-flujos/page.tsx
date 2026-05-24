@@ -1299,6 +1299,17 @@ function NodeEditModal({
   const [endMsg, setEndMsg]           = useState(String(cfg.text ?? cfg.message ?? ""));
   const [handoffDept, setHandoffDept] = useState(String(cfg.department ?? ""));
   const [handoffMsg, setHandoffMsg]   = useState(String(cfg.text ?? cfg.message ?? ""));
+  const handoffDepartmentSuggestions = Array.from(new Set([
+    "soporte_tecnico",
+    "soporte",
+    "ventas",
+    "facturacion",
+    ...(allNodes ?? []).flatMap((n) => {
+      if (String(n.type ?? "").trim().toLowerCase() !== "handoff") return [];
+      const department = typeof n.config?.department === "string" ? n.config.department.trim() : "";
+      return department ? [department] : [];
+    }),
+  ]));
   // llm — multi-prompt config
   const [llmPrompts, setLlmPrompts] = useState<LlmPromptItem[]>(() => {
     if (Array.isArray((cfg as Record<string, unknown>).prompts) && ((cfg as Record<string, unknown>).prompts as LlmPromptItem[]).length > 0) {
@@ -1906,8 +1917,13 @@ function NodeEditModal({
                 <div className="grid grid-cols-2 gap-4">
                   <div className="bg-slate-50 rounded-lg border border-slate-100 p-4">
                     <label className="block text-xs font-medium text-slate-600 mb-2">Departamento / Agente</label>
-                    <input value={handoffDept} onChange={(e) => setHandoffDept(e.target.value)} placeholder="soporte_tecnico"
-                      className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                    <VarComboInput
+                      value={handoffDept}
+                      onChange={setHandoffDept}
+                      placeholder="soporte_tecnico"
+                      suggestions={handoffDepartmentSuggestions}
+                      className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                    />
                   </div>
                   <div className="bg-slate-50 rounded-lg border border-slate-100 p-4">
                     <label className="block text-xs font-medium text-slate-600 mb-2">Mensaje al transferir</label>
