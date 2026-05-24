@@ -758,6 +758,7 @@ const NODE_TYPE_COLOR: Record<string, string> = {
   menu:      "border-purple-300 bg-purple-50",
   condition: "border-orange-300 bg-orange-50",
   action:    "border-green-300 bg-green-50",
+  task:      "border-emerald-300 bg-emerald-50",
   delay:     "border-slate-300 bg-slate-50",
   end:       "border-rose-300 bg-rose-50",
   start:     "border-teal-300 bg-teal-50",
@@ -1063,7 +1064,7 @@ function NodeCard({
 // ─────────────────────────────────────────────────────────────────────────────
 // Sub-component: NodeEditModal
 // ─────────────────────────────────────────────────────────────────────────────
-const NODE_TYPES = ["message", "input", "menu", "condition", "action", "delay", "end", "handoff", "llm"];
+const NODE_TYPES = ["message", "input", "menu", "condition", "action", "task", "delay", "end", "handoff", "llm"];
 const HTTP_METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE"];
 const CONDITION_OPS = ["equals", "not_equals", "contains", "starts_with", "ends_with", "greater_than", "less_than", "is_empty", "is_not_empty"];
 const CONDITION_TRUE_ALIASES = ["true", "si", "sí", "yes"];
@@ -1310,6 +1311,23 @@ function NodeEditModal({
       return department ? [department] : [];
     }),
   ]));
+  const [taskAction, setTaskAction] = useState(String(cfg.action ?? "create_task"));
+  const [taskTitle, setTaskTitle] = useState(String(cfg.title ?? ""));
+  const [taskPriority, setTaskPriority] = useState(String(cfg.priority ?? "normal"));
+  const [taskStatus, setTaskStatus] = useState(String(cfg.status ?? "open"));
+  const [taskUserMessage, setTaskUserMessage] = useState(String(cfg.user_message ?? ""));
+  const [taskWaitMessage, setTaskWaitMessage] = useState(String(cfg.wait_message ?? ""));
+  const [taskIdVar, setTaskIdVar] = useState(String(cfg.task_id_var ?? "task_id"));
+  const [taskNodeRef, setTaskNodeRef] = useState(String(cfg.task_node_ref ?? ""));
+  const [taskAssignMode, setTaskAssignMode] = useState(
+    String(
+      cfg.assignment_mode
+      ?? cfg.assign_mode
+      ?? ((cfg.assign_to_var ?? "").toString().trim() ? "variable" : ((cfg.assign_to ?? "").toString().trim() ? "fixed" : "none"))
+    )
+  );
+  const [taskAssignTo, setTaskAssignTo] = useState(String(cfg.assign_to ?? ""));
+  const [taskAssignVar, setTaskAssignVar] = useState(String(cfg.assign_to_var ?? ""));
   // llm — multi-prompt config
   const [llmPrompts, setLlmPrompts] = useState<LlmPromptItem[]>(() => {
     if (Array.isArray((cfg as Record<string, unknown>).prompts) && ((cfg as Record<string, unknown>).prompts as LlmPromptItem[]).length > 0) {
@@ -1595,6 +1613,35 @@ function NodeEditModal({
       case "handoff":   return { department: handoffDept, text: handoffMsg, ...(handoffMsg.trim() ? { message: handoffMsg } : {}), ...actionFragment };
       case "llm":       return { prompts: llmPrompts, composeMode: llmComposeMode, ...(llmFallbackText.trim() ? { fallback_text: llmFallbackText.trim() } : {}), ...actionFragment };
       case "action":    return actionFragment;
+      case "task": {
+        if (taskAction === "wait_for_task") {
+          return {
+            action: "wait_for_task",
+            status: taskStatus || "completed",
+            ...(taskWaitMessage.trim() ? { wait_message: taskWaitMessage.trim() } : {}),
+            ...(taskIdVar.trim() ? { task_id_var: taskIdVar.trim() } : {}),
+            ...(taskNodeRef.trim() ? { task_node_ref: taskNodeRef.trim() } : {}),
+          };
+        }
+
+        const createCfg: Record<string, unknown> = {
+          action: "create_task",
+          ...(taskTitle.trim() ? { title: taskTitle.trim() } : {}),
+          ...(taskPriority.trim() ? { priority: taskPriority.trim() } : {}),
+          ...(taskStatus.trim() ? { status: taskStatus.trim() } : {}),
+          ...(taskUserMessage.trim() ? { user_message: taskUserMessage.trim() } : {}),
+          assignment_mode: taskAssignMode || "none",
+        };
+
+        if (taskAssignMode === "fixed" && taskAssignTo.trim()) {
+          createCfg.assign_to = taskAssignTo.trim();
+        }
+        if (taskAssignMode === "variable" && taskAssignVar.trim()) {
+          createCfg.assign_to_var = taskAssignVar.trim();
+        }
+
+        return createCfg;
+      }
       default: { try { return JSON.parse(rawJson); } catch { return {}; } }
     }
   }
@@ -2060,6 +2107,154 @@ function NodeEditModal({
                     + Agregar prompt
                   </button>
                   <p className="text-xs text-slate-400">Las credenciales del modelo LLM se configuran en <strong>Configuración › IA</strong>. Aquí se define la lógica de decisión por nodo.</p>
+                </div>
+              )}
+              {/* task */}
+              {type === "task" && (
+                <div className="space-y-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="bg-slate-50 rounded-lg border border-slate-100 p-4">
+                      <label className="block text-xs font-medium text-slate-600 mb-2">Acción de tarea</label>
+                      <select
+                        value={taskAction}
+                        onChange={(e) => setTaskAction(String(e.target.value ?? "create_task"))}
+                        className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white"
+                      >
+                        <option value="create_task">Crear solicitud</option>
+                        <option value="wait_for_task">Esperar estado de solicitud</option>
+                      </select>
+                    </div>
+                    <div className="bg-slate-50 rounded-lg border border-slate-100 p-4">
+                      <label className="block text-xs font-medium text-slate-600 mb-2">Estado objetivo</label>
+                      <select
+                        value={taskStatus}
+                        onChange={(e) => setTaskStatus(e.target.value)}
+                        className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white"
+                      >
+                        <option value="open">open</option>
+                        <option value="in_progress">in_progress</option>
+                        <option value="pending_info">pending_info</option>
+                        <option value="completed">completed</option>
+                        <option value="rejected">rejected</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  {taskAction === "create_task" && (
+                    <>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="bg-slate-50 rounded-lg border border-slate-100 p-4">
+                          <label className="block text-xs font-medium text-slate-600 mb-2">Título de la solicitud</label>
+                          <input
+                            value={taskTitle}
+                            onChange={(e) => setTaskTitle(e.target.value)}
+                            placeholder="Seguimiento de caso"
+                            className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                          />
+                        </div>
+                        <div className="bg-slate-50 rounded-lg border border-slate-100 p-4">
+                          <label className="block text-xs font-medium text-slate-600 mb-2">Prioridad</label>
+                          <select
+                            value={taskPriority}
+                            onChange={(e) => setTaskPriority(e.target.value)}
+                            className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white"
+                          >
+                            <option value="baja">baja</option>
+                            <option value="normal">normal</option>
+                            <option value="media">media</option>
+                            <option value="alta">alta</option>
+                            <option value="critica">critica</option>
+                          </select>
+                        </div>
+                      </div>
+
+                      <div className="bg-slate-50 rounded-lg border border-slate-100 p-4">
+                        <label className="block text-xs font-medium text-slate-600 mb-2">Mensaje al usuario (opcional)</label>
+                        <textarea
+                          value={taskUserMessage}
+                          onChange={(e) => setTaskUserMessage(e.target.value)}
+                          rows={2}
+                          placeholder="He creado tu solicitud y la estamos gestionando."
+                          className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                        />
+                      </div>
+
+                      <div className="grid grid-cols-3 gap-4">
+                        <div className="bg-slate-50 rounded-lg border border-slate-100 p-4">
+                          <label className="block text-xs font-medium text-slate-600 mb-2">Modo de asignación</label>
+                          <select
+                            value={taskAssignMode}
+                            onChange={(e) => setTaskAssignMode(String(e.target.value ?? "none"))}
+                            className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white"
+                          >
+                            <option value="none">Sin asignar</option>
+                            <option value="fixed">Agente fijo (ID)</option>
+                            <option value="variable">Desde variable</option>
+                            <option value="least_load">Automática por menor carga</option>
+                          </select>
+                        </div>
+
+                        <div className="bg-slate-50 rounded-lg border border-slate-100 p-4">
+                          <label className="block text-xs font-medium text-slate-600 mb-2">Agente ID (si fijo)</label>
+                          <input
+                            value={taskAssignTo}
+                            onChange={(e) => setTaskAssignTo(e.target.value)}
+                            placeholder="15"
+                            disabled={taskAssignMode !== "fixed"}
+                            className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-emerald-500 disabled:bg-slate-100"
+                          />
+                        </div>
+
+                        <div className="bg-slate-50 rounded-lg border border-slate-100 p-4">
+                          <label className="block text-xs font-medium text-slate-600 mb-2">Variable agente (si variable)</label>
+                          <VarComboInput
+                            value={taskAssignVar}
+                            onChange={setTaskAssignVar}
+                            placeholder="variables.agente_id"
+                            suggestions={flowVariables.length > 0 ? flowVariables : MENU_VARIABLE_PRESETS}
+                            className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white"
+                          />
+                        </div>
+                      </div>
+                    </>
+                  )}
+
+                  {taskAction === "wait_for_task" && (
+                    <>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="bg-slate-50 rounded-lg border border-slate-100 p-4">
+                          <label className="block text-xs font-medium text-slate-600 mb-2">Variable con task_id</label>
+                          <VarComboInput
+                            value={taskIdVar}
+                            onChange={setTaskIdVar}
+                            placeholder="task_id"
+                            suggestions={flowVariables.length > 0 ? flowVariables : MENU_VARIABLE_PRESETS}
+                            className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white"
+                          />
+                        </div>
+                        <div className="bg-slate-50 rounded-lg border border-slate-100 p-4">
+                          <label className="block text-xs font-medium text-slate-600 mb-2">Node ref de creación (opcional)</label>
+                          <input
+                            value={taskNodeRef}
+                            onChange={(e) => setTaskNodeRef(e.target.value)}
+                            placeholder="node_12"
+                            className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="bg-slate-50 rounded-lg border border-slate-100 p-4">
+                        <label className="block text-xs font-medium text-slate-600 mb-2">Mensaje mientras espera (opcional)</label>
+                        <textarea
+                          value={taskWaitMessage}
+                          onChange={(e) => setTaskWaitMessage(e.target.value)}
+                          rows={2}
+                          placeholder="Tu solicitud sigue en proceso. Te aviso cuando se complete."
+                          className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                        />
+                      </div>
+                    </>
+                  )}
                 </div>
               )}
               {/* action / menu / input / message webhook call */}

@@ -9,7 +9,7 @@
  *   enrichDefinition(def, intMaps)   → merge integration refs into node configs
  *   simulateFlow(def, input)         → step-by-step dry-run (no side-effects)
  *
- * Node types recognized: message, input, menu, condition, action, delay, end
+ * Node types recognized: message, input, menu, condition, action, task, delay, end
  * (mapped from Meta WABA screen types: text_input, opt_in, dropdown, footer, etc.)
  */
 
@@ -36,7 +36,7 @@ const WABA_COMPONENT_TO_NODE_TYPE = {
 };
 
 const VALID_INTERNAL_NODE_TYPES = new Set([
-  'message', 'input', 'menu', 'condition', 'action', 'delay', 'end', 'start', 'handoff', 'llm',
+  'message', 'input', 'menu', 'condition', 'action', 'task', 'delay', 'end', 'start', 'handoff', 'llm',
 ]);
 
 function asArray(value) {
@@ -608,6 +608,17 @@ function simulateFlow(definition, inputs = []) {
         currentId = node.next;
         break;
 
+      case 'task':
+        step.output = {
+          type: 'task_simulated',
+          action: node.config?.action ?? 'create_task',
+          title: node.config?.title ?? null,
+          status: node.config?.status ?? null,
+          note: 'Simulated task orchestration — no real solicitud is created in this preview',
+        };
+        currentId = node.next;
+        break;
+
       case 'delay':
         step.output = { type: 'delay', ms: node.config?.ms ?? 1000 };
         currentId = node.next;
@@ -834,6 +845,19 @@ async function simulateAllPaths(definition, options = {}) {
           endpoint: node.config?._integration_config?.endpoint ?? node.config?.endpoint ?? '[integration]',
           method: node.config?._integration_config?.method ?? node.config?.method ?? 'POST',
           note: 'Simulated — no real HTTP call made',
+        },
+      };
+      nextStates.push({ step, nextId: node.next, variables: state.variables });
+    } else if (node.type === 'task') {
+      const action = String(node.config?.action ?? 'create_task');
+      const step = {
+        ...baseStep,
+        output: {
+          type: 'task_simulated',
+          action,
+          title: node.config?.title ?? null,
+          status: node.config?.status ?? null,
+          note: 'Simulated task orchestration — no real solicitud is created in this preview',
         },
       };
       nextStates.push({ step, nextId: node.next, variables: state.variables });

@@ -556,6 +556,8 @@ async function _handleTaskControl({
   const cfg = execResult.control?.config ?? {};
 
   if (action === 'create_task') {
+    const resolvedAssignTo = await _resolveTaskAssignTo({ tenantId, cfg, variables });
+
     const created = await db.createOrReuseFlowTask({
       tenantId,
       userId,
@@ -564,7 +566,7 @@ async function _handleTaskControl({
       flowNodeRef: nodeRef,
       sessionKey,
       title: cfg.title,
-      assignTo: cfg.assign_to,
+      assignTo: resolvedAssignTo,
       priority: cfg.priority,
       variables,
       requestedStatus: cfg.status,
@@ -576,6 +578,7 @@ async function _handleTaskControl({
       task_id: solicitud?.id ?? null,
       task_status: solicitud?.estado ?? null,
       task_origin: solicitud?.origin ?? 'bot',
+      task_assigned_agente_id: solicitud?.agenteId ?? null,
     };
 
     return {
@@ -623,6 +626,78 @@ async function _handleTaskControl({
   }
 
   return execResult;
+}
+
+function _extractPositiveInt(value) {
+  if (value == null) return null;
+  const match = String(value).match(/(\d+)/);
+  if (!match) return null;
+  const parsed = Number(match[1]);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+}
+
+async function _pickLeastLoadAgentId(tenantId) {
+  const activeAgents = await prisma.agente.findMany({
+    where: { tenantId, estado: 'activo' },
+    select: { id: true },
+  });
+
+  if (!activeAgents.length) return null;
+
+  const agentIds = activeAgents.map((agent) => agent.id);
+  const grouped = await prisma.solicitud.groupBy({
+    by: ['agenteId'],
+    where: {
+      tenantId,
+      agenteId: { in: agentIds },
+      estado: { in: ['open', 'in_progress', 'pending_info'] },
+    },
+    _count: { _all: true },
+  });
+
+  const workload = new Map(grouped.map((row) => [Number(row.agenteId), Number(row._count?._all ?? 0)]));
+
+  const sorted = [...agentIds].sort((a, b) => {
+    const loadA = workload.get(a) ?? 0;
+    const loadB = workload.get(b) ?? 0;
+    if (loadA !== loadB) return loadA - loadB;
+    return a - b;
+  });
+
+  return sorted[0] ?? null;
+}
+
+async function _resolveTaskAssignTo({ tenantId, cfg, variables }) {
+  const mode = String(cfg.assignment_mode ?? cfg.assign_mode ?? '').trim().toLowerCase();
+
+  if (!mode || mode === 'none' || mode === 'unassigned') {
+    return cfg.assign_to ?? null;
+  }
+
+  if (mode === 'fixed') {
+    return cfg.assign_to ?? null;
+  }
+
+  if (mode === 'variable') {
+    const variableName = String(cfg.assign_to_var ?? '').trim();
+    if (!variableName) return null;
+    return variables?.[variableName] ?? null;
+  }
+
+  if (mode === 'least_load') {
+    try {
+      return await _pickLeastLoadAgentId(tenantId);
+    } catch (err) {
+      logger.warn({ tenantId, message: err.message }, 'flowEngine: failed to resolve least-load assignment');
+      return null;
+    }
+  }
+
+  // Backward compatibility: legacy config directly using assign_to.
+  const direct = _extractPositiveInt(cfg.assign_to);
+  if (direct) return direct;
+
+  return cfg.assign_to ?? null;
 }
 
 /**
