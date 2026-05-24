@@ -40,6 +40,7 @@ const prisma = new PrismaClient();
 // Simple in-process cache to avoid hitting DB on every action node.
 // TTL: 60 seconds. Cache is keyed by tenantId+nombre.
 const _cache = new Map();
+const _tenantMetaCache = new Map();
 const CACHE_TTL_MS = 60_000;
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -67,19 +68,27 @@ async function run(tenantId, integrationRef, variables, opts = {}) {
   }
 
   const cfg = integration.config;
+  const tenantMeta = await _loadTenantMeta(tenantId);
+  const runtimeVars = {
+    ...(variables ?? {}),
+    tenant_id: tenantId,
+    tenantId,
+    tenant: tenantMeta?.slug ?? tenantId,
+    ...(tenantMeta?.slug ? { tenant_slug: tenantMeta.slug, tenantSlug: tenantMeta.slug } : {}),
+  };
 
   // Resolve templates in endpoint, headers, and body
-  const endpoint = normalizeEndpointUrl(resolveTemplate(cfg.endpoint ?? '', variables));
+  const endpoint = normalizeEndpointUrl(resolveTemplate(cfg.endpoint ?? '', runtimeVars));
   const method   = (cfg.method ?? 'POST').toUpperCase();
   const timeoutMs = cfg.timeout_ms ?? 8000;
   const retries   = cfg.retry_count ?? 1;
 
   // Build headers
   const headers = { ...(cfg.headers ?? {}) };
-  _applyAuth(headers, cfg.auth, variables);
+  _applyAuth(headers, cfg.auth, runtimeVars);
 
   // Build body
-  const bodyMap  = resolveConfig(cfg.body_mapping ?? {}, variables);
+  const bodyMap  = resolveConfig(cfg.body_mapping ?? {}, runtimeVars);
   const bodyJson = JSON.stringify(bodyMap);
 
   await convLogger.log(
@@ -168,6 +177,28 @@ async function _loadIntegration(tenantId, nombre) {
     return integration;
   } catch (err) {
     logger.error({ tenantId, nombre, message: err.message }, 'integrationRunner._loadIntegration: DB error');
+    return null;
+  }
+}
+
+async function _loadTenantMeta(tenantId) {
+  if (!tenantId) return null;
+
+  const cached = _tenantMetaCache.get(tenantId);
+  if (cached && Date.now() - cached.ts < CACHE_TTL_MS) {
+    return cached.value;
+  }
+
+  try {
+    const tenant = await prisma.tenant.findUnique({
+      where: { id: tenantId },
+      select: { id: true, slug: true },
+    });
+
+    _tenantMetaCache.set(tenantId, { value: tenant, ts: Date.now() });
+    return tenant;
+  } catch (err) {
+    logger.warn({ tenantId, message: err.message }, 'integrationRunner._loadTenantMeta: DB error');
     return null;
   }
 }

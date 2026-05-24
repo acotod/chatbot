@@ -1350,6 +1350,96 @@ function NodeEditModal({
     "handoff",
   ].includes(normalizedType) && !isTerminalNode;
 
+  const tenantInputKeySet = new Set([
+    "tenant",
+    "tenantid",
+    "tenant_id",
+    "tenantuuid",
+    "tenant_uuid",
+    "tenantslug",
+    "tenant_slug",
+  ]);
+
+  function isTenantInputKey(key: string): boolean {
+    return tenantInputKeySet.has(String(key ?? "").trim().toLowerCase());
+  }
+
+  function pickBestVariableForKey(key: string): string {
+    const normalized = String(key ?? "").trim().toLowerCase();
+    const vars = flowVariables.length > 0 ? flowVariables : MENU_VARIABLE_PRESETS;
+    const findMatch = (rx: RegExp) => vars.find((v) => rx.test(v));
+
+    if (isTenantInputKey(normalized)) {
+      return findMatch(/tenant(_|\.)?slug|slug(_|\.)?tenant/i)
+        ?? findMatch(/tenant(_|\.)?id|id(_|\.)?tenant/i)
+        ?? "tenant_slug";
+    }
+
+    if (/identificacion|cedula|dni|documento|passport/i.test(normalized)) {
+      return findMatch(/cedula|identificacion|dni|documento|passport/i) ?? "variables.cedula";
+    }
+
+    if (/phone|telefono|tel/i.test(normalized)) {
+      return findMatch(/telefono|phone|celular|movil/i) ?? "variables.telefono";
+    }
+
+    if (/email|correo|mail/i.test(normalized)) {
+      return findMatch(/email|correo|mail/i) ?? "variables.email";
+    }
+
+    if (/nombre|name/i.test(normalized)) {
+      return findMatch(/nombre|name/i) ?? "variables.nombre";
+    }
+
+    return "";
+  }
+
+  function endpointNeedsTenant(endpoint?: CatalogEndpoint | null, endpointUrl?: string): boolean {
+    if (endpoint?.id === "updateContactByIdentification") return true;
+
+    const inputs = Array.isArray(endpoint?.inputs) ? endpoint.inputs : [];
+    if (inputs.some((inputKey) => isTenantInputKey(inputKey))) return true;
+
+    const url = String(endpoint?.url ?? endpointUrl ?? "").toLowerCase();
+    return url.startsWith("/crm/") || url.includes("tenant");
+  }
+
+  function ensureTenantBody(rows: { key: string; value: string }[], endpoint?: CatalogEndpoint | null): { key: string; value: string }[] {
+    if (!endpointNeedsTenant(endpoint, actionUrl)) return rows;
+
+    const hasTenant = rows.some((row) => isTenantInputKey(row.key));
+    if (hasTenant) return rows;
+
+    return [
+      ...rows,
+      {
+        key: "tenantSlug",
+        value: pickBestVariableForKey("tenantSlug"),
+      },
+    ];
+  }
+
+  function autoConfigureEndpoint(endpoint: CatalogEndpoint) {
+    setActionRef(endpoint.id);
+    setActionUrl(endpoint.url);
+    setActionMethod(endpoint.method);
+
+    const nextBody = endpoint.inputs.map((inputKey) => {
+      const existing = actionBody.find((b) => b.key === inputKey)?.value;
+      const mapped = endpoint.inputDefaults?.[inputKey]
+        ?? existing
+        ?? pickBestVariableForKey(inputKey);
+      return { key: inputKey, value: mapped };
+    });
+
+    setActionBody(ensureTenantBody(nextBody, endpoint));
+    setActionResponse(endpoint.outputs.map((f) => ({ key: f, value: actionResponse.find((r) => r.key === f)?.value ?? `variables.${f}` })));
+  }
+
+  const selectedEndpointByUrl = catalogEndpoints.find((ep) => ep.url.trim().toLowerCase() === actionUrl.trim().toLowerCase());
+  const endpointContext = selectedEp ?? selectedEndpointByUrl ?? null;
+  const requiresTenantBody = endpointNeedsTenant(endpointContext, actionUrl);
+
   const menuValidation = (() => {
     if (type !== "menu") {
       return { duplicateIds: [] as string[], missingIdIndexes: [] as number[], missingNextIndexes: [] as number[] };
@@ -1417,14 +1507,7 @@ function NodeEditModal({
   }, [type, condTrueNext, condFalseNext]);
 
   function applyEndpoint(ep: CatalogEndpoint) {
-    setActionRef(ep.id);
-    setActionUrl(ep.url);
-    setActionMethod(ep.method);
-    setActionBody(ep.inputs.map((f) => ({
-      key: f,
-      value: actionBody.find((b) => b.key === f)?.value || ep.inputDefaults?.[f] || "",
-    })));
-    setActionResponse(ep.outputs.map((f) => ({ key: f, value: actionResponse.find((r) => r.key === f)?.value ?? `variables.${f}` })));
+    autoConfigureEndpoint(ep);
   }
 
     function handleActionUrlChange(value: string) {
@@ -1444,6 +1527,15 @@ function NodeEditModal({
   function buildConfig(): Record<string, unknown> {
     const body: Record<string, string> = {};
     actionBody.forEach((r) => { if (r.key.trim()) body[r.key.trim()] = r.value; });
+
+    const endpointForValidation = endpointContext;
+    if (endpointNeedsTenant(endpointForValidation, actionUrl)) {
+      const hasTenantField = Object.keys(body).some((key) => isTenantInputKey(key));
+      if (!hasTenantField) {
+        body.tenantSlug = pickBestVariableForKey("tenantSlug");
+      }
+    }
+
     const response_mapping: Record<string, string> = {};
     actionResponse.forEach((r) => { if (r.key.trim()) response_mapping[r.key.trim()] = r.value; });
 
@@ -1983,7 +2075,24 @@ function NodeEditModal({
                   {/* Catalog endpoint picker */}
                   {catalogEndpoints.length > 0 && (
                     <div className="bg-slate-50 rounded-lg border border-slate-100 p-4">
-                      <label className="block text-xs font-medium text-slate-600 mb-3">Endpoint del catálogo</label>
+                      <div className="flex items-center justify-between gap-2 mb-3">
+                        <label className="block text-xs font-medium text-slate-600">Endpoint del catálogo</label>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (endpointContext) {
+                              autoConfigureEndpoint(endpointContext);
+                              return;
+                            }
+                            if (catalogEndpoints.length > 0) {
+                              autoConfigureEndpoint(catalogEndpoints[0]);
+                            }
+                          }}
+                          className="text-xs px-2.5 py-1 rounded-lg border border-violet-200 bg-violet-50 text-violet-700 hover:bg-violet-100 transition"
+                        >
+                          🤖 Configurar con IA
+                        </button>
+                      </div>
                       <div className="flex flex-wrap gap-2">
                         {catalogEndpoints.map((ep) => (
                           <button key={ep.id} onClick={() => applyEndpoint(ep)}
@@ -2063,6 +2172,11 @@ function NodeEditModal({
                         <Plus className="w-3.5 h-3.5" /> Agregar
                       </button>
                     </div>
+                    {requiresTenantBody && (
+                      <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2 py-1.5 mb-3">
+                        Este endpoint requiere tenant. Se enviará automáticamente `tenantSlug` si no está mapeado.
+                      </p>
+                    )}
                     {actionBody.length === 0 && (
                       <p className="text-xs text-slate-400 italic">Sin parámetros. Selecciona un endpoint o haz click en &quot;+ Agregar&quot;.</p>
                     )}
