@@ -35,6 +35,7 @@ const TSE_CONFIG_KEY = 'tse_config';
 const TSE_LOOKUP_SUCCESS_TTL_MS = 5 * 60 * 1000;
 const TSE_LOOKUP_NOT_FOUND_TTL_MS = 60 * 1000;
 const TSE_LOOKUP_ERROR_TTL_MS = 30 * 1000;
+const TSE_EXTERNAL_DOWN_USER_MESSAGE = 'En este momento no podemos validar tu identificacion por un servicio externo. Podemos continuar y un asesor te ayudara enseguida.';
 const PADRON_RELOAD_TTL_MS = 5 * 60 * 1000;
 const _tseLookupCache = new Map();
 const _tseLookupInflight = new Map();
@@ -250,7 +251,11 @@ router.patch('/contacts/by-cedula', [
       if (tseLookup.notFound) {
         return res.status(404).json({ error: 'Cedula not found in TSE', detail: tseLookup.error ?? null });
       }
-      return res.status(502).json({ error: 'TSE lookup failed', detail: tseLookup.error ?? 'Unable to fetch data from TSE API' });
+      return res.status(502).json({
+        error: 'TSE lookup failed',
+        detail: tseLookup.error ?? 'Unable to fetch data from TSE API',
+        message: TSE_EXTERNAL_DOWN_USER_MESSAGE,
+      });
     }
 
     const tseProfile = tseLookup.profile ?? {};

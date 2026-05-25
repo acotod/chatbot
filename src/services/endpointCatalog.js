@@ -115,8 +115,8 @@ const DEFAULT_CATALOG = {
       method:      'PATCH',
       url:         '/crm/contacts/by-cedula',
       inputs:      ['identificacion'],
-      outputs:     ['ok', 'found', 'created', 'tseSynced', 'contactId', 'tenantId', 'identificacion', 'nombre', 'email', 'empresa', 'cargo', 'phone', 'updatedAt'],
-      description: 'Consulta la API de TSE usando solo la identificacion (cedula) y con esa respuesta actualiza el contacto. Si no existe, crea el contacto (upsert). Requiere configuracion tenant clave "tse_config".',
+      outputs:     ['ok', 'found', 'created', 'tseSynced', 'contactId', 'tenantId', 'identificacion', 'nombre', 'email', 'empresa', 'cargo', 'phone', 'updatedAt', 'message'],
+      description: 'Consulta la API de TSE usando solo la identificacion (cedula) y con esa respuesta actualiza el contacto. Si no existe, crea el contacto (upsert). Requiere configuracion tenant clave "tse_config". En fallo externo puede devolver un mensaje amigable para continuar con asesor.',
     },
     {
       id:          'sendNotification',
