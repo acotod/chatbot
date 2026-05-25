@@ -1162,7 +1162,7 @@ export default function ConversacionesPage() {
 
       {/* ── Context panel ── */}
       {activeThread && (
-        <div className="w-72 shrink-0 border-l border-[#D9E5EB] bg-white/92 flex flex-col overflow-hidden hidden xl:flex backdrop-blur-sm">
+        <div className="w-72 shrink-0 border-l border-[#D9E5EB] bg-white/92 flex-col overflow-hidden hidden lg:flex backdrop-blur-sm">
           {/* Contact header */}
           <div className="p-4 border-b border-[#D9E5EB]">
             <div className="flex flex-col items-center gap-2">
