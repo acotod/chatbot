@@ -1201,18 +1201,19 @@ function buildPadronJsonIndex(rawContent) {
 }
 
 function buildPadronCsvIndex(rawContent) {
-  const lines = String(rawContent || '')
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter(Boolean);
+  const lines = normalizePadronCsvLines(rawContent);
   if (lines.length === 0) return new Map();
 
   const delimiter = detectCsvDelimiter(lines[0]);
-  const headerValues = splitCsvLine(lines[0], delimiter);
-  const normalizedHeaders = headerValues.map(normalizeHeader);
+  const firstRowValues = splitCsvLine(lines[0], delimiter);
+  const hasHeader = looksLikePadronCsvHeader(firstRowValues);
+  const normalizedHeaders = hasHeader
+    ? firstRowValues.map(normalizeHeader)
+    : ['cedula', 'codelec', 'sexo', 'fechacaduc', 'junta', 'nombre', 'papellido', 'sapellido'];
+  const startIndex = hasHeader ? 1 : 0;
 
   const index = new Map();
-  for (let i = 1; i < lines.length; i += 1) {
+  for (let i = startIndex; i < lines.length; i += 1) {
     const values = splitCsvLine(lines[i], delimiter);
     if (values.length === 0) continue;
 
@@ -1238,6 +1239,35 @@ function buildPadronCsvIndex(rawContent) {
   }
 
   return index;
+}
+
+function normalizePadronCsvLines(rawContent) {
+  const sourceLines = String(rawContent || '')
+    .split(/\r?\n/)
+    .map((line) => line.replace(/\uFEFF/g, ''));
+
+  const merged = [];
+  for (const line of sourceLines) {
+    if (!line || !line.trim()) continue;
+
+    const startsWithCedula = /^\d{9},/.test(line);
+    if (startsWithCedula || merged.length === 0) {
+      merged.push(line);
+      continue;
+    }
+
+    merged[merged.length - 1] += line;
+  }
+
+  return merged;
+}
+
+function looksLikePadronCsvHeader(values) {
+  if (!Array.isArray(values) || values.length === 0) return false;
+
+  const normalized = values.map(normalizeHeader);
+  const known = ['cedula', 'identificacion', 'nombre', 'papellido', 'sapellido'];
+  return normalized.some((value) => known.includes(value));
 }
 
 function detectCsvDelimiter(headerLine) {

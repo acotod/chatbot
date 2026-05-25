@@ -39,10 +39,16 @@ Configura la variable:
 
 - `PADRON_FILE_PATH`: ruta absoluta o relativa (desde la raiz del proyecto) hacia un archivo `.csv` o `.json`.
 
+Para Docker Compose (servicio `api`) se monta `./data` como solo lectura en `/app/data`, por lo que se recomienda usar:
+
+- `PADRON_FILE_PATH=/app/data/PADRON_COMPLETO.txt`
+
 Formato minimo esperado:
 
 - Campo de identificacion: `cedula`, `identificacion`, `numeroIdentificacion`, `numeroCedula`, `documento` o `id`.
 - Campo de nombre: `nombreCompleto`, `nombre`, `nombreRazonSocial`, `razonSocial` (o combinacion de nombre/apellido).
+
+Tambien soporta el formato oficial `PADRON_COMPLETO.txt` de TSE (sin encabezado y con registros que pueden venir en dos lineas).
 
 Ejemplos:
 
