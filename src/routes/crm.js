@@ -30,6 +30,11 @@ const { audit } = require('../services/audit');
 const prisma = new PrismaClient();
 const router = express.Router();
 const TSE_CONFIG_KEY = 'tse_config';
+const TSE_LOOKUP_SUCCESS_TTL_MS = 5 * 60 * 1000;
+const TSE_LOOKUP_NOT_FOUND_TTL_MS = 60 * 1000;
+const TSE_LOOKUP_ERROR_TTL_MS = 30 * 1000;
+const _tseLookupCache = new Map();
+const _tseLookupInflight = new Map();
 
 router.use(requireJwt);
 router.use(requirePermiso('VIEW_CRM'));
@@ -734,6 +739,15 @@ async function findContactsByCedulaAnyTenant(cedula, normalizedCedula, limit = 2
 }
 
 async function fetchTseProfileByCedula(tenantId, cedula) {
+  const normalizedCedula = normalizeCedula(cedula);
+  const cacheKey = `${tenantId}::${normalizedCedula}`;
+  const cached = getCachedTseLookup(cacheKey);
+  if (cached) return cached;
+
+  const inflight = _tseLookupInflight.get(cacheKey);
+  if (inflight) return inflight;
+
+  const lookupPromise = (async () => {
   const cfg = await loadTseConfig(tenantId);
   if (!cfg.exists) {
     return {
@@ -801,19 +815,23 @@ async function fetchTseProfileByCedula(tenantId, cedula) {
     const payload = safeJsonParse(bodyText);
 
     if (!response.ok) {
-      return {
+      const result = {
         ok: false,
         notFound: response.status === 404,
         error: extractRemoteError(payload, bodyText, response.status),
       };
+      setCachedTseLookup(cacheKey, result, response.status === 404 ? TSE_LOOKUP_NOT_FOUND_TTL_MS : TSE_LOOKUP_ERROR_TTL_MS);
+      return result;
     }
 
     if (looksLikeNotFound(payload)) {
-      return {
+      const result = {
         ok: false,
         notFound: true,
         error: extractRemoteError(payload, bodyText, response.status),
       };
+      setCachedTseLookup(cacheKey, result, TSE_LOOKUP_NOT_FOUND_TTL_MS);
+      return result;
     }
 
     const profile = normalizeTsePayload(payload, cfg.fieldMap);
@@ -823,26 +841,40 @@ async function fetchTseProfileByCedula(tenantId, cedula) {
         return value != null && String(value).trim() !== '';
       });
     if (!hasUsableProfile) {
-      return {
+      const result = {
         ok: false,
         error: 'TSE response did not include usable contact fields (configure tse_config.fieldMap if needed)',
       };
+      setCachedTseLookup(cacheKey, result, TSE_LOOKUP_ERROR_TTL_MS);
+      return result;
     }
 
-    return {
+    const result = {
       ok: true,
       profile,
       raw: payload,
     };
+    setCachedTseLookup(cacheKey, result, TSE_LOOKUP_SUCCESS_TTL_MS);
+    return result;
   } catch (err) {
-    return {
+    const result = {
       ok: false,
       error: err?.name === 'AbortError'
         ? `TSE lookup timed out after ${timeoutMs}ms`
         : String(err?.message || err),
     };
+    setCachedTseLookup(cacheKey, result, TSE_LOOKUP_ERROR_TTL_MS);
+    return result;
   } finally {
     clearTimeout(timeoutId);
+  }
+  })();
+
+  _tseLookupInflight.set(cacheKey, lookupPromise);
+  try {
+    return await lookupPromise;
+  } finally {
+    _tseLookupInflight.delete(cacheKey);
   }
 }
 
@@ -880,6 +912,23 @@ async function loadTseConfig(tenantId) {
       ? value.fieldMap
       : null,
   };
+}
+
+function getCachedTseLookup(cacheKey) {
+  const cached = _tseLookupCache.get(cacheKey);
+  if (!cached) return null;
+  if (cached.expiresAt <= Date.now()) {
+    _tseLookupCache.delete(cacheKey);
+    return null;
+  }
+  return cached.value;
+}
+
+function setCachedTseLookup(cacheKey, value, ttlMs) {
+  _tseLookupCache.set(cacheKey, {
+    value,
+    expiresAt: Date.now() + Math.max(1, Number(ttlMs) || TSE_LOOKUP_ERROR_TTL_MS),
+  });
 }
 
 function buildTseUrl(base, cedula, method, paramName) {
