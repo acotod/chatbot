@@ -77,6 +77,7 @@ const EVENT = Object.freeze({
   CONDITION_EVAL : 'condition_eval',
   API_CALL       : 'api_call',
   API_RESPONSE   : 'api_response',
+  API_RETRY      : 'api_retry',
   LLM_CALL       : 'llm_call',
   VARIABLE_SET   : 'variable_set',
   FLOW_END       : 'flow_end',

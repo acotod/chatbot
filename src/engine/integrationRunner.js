@@ -31,6 +31,7 @@
  */
 
 const { PrismaClient } = require('@prisma/client');
+const { randomUUID } = require('crypto');
 const logger = require('../utils/logger');
 const { resolveTemplate, resolveConfig } = require('./nodeExecutors');
 const convLogger = require('./conversationLogger');
@@ -81,7 +82,12 @@ async function run(tenantId, integrationRef, variables, opts = {}) {
   const endpoint = normalizeEndpointUrl(resolveTemplate(cfg.endpoint ?? '', runtimeVars));
   const method   = (cfg.method ?? 'POST').toUpperCase();
   const timeoutMs = cfg.timeout_ms ?? 8000;
-  const retries   = cfg.retry_count ?? 1;
+  const retries   = Number.isFinite(Number(cfg.retry_count)) ? Number(cfg.retry_count) : 1;
+  const maxAttempts = Math.max(1, retries);
+  const retryBackoffMs = Number.isFinite(Number(cfg.retry_backoff_ms))
+    ? Math.max(0, Number(cfg.retry_backoff_ms))
+    : 0;
+  const callId = randomUUID();
 
   // Build headers
   const headers = { ...(cfg.headers ?? {}) };
@@ -91,65 +97,114 @@ async function run(tenantId, integrationRef, variables, opts = {}) {
   const bodyMap  = resolveConfig(cfg.body_mapping ?? {}, runtimeVars);
   const bodyJson = JSON.stringify(bodyMap);
 
-  await convLogger.log(
-    opts.conversationId ?? null,
-    tenantId,
-    opts.nodeRef ?? null,
-    convLogger.EVENT.API_CALL,
-    {
-      integration_ref: integrationRef,
-      integration_id : integration.id ?? null,
-      integration_type: integration.tipo ?? null,
-      node_type      : opts.nodeType ?? null,
-      trigger        : opts.trigger ?? 'flow_node',
-      endpoint,
-      method,
-      request_body   : bodyMap,
-    },
-  );
-
   // Execute with retry
   let lastError;
-  for (let attempt = 1; attempt <= Math.max(1, retries); attempt++) {
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    const startedAt = Date.now();
+
+    await convLogger.log(
+      opts.conversationId ?? null,
+      tenantId,
+      opts.nodeRef ?? null,
+      convLogger.EVENT.API_CALL,
+      {
+        call_id: callId,
+        integration_ref: integrationRef,
+        integration_id : integration.id ?? null,
+        integration_type: integration.tipo ?? null,
+        node_type      : opts.nodeType ?? null,
+        trigger        : opts.trigger ?? 'flow_node',
+        endpoint,
+        method,
+        timeout_ms: timeoutMs,
+        max_attempts: maxAttempts,
+        attempt,
+        request_body   : _sanitizeForLog(bodyMap),
+      },
+    );
+
     try {
-      const raw = await _fetch(endpoint, method, headers, bodyJson, timeoutMs);
-      const responseVars = _mapResponse(raw, cfg.response_mapping ?? {});
+      const response = await _fetch(endpoint, method, headers, bodyJson, timeoutMs);
+      const durationMs = Date.now() - startedAt;
+      const responseVars = _mapResponse(response.data, cfg.response_mapping ?? {});
+
       await convLogger.log(
         opts.conversationId ?? null,
         tenantId,
         opts.nodeRef ?? null,
         convLogger.EVENT.API_RESPONSE,
         {
+          call_id: callId,
           integration_ref: integrationRef,
+          integration_id : integration.id ?? null,
+          integration_type: integration.tipo ?? null,
           node_type      : opts.nodeType ?? null,
           trigger        : opts.trigger ?? 'flow_node',
           endpoint,
           method,
+          max_attempts: maxAttempts,
           attempt,
-          raw_response   : raw,
+          duration_ms: durationMs,
+          status_code: response.statusCode,
+          response_headers: _sanitizeHeaders(response.headers),
+          raw_response   : _sanitizeForLog(response.data),
           response_vars  : responseVars,
         },
       );
-      logger.info({ tenantId, integrationRef, attempt }, 'integrationRunner: success');
-      return { responseVars, rawResponse: raw };
+      logger.info({ tenantId, integrationRef, callId, attempt, durationMs, statusCode: response.statusCode }, 'integrationRunner: success');
+      return { responseVars, rawResponse: response.data, callId, attempt, durationMs, statusCode: response.statusCode };
     } catch (err) {
+      const durationMs = Date.now() - startedAt;
       lastError = err;
+
       await convLogger.log(
         opts.conversationId ?? null,
         tenantId,
         opts.nodeRef ?? null,
         convLogger.EVENT.FLOW_ERROR,
         {
+          call_id: callId,
           integration_ref: integrationRef,
+          integration_id : integration.id ?? null,
+          integration_type: integration.tipo ?? null,
           node_type      : opts.nodeType ?? null,
           trigger        : opts.trigger ?? 'flow_node',
           endpoint,
           method,
+          max_attempts: maxAttempts,
           attempt,
+          duration_ms: durationMs,
+          status_code: err.statusCode ?? null,
+          error_type: _classifyError(err),
+          response_body: _sanitizeErrorBody(err.responseBody),
           error_message  : err.message,
         },
       );
-      logger.warn({ tenantId, integrationRef, attempt, message: err.message }, 'integrationRunner: attempt failed');
+
+      if (attempt < maxAttempts) {
+        await convLogger.log(
+          opts.conversationId ?? null,
+          tenantId,
+          opts.nodeRef ?? null,
+          convLogger.EVENT.API_RETRY,
+          {
+            call_id: callId,
+            integration_ref: integrationRef,
+            endpoint,
+            method,
+            failed_attempt: attempt,
+            next_attempt: attempt + 1,
+            retry_backoff_ms: retryBackoffMs,
+            reason: err.message,
+          },
+        );
+
+        if (retryBackoffMs > 0) {
+          await _sleep(retryBackoffMs);
+        }
+      }
+
+      logger.warn({ tenantId, integrationRef, callId, attempt, durationMs, message: err.message }, 'integrationRunner: attempt failed');
     }
   }
 
@@ -265,14 +320,22 @@ function _fetch(url, method, headers, body, timeoutMs) {
           err.statusCode = statusCode;
           err.contentType = contentType;
           err.responseBody = data;
+          err.headers = res.headers;
           return reject(err);
         }
 
+        let parsed;
         try {
-          resolve(JSON.parse(data));
+          parsed = JSON.parse(data);
         } catch {
-          resolve(data);
+          parsed = data;
         }
+
+        resolve({
+          statusCode,
+          headers: res.headers,
+          data: parsed,
+        });
       });
     });
 
@@ -284,6 +347,65 @@ function _fetch(url, method, headers, body, timeoutMs) {
     if (body) req.write(body);
     req.end();
   });
+}
+
+function _sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function _classifyError(err) {
+  if (!err) return 'unknown';
+  if (err.statusCode) return 'http_error';
+  if (String(err.message || '').toLowerCase().includes('timed out')) return 'timeout';
+  return 'network_error';
+}
+
+function _sanitizeHeaders(headers) {
+  if (!headers || typeof headers !== 'object') return {};
+  const hidden = ['authorization', 'proxy-authorization', 'x-api-key', 'cookie', 'set-cookie'];
+  const out = {};
+  for (const [key, value] of Object.entries(headers)) {
+    if (hidden.includes(String(key).toLowerCase())) {
+      out[key] = '[redacted]';
+      continue;
+    }
+    out[key] = value;
+  }
+  return out;
+}
+
+function _sanitizeForLog(value, maxLen = 2000) {
+  if (value == null) return value;
+  if (typeof value === 'string') {
+    return value.length > maxLen ? `${value.slice(0, maxLen)}...[truncated]` : value;
+  }
+
+  if (Array.isArray(value)) {
+    return value.map((item) => _sanitizeForLog(item, maxLen));
+  }
+
+  if (typeof value === 'object') {
+    const out = {};
+    for (const [k, v] of Object.entries(value)) {
+      const lower = String(k).toLowerCase();
+      if (['password', 'token', 'authorization', 'cookie', 'secret', 'apikey', 'api_key'].includes(lower)) {
+        out[k] = '[redacted]';
+      } else {
+        out[k] = _sanitizeForLog(v, maxLen);
+      }
+    }
+    return out;
+  }
+
+  return value;
+}
+
+function _sanitizeErrorBody(body, maxLen = 2000) {
+  if (body == null) return null;
+  if (typeof body === 'string') {
+    return body.length > maxLen ? `${body.slice(0, maxLen)}...[truncated]` : body;
+  }
+  return _sanitizeForLog(body, maxLen);
 }
 
 /**

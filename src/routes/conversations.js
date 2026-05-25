@@ -216,8 +216,53 @@ router.get('/:id/events', async (req, res, next) => {
 
     const limit = parseIntParam(req.query.limit, 200, 500);
     const where = { conversationId: req.params.id };
-    if (req.query.eventType) where.eventType = req.query.eventType;
-    if (req.query.after)     where.createdAt = { gt: new Date(req.query.after) };
+
+    if (req.query.after) {
+      where.createdAt = { gt: new Date(req.query.after) };
+    }
+
+    if (req.query.eventType) {
+      const rawEventType = String(req.query.eventType);
+      const eventTypes = rawEventType
+        .split(',')
+        .map((v) => v.trim())
+        .filter(Boolean);
+      if (eventTypes.length === 1) {
+        where.eventType = eventTypes[0];
+      } else if (eventTypes.length > 1) {
+        where.eventType = { in: eventTypes };
+      }
+    }
+
+    const andFilters = [];
+
+    if (req.query.callId) {
+      const callId = String(req.query.callId).trim();
+      if (callId) {
+        andFilters.push({
+          OR: [
+            { payload: { path: ['call_id'], equals: callId } },
+            { payload: { path: ['callId'], equals: callId } },
+          ],
+        });
+      }
+    }
+
+    if (req.query.integrationRef) {
+      const integrationRef = String(req.query.integrationRef).trim();
+      if (integrationRef) {
+        andFilters.push({
+          OR: [
+            { payload: { path: ['integration_ref'], equals: integrationRef } },
+            { payload: { path: ['integrationRef'], equals: integrationRef } },
+          ],
+        });
+      }
+    }
+
+    if (andFilters.length) {
+      where.AND = andFilters;
+    }
 
     const events = await prisma.conversationEvent.findMany({
       where,

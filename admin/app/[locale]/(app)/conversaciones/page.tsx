@@ -328,6 +328,9 @@ const EVENT_COLORS: Record<string, string> = {
   user_input:            "text-[#B9D3DD] bg-[#F4F7F9]/65 border-[#00BFAE]/18",
   condition_evaluated:   "text-[#8FC3FF] bg-[#F4F7F9]/72 border-[#8FC3FF]/22",
   api_call:              "text-[#FFC16A] bg-[#F4F7F9]/72 border-[#FFC16A]/22",
+  api_response:          "text-[#00BFAE] bg-[#F4F7F9]/75 border-[#00BFAE]/24",
+  api_retry:             "text-[#FFE18D] bg-[#F4F7F9]/72 border-[#FFE18D]/24",
+  flow_error:            "text-red-600 bg-red-50 border-red-200",
   task_status_change:    "text-[#FFE18D] bg-[#F4F7F9]/72 border-[#FFE18D]/22",
   conversation_ended:    "text-[#5B6670] bg-[#F4F7F9]/62 border-[#00BFAE]/15",
 };
@@ -340,6 +343,9 @@ function ConvHistoryCard({ conv }: { conv: ConvRecord }) {
     user_input: t("eventLabels.user_input"),
     condition_evaluated: t("eventLabels.condition_evaluated"),
     api_call: t("eventLabels.api_call"),
+    api_response: "API Response",
+    api_retry: "API Retry",
+    flow_error: "Flow Error",
     task_status_change: t("eventLabels.task_status_change"),
     conversation_ended: t("eventLabels.conversation_ended"),
   };
@@ -390,9 +396,19 @@ function ConvHistoryCard({ conv }: { conv: ConvRecord }) {
             const color = EVENT_COLORS[ev.eventType] ?? "text-[#5B6670] bg-[#F4F7F9]/60 border-[#00BFAE]/12";
             const label = eventLabels[ev.eventType] ?? ev.eventType;
             const payload = ev.payload as Record<string, unknown>;
+            const callId = (payload.call_id as string) ?? (payload.callId as string) ?? null;
+            const statusCode = payload.status_code;
+            const durationMs = payload.duration_ms;
+            const endpoint = (payload.endpoint as string) ?? null;
+            const method = (payload.method as string) ?? null;
             const detail =
+              (callId ? `call_id=${callId}` : null) ??
+              (statusCode ? `status=${String(statusCode)}` : null) ??
+              (typeof durationMs === "number" ? `${durationMs} ms` : null) ??
+              (endpoint && method ? `${method} ${endpoint}` : null) ??
               (payload.content as string) ??
               (payload.input as string) ??
+              (payload.error_message as string) ??
               (payload.toStatus ? `→ ${payload.toStatus}` : null) ??
               null;
             return (
