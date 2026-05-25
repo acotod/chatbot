@@ -17,7 +17,7 @@ import {
   X,
   Zap,
 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { useAuthStore } from "@/store/auth";
@@ -80,6 +80,23 @@ interface ConvRecord {
   endedAt: string | null;
   flow?: { nombre: string } | null;
   events?: ConvEvent[];
+}
+
+interface ApiTraceSummary {
+  callId: string;
+  conversationId: string;
+  startedAt: string;
+  endedAt: string;
+  durationMs: number | null;
+  method: string | null;
+  endpoint: string | null;
+  integrationRef: string | null;
+  attempts: number;
+  retries: number;
+  statusCode: number | null;
+  hasError: boolean;
+  lastError: string | null;
+  nodes: string[];
 }
 
 interface Agente {
@@ -335,6 +352,216 @@ const EVENT_COLORS: Record<string, string> = {
   conversation_ended:    "text-[#5B6670] bg-[#F4F7F9]/62 border-[#00BFAE]/15",
 };
 
+function groupApiTraces(conversationId: string, events: ConvEvent[]): ApiTraceSummary[] {
+  const byCall = new Map<string, ApiTraceSummary>();
+
+  for (const ev of events) {
+    const payload = (ev.payload ?? {}) as Record<string, unknown>;
+    const callId = String(payload.call_id ?? payload.callId ?? "").trim();
+    if (!callId) continue;
+
+    const existing = byCall.get(callId) ?? {
+      callId,
+      conversationId,
+      startedAt: ev.createdAt,
+      endedAt: ev.createdAt,
+      durationMs: null,
+      method: (payload.method as string) ?? null,
+      endpoint: (payload.endpoint as string) ?? null,
+      integrationRef: (payload.integration_ref as string) ?? (payload.integrationRef as string) ?? null,
+      attempts: 0,
+      retries: 0,
+      statusCode: null,
+      hasError: false,
+      lastError: null,
+      nodes: [],
+    };
+
+    if (new Date(ev.createdAt).getTime() < new Date(existing.startedAt).getTime()) {
+      existing.startedAt = ev.createdAt;
+    }
+    if (new Date(ev.createdAt).getTime() > new Date(existing.endedAt).getTime()) {
+      existing.endedAt = ev.createdAt;
+    }
+
+    if (ev.nodeRef && !existing.nodes.includes(ev.nodeRef)) {
+      existing.nodes.push(ev.nodeRef);
+    }
+
+    if (ev.eventType === "api_call") {
+      const attempt = Number(payload.attempt ?? 0);
+      if (Number.isFinite(attempt)) {
+        existing.attempts = Math.max(existing.attempts, Math.max(1, attempt));
+      }
+      existing.method = existing.method ?? ((payload.method as string) ?? null);
+      existing.endpoint = existing.endpoint ?? ((payload.endpoint as string) ?? null);
+      existing.integrationRef = existing.integrationRef ?? ((payload.integration_ref as string) ?? (payload.integrationRef as string) ?? null);
+    }
+
+    if (ev.eventType === "api_retry") {
+      existing.retries += 1;
+    }
+
+    if (ev.eventType === "api_response") {
+      const statusCode = Number(payload.status_code ?? payload.statusCode ?? 0);
+      if (Number.isFinite(statusCode) && statusCode > 0) {
+        existing.statusCode = statusCode;
+      }
+      const duration = Number(payload.duration_ms ?? payload.durationMs ?? 0);
+      if (Number.isFinite(duration) && duration > 0) {
+        existing.durationMs = duration;
+      }
+      const attempt = Number(payload.attempt ?? 0);
+      if (Number.isFinite(attempt)) {
+        existing.attempts = Math.max(existing.attempts, Math.max(1, attempt));
+      }
+    }
+
+    if (ev.eventType === "flow_error") {
+      existing.hasError = true;
+      existing.lastError =
+        (payload.error_message as string) ??
+        (payload.message as string) ??
+        existing.lastError;
+      const statusCode = Number(payload.status_code ?? payload.statusCode ?? 0);
+      if (Number.isFinite(statusCode) && statusCode > 0) {
+        existing.statusCode = statusCode;
+      }
+      const duration = Number(payload.duration_ms ?? payload.durationMs ?? 0);
+      if (Number.isFinite(duration) && duration > 0) {
+        existing.durationMs = duration;
+      }
+      const attempt = Number(payload.attempt ?? 0);
+      if (Number.isFinite(attempt)) {
+        existing.attempts = Math.max(existing.attempts, Math.max(1, attempt));
+      }
+    }
+
+    byCall.set(callId, existing);
+  }
+
+  return Array.from(byCall.values()).sort(
+    (a, b) => new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime()
+  );
+}
+
+function ApiTracePanel({
+  conversationId,
+  tenantSlug,
+}: {
+  conversationId: string;
+  tenantSlug?: string | null;
+}) {
+  const [callIdFilter, setCallIdFilter] = useState("");
+  const [integrationRefFilter, setIntegrationRefFilter] = useState("");
+  const [onlyErrors, setOnlyErrors] = useState(false);
+
+  const { data, isLoading } = useQuery({
+    queryKey: ["apiTraces", conversationId, tenantSlug, callIdFilter, integrationRefFilter],
+    queryFn: () =>
+      conversationsApi
+        .getEvents(conversationId, {
+          tenantSlug: tenantSlug ?? undefined,
+          eventType: "api_call,api_response,api_retry,flow_error",
+          callId: callIdFilter.trim() || undefined,
+          integrationRef: integrationRefFilter.trim() || undefined,
+          limit: 500,
+        })
+        .then((r) => r.data),
+    enabled: Boolean(conversationId),
+    staleTime: 15_000,
+  });
+
+  const events: ConvEvent[] = (data as { data?: ConvEvent[] })?.data ?? (Array.isArray(data) ? data : []);
+
+  const traces = useMemo(() => {
+    const grouped = groupApiTraces(conversationId, events);
+    if (!onlyErrors) return grouped;
+    return grouped.filter((trace) => trace.hasError || (trace.statusCode != null && trace.statusCode >= 400));
+  }, [conversationId, events, onlyErrors]);
+
+  return (
+    <div className="p-3 bg-white rounded-2xl border border-[#D9E5EB] shadow-sm space-y-2.5">
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-xs font-semibold text-[#0D2B3E] uppercase tracking-[0.12em]">API Traces</p>
+        <span className="text-[10px] text-[#5B6670]">{traces.length} llamadas</span>
+      </div>
+
+      <div className="grid grid-cols-1 gap-2">
+        <input
+          value={callIdFilter}
+          onChange={(e) => setCallIdFilter(e.target.value)}
+          placeholder="Filtrar por call_id"
+          className="w-full text-xs bg-white border border-[#D9E5EB] rounded-lg px-2 py-1.5 text-[#0D2B3E] placeholder:text-[#5B6670] focus:outline-none focus:ring-2 focus:ring-[#00BFAE]/25"
+        />
+        <input
+          value={integrationRefFilter}
+          onChange={(e) => setIntegrationRefFilter(e.target.value)}
+          placeholder="Filtrar por integration_ref"
+          className="w-full text-xs bg-white border border-[#D9E5EB] rounded-lg px-2 py-1.5 text-[#0D2B3E] placeholder:text-[#5B6670] focus:outline-none focus:ring-2 focus:ring-[#00BFAE]/25"
+        />
+        <label className="inline-flex items-center gap-1.5 text-xs text-[#5B6670]">
+          <input
+            type="checkbox"
+            checked={onlyErrors}
+            onChange={(e) => setOnlyErrors(e.target.checked)}
+            className="accent-[#00BFAE]"
+          />
+          Solo errores
+        </label>
+      </div>
+
+      <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
+        {isLoading && (
+          <div className="space-y-2">
+            {[1, 2].map((i) => (
+              <div key={i} className="h-16 animate-pulse bg-[#F4F7F9] rounded-xl" />
+            ))}
+          </div>
+        )}
+
+        {!isLoading && traces.length === 0 && (
+          <p className="text-xs text-[#5B6670] text-center py-4">No hay trazas API con esos filtros.</p>
+        )}
+
+        {traces.map((trace) => {
+          const isError = trace.hasError || (trace.statusCode != null && trace.statusCode >= 400);
+          return (
+            <div key={trace.callId} className="p-2.5 rounded-xl border border-[#D9E5EB] bg-[#F8FBFD] space-y-1.5">
+              <div className="flex items-center justify-between gap-2">
+                <span className={cn(
+                  "text-[10px] font-semibold px-1.5 py-0.5 rounded-full",
+                  isError ? "bg-red-50 text-red-600" : "bg-[#00BFAE]/16 text-[#00BFAE]"
+                )}>
+                  {isError ? "ERROR" : "OK"}
+                </span>
+                <span className="text-[10px] text-[#5B6670]">{new Date(trace.startedAt).toLocaleTimeString("es", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}</span>
+              </div>
+              <p className="text-xs font-medium text-[#0D2B3E] break-all">{trace.method ?? "HTTP"} {trace.endpoint ?? "(sin endpoint)"}</p>
+              <p className="text-[11px] text-[#5B6670] break-all">call_id: {trace.callId}</p>
+              <div className="flex flex-wrap items-center gap-1.5 text-[10px] text-[#5B6670]">
+                <span className="px-1.5 py-0.5 rounded bg-white border border-[#D9E5EB]">status {trace.statusCode ?? "-"}</span>
+                <span className="px-1.5 py-0.5 rounded bg-white border border-[#D9E5EB]">dur {trace.durationMs != null ? `${trace.durationMs}ms` : "-"}</span>
+                <span className="px-1.5 py-0.5 rounded bg-white border border-[#D9E5EB]">intentos {trace.attempts || 1}</span>
+                <span className="px-1.5 py-0.5 rounded bg-white border border-[#D9E5EB]">retries {trace.retries}</span>
+              </div>
+              {trace.integrationRef && (
+                <p className="text-[10px] text-[#5B6670] break-all">integration_ref: {trace.integrationRef}</p>
+              )}
+              {trace.nodes.length > 0 && (
+                <p className="text-[10px] text-[#5B6670] break-all">node_ref: {trace.nodes.join(", ")}</p>
+              )}
+              {trace.lastError && (
+                <p className="text-[10px] text-red-600 break-words">{trace.lastError}</p>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function ConvHistoryCard({ conv }: { conv: ConvRecord }) {
   const t = useTranslations("conversaciones");
   const eventLabels: Record<string, string> = {
@@ -470,6 +697,7 @@ export default function ConversacionesPage() {
   const [showEscalarForm, setShowEscalarForm] = useState(false);
   const [escalarAgenteId, setEscalarAgenteId] = useState<number | "">("");
   const [escalandoId, setEscalandoId] = useState<number | null>(null);
+  const [traceConversationId, setTraceConversationId] = useState("");
 
   // Resolve tenantId (UUID) from slug
   const { data: tenantData, isLoading: tenantLoading } = useQuery({
@@ -622,6 +850,18 @@ export default function ConversacionesPage() {
   });
   const convHistory: ConvRecord[] = (convHistoryData as { data?: ConvRecord[] })?.data ?? (Array.isArray(convHistoryData) ? convHistoryData : []);
   const activeConversation = convHistory.find((conv) => conv.status === "active") ?? null;
+
+  useEffect(() => {
+    if (contextTab !== "historial") return;
+    if (convHistory.length === 0) {
+      setTraceConversationId("");
+      return;
+    }
+    const stillExists = convHistory.some((conv) => conv.id === traceConversationId);
+    if (!stillExists) {
+      setTraceConversationId(activeConversation?.id ?? convHistory[0].id);
+    }
+  }, [contextTab, convHistory, traceConversationId, activeConversation?.id]);
 
   const closeConversationMutation = useMutation({
     mutationFn: (conversationId: string) => conversationsApi.updateStatus(conversationId, "completed"),
@@ -1169,6 +1409,32 @@ export default function ConversacionesPage() {
                     <p className="text-[#7A8792]">{t("historialTab.emptySub")}</p>
                   </div>
                 )}
+
+                {convHistory.length > 0 && (
+                  <div className="p-3 bg-white rounded-2xl border border-[#D9E5EB] shadow-sm space-y-2">
+                    <p className="text-xs font-semibold text-[#5B6670] uppercase tracking-[0.12em]">Conversation Trace</p>
+                    <div className="relative">
+                      <select
+                        value={traceConversationId || (activeConversation?.id ?? convHistory[0].id)}
+                        onChange={(e) => setTraceConversationId(e.target.value)}
+                        className="w-full text-xs bg-white text-[#0D2B3E] border border-[#D9E5EB] rounded-lg px-2 py-1.5 pr-6 appearance-none focus:outline-none focus:ring-2 focus:ring-[#00BFAE]/25"
+                      >
+                        {convHistory.map((conv) => (
+                          <option key={conv.id} value={conv.id}>
+                            {conv.status} · {new Date(conv.startedAt).toLocaleString("es", { dateStyle: "short", timeStyle: "short" })}
+                          </option>
+                        ))}
+                      </select>
+                      <ChevronDown size={12} className="absolute right-2 top-1/2 -translate-y-1/2 text-[#5B6670] pointer-events-none" />
+                    </div>
+
+                    <ApiTracePanel
+                      conversationId={traceConversationId || activeConversation?.id || convHistory[0].id}
+                      tenantSlug={effectiveTenantSlug ?? null}
+                    />
+                  </div>
+                )}
+
                 {convHistory.map((conv) => (
                   <ConvHistoryCard key={conv.id} conv={conv} />
                 ))}

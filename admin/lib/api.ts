@@ -623,8 +623,15 @@ export const conversationsApi = {
   /** Full conversation detail with event timeline */
   getById: (id: string, params?: { tenantSlug?: string }) =>
     apiClient.get(`/conversations/${id}`, { params }),
-  /** Lazy-load events for a conversation (supports cursor-based pagination) */
-  getEvents: (id: string, params?: { tenantSlug?: string; eventType?: string; after?: string; limit?: number }) =>
+  /** Lazy-load events for a conversation with optional trace filters */
+  getEvents: (id: string, params?: {
+    tenantSlug?: string;
+    eventType?: string;
+    after?: string;
+    limit?: number;
+    callId?: string;
+    integrationRef?: string;
+  }) =>
     apiClient.get(`/conversations/${id}/events`, { params }),
   /** Admin force-close a conversation */
   updateStatus: (id: string, status: 'completed' | 'abandoned' | 'error') =>
