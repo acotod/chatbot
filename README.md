@@ -31,6 +31,24 @@ La implementación de backend solicitada quedó completada y desplegada.
 - Ejecutar tests: `npm test`
 - Ver contenedores: `docker compose ps`
 
+## Fallback de padron por archivo
+
+Si la API de TSE falla, devuelve error o no trae datos utiles, el endpoint `PATCH /crm/contacts/by-cedula` puede usar un archivo local de padron como respaldo.
+
+Configura la variable:
+
+- `PADRON_FILE_PATH`: ruta absoluta o relativa (desde la raiz del proyecto) hacia un archivo `.csv` o `.json`.
+
+Formato minimo esperado:
+
+- Campo de identificacion: `cedula`, `identificacion`, `numeroIdentificacion`, `numeroCedula`, `documento` o `id`.
+- Campo de nombre: `nombreCompleto`, `nombre`, `nombreRazonSocial`, `razonSocial` (o combinacion de nombre/apellido).
+
+Ejemplos:
+
+- `PADRON_FILE_PATH=./data/padron.csv`
+- `PADRON_FILE_PATH=/opt/chatbot/data/padron.json`
+
 ## Login con Facebook (SDK JavaScript)
 
 Este backend ahora expone `POST /auth/facebook` para intercambiar el `accessToken` de Facebook por los tokens JWT internos del panel admin. Durante esa validación también hace las llamadas obligatorias a Graph API para verificar que el usuario concedió `whatsapp_business_management` y que la app puede leer los negocios asociados mediante `GET /me/businesses`.

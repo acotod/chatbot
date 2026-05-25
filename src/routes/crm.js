@@ -1,4 +1,6 @@
 'use strict';
+const fs = require('fs');
+const path = require('path');
 /**
  * CRM routes — Contacts, Deals, Tasks
  *
@@ -33,8 +35,17 @@ const TSE_CONFIG_KEY = 'tse_config';
 const TSE_LOOKUP_SUCCESS_TTL_MS = 5 * 60 * 1000;
 const TSE_LOOKUP_NOT_FOUND_TTL_MS = 60 * 1000;
 const TSE_LOOKUP_ERROR_TTL_MS = 30 * 1000;
+const PADRON_RELOAD_TTL_MS = 5 * 60 * 1000;
 const _tseLookupCache = new Map();
 const _tseLookupInflight = new Map();
+let _padronLookupCache = {
+  loadedAt: 0,
+  expiresAt: 0,
+  filePath: null,
+  mtimeMs: null,
+  rowCount: 0,
+  index: new Map(),
+};
 
 router.use(requireJwt);
 router.use(requirePermiso('VIEW_CRM'));
@@ -243,6 +254,7 @@ router.patch('/contacts/by-cedula', [
     }
 
     const tseProfile = tseLookup.profile ?? {};
+    const lookupSource = String(tseLookup.source || 'tse');
     const resolvedNombre = tseProfile.nombre ?? null;
     const resolvedEmail = tseProfile.email ?? null;
     const resolvedEmpresa = tseProfile.empresa ?? null;
@@ -268,6 +280,8 @@ router.patch('/contacts/by-cedula', [
           cedulaNormalizada: normalizedCedula,
           identificacionNormalizada: normalizedCedula,
           tseSyncedAt: new Date().toISOString(),
+          tseSource: lookupSource,
+          tseFallbackReason: tseLookup.fallbackReason ?? null,
           tseData: tseProfile,
         },
         ultimoContacto: new Date(),
@@ -286,7 +300,8 @@ router.patch('/contacts/by-cedula', [
         ok: true,
         found: false,
         created: true,
-        tseSynced: true,
+        tseSynced: lookupSource === 'tse',
+        dataSource: lookupSource,
         contactId: created.id,
         tenantId: created.tenantId,
         identificacion: cedula,
@@ -320,6 +335,8 @@ router.patch('/contacts/by-cedula', [
       cedulaNormalizada: normalizedCedula,
       identificacionNormalizada: normalizedCedula,
       tseSyncedAt: new Date().toISOString(),
+      tseSource: lookupSource,
+      tseFallbackReason: tseLookup.fallbackReason ?? null,
       tseData: tseProfile,
     };
     data.ultimoContacto = new Date();
@@ -330,7 +347,8 @@ router.patch('/contacts/by-cedula', [
       ok: true,
       found: true,
       created: false,
-      tseSynced: true,
+      tseSynced: lookupSource === 'tse',
+      dataSource: lookupSource,
       contactId: updated.id,
       tenantId: updated.tenantId,
       identificacion: cedula,
@@ -815,6 +833,19 @@ async function fetchTseProfileByCedula(tenantId, cedula) {
     const payload = safeJsonParse(bodyText);
 
     if (!response.ok) {
+      const fallback = await lookupPadronByCedula(cedula);
+      if (fallback.ok) {
+        const result = {
+          ok: true,
+          profile: fallback.profile,
+          raw: fallback.raw,
+          source: 'padron_fallback',
+          fallbackReason: extractRemoteError(payload, bodyText, response.status),
+        };
+        setCachedTseLookup(cacheKey, result, TSE_LOOKUP_SUCCESS_TTL_MS);
+        return result;
+      }
+
       const result = {
         ok: false,
         notFound: response.status === 404,
@@ -825,6 +856,19 @@ async function fetchTseProfileByCedula(tenantId, cedula) {
     }
 
     if (looksLikeNotFound(payload)) {
+      const fallback = await lookupPadronByCedula(cedula);
+      if (fallback.ok) {
+        const result = {
+          ok: true,
+          profile: fallback.profile,
+          raw: fallback.raw,
+          source: 'padron_fallback',
+          fallbackReason: 'TSE returned not-found response',
+        };
+        setCachedTseLookup(cacheKey, result, TSE_LOOKUP_SUCCESS_TTL_MS);
+        return result;
+      }
+
       const result = {
         ok: false,
         notFound: true,
@@ -841,6 +885,19 @@ async function fetchTseProfileByCedula(tenantId, cedula) {
         return value != null && String(value).trim() !== '';
       });
     if (!hasUsableProfile) {
+      const fallback = await lookupPadronByCedula(cedula);
+      if (fallback.ok) {
+        const result = {
+          ok: true,
+          profile: fallback.profile,
+          raw: fallback.raw,
+          source: 'padron_fallback',
+          fallbackReason: 'TSE response without usable contact fields',
+        };
+        setCachedTseLookup(cacheKey, result, TSE_LOOKUP_SUCCESS_TTL_MS);
+        return result;
+      }
+
       const result = {
         ok: false,
         error: 'TSE response did not include usable contact fields (configure tse_config.fieldMap if needed)',
@@ -853,10 +910,26 @@ async function fetchTseProfileByCedula(tenantId, cedula) {
       ok: true,
       profile,
       raw: payload,
+      source: 'tse',
     };
     setCachedTseLookup(cacheKey, result, TSE_LOOKUP_SUCCESS_TTL_MS);
     return result;
   } catch (err) {
+    const fallback = await lookupPadronByCedula(cedula);
+    if (fallback.ok) {
+      const result = {
+        ok: true,
+        profile: fallback.profile,
+        raw: fallback.raw,
+        source: 'padron_fallback',
+        fallbackReason: err?.name === 'AbortError'
+          ? `TSE lookup timed out after ${timeoutMs}ms`
+          : String(err?.message || err),
+      };
+      setCachedTseLookup(cacheKey, result, TSE_LOOKUP_SUCCESS_TTL_MS);
+      return result;
+    }
+
     const result = {
       ok: false,
       error: err?.name === 'AbortError'
@@ -991,6 +1064,252 @@ function normalizeTsePayload(payload, fieldMap = null) {
     empresa: pickFromMap(source, fieldMap?.empresa),
     cargo: pickFromMap(source, fieldMap?.cargo),
   };
+}
+
+async function lookupPadronByCedula(cedula) {
+  const normalizedCedula = normalizeCedula(cedula);
+  if (!normalizedCedula) {
+    return { ok: false, error: 'Invalid cedula' };
+  }
+
+  const indexState = await ensurePadronIndexLoaded();
+  if (!indexState.ok) return indexState;
+
+  const profile = indexState.index.get(normalizedCedula);
+  if (!profile) {
+    return { ok: false, notFound: true, error: 'Cedula not found in padron file' };
+  }
+
+  return {
+    ok: true,
+    profile,
+    raw: {
+      source: 'padron_file',
+      filePath: indexState.filePath,
+      rowsIndexed: indexState.rowCount,
+    },
+  };
+}
+
+async function ensurePadronIndexLoaded() {
+  const resolvedPath = resolvePadronFilePath();
+  if (!resolvedPath) {
+    return {
+      ok: false,
+      error: 'Padron file is not configured (set PADRON_FILE_PATH)',
+    };
+  }
+
+  let stat;
+  try {
+    stat = await fs.promises.stat(resolvedPath);
+  } catch {
+    return {
+      ok: false,
+      error: `Padron file not found at ${resolvedPath}`,
+    };
+  }
+
+  const now = Date.now();
+  const isFresh = _padronLookupCache.filePath === resolvedPath
+    && _padronLookupCache.mtimeMs === stat.mtimeMs
+    && _padronLookupCache.expiresAt > now
+    && _padronLookupCache.index.size > 0;
+
+  if (isFresh) {
+    return {
+      ok: true,
+      filePath: _padronLookupCache.filePath,
+      rowCount: _padronLookupCache.rowCount,
+      index: _padronLookupCache.index,
+    };
+  }
+
+  const raw = await fs.promises.readFile(resolvedPath, 'utf8');
+  const index = buildPadronIndex(raw, resolvedPath);
+
+  _padronLookupCache = {
+    loadedAt: now,
+    expiresAt: now + PADRON_RELOAD_TTL_MS,
+    filePath: resolvedPath,
+    mtimeMs: stat.mtimeMs,
+    rowCount: index.size,
+    index,
+  };
+
+  return {
+    ok: true,
+    filePath: _padronLookupCache.filePath,
+    rowCount: _padronLookupCache.rowCount,
+    index: _padronLookupCache.index,
+  };
+}
+
+function resolvePadronFilePath() {
+  const configuredPath = String(process.env.PADRON_FILE_PATH || '').trim();
+  if (!configuredPath) return null;
+
+  return path.isAbsolute(configuredPath)
+    ? configuredPath
+    : path.resolve(process.cwd(), configuredPath);
+}
+
+function buildPadronIndex(rawContent, filePath) {
+  const extension = path.extname(filePath).toLowerCase();
+  if (extension === '.json') return buildPadronJsonIndex(rawContent);
+  return buildPadronCsvIndex(rawContent);
+}
+
+function buildPadronJsonIndex(rawContent) {
+  let parsed;
+  try {
+    parsed = JSON.parse(rawContent);
+  } catch {
+    return new Map();
+  }
+
+  const records = Array.isArray(parsed)
+    ? parsed
+    : Array.isArray(parsed?.data)
+      ? parsed.data
+      : Array.isArray(parsed?.records)
+        ? parsed.records
+        : [];
+
+  const index = new Map();
+  for (const item of records) {
+    const normalizedCedula = normalizeCedula(extractPadronCedula(item));
+    const nombre = extractPadronNombre(item);
+    if (!normalizedCedula || !nombre) continue;
+
+    index.set(normalizedCedula, {
+      nombre,
+      email: null,
+      phone: null,
+      empresa: null,
+      cargo: null,
+      source: 'padron_fallback',
+    });
+  }
+
+  return index;
+}
+
+function buildPadronCsvIndex(rawContent) {
+  const lines = String(rawContent || '')
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  if (lines.length === 0) return new Map();
+
+  const delimiter = detectCsvDelimiter(lines[0]);
+  const headerValues = splitCsvLine(lines[0], delimiter);
+  const normalizedHeaders = headerValues.map(normalizeHeader);
+
+  const index = new Map();
+  for (let i = 1; i < lines.length; i += 1) {
+    const values = splitCsvLine(lines[i], delimiter);
+    if (values.length === 0) continue;
+
+    const row = {};
+    for (let j = 0; j < normalizedHeaders.length; j += 1) {
+      const key = normalizedHeaders[j];
+      if (!key) continue;
+      row[key] = (values[j] ?? '').trim();
+    }
+
+    const normalizedCedula = normalizeCedula(extractPadronCedula(row));
+    const nombre = extractPadronNombre(row);
+    if (!normalizedCedula || !nombre) continue;
+
+    index.set(normalizedCedula, {
+      nombre,
+      email: null,
+      phone: null,
+      empresa: null,
+      cargo: null,
+      source: 'padron_fallback',
+    });
+  }
+
+  return index;
+}
+
+function detectCsvDelimiter(headerLine) {
+  const commaCount = (headerLine.match(/,/g) || []).length;
+  const semicolonCount = (headerLine.match(/;/g) || []).length;
+  return semicolonCount > commaCount ? ';' : ',';
+}
+
+function splitCsvLine(line, delimiter) {
+  const values = [];
+  let current = '';
+  let inQuotes = false;
+
+  for (let i = 0; i < line.length; i += 1) {
+    const char = line[i];
+    if (char === '"') {
+      if (inQuotes && line[i + 1] === '"') {
+        current += '"';
+        i += 1;
+      } else {
+        inQuotes = !inQuotes;
+      }
+      continue;
+    }
+
+    if (char === delimiter && !inQuotes) {
+      values.push(current);
+      current = '';
+      continue;
+    }
+
+    current += char;
+  }
+
+  values.push(current);
+  return values;
+}
+
+function normalizeHeader(value) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]/g, '');
+}
+
+function extractPadronCedula(row) {
+  if (!row || typeof row !== 'object') return null;
+
+  const keys = [
+    'cedula',
+    'identificacion',
+    'numeroidentificacion',
+    'numerocedula',
+    'documento',
+    'id',
+  ];
+  return pickFirst(row, keys);
+}
+
+function extractPadronNombre(row) {
+  if (!row || typeof row !== 'object') return null;
+
+  const fullName = pickFirst(row, [
+    'nombrecompleto',
+    'nombre',
+    'nombrerazonsocial',
+    'razonsocial',
+    'fullname',
+  ]);
+  if (fullName) return fullName;
+
+  const firstName = pickFirst(row, ['nombres', 'primernombre', 'name']);
+  const lastName = pickFirst(row, ['apellidos', 'primerapellido', 'lastname']);
+  const joined = [firstName, lastName].filter(Boolean).join(' ').trim();
+  return joined || null;
 }
 
 function getPrimaryObject(payload) {
