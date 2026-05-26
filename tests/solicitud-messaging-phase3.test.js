@@ -271,67 +271,67 @@ describe('WhatsApp webhook – inbound message → solicitud socket fan-out', ()
 
 describe('Frontend solicitudes page – real-time socket subscriptions', () => {
   it('imports useSocket hook', () => {
-    const src = readSrc('admin', 'app', '(app)', 'solicitudes', 'page.tsx');
+    const src = readSrc('admin', 'app', '[locale]', '(app)', 'solicitudes', 'page.tsx');
     expect(src).toContain('useSocket');
   });
 
   it('subscribes to SOLICITUD_MESSAGE_SENT for messages auto-refresh', () => {
-    const src = readSrc('admin', 'app', '(app)', 'solicitudes', 'page.tsx');
+    const src = readSrc('admin', 'app', '[locale]', '(app)', 'solicitudes', 'page.tsx');
     expect(src).toContain('"SOLICITUD_MESSAGE_SENT"');
   });
 
   it('subscribes to SOLICITUD_MESSAGE_STATUS for delivery status updates', () => {
-    const src = readSrc('admin', 'app', '(app)', 'solicitudes', 'page.tsx');
+    const src = readSrc('admin', 'app', '[locale]', '(app)', 'solicitudes', 'page.tsx');
     expect(src).toContain('"SOLICITUD_MESSAGE_STATUS"');
   });
 
   it('subscribes to STATUS_UPDATED for list refresh', () => {
-    const src = readSrc('admin', 'app', '(app)', 'solicitudes', 'page.tsx');
+    const src = readSrc('admin', 'app', '[locale]', '(app)', 'solicitudes', 'page.tsx');
     expect(src).toContain('"STATUS_UPDATED"');
   });
 
   it('invalidates solicitud-messages query on socket event', () => {
-    const src = readSrc('admin', 'app', '(app)', 'solicitudes', 'page.tsx');
+    const src = readSrc('admin', 'app', '[locale]', '(app)', 'solicitudes', 'page.tsx');
     expect(src).toContain('"solicitud-messages"');
     expect(src).toContain('invalidateQueries');
   });
 
   it('has text search filter state (messageSearch)', () => {
-    const src = readSrc('admin', 'app', '(app)', 'solicitudes', 'page.tsx');
+    const src = readSrc('admin', 'app', '[locale]', '(app)', 'solicitudes', 'page.tsx');
     expect(src).toContain('messageSearch');
   });
 
   it('has direction filter state (messageDirection)', () => {
-    const src = readSrc('admin', 'app', '(app)', 'solicitudes', 'page.tsx');
+    const src = readSrc('admin', 'app', '[locale]', '(app)', 'solicitudes', 'page.tsx');
     expect(src).toContain('messageDirection');
   });
 
   it('has date range filter state for messages', () => {
-    const src = readSrc('admin', 'app', '(app)', 'solicitudes', 'page.tsx');
+    const src = readSrc('admin', 'app', '[locale]', '(app)', 'solicitudes', 'page.tsx');
     expect(src).toContain('messageStartDate');
     expect(src).toContain('messageEndDate');
   });
 
   it('has read-status filter state for messages', () => {
-    const src = readSrc('admin', 'app', '(app)', 'solicitudes', 'page.tsx');
+    const src = readSrc('admin', 'app', '[locale]', '(app)', 'solicitudes', 'page.tsx');
     expect(src).toContain('messageReadStatus');
   });
 
   it('has quick date preset helper for messages', () => {
-    const src = readSrc('admin', 'app', '(app)', 'solicitudes', 'page.tsx');
+    const src = readSrc('admin', 'app', '[locale]', '(app)', 'solicitudes', 'page.tsx');
     expect(src).toContain('applyMessageDatePreset');
     expect(src).toContain('formatDateForInput');
   });
 
-  it('renders quick date preset controls (Hoy, 7d, 30d)', () => {
-    const src = readSrc('admin', 'app', '(app)', 'solicitudes', 'page.tsx');
-    expect(src).toContain('Hoy');
+  it('renders quick date preset controls (today, 7d, 30d)', () => {
+    const src = readSrc('admin', 'app', '[locale]', '(app)', 'solicitudes', 'page.tsx');
+    expect(src).toContain('t("today")');
     expect(src).toContain('7d');
     expect(src).toContain('30d');
   });
 
   it('passes filter params to messages API call', () => {
-    const src = readSrc('admin', 'app', '(app)', 'solicitudes', 'page.tsx');
+    const src = readSrc('admin', 'app', '[locale]', '(app)', 'solicitudes', 'page.tsx');
     // q param forwarded
     expect(src).toMatch(/q:\s*messageSearch|q,\s*(?:\/\/[^\n]*)?\n?\s*direccion/);
     // direccion param forwarded
@@ -348,30 +348,30 @@ describe('Frontend solicitudes page – real-time socket subscriptions', () => {
 
 describe('Frontend conversaciones page – solicitud cross-link', () => {
   it('imports useRouter for navigation', () => {
-    const src = readSrc('admin', 'app', '(app)', 'conversaciones', 'page.tsx');
+    const src = readSrc('admin', 'app', '[locale]', '(app)', 'conversaciones', 'page.tsx');
     expect(src).toContain('useRouter');
   });
 
   it('has navigation to /solicitudes route', () => {
-    const src = readSrc('admin', 'app', '(app)', 'conversaciones', 'page.tsx');
+    const src = readSrc('admin', 'app', '[locale]', '(app)', 'conversaciones', 'page.tsx');
     expect(src).toContain('"/solicitudes"');
   });
 
   it('renders a Ver link with ExternalLink icon in solicitudes panel', () => {
-    const src = readSrc('admin', 'app', '(app)', 'conversaciones', 'page.tsx');
+    const src = readSrc('admin', 'app', '[locale]', '(app)', 'conversaciones', 'page.tsx');
     expect(src).toContain('ExternalLink');
-    expect(src).toContain('Ver');
+    expect(src).toContain('solicitudesTab.view');
   });
 
   it('still renders all solicitudes in the context panel', () => {
-    const src = readSrc('admin', 'app', '(app)', 'conversaciones', 'page.tsx');
+    const src = readSrc('admin', 'app', '[locale]', '(app)', 'conversaciones', 'page.tsx');
     expect(src).toContain('solicitudes.map');
   });
 
   it('still has Escalar and Urgente quick actions', () => {
-    const src = readSrc('admin', 'app', '(app)', 'conversaciones', 'page.tsx');
-    expect(src).toContain('Escalar');
-    expect(src).toContain('Urgente');
+    const src = readSrc('admin', 'app', '[locale]', '(app)', 'conversaciones', 'page.tsx');
+    expect(src).toContain('quickActions.escalate');
+    expect(src).toContain('quickActions.urgent');
   });
 });
 

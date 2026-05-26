@@ -76,6 +76,9 @@ describe('emailService', () => {
         user: 'tenant-user',
         pass: 'tenant-pass',
       },
+      tls: {
+        rejectUnauthorized: false,
+      },
     });
     expect(sendMail).toHaveBeenCalledWith(expect.objectContaining({
       from: 'tenant@example.com',

@@ -1,11 +1,20 @@
 const express = require('express');
 const request = require('supertest');
 
+const ORIGINAL_WA_APP_SECRET = process.env.WA_APP_SECRET;
+const ORIGINAL_FACEBOOK_APP_SECRET = process.env.FACEBOOK_APP_SECRET;
+process.env.WA_APP_SECRET = '';
+process.env.FACEBOOK_APP_SECRET = '';
+
 jest.mock('../src/middleware/requireJwt', () => (_req, _res, next) => next());
 
 jest.mock('../src/services/database', () => ({
   findTenantByWaPhoneNumberId: jest.fn(),
   getConfig: jest.fn(),
+  getWaCredentials: jest.fn(),
+  getPrismaClient: jest.fn(() => null),
+  getWaAppSecret: jest.fn(),
+  updateMensajeDeliveryStatusByWaMsgId: jest.fn(),
   findMensajeByWaMsgId: jest.fn(),
   findOrCreateUser: jest.fn(),
   saveMensaje: jest.fn(),
@@ -64,7 +73,9 @@ describe('POST /whatsapp dual-write UEG', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     db.findTenantByWaPhoneNumberId.mockResolvedValue({ id: 'tenant-1', activo: true });
+    db.getWaCredentials.mockResolvedValue({ accessToken: 'token-123', phoneNumberId: '1234567890' });
     db.getConfig.mockResolvedValue({ valor: { accessToken: 'token-123' } });
+    db.updateMensajeDeliveryStatusByWaMsgId.mockResolvedValue({});
     db.findMensajeByWaMsgId.mockResolvedValue(null);
     db.findOrCreateUser.mockResolvedValue({ id: 7, phone: '573001112233' });
     db.saveMensaje.mockResolvedValue({
@@ -74,6 +85,20 @@ describe('POST /whatsapp dual-write UEG', () => {
       tipo: 'text',
     });
     eventGateway.ingestEvent.mockResolvedValue({ duplicate: false, queued: false });
+  });
+
+  afterAll(() => {
+    if (ORIGINAL_WA_APP_SECRET === undefined) {
+      delete process.env.WA_APP_SECRET;
+    } else {
+      process.env.WA_APP_SECRET = ORIGINAL_WA_APP_SECRET;
+    }
+
+    if (ORIGINAL_FACEBOOK_APP_SECRET === undefined) {
+      delete process.env.FACEBOOK_APP_SECRET;
+    } else {
+      process.env.FACEBOOK_APP_SECRET = ORIGINAL_FACEBOOK_APP_SECRET;
+    }
   });
 
   test('status updates are dual-written to UEG', async () => {

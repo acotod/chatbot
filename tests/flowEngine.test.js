@@ -142,6 +142,10 @@ describe('flowEngine bootstrap', () => {
         flowVar: 123,
         fromDefinition: 'def-value',
         telefono: '58412121212',
+      }),
+      expect.objectContaining({
+        conversationId: 'conv-1',
+        nodeType: 'session_init',
       })
     );
     expect(executeNode).toHaveBeenCalledWith(

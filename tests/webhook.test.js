@@ -2,11 +2,19 @@ const request = require('supertest');
 
 const TEST_TENANT = { id: 'aaaaaaaa-0000-0000-0000-000000000001', activo: true };
 const TEST_API_KEY = 'test-api-key';
+const ORIGINAL_WA_APP_SECRET = process.env.WA_APP_SECRET;
+const ORIGINAL_FACEBOOK_APP_SECRET = process.env.FACEBOOK_APP_SECRET;
+process.env.WA_APP_SECRET = '';
+process.env.FACEBOOK_APP_SECRET = '';
 
 // Mock resolveTenant middleware so tests don't hit the DB for tenant lookup
-jest.mock('../src/middleware/resolveTenant', () => (req, res, next) => {
-  req.tenant = TEST_TENANT;
-  next();
+jest.mock('../src/middleware/resolveTenant', () => {
+  const middleware = (req, _res, next) => {
+    req.tenant = TEST_TENANT;
+    next();
+  };
+  middleware.resolveTenantByKey = middleware;
+  return middleware;
 });
 
 // Mock rate limiter so it never blocks tests
@@ -15,6 +23,8 @@ jest.mock('../src/middleware/rateLimiter', () => () => (_req, _res, next) => nex
 // Mock the database service before loading the app
 jest.mock('../src/services/database', () => ({
   findTenantByApiKey: jest.fn().mockResolvedValue({ id: 'aaaaaaaa-0000-0000-0000-000000000001', activo: true }),
+  getWaAppSecret: jest.fn().mockResolvedValue(null),
+  getPrismaClient: jest.fn(() => null),
   findOrCreateUser: jest.fn().mockResolvedValue({ id: 1, phone: '1234567890' }),
   saveEvent: jest.fn().mockResolvedValue({}),
   saveSolicitud: jest.fn().mockResolvedValue({}),
@@ -37,6 +47,20 @@ beforeEach(() => {
   db.saveSolicitud.mockResolvedValue({});
   db.getConfig.mockResolvedValue(null);
   eventGateway.ingestEvent.mockResolvedValue({ duplicate: false, queued: false });
+});
+
+afterAll(() => {
+  if (ORIGINAL_WA_APP_SECRET === undefined) {
+    delete process.env.WA_APP_SECRET;
+  } else {
+    process.env.WA_APP_SECRET = ORIGINAL_WA_APP_SECRET;
+  }
+
+  if (ORIGINAL_FACEBOOK_APP_SECRET === undefined) {
+    delete process.env.FACEBOOK_APP_SECRET;
+  } else {
+    process.env.FACEBOOK_APP_SECRET = ORIGINAL_FACEBOOK_APP_SECRET;
+  }
 });
 
 describe('POST /webhook – valid requests', () => {
@@ -66,8 +90,7 @@ describe('POST /webhook – valid requests', () => {
   });
 
   test('SOLICITUD_ESPACIO triggers saveSolicitud', async () => {
-    // SOLICITUD_ESPACIO has no defined outgoing navigation, but the route should
-    // attempt to save the solicitud before evaluating next screen.
+    // SOLICITUD_ESPACIO should persist solicitud and move to CIERRE.
     const res = await request(app)
       .post('/webhook')
       .set('x-api-key', TEST_API_KEY)
@@ -77,8 +100,8 @@ describe('POST /webhook – valid requests', () => {
       });
 
     expect(db.saveSolicitud).toHaveBeenCalled();
-    // Navigation is unknown for SOLICITUD_ESPACIO, so expect 400
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ screen: 'CIERRE' });
   });
 
   test('HABLAR_ALGUIEN + opcion=agendar → 200 { screen: "SOLICITUD_ESPACIO" }', async () => {

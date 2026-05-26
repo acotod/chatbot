@@ -3,12 +3,18 @@ const request = require('supertest');
 
 const TEST_TENANT = { id: 'aaaaaaaa-0000-0000-0000-000000000001', activo: true };
 const ORIGINAL_WA_APP_SECRET = process.env.WA_APP_SECRET;
+const ORIGINAL_FACEBOOK_APP_SECRET = process.env.FACEBOOK_APP_SECRET;
 
 process.env.WA_APP_SECRET = '';
+process.env.FACEBOOK_APP_SECRET = '';
 
-jest.mock('../src/middleware/resolveTenant', () => (req, _res, next) => {
-  req.tenant = TEST_TENANT;
-  next();
+jest.mock('../src/middleware/resolveTenant', () => {
+  const middleware = (req, _res, next) => {
+    req.tenant = TEST_TENANT;
+    next();
+  };
+  middleware.resolveTenantByKey = middleware;
+  return middleware;
 });
 
 jest.mock('../src/middleware/rateLimiter', () => () => (_req, _res, next) => next());
@@ -113,6 +119,12 @@ describe('POST /whatsapp/flows', () => {
       delete process.env.WA_APP_SECRET;
     } else {
       process.env.WA_APP_SECRET = ORIGINAL_WA_APP_SECRET;
+    }
+
+    if (ORIGINAL_FACEBOOK_APP_SECRET === undefined) {
+      delete process.env.FACEBOOK_APP_SECRET;
+    } else {
+      process.env.FACEBOOK_APP_SECRET = ORIGINAL_FACEBOOK_APP_SECRET;
     }
   });
 

@@ -39,9 +39,9 @@ function preview(t) {
     if (!tenant) throw new Error('No tenant found');
 
     const cases = [
-      { label: 'ID_8', input: '8', phone: '+34600003981' },
-      { label: 'ID_14', input: '14', phone: '+34600003982' },
-      { label: 'TEXT_8AM', input: '8:00 a.m.', phone: '+34600003983' },
+      { label: 'ID_8', input: '8', phone: '+34600003981', idDoc: '107910975' },
+      { label: 'ID_14', input: '14', phone: '+34600003982', idDoc: '107910975' },
+      { label: 'TEXT_8AM', input: '8:00 a.m.', phone: '+34600003983', idDoc: '107910975' },
     ];
 
     const results = [];
@@ -52,6 +52,7 @@ function preview(t) {
 
       let r = await flowEngine.executeStep({ tenantId: tenant.id, currentNodeId: null, input: null, userId: user.id, sessionKey: c.phone });
       let sentCase = false;
+      let sentIdDoc = false;
       let finalText = String(r?.content?.text || '');
       let finalType = r?.content?.type || null;
       const trace = [];
@@ -60,10 +61,15 @@ function preview(t) {
         const ids = idsFrom(r?.content || {});
         trace.push({ i, type: r?.content?.type || null, text: preview(r?.content?.text), ids });
 
+        const promptText = String(r?.content?.text || '').toLowerCase();
+        const isIdPrompt = promptText.includes('identificaci') || promptText.includes('cedula');
         const isHorarioMenu = ids.includes('opt_10') || ids.includes('opt_11') || ids.includes('opt_12') || ids.includes('opt_13') || ids.filter(x => /^opt_\d+$/i.test(x)).length >= 6;
 
         let nextInput = null;
-        if (!sentCase && isHorarioMenu) {
+        if (!sentIdDoc && isIdPrompt) {
+          nextInput = c.idDoc;
+          sentIdDoc = true;
+        } else if (!sentCase && isHorarioMenu) {
           nextInput = c.input;
           sentCase = true;
         } else if (ids.includes('opt_1')) {

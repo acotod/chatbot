@@ -1,6 +1,11 @@
 const express = require('express');
 const request = require('supertest');
 
+const ORIGINAL_WA_APP_SECRET = process.env.WA_APP_SECRET;
+const ORIGINAL_FACEBOOK_APP_SECRET = process.env.FACEBOOK_APP_SECRET;
+process.env.WA_APP_SECRET = '';
+process.env.FACEBOOK_APP_SECRET = '';
+
 let mockCurrentAdmin = { adminUserId: 100, email: 'admin@test.local', tenantId: 'tenant-1', superAdmin: false };
 let mockCurrentAgent = { agenteId: 7, tenantId: 'tenant-1', nombre: 'Agente Uno', email: 'agente@test.local' };
 
@@ -102,6 +107,20 @@ beforeEach(() => {
   mockCurrentAdmin = { adminUserId: 100, email: 'admin@test.local', tenantId: 'tenant-1', superAdmin: false };
   mockCurrentAgent = { agenteId: 7, tenantId: 'tenant-1', nombre: 'Agente Uno', email: 'agente@test.local' };
   resetCoreMocks();
+});
+
+afterAll(() => {
+  if (ORIGINAL_WA_APP_SECRET === undefined) {
+    delete process.env.WA_APP_SECRET;
+  } else {
+    process.env.WA_APP_SECRET = ORIGINAL_WA_APP_SECRET;
+  }
+
+  if (ORIGINAL_FACEBOOK_APP_SECRET === undefined) {
+    delete process.env.FACEBOOK_APP_SECRET;
+  } else {
+    process.env.FACEBOOK_APP_SECRET = ORIGINAL_FACEBOOK_APP_SECRET;
+  }
 });
 
 describe('Solicitud messaging integration - admin endpoints', () => {
