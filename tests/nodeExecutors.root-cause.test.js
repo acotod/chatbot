@@ -124,4 +124,66 @@ describe('nodeExecutors root-cause guards', () => {
       }),
     );
   });
+
+  test('handoff creates task control and transfers conversation by default', async () => {
+    const node = {
+      id: 'node_handoff',
+      type: 'handoff',
+      next: null,
+      config: {
+        text: 'Te paso con un agente',
+        assignment_mode: 'fixed',
+        assign_to: '25',
+      },
+    };
+
+    const result = await executeNode(node, {
+      input: null,
+      variables: {},
+      tenantId: 'tenant-1',
+    });
+
+    expect(result.output).toEqual({ type: 'handoff', text: 'Te paso con un agente' });
+    expect(result.fallback).toBe(true);
+    expect(result.terminal).toBe(true);
+    expect(result.control).toEqual(
+      expect.objectContaining({
+        type: 'task',
+        action: 'create_task',
+        config: expect.objectContaining({
+          assignment_mode: 'fixed',
+          assign_to: '25',
+        }),
+      }),
+    );
+  });
+
+  test('handoff can skip transfer and continue to next node', async () => {
+    const node = {
+      id: 'node_handoff',
+      type: 'handoff',
+      next: 'node_post_handoff',
+      config: {
+        text: 'Creamos tu solicitud y seguimos',
+        transfer_conversation: false,
+      },
+    };
+
+    const result = await executeNode(node, {
+      input: null,
+      variables: {},
+      tenantId: 'tenant-1',
+    });
+
+    expect(result.output).toEqual({ type: 'text', text: 'Creamos tu solicitud y seguimos' });
+    expect(result.nextNodeId).toBe('node_post_handoff');
+    expect(result.fallback).toBe(false);
+    expect(result.terminal).toBe(false);
+    expect(result.control).toEqual(
+      expect.objectContaining({
+        type: 'task',
+        action: 'create_task',
+      }),
+    );
+  });
 });

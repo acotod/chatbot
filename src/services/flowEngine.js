@@ -581,9 +581,11 @@ async function _handleTaskControl({
       task_assigned_agente_id: solicitud?.agenteId ?? null,
     };
 
+    const allowUserMessageOverride = node?.type === 'task' && cfg.user_message;
+
     return {
       ...execResult,
-      output: cfg.user_message ? { type: 'text', text: String(cfg.user_message) } : execResult.output,
+      output: allowUserMessageOverride ? { type: 'text', text: String(cfg.user_message) } : execResult.output,
       updatedVars,
     };
   }

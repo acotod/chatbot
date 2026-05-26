@@ -102,6 +102,18 @@ function _extractHourFromText(text) {
   return _toHour24(m[1], m[2]);
 }
 
+function _coerceBoolean(value, fallback = false) {
+  if (typeof value === 'boolean') return value;
+  if (value == null) return fallback;
+
+  const normalized = String(value).trim().toLowerCase();
+  if (!normalized) return fallback;
+  if (['1', 'true', 'yes', 'si', 'on'].includes(normalized)) return true;
+  if (['0', 'false', 'no', 'off'].includes(normalized)) return false;
+
+  return fallback;
+}
+
 function _buildInputValidation(cfg) {
   const validationType = String(cfg?.validationType ?? '').trim().toLowerCase();
   const customPattern = String(cfg?.validationPattern ?? cfg?.pattern ?? cfg?.regex ?? '').trim();
@@ -803,12 +815,35 @@ async function executeEnd({ node, variables }) {
  */
 async function executeHandoff({ node, variables }) {
   const cfg = resolveConfig(node.config, variables);
+
+  const transferConversation = _coerceBoolean(
+    cfg.transfer_conversation ?? cfg.transfer,
+    true,
+  );
+
+  const handoffText = cfg.text ?? cfg.message ?? 'Un agente te atendera.';
+  const continueWithNextNode = !transferConversation && !!node.next;
+
+  const output = transferConversation
+    ? { type: 'handoff', text: handoffText }
+    : (continueWithNextNode
+      ? { type: 'text', text: handoffText }
+      : { type: 'end', text: handoffText });
+
   return {
-    output     : { type: 'handoff', text: cfg.text ?? cfg.message ?? 'Un agente te atenderá.' },
-    nextNodeId : null,
+    output,
+    nextNodeId : continueWithNextNode ? node.next : null,
     updatedVars: {},
-    terminal   : true,
-    fallback   : true,
+    terminal   : !continueWithNextNode,
+    fallback   : transferConversation,
+    control    : {
+      type: 'task',
+      action: 'create_task',
+      config: {
+        ...cfg,
+        action: 'create_task',
+      },
+    },
   };
 }
 
