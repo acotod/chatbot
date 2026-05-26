@@ -577,6 +577,25 @@ async function executeAction({ node, variables, integrationRunner, tenantId }) {
     });
     updatedVars = responseVars ?? {};
   } catch (err) {
+    const isTimeoutError = /timed out|timeout/i.test(String(err?.message ?? ''));
+    const shouldSoftFailCedulaSync = integrationRef === 'updateContactByIdentification' && isTimeoutError;
+    if (shouldSoftFailCedulaSync) {
+      logger.warn(
+        { tenantId, nodeId: node.id, integrationRef, message: err.message },
+        'nodeExecutors.action: cedula sync timed out, continuing flow with soft-fail',
+      );
+      return {
+        output: null,
+        nextNodeId: node.next,
+        updatedVars: {
+          identificacion_sync_status: 'timeout_soft_fail',
+          identificacion_sync_timeout: true,
+        },
+        terminal: false,
+        fallback: false,
+      };
+    }
+
     logger.error({ tenantId, nodeId: node.id, integrationRef, message: err.message }, 'nodeExecutors.action: integration failed');
     // Route to error branch if defined, otherwise continue
     const nextNodeId = node.branches.error ?? node.next;

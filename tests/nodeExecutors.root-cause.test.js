@@ -186,4 +186,39 @@ describe('nodeExecutors root-cause guards', () => {
       }),
     );
   });
+
+  test('action node soft-fails cedula sync on timeout and continues', async () => {
+    const node = {
+      id: 'node_10',
+      type: 'action',
+      next: 'node_7',
+      config: {
+        integration_ref: 'updateContactByIdentification',
+      },
+      branches: {
+        error: 'node_11',
+      },
+    };
+
+    const integrationRunner = {
+      run: jest.fn().mockRejectedValue(new Error('Integration request timed out after 8000ms')),
+    };
+
+    const result = await executeNode(node, {
+      input: null,
+      variables: {},
+      tenantId: 'tenant-1',
+      integrationRunner,
+    });
+
+    expect(result.nextNodeId).toBe('node_7');
+    expect(result.fallback).toBe(false);
+    expect(result.terminal).toBe(false);
+    expect(result.updatedVars).toEqual(
+      expect.objectContaining({
+        identificacion_sync_status: 'timeout_soft_fail',
+        identificacion_sync_timeout: true,
+      }),
+    );
+  });
 });
