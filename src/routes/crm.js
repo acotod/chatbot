@@ -36,6 +36,7 @@ const TSE_LOOKUP_SUCCESS_TTL_MS = 5 * 60 * 1000;
 const TSE_LOOKUP_NOT_FOUND_TTL_MS = 60 * 1000;
 const TSE_LOOKUP_ERROR_TTL_MS = 30 * 1000;
 const TSE_EXTERNAL_DOWN_USER_MESSAGE = 'En este momento no podemos validar tu identificacion por un servicio externo. Podemos continuar y un asesor te ayudara enseguida.';
+const CRM_CEDULA_ALLOW_EXTERNAL_DOWN = process.env.CRM_CEDULA_ALLOW_EXTERNAL_DOWN !== 'false';
 const PADRON_RELOAD_TTL_MS = 5 * 60 * 1000;
 const _tseLookupCache = new Map();
 const _tseLookupInflight = new Map();
@@ -270,19 +271,37 @@ router.patch('/contacts/by-cedula', [
     }
 
     const tseLookup = await fetchTseProfileByCedula(targetTenantId, cedula);
-    if (!tseLookup.ok) {
-      if (tseLookup.notFound) {
-        return res.status(404).json({ error: 'Cedula not found in TSE', detail: tseLookup.error ?? null });
+    let effectiveLookup = tseLookup;
+    if (!effectiveLookup.ok) {
+      if (effectiveLookup.notFound) {
+        return res.status(404).json({ error: 'Cedula not found in TSE', detail: effectiveLookup.error ?? null });
       }
-      return res.status(502).json({
-        error: 'TSE lookup failed',
-        detail: tseLookup.error ?? 'Unable to fetch data from TSE API',
-        message: TSE_EXTERNAL_DOWN_USER_MESSAGE,
-      });
+
+      if (!CRM_CEDULA_ALLOW_EXTERNAL_DOWN) {
+        return res.status(502).json({
+          error: 'TSE lookup failed',
+          detail: effectiveLookup.error ?? 'Unable to fetch data from TSE API',
+          message: TSE_EXTERNAL_DOWN_USER_MESSAGE,
+        });
+      }
+
+      // Soft-fail mode: continue contact sync even when external service is down.
+      effectiveLookup = {
+        ok: true,
+        profile: {
+          nombre: null,
+          email: null,
+          phone: null,
+          empresa: null,
+          cargo: null,
+        },
+        source: 'external_unavailable_soft_fail',
+        fallbackReason: effectiveLookup.error ?? 'External ID validation unavailable',
+      };
     }
 
-    const tseProfile = tseLookup.profile ?? {};
-    const lookupSource = String(tseLookup.source || 'tse');
+    const tseProfile = effectiveLookup.profile ?? {};
+    const lookupSource = String(effectiveLookup.source || 'tse');
     const resolvedNombre = tseProfile.nombre ?? null;
     const resolvedEmail = tseProfile.email ?? null;
     const resolvedEmpresa = tseProfile.empresa ?? null;
@@ -309,7 +328,7 @@ router.patch('/contacts/by-cedula', [
           identificacionNormalizada: normalizedCedula,
           tseSyncedAt: new Date().toISOString(),
           tseSource: lookupSource,
-          tseFallbackReason: tseLookup.fallbackReason ?? null,
+          tseFallbackReason: effectiveLookup.fallbackReason ?? null,
           tseData: tseProfile,
         },
         ultimoContacto: new Date(),
@@ -364,7 +383,7 @@ router.patch('/contacts/by-cedula', [
       identificacionNormalizada: normalizedCedula,
       tseSyncedAt: new Date().toISOString(),
       tseSource: lookupSource,
-      tseFallbackReason: tseLookup.fallbackReason ?? null,
+      tseFallbackReason: effectiveLookup.fallbackReason ?? null,
       tseData: tseProfile,
     };
     data.ultimoContacto = new Date();
