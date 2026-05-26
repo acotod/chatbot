@@ -84,6 +84,15 @@ router.get('/contacts', [
     const limit = req.query.limit ?? 30;
     const skip  = (page - 1) * limit;
     const q     = req.query.q?.trim();
+    const normalizedQ = q ? normalizeCedula(q) : '';
+    const qCedulaFilters = q
+      ? [
+        { customFields: { path: ['cedula'], equals: q } },
+        { customFields: { path: ['identificacion'], equals: q } },
+        { customFields: { path: ['cedulaNormalizada'], equals: normalizedQ } },
+        { customFields: { path: ['identificacionNormalizada'], equals: normalizedQ } },
+      ]
+      : [];
 
     const where = {
       ...(tenantId ? { tenantId } : {}),
@@ -93,6 +102,7 @@ router.get('/contacts', [
           { phone:  { contains: q } },
           { email:  { contains: q, mode: 'insensitive' } },
           { empresa:{ contains: q, mode: 'insensitive' } },
+          ...qCedulaFilters,
         ],
       } : {}),
       ...(req.query.etiqueta ? { etiquetas: { has: req.query.etiqueta } } : {}),
