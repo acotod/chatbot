@@ -1300,9 +1300,6 @@ function NodeEditModal({
   const [endMsg, setEndMsg]           = useState(String(cfg.text ?? cfg.message ?? ""));
   const [handoffDept, setHandoffDept] = useState(String(cfg.department ?? ""));
   const [handoffMsg, setHandoffMsg]   = useState(String(cfg.text ?? cfg.message ?? ""));
-  const [handoffTransferConversation, setHandoffTransferConversation] = useState(
-    cfg.transfer_conversation !== false && cfg.transfer !== false
-  );
   const handoffDepartmentSuggestions = Array.from(new Set([
     "soporte_tecnico",
     "soporte",
@@ -1647,29 +1644,7 @@ function NodeEditModal({
       }
       case "delay":     return { seconds: delaySeconds };
       case "end":       return { text: endMsg, ...(endMsg.trim() ? { message: endMsg } : {}), ...actionFragment };
-      case "handoff": {
-        const handoffCfg: Record<string, unknown> = {
-          department: handoffDept,
-          text: handoffMsg,
-          ...(handoffMsg.trim() ? { message: handoffMsg } : {}),
-          transfer_conversation: handoffTransferConversation,
-          action: "create_task",
-          ...(taskTitle.trim() ? { title: taskTitle.trim() } : {}),
-          ...(taskPriority.trim() ? { priority: taskPriority.trim() } : {}),
-          ...(taskStatus.trim() ? { status: taskStatus.trim() } : {}),
-          assignment_mode: taskAssignMode || "none",
-          ...actionFragment,
-        };
-
-        if (taskAssignMode === "fixed" && taskAssignTo.trim()) {
-          handoffCfg.assign_to = taskAssignTo.trim();
-        }
-        if (taskAssignMode === "variable" && taskAssignVar.trim()) {
-          handoffCfg.assign_to_var = taskAssignVar.trim();
-        }
-
-        return handoffCfg;
-      }
+      case "handoff":   return { department: handoffDept, text: handoffMsg, ...(handoffMsg.trim() ? { message: handoffMsg } : {}), ...actionFragment };
       case "llm":       return { prompts: llmPrompts, composeMode: llmComposeMode, ...(llmFallbackText.trim() ? { fallback_text: llmFallbackText.trim() } : {}), ...actionFragment };
       case "action":    return actionFragment;
       case "task": {
@@ -2020,77 +1995,22 @@ function NodeEditModal({
               )}
               {/* handoff */}
               {type === "handoff" && (
-                <div className="space-y-4">
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="bg-slate-50 rounded-lg border border-slate-100 p-4">
-                      <label className="block text-xs font-medium text-slate-600 mb-2">Departamento / Agente</label>
-                      <VarComboInput
-                        value={handoffDept}
-                        onChange={setHandoffDept}
-                        placeholder="soporte_tecnico"
-                        suggestions={handoffDepartmentSuggestions}
-                        className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-                      />
-                    </div>
-                    <div className="bg-slate-50 rounded-lg border border-slate-100 p-4">
-                      <label className="block text-xs font-medium text-slate-600 mb-2">Mensaje del nodo</label>
-                      <textarea value={handoffMsg} onChange={(e) => setHandoffMsg(e.target.value)} rows={2}
-                        placeholder="Te transfiero con un agente..."
-                        className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                    </div>
-                  </div>
-
+                <div className="grid grid-cols-2 gap-4">
                   <div className="bg-slate-50 rounded-lg border border-slate-100 p-4">
-                    <label className="inline-flex items-center gap-2 text-xs font-medium text-slate-700">
-                      <input
-                        type="checkbox"
-                        checked={handoffTransferConversation}
-                        onChange={(e) => setHandoffTransferConversation(Boolean(e.target.checked))}
-                        className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
-                      />
-                      Transferir conversación a humano al ejecutar el nodo
-                    </label>
-                    <p className="mt-2 text-xs text-slate-500">
-                      Si está desactivado, el nodo creará/asignará la solicitud y el flujo continuará con el siguiente nodo (si existe).
-                    </p>
+                    <label className="block text-xs font-medium text-slate-600 mb-2">Departamento / Agente</label>
+                    <VarComboInput
+                      value={handoffDept}
+                      onChange={setHandoffDept}
+                      placeholder="soporte_tecnico"
+                      suggestions={handoffDepartmentSuggestions}
+                      className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                    />
                   </div>
-
-                  <div className="grid grid-cols-3 gap-4">
-                    <div className="bg-slate-50 rounded-lg border border-slate-100 p-4">
-                      <label className="block text-xs font-medium text-slate-600 mb-2">Modo de asignación</label>
-                      <select
-                        value={taskAssignMode}
-                        onChange={(e) => setTaskAssignMode(String(e.target.value ?? "none"))}
-                        className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-                      >
-                        <option value="none">Sin asignar</option>
-                        <option value="fixed">Agente fijo (ID)</option>
-                        <option value="variable">Desde variable</option>
-                        <option value="least_load">Automática por menor carga</option>
-                      </select>
-                    </div>
-
-                    <div className="bg-slate-50 rounded-lg border border-slate-100 p-4">
-                      <label className="block text-xs font-medium text-slate-600 mb-2">Agente ID (si fijo)</label>
-                      <input
-                        value={taskAssignTo}
-                        onChange={(e) => setTaskAssignTo(e.target.value)}
-                        placeholder="15"
-                        disabled={taskAssignMode !== "fixed"}
-                        className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-slate-100"
-                      />
-                    </div>
-
-                    <div className="bg-slate-50 rounded-lg border border-slate-100 p-4">
-                      <label className="block text-xs font-medium text-slate-600 mb-2">Variable agente (si variable)</label>
-                      <VarComboInput
-                        value={taskAssignVar}
-                        onChange={setTaskAssignVar}
-                        placeholder="variables.agente_id"
-                        suggestions={flowVariables.length > 0 ? flowVariables : MENU_VARIABLE_PRESETS}
-                        className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-                      />
-                    </div>
+                  <div className="bg-slate-50 rounded-lg border border-slate-100 p-4">
+                    <label className="block text-xs font-medium text-slate-600 mb-2">Mensaje al transferir</label>
+                    <textarea value={handoffMsg} onChange={(e) => setHandoffMsg(e.target.value)} rows={2}
+                      placeholder="Te transfiero con un agente..."
+                      className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
                   </div>
                 </div>
               )}
@@ -2770,22 +2690,14 @@ function FlowBuilder({
 
   function handleCanvasChange(nextDefinition: FlowDefinition) {
     const normalizedDefinition = normalizeFlowDefinition(nextDefinition);
-    const nextSerialized = JSON.stringify(normalizedDefinition);
+    const nextJson = JSON.stringify(normalizedDefinition, null, 2);
 
     setDefinition((prev) => {
-      if (!prev) {
-        setJsonText(JSON.stringify(normalizedDefinition, null, 2));
-        return normalizedDefinition;
-      }
-
-      const prevSerialized = JSON.stringify(prev);
-      if (prevSerialized === nextSerialized) {
-        return prev;
-      }
-
-      setJsonText(JSON.stringify(normalizedDefinition, null, 2));
-      return normalizedDefinition;
+      if (!prev) return normalizedDefinition;
+      const prevJson = JSON.stringify(prev, null, 2);
+      return prevJson === nextJson ? prev : normalizedDefinition;
     });
+    setJsonText((prev) => (prev === nextJson ? prev : nextJson));
   }
 
   function handleAutoArrange() {
