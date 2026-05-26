@@ -109,13 +109,23 @@ router.get('/contacts', [
           id: true, phone: true, nombre: true, email: true, empresa: true,
           cargo: true, canalOrigen: true, etiquetas: true, leadScore: true,
           ultimoContacto: true, createdAt: true,
+          customFields: true,
           _count: { select: { solicitudes: true, deals: true, tasks: true } },
         },
       }),
       prisma.user.count({ where }),
     ]);
 
-    res.json({ data: contacts, total, page, limit });
+    const data = contacts.map((contact) => {
+      const identificacion = resolveContactIdentificacion(contact.customFields);
+      const { customFields, ...rest } = contact;
+      return {
+        ...rest,
+        identificacion,
+      };
+    });
+
+    res.json({ data, total, page, limit });
   } catch (err) { next(err); }
 });
 
@@ -149,7 +159,10 @@ router.get('/contacts/:id(\\d+)', [
     if (!req.admin.superAdmin && contact.tenantId !== req.admin.tenantId) {
       return res.status(403).json({ error: 'Forbidden' });
     }
-    res.json(contact);
+    res.json({
+      ...contact,
+      identificacion: resolveContactIdentificacion(contact.customFields),
+    });
   } catch (err) { next(err); }
 });
 
@@ -664,6 +677,18 @@ function getCedulaCandidates(customFields) {
   }
 
   return values;
+}
+
+function resolveContactIdentificacion(customFields) {
+  const candidates = getCedulaCandidates(customFields);
+  if (candidates.length === 0) return null;
+
+  for (const candidate of candidates) {
+    const raw = String(candidate ?? '').trim();
+    if (raw) return raw;
+  }
+
+  return null;
 }
 
 async function findContactByCedula(tenantId, cedula, normalizedCedula) {
@@ -1332,14 +1357,27 @@ function extractPadronCedula(row) {
 function extractPadronNombre(row) {
   if (!row || typeof row !== 'object') return null;
 
-  const fullName = pickFirst(row, [
+  const explicitFullName = pickFirst(row, [
     'nombrecompleto',
-    'nombre',
     'nombrerazonsocial',
     'razonsocial',
     'fullname',
   ]);
-  if (fullName) return fullName;
+  if (explicitFullName) return explicitFullName;
+
+  const nameCore = pickFirst(row, [
+    'nombre',
+    'nombres',
+    'primernombre',
+    'name',
+  ]);
+  const apellidoPaterno = pickFirst(row, ['papellido', 'primerapellido', 'apellido1', 'lastname']);
+  const apellidoMaterno = pickFirst(row, ['sapellido', 'segundoapellido', 'apellido2']);
+  const joinedPadron = [nameCore, apellidoPaterno, apellidoMaterno]
+    .filter((value) => value != null && String(value).trim() !== '')
+    .join(' ')
+    .trim();
+  if (joinedPadron) return joinedPadron;
 
   const firstName = pickFirst(row, ['nombres', 'primernombre', 'name']);
   const lastName = pickFirst(row, ['apellidos', 'primerapellido', 'lastname']);
