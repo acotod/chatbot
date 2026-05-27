@@ -56,6 +56,14 @@ const logoUpload = multer({
 
 const prisma = new PrismaClient();
 const router = express.Router();
+const GOOGLE_OAUTH_AUTH_URL = 'https://accounts.google.com/o/oauth2/v2/auth';
+const GOOGLE_OAUTH_TOKEN_URL = 'https://oauth2.googleapis.com/token';
+const GOOGLE_CALENDAR_API_BASE = 'https://www.googleapis.com/calendar/v3';
+const CONFIG_SECRET_PREFIX = 'encv1';
+const GOOGLE_CALENDAR_SCOPES = [
+    'https://www.googleapis.com/auth/calendar.events',
+    'https://www.googleapis.com/auth/calendar.readonly',
+];
 
 function persistEnvVariable(key, rawValue) {
     const envPath = path.join(process.cwd(), '.env');
@@ -118,6 +126,204 @@ function normalizeOptionalHttpUrl(value) {
 function normalizeWhatsappRecipient(value) {
     const digits = String(value || '').replace(/\D+/g, '');
     return digits || null;
+}
+
+function asObject(value) {
+    return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+}
+
+function getConfigEncryptionKey() {
+    const configuredKey = process.env.CONFIG_ENCRYPTION_KEY || process.env.WA_TOKEN_ENCRYPTION_KEY;
+    const fallbackKey = process.env.JWT_SECRET;
+    const secret = configuredKey || fallbackKey || 'dev-secret';
+    return crypto.createHash('sha256').update(String(secret)).digest();
+}
+
+function encryptConfigSecret(value) {
+    const text = String(value ?? '').trim();
+    if (!text) return '';
+
+    const iv = crypto.randomBytes(12);
+    const cipher = crypto.createCipheriv('aes-256-gcm', getConfigEncryptionKey(), iv);
+    const encrypted = Buffer.concat([cipher.update(text, 'utf8'), cipher.final()]);
+    const authTag = cipher.getAuthTag();
+    return `${CONFIG_SECRET_PREFIX}:${iv.toString('base64')}:${authTag.toString('base64')}:${encrypted.toString('base64')}`;
+}
+
+function decryptConfigSecret(value) {
+    const raw = String(value ?? '').trim();
+    if (!raw) return '';
+    if (!raw.startsWith(`${CONFIG_SECRET_PREFIX}:`)) return raw;
+
+    const parts = raw.split(':');
+    if (parts.length !== 4) return '';
+
+    try {
+        const [, ivB64, authTagB64, encryptedB64] = parts;
+        const decipher = crypto.createDecipheriv(
+            'aes-256-gcm',
+            getConfigEncryptionKey(),
+            Buffer.from(ivB64, 'base64')
+        );
+        decipher.setAuthTag(Buffer.from(authTagB64, 'base64'));
+        const decrypted = Buffer.concat([
+            decipher.update(Buffer.from(encryptedB64, 'base64')),
+            decipher.final(),
+        ]);
+        return decrypted.toString('utf8').trim();
+    } catch (_err) {
+        return '';
+    }
+}
+
+function b64urlEncode(input) {
+    return Buffer.from(input, 'utf8').toString('base64url');
+}
+
+function b64urlDecode(input) {
+    return Buffer.from(String(input || ''), 'base64url').toString('utf8');
+}
+
+function getOauthStateSigningSecret() {
+    return String(process.env.JWT_SECRET || process.env.ADMIN_API_KEY || 'oauth-dev-secret');
+}
+
+function buildSignedOauthState(payload) {
+    const encoded = b64urlEncode(JSON.stringify(payload));
+    const signature = crypto
+        .createHmac('sha256', getOauthStateSigningSecret())
+        .update(encoded)
+        .digest('base64url');
+    return `${encoded}.${signature}`;
+}
+
+function parseSignedOauthState(state) {
+    const raw = String(state || '');
+    const [encoded, signature] = raw.split('.');
+    if (!encoded || !signature) return null;
+
+    const expected = crypto
+        .createHmac('sha256', getOauthStateSigningSecret())
+        .update(encoded)
+        .digest('base64url');
+
+    const providedBuffer = Buffer.from(signature);
+    const expectedBuffer = Buffer.from(expected);
+    if (providedBuffer.length !== expectedBuffer.length) return null;
+    if (!crypto.timingSafeEqual(providedBuffer, expectedBuffer)) return null;
+
+    try {
+        const payload = JSON.parse(b64urlDecode(encoded));
+        if (!payload || typeof payload !== 'object') return null;
+        if (!payload.exp || Date.now() > Number(payload.exp)) return null;
+        return payload;
+    } catch (_err) {
+        return null;
+    }
+}
+
+function getApiOrigin(req) {
+    const fromEnv = String(process.env.API_BASE_URL || '').trim().replace(/\/$/, '');
+    if (fromEnv) return fromEnv;
+
+    const protoHeader = String(req.headers['x-forwarded-proto'] || '').split(',')[0].trim();
+    const hostHeader = String(req.headers['x-forwarded-host'] || req.headers.host || '').split(',')[0].trim();
+    const protocol = protoHeader || req.protocol || 'http';
+    return `${protocol}://${hostHeader}`.replace(/\/$/, '');
+}
+
+function getGoogleOauthClientConfig(req) {
+    const clientId = String(process.env.GOOGLE_OAUTH_CLIENT_ID || process.env.GOOGLE_CLIENT_ID || '').trim();
+    const clientSecret = String(process.env.GOOGLE_OAUTH_CLIENT_SECRET || process.env.GOOGLE_CLIENT_SECRET || '').trim();
+    const explicitRedirectUri = String(process.env.GOOGLE_OAUTH_REDIRECT_URI || '').trim();
+    const redirectUri = explicitRedirectUri
+        || `${getApiOrigin(req)}/admin/tenants/${encodeURIComponent(req.params.slug)}/calendars/${encodeURIComponent(req.params.calendarId)}/google/oauth/callback`;
+
+    return {
+        clientId,
+        clientSecret,
+        redirectUri,
+    };
+}
+
+function getGoogleTokenEndpoint(credentials = {}) {
+    const tokenUri = String(credentials.token_uri || credentials.tokenUri || GOOGLE_OAUTH_TOKEN_URL || '').trim();
+    return tokenUri || GOOGLE_OAUTH_TOKEN_URL;
+}
+
+function getDecryptedGoogleCredentials(config = {}) {
+    const cfg = asObject(config);
+    const credentials = asObject(cfg.provider_credentials || cfg.providerCredentials);
+
+    return {
+        accessToken: decryptConfigSecret(credentials.access_token || credentials.accessToken || ''),
+        refreshToken: decryptConfigSecret(credentials.refresh_token || credentials.refreshToken || ''),
+        tokenUri: String(credentials.token_uri || credentials.tokenUri || GOOGLE_OAUTH_TOKEN_URL),
+        expiresAt: String(credentials.expires_at || credentials.expiresAt || ''),
+    };
+}
+
+async function persistGoogleCredentialsOnCalendar({ calendar, nextAccessToken, nextRefreshToken, expiresInSec, nextCalendarExternalId }) {
+    const config = asObject(calendar.config);
+    const currentCredentials = asObject(config.provider_credentials || config.providerCredentials);
+
+    const mergedCredentials = {
+        ...currentCredentials,
+        access_token: nextAccessToken ? encryptConfigSecret(nextAccessToken) : String(currentCredentials.access_token || ''),
+        refresh_token: nextRefreshToken
+            ? encryptConfigSecret(nextRefreshToken)
+            : String(currentCredentials.refresh_token || ''),
+        token_uri: String(currentCredentials.token_uri || GOOGLE_OAUTH_TOKEN_URL),
+    };
+
+    if (Number.isFinite(expiresInSec) && Number(expiresInSec) > 0) {
+        mergedCredentials.expires_at = new Date(Date.now() + Number(expiresInSec) * 1000).toISOString();
+    }
+
+    const nextConfig = {
+        ...config,
+        provider: 'google',
+        sync: true,
+        provider_credentials: mergedCredentials,
+        ...(nextCalendarExternalId ? { calendar_external_id: String(nextCalendarExternalId).trim() } : {}),
+    };
+
+    return prisma.calendar.update({
+        where: { id: calendar.id },
+        data: { config: nextConfig },
+        select: { id: true, config: true },
+    });
+}
+
+async function refreshGoogleAccessTokenForCalendar({ calendar, req }) {
+    const config = asObject(calendar.config);
+    const credentials = getDecryptedGoogleCredentials(config);
+    const { clientId, clientSecret } = getGoogleOauthClientConfig(req);
+    if (!credentials.refreshToken || !clientId || !clientSecret) return null;
+
+    const body = new URLSearchParams({
+        client_id: clientId,
+        client_secret: clientSecret,
+        grant_type: 'refresh_token',
+        refresh_token: credentials.refreshToken,
+    });
+
+    const tokenResp = await fetch(getGoogleTokenEndpoint(credentials), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body,
+    });
+    const tokenJson = await tokenResp.json().catch(() => ({}));
+    if (!tokenResp.ok || !tokenJson.access_token) return null;
+
+    const updated = await persistGoogleCredentialsOnCalendar({
+        calendar,
+        nextAccessToken: tokenJson.access_token,
+        nextRefreshToken: credentials.refreshToken,
+        expiresInSec: tokenJson.expires_in,
+    });
+
+    return getDecryptedGoogleCredentials(updated.config).accessToken;
 }
 
 async function buildAgentSolicitudesUrl(tenantId) {
@@ -611,6 +817,267 @@ router.get('/tenants/:slug/calendars', requirePermiso('VIEW_AGENTES'), async (re
             orderBy: { createdAt: 'desc' },
         });
         return res.json({ data: calendars });
+    } catch (err) {
+        next(err);
+    }
+});
+
+// GET /admin/tenants/:slug/calendars/:calendarId/google/oauth/start
+router.get('/tenants/:slug/calendars/:calendarId/google/oauth/start', requirePermiso('EDIT_AGENTES'), async (req, res, next) => {
+    try {
+        const tenant = await db.findTenantBySlug(req.params.slug);
+        if (!tenant) return res.status(404).json({ error: 'Tenant not found' });
+        if (denyIfWrongTenant(req, res, tenant.id)) return;
+
+        const calendar = await prisma.calendar.findFirst({
+            where: { id: req.params.calendarId, tenantId: tenant.id },
+            select: { id: true },
+        });
+        if (!calendar) return res.status(404).json({ error: 'Calendar not found' });
+
+        const { clientId, redirectUri } = getGoogleOauthClientConfig(req);
+        if (!clientId) return res.status(503).json({ error: 'Google OAuth is not configured' });
+
+        const state = buildSignedOauthState({
+            tenantId: tenant.id,
+            slug: tenant.slug,
+            calendarId: calendar.id,
+            adminUserId: req.admin?.adminUserId ?? null,
+            exp: Date.now() + (10 * 60 * 1000),
+            nonce: crypto.randomBytes(12).toString('hex'),
+        });
+
+        const oauthUrl = new URL(GOOGLE_OAUTH_AUTH_URL);
+        oauthUrl.searchParams.set('client_id', clientId);
+        oauthUrl.searchParams.set('redirect_uri', redirectUri);
+        oauthUrl.searchParams.set('response_type', 'code');
+        oauthUrl.searchParams.set('access_type', 'offline');
+        oauthUrl.searchParams.set('prompt', 'consent');
+        oauthUrl.searchParams.set('include_granted_scopes', 'true');
+        oauthUrl.searchParams.set('scope', GOOGLE_CALENDAR_SCOPES.join(' '));
+        oauthUrl.searchParams.set('state', state);
+
+        return res.json({ authorizationUrl: oauthUrl.toString() });
+    } catch (err) {
+        next(err);
+    }
+});
+
+// GET /admin/tenants/:slug/calendars/:calendarId/google/oauth/callback
+router.get('/tenants/:slug/calendars/:calendarId/google/oauth/callback', async (req, res, next) => {
+    try {
+        const oauthError = String(req.query.error || '').trim();
+        if (oauthError) return res.status(400).json({ error: `Google OAuth error: ${oauthError}` });
+
+        const code = String(req.query.code || '').trim();
+        const state = String(req.query.state || '').trim();
+        if (!code || !state) return res.status(400).json({ error: 'Missing OAuth code/state' });
+
+        const parsedState = parseSignedOauthState(state);
+        if (!parsedState) return res.status(400).json({ error: 'Invalid OAuth state' });
+
+        const tenant = await db.findTenantBySlug(req.params.slug);
+        if (!tenant) return res.status(404).json({ error: 'Tenant not found' });
+        if (tenant.id !== parsedState.tenantId) return res.status(400).json({ error: 'OAuth tenant mismatch' });
+        if (String(parsedState.calendarId) !== String(req.params.calendarId)) {
+            return res.status(400).json({ error: 'OAuth calendar mismatch' });
+        }
+
+        const calendar = await prisma.calendar.findFirst({
+            where: { id: req.params.calendarId, tenantId: tenant.id },
+            select: { id: true, config: true },
+        });
+        if (!calendar) return res.status(404).json({ error: 'Calendar not found' });
+
+        const { clientId, clientSecret, redirectUri } = getGoogleOauthClientConfig(req);
+        if (!clientId || !clientSecret) return res.status(503).json({ error: 'Google OAuth is not configured' });
+
+        const body = new URLSearchParams({
+            code,
+            client_id: clientId,
+            client_secret: clientSecret,
+            redirect_uri: redirectUri,
+            grant_type: 'authorization_code',
+        });
+
+        const tokenResp = await fetch(GOOGLE_OAUTH_TOKEN_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body,
+        });
+        const tokenJson = await tokenResp.json().catch(() => ({}));
+
+        if (!tokenResp.ok || !tokenJson.access_token) {
+            return res.status(400).json({ error: 'Could not exchange OAuth code for tokens' });
+        }
+
+        const existingCreds = getDecryptedGoogleCredentials(calendar.config);
+        await persistGoogleCredentialsOnCalendar({
+            calendar,
+            nextAccessToken: tokenJson.access_token,
+            nextRefreshToken: tokenJson.refresh_token || existingCreds.refreshToken,
+            expiresInSec: tokenJson.expires_in,
+            nextCalendarExternalId: 'primary',
+        });
+
+        audit({
+            adminUserId: parsedState.adminUserId ?? null,
+            tenantId: tenant.id,
+            accion: 'CONNECT_GOOGLE_CALENDAR',
+            entidad: 'calendar',
+            entidadId: String(calendar.id),
+            ip: req.ip,
+            userAgent: req.headers['user-agent'],
+            metadata: { provider: 'google', via: 'oauth_callback' },
+        });
+
+        return res.send('<html><body style="font-family:Arial,sans-serif;padding:24px;"><h2>Google Calendar conectado</h2><p>Ya puedes cerrar esta ventana y volver al panel.</p></body></html>');
+    } catch (err) {
+        next(err);
+    }
+});
+
+// GET /admin/tenants/:slug/calendars/:calendarId/google/calendars
+router.get('/tenants/:slug/calendars/:calendarId/google/calendars', requirePermiso('EDIT_AGENTES'), async (req, res, next) => {
+    try {
+        const tenant = await db.findTenantBySlug(req.params.slug);
+        if (!tenant) return res.status(404).json({ error: 'Tenant not found' });
+        if (denyIfWrongTenant(req, res, tenant.id)) return;
+
+        const calendar = await prisma.calendar.findFirst({
+            where: { id: req.params.calendarId, tenantId: tenant.id },
+            select: { id: true, config: true },
+        });
+        if (!calendar) return res.status(404).json({ error: 'Calendar not found' });
+
+        const creds = getDecryptedGoogleCredentials(calendar.config);
+        if (!creds.accessToken) {
+            return res.status(400).json({ error: 'Calendar is not connected to Google OAuth' });
+        }
+
+        const requestCalendarList = async (token) => fetch(
+            `${GOOGLE_CALENDAR_API_BASE}/users/me/calendarList`,
+            {
+                method: 'GET',
+                headers: { Authorization: `Bearer ${token}` },
+            }
+        );
+
+        let response = await requestCalendarList(creds.accessToken);
+        if ((response.status === 401 || response.status === 403) && creds.refreshToken) {
+            const refreshed = await refreshGoogleAccessTokenForCalendar({ calendar, req });
+            if (refreshed) {
+                response = await requestCalendarList(refreshed);
+            }
+        }
+
+        const json = await response.json().catch(() => ({}));
+        if (!response.ok) {
+            return res.status(400).json({ error: 'Could not list Google calendars' });
+        }
+
+        const calendars = Array.isArray(json.items)
+            ? json.items.map((item) => ({
+                id: item.id,
+                summary: item.summary,
+                primary: Boolean(item.primary),
+                accessRole: item.accessRole || null,
+            }))
+            : [];
+
+        return res.json({ data: calendars });
+    } catch (err) {
+        next(err);
+    }
+});
+
+// POST /admin/tenants/:slug/calendars/:calendarId/google/connect
+router.post('/tenants/:slug/calendars/:calendarId/google/connect', requirePermiso('EDIT_AGENTES'), async (req, res, next) => {
+    try {
+        const tenant = await db.findTenantBySlug(req.params.slug);
+        if (!tenant) return res.status(404).json({ error: 'Tenant not found' });
+        if (denyIfWrongTenant(req, res, tenant.id)) return;
+
+        const calendar = await prisma.calendar.findFirst({
+            where: { id: req.params.calendarId, tenantId: tenant.id },
+            select: { id: true, config: true },
+        });
+        if (!calendar) return res.status(404).json({ error: 'Calendar not found' });
+
+        const googleCalendarId = String(req.body?.googleCalendarId || '').trim();
+        if (!googleCalendarId) return res.status(400).json({ error: 'googleCalendarId is required' });
+
+        const config = asObject(calendar.config);
+        const updated = await prisma.calendar.update({
+            where: { id: calendar.id },
+            data: {
+                config: {
+                    ...config,
+                    provider: 'google',
+                    sync: true,
+                    google_calendar_id: googleCalendarId,
+                    calendar_external_id: googleCalendarId,
+                },
+            },
+            select: { id: true, config: true },
+        });
+
+        audit({
+            adminUserId: req.admin?.adminUserId,
+            tenantId: tenant.id,
+            accion: 'SET_GOOGLE_CALENDAR_TARGET',
+            entidad: 'calendar',
+            entidadId: String(calendar.id),
+            ip: req.ip,
+            userAgent: req.headers['user-agent'],
+            metadata: { googleCalendarId },
+        });
+
+        return res.json({ id: updated.id, googleCalendarId });
+    } catch (err) {
+        next(err);
+    }
+});
+
+// POST /admin/tenants/:slug/calendars/:calendarId/google/disconnect
+router.post('/tenants/:slug/calendars/:calendarId/google/disconnect', requirePermiso('EDIT_AGENTES'), async (req, res, next) => {
+    try {
+        const tenant = await db.findTenantBySlug(req.params.slug);
+        if (!tenant) return res.status(404).json({ error: 'Tenant not found' });
+        if (denyIfWrongTenant(req, res, tenant.id)) return;
+
+        const calendar = await prisma.calendar.findFirst({
+            where: { id: req.params.calendarId, tenantId: tenant.id },
+            select: { id: true, config: true },
+        });
+        if (!calendar) return res.status(404).json({ error: 'Calendar not found' });
+
+        const config = asObject(calendar.config);
+        const nextConfig = { ...config };
+        delete nextConfig.provider_credentials;
+        delete nextConfig.providerCredentials;
+        delete nextConfig.google_calendar_id;
+        delete nextConfig.calendar_external_id;
+        nextConfig.provider = 'internal';
+        nextConfig.sync = false;
+
+        await prisma.calendar.update({
+            where: { id: calendar.id },
+            data: { config: nextConfig },
+        });
+
+        audit({
+            adminUserId: req.admin?.adminUserId,
+            tenantId: tenant.id,
+            accion: 'DISCONNECT_GOOGLE_CALENDAR',
+            entidad: 'calendar',
+            entidadId: String(calendar.id),
+            ip: req.ip,
+            userAgent: req.headers['user-agent'],
+            metadata: { provider: 'google' },
+        });
+
+        return res.json({ ok: true });
     } catch (err) {
         next(err);
     }

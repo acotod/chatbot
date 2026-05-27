@@ -20,6 +20,7 @@
  */
 
 const { PrismaClient } = require('@prisma/client');
+const crypto           = require('crypto');
 const logger           = require('../utils/logger');
 
 const prisma = new PrismaClient();
@@ -36,6 +37,7 @@ function getRedis() {
 }
 
 const SLOT_CACHE_TTL_SEC = 60;
+const CONFIG_SECRET_PREFIX = 'encv1';
 
 const GOOGLE_CALENDAR_API_BASE = 'https://www.googleapis.com/calendar/v3';
 const GOOGLE_OAUTH_TOKEN_URL = 'https://oauth2.googleapis.com/token';
@@ -69,6 +71,39 @@ function asObject(value) {
   return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
 }
 
+function getConfigEncryptionKey() {
+  const configuredKey = process.env.CONFIG_ENCRYPTION_KEY || process.env.WA_TOKEN_ENCRYPTION_KEY;
+  const fallbackKey = process.env.JWT_SECRET;
+  const secret = configuredKey || fallbackKey || 'dev-secret';
+  return crypto.createHash('sha256').update(String(secret)).digest();
+}
+
+function decryptConfigSecret(value) {
+  const raw = String(value ?? '').trim();
+  if (!raw) return '';
+  if (!raw.startsWith(`${CONFIG_SECRET_PREFIX}:`)) return raw;
+
+  const parts = raw.split(':');
+  if (parts.length !== 4) return '';
+
+  try {
+    const [, ivB64, authTagB64, encryptedB64] = parts;
+    const decipher = crypto.createDecipheriv(
+      'aes-256-gcm',
+      getConfigEncryptionKey(),
+      Buffer.from(ivB64, 'base64')
+    );
+    decipher.setAuthTag(Buffer.from(authTagB64, 'base64'));
+    const decrypted = Buffer.concat([
+      decipher.update(Buffer.from(encryptedB64, 'base64')),
+      decipher.final(),
+    ]);
+    return decrypted.toString('utf8').trim();
+  } catch (_) {
+    return '';
+  }
+}
+
 function getCalendarProviderConfig(calendar) {
   const config = asObject(calendar?.config);
   const provider = String(config.provider || 'internal').toLowerCase();
@@ -77,8 +112,8 @@ function getCalendarProviderConfig(calendar) {
   return {
     provider,
     syncEnabled: config.sync !== false,
-    accessToken: credentials.access_token || credentials.accessToken || null,
-    refreshToken: credentials.refresh_token || credentials.refreshToken || null,
+    accessToken: decryptConfigSecret(credentials.access_token || credentials.accessToken || null) || null,
+    refreshToken: decryptConfigSecret(credentials.refresh_token || credentials.refreshToken || null) || null,
     tokenUri: credentials.token_uri || credentials.tokenUri || GOOGLE_OAUTH_TOKEN_URL,
     clientId:
       credentials.client_id ||

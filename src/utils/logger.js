@@ -2,7 +2,22 @@ const { createLogger, format, transports } = require('winston');
 
 // Redact sensitive fields from log output
 const REDACTED = '[REDACTED]';
-const SENSITIVE_KEYS = new Set(['password', 'passwordHash', 'password_hash', 'token', 'accessToken', 'refreshToken', 'apiKey', 'api_key', 'authorization', 'jwt', 'secret']);
+const SENSITIVE_KEYS = new Set([
+  'password',
+  'passwordHash',
+  'password_hash',
+  'token',
+  'accessToken',
+  'access_token',
+  'refreshToken',
+  'refresh_token',
+  'apiKey',
+  'api_key',
+  'authorization',
+  'jwt',
+  'secret',
+  'client_secret',
+]);
 
 function redactSecrets(obj) {
   if (!obj || typeof obj !== 'object') return obj;

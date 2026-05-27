@@ -379,6 +379,16 @@ export const adminUsersApi = {
 
 export const calendarsApi = {
   list: (slug: string) => apiClient.get(`/admin/tenants/${slug}/calendars`),
+  googleOauthStart: (slug: string, calendarId: string) =>
+    apiClient.get<{ authorizationUrl: string }>(`/admin/tenants/${slug}/calendars/${calendarId}/google/oauth/start`),
+  googleListCalendars: (slug: string, calendarId: string) =>
+    apiClient.get<{ data: Array<{ id: string; summary: string; primary: boolean; accessRole: string | null }> }>(
+      `/admin/tenants/${slug}/calendars/${calendarId}/google/calendars`
+    ),
+  googleConnect: (slug: string, calendarId: string, googleCalendarId: string) =>
+    apiClient.post(`/admin/tenants/${slug}/calendars/${calendarId}/google/connect`, { googleCalendarId }),
+  googleDisconnect: (slug: string, calendarId: string) =>
+    apiClient.post(`/admin/tenants/${slug}/calendars/${calendarId}/google/disconnect`),
 };
 
 export const agentePuestosApi = {
