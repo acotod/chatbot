@@ -38,6 +38,13 @@ interface Calendar {
   agenteId: number | null;
 }
 
+interface GoogleCalendarItem {
+  id: string;
+  summary: string;
+  primary: boolean;
+  accessRole: string | null;
+}
+
 interface AgentePuesto {
   id: number;
   nombre: string;
@@ -79,6 +86,10 @@ export default function AgentesPage() {
     jefeAdminId: "",
   });
   const [editFormError, setEditFormError] = useState("");
+  const [googleCalendars, setGoogleCalendars] = useState<GoogleCalendarItem[]>([]);
+  const [selectedGoogleCalendarId, setSelectedGoogleCalendarId] = useState("");
+  const [googleCalendarError, setGoogleCalendarError] = useState("");
+  const [googleCalendarInfo, setGoogleCalendarInfo] = useState("");
 
   const { data, isLoading } = useQuery({
     queryKey: ["agentes", tenantSlug],
@@ -152,6 +163,73 @@ export default function AgentesPage() {
     onError: (error) => setEditFormError(getApiErrorMessage(error, t("errors.updateFailed"))),
   });
 
+  const startGoogleOauth = useMutation({
+    mutationFn: async () => {
+      if (!tenantSlug) throw new Error("Missing tenant slug");
+      if (!editForm.calendarId) throw new Error("Select an internal calendar first");
+      return calendarsApi.googleOauthStart(tenantSlug, editForm.calendarId);
+    },
+    onSuccess: (response) => {
+      const authUrl = response.data?.authorizationUrl;
+      if (!authUrl) {
+        setGoogleCalendarError("No se pudo obtener la URL de autorizacion de Google.");
+        return;
+      }
+      setGoogleCalendarError("");
+      setGoogleCalendarInfo("Ventana de autorizacion abierta. Completa el consentimiento y luego pulsa 'Cargar calendarios Google'.");
+      window.open(authUrl, "google-calendar-oauth", "width=560,height=720");
+    },
+    onError: (error) => setGoogleCalendarError(getApiErrorMessage(error, "No se pudo iniciar OAuth con Google.")),
+  });
+
+  const loadGoogleCalendars = useMutation({
+    mutationFn: async () => {
+      if (!tenantSlug) throw new Error("Missing tenant slug");
+      if (!editForm.calendarId) throw new Error("Select an internal calendar first");
+      return calendarsApi.googleListCalendars(tenantSlug, editForm.calendarId);
+    },
+    onSuccess: (response) => {
+      const items = response.data?.data ?? [];
+      setGoogleCalendars(items);
+      const preferred = items.find((item) => item.primary) ?? items[0];
+      setSelectedGoogleCalendarId(preferred?.id ?? "");
+      setGoogleCalendarError("");
+      setGoogleCalendarInfo(items.length > 0
+        ? "Calendarios de Google cargados. Selecciona uno y pulsa 'Vincular calendario Google'."
+        : "No se encontraron calendarios disponibles en la cuenta conectada.");
+    },
+    onError: (error) => setGoogleCalendarError(getApiErrorMessage(error, "No se pudieron cargar calendarios de Google.")),
+  });
+
+  const connectGoogleCalendar = useMutation({
+    mutationFn: async () => {
+      if (!tenantSlug) throw new Error("Missing tenant slug");
+      if (!editForm.calendarId) throw new Error("Select an internal calendar first");
+      if (!selectedGoogleCalendarId) throw new Error("Select a Google calendar");
+      return calendarsApi.googleConnect(tenantSlug, editForm.calendarId, selectedGoogleCalendarId);
+    },
+    onSuccess: () => {
+      setGoogleCalendarError("");
+      setGoogleCalendarInfo("Calendario de Google vinculado correctamente.");
+    },
+    onError: (error) => setGoogleCalendarError(getApiErrorMessage(error, "No se pudo vincular el calendario de Google.")),
+  });
+
+  const disconnectGoogleCalendar = useMutation({
+    mutationFn: async () => {
+      if (!tenantSlug) throw new Error("Missing tenant slug");
+      if (!editForm.calendarId) throw new Error("Select an internal calendar first");
+      return calendarsApi.googleDisconnect(tenantSlug, editForm.calendarId);
+    },
+    onSuccess: () => {
+      setGoogleCalendarError("");
+      setGoogleCalendarInfo("Conexion de Google Calendar eliminada.");
+      setGoogleCalendars([]);
+      setSelectedGoogleCalendarId("");
+    },
+    onError: (error) => setGoogleCalendarError(getApiErrorMessage(error, "No se pudo desconectar Google Calendar.")),
+  });
+
   const agentes: Agente[] = data?.data ?? data ?? [];
   const puestos: AgentePuesto[] = puestosData?.data ?? puestosData ?? [];
   const calendars: Calendar[] = calendarsData?.data ?? calendarsData ?? [];
@@ -204,6 +282,10 @@ export default function AgentesPage() {
       calendarId: calendars.find((c) => c.agenteId === agent.id)?.id ?? "",
       jefeAdminId: agent.jefeAdminId ? String(agent.jefeAdminId) : "",
     });
+    setGoogleCalendars([]);
+    setSelectedGoogleCalendarId("");
+    setGoogleCalendarError("");
+    setGoogleCalendarInfo("");
     setEditModal(true);
   }
 
@@ -492,7 +574,14 @@ export default function AgentesPage() {
             <label className="block text-sm font-medium text-slate-700 mb-1">{t("fields.internalCalendarOptional")}</label>
             <select
               value={editForm.calendarId}
-              onChange={(e) => setEditForm((f) => ({ ...f, calendarId: e.target.value }))}
+              onChange={(e) => {
+                const value = e.target.value;
+                setEditForm((f) => ({ ...f, calendarId: value }));
+                setGoogleCalendars([]);
+                setSelectedGoogleCalendarId("");
+                setGoogleCalendarError("");
+                setGoogleCalendarInfo("");
+              }}
               className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-blue-500"
             >
               <option value="">{t("fields.noInternalCalendar")}</option>
@@ -507,6 +596,49 @@ export default function AgentesPage() {
               })}
             </select>
           </div>
+          {editForm.calendarId && (
+            <div className="rounded-md border border-slate-200 bg-slate-50 p-3 space-y-3">
+              <p className="text-sm font-medium text-slate-800">Google Calendar OAuth</p>
+              <div className="flex flex-wrap gap-2">
+                <Button type="button" variant="secondary" onClick={() => startGoogleOauth.mutate()} disabled={startGoogleOauth.isPending}>
+                  {startGoogleOauth.isPending ? "Abriendo OAuth..." : "Conectar con Google"}
+                </Button>
+                <Button type="button" variant="secondary" onClick={() => loadGoogleCalendars.mutate()} disabled={loadGoogleCalendars.isPending}>
+                  {loadGoogleCalendars.isPending ? "Cargando..." : "Cargar calendarios Google"}
+                </Button>
+                <Button type="button" variant="secondary" onClick={() => disconnectGoogleCalendar.mutate()} disabled={disconnectGoogleCalendar.isPending}>
+                  {disconnectGoogleCalendar.isPending ? "Desconectando..." : "Desconectar Google"}
+                </Button>
+              </div>
+
+              {googleCalendars.length > 0 && (
+                <div className="space-y-2">
+                  <label className="block text-sm font-medium text-slate-700">Calendario Google destino</label>
+                  <select
+                    value={selectedGoogleCalendarId}
+                    onChange={(e) => setSelectedGoogleCalendarId(e.target.value)}
+                    className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-blue-500"
+                  >
+                    {googleCalendars.map((item) => (
+                      <option key={item.id} value={item.id}>
+                        {item.summary}{item.primary ? " (primary)" : ""}
+                      </option>
+                    ))}
+                  </select>
+                  <Button
+                    type="button"
+                    onClick={() => connectGoogleCalendar.mutate()}
+                    disabled={connectGoogleCalendar.isPending || !selectedGoogleCalendarId}
+                  >
+                    {connectGoogleCalendar.isPending ? "Vinculando..." : "Vincular calendario Google"}
+                  </Button>
+                </div>
+              )}
+
+              {googleCalendarInfo && <p className="text-xs text-emerald-700">{googleCalendarInfo}</p>}
+              {googleCalendarError && <p className="text-xs text-rose-600">{googleCalendarError}</p>}
+            </div>
+          )}
           {editFormError && <p className="text-sm text-red-600">{editFormError}</p>}
           <div className="flex justify-end gap-3 pt-2">
             <Button
