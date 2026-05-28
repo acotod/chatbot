@@ -502,12 +502,14 @@ async function executeInput({ node, input, variables, llmService, integrationRun
           ...variables,
           ...updatedVars,
         };
+        const isCedulaSync = String(cfg.integration_ref).trim() === 'updateContactByIdentification';
 
         const { responseVars } = await integrationRunner.run(tenantId, cfg.integration_ref, integrationVars, {
           conversationId: variables.conversation_id ?? null,
           nodeRef: node.id ?? null,
           nodeType: node.type ?? 'input',
           trigger: 'flow_node',
+          ...(isCedulaSync ? { timeoutMs: 15000 } : {}),
         });
 
         Object.assign(updatedVars, responseVars ?? {});

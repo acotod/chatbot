@@ -59,6 +59,8 @@ const CACHE_TTL_MS = 60_000;
  * @param {string|null} [opts.nodeRef]
  * @param {string|null} [opts.nodeType]
  * @param {string|null} [opts.trigger]
+ * @param {number} [opts.timeoutMs]
+ * @param {number} [opts.retryCount]
  * @returns {Promise<{ responseVars: object, rawResponse: any }>}
  */
 async function run(tenantId, integrationRef, variables, opts = {}) {
@@ -81,8 +83,12 @@ async function run(tenantId, integrationRef, variables, opts = {}) {
   // Resolve templates in endpoint, headers, and body
   const endpoint = normalizeEndpointUrl(resolveTemplate(cfg.endpoint ?? '', runtimeVars));
   const method   = (cfg.method ?? 'POST').toUpperCase();
-  const timeoutMs = cfg.timeout_ms ?? 8000;
-  const retries   = Number.isFinite(Number(cfg.retry_count)) ? Number(cfg.retry_count) : 1;
+  const timeoutMs = Number.isFinite(Number(opts.timeoutMs))
+    ? Number(opts.timeoutMs)
+    : (cfg.timeout_ms ?? 8000);
+  const retries   = Number.isFinite(Number(opts.retryCount))
+    ? Number(opts.retryCount)
+    : (Number.isFinite(Number(cfg.retry_count)) ? Number(cfg.retry_count) : 1);
   const maxAttempts = Math.max(1, retries);
   const retryBackoffMs = Number.isFinite(Number(cfg.retry_backoff_ms))
     ? Math.max(0, Number(cfg.retry_backoff_ms))
