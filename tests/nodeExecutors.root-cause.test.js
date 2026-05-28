@@ -428,4 +428,51 @@ describe('nodeExecutors root-cause guards', () => {
     getAvailableSlotsSpy.mockRestore();
     bookSlotSpy.mockRestore();
   });
+
+  test('calendar select_slot maps cliente_cedula alias into task payload', async () => {
+    const calendarService = require('../src/services/calendarService');
+    const bookSlotSpy = jest.spyOn(calendarService, 'bookSlot').mockResolvedValue({
+      appointment: {
+        id: 'appt-alias-1',
+        startTime: new Date('2026-05-29T09:00:00.000Z'),
+        endTime: new Date('2026-05-29T10:00:00.000Z'),
+      },
+    });
+    const getCalendarAssignmentContextSpy = jest
+      .spyOn(calendarService, 'getCalendarAssignmentContext')
+      .mockResolvedValue({
+        calendarId: 'cal-1',
+        calendarName: 'Agenda Psicologia',
+        agenteId: 2,
+        agenteNombre: 'Pedro Perez',
+      });
+
+    const node = {
+      id: 'node_calendar',
+      type: 'calendar',
+      next: 'node_confirm',
+      config: {
+        action: 'select_slot',
+        create_task_on_booking: true,
+      },
+    };
+
+    const result = await executeNode(node, {
+      input: '11111111-1111-1111-1111-111111111111',
+      variables: {
+        selected_calendar_id: 'cal-1',
+        cliente_cedula: '107910975',
+      },
+      tenantId: 'tenant-1',
+    });
+
+    expect(bookSlotSpy).toHaveBeenCalled();
+    expect(result.updatedVars).toEqual(expect.objectContaining({
+      appointment_customer_cedula: '107910975',
+      appointment_agente_id: 2,
+    }));
+
+    bookSlotSpy.mockRestore();
+    getCalendarAssignmentContextSpy.mockRestore();
+  });
 });

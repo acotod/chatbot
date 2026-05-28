@@ -1001,13 +1001,18 @@ async function executeCalendar({ node, input, variables, tenantId }) {
       ?? variables.name
       ?? variables.user_name
       ?? variables.full_name
+      ?? variables.nombre_completo
       ?? variables.cliente_nombre
+      ?? variables.clienteNombre
       ?? ''
     ).trim();
 
     const customerCedula = String(
       variables.cedula
+      ?? variables.cliente_cedula
+      ?? variables.clienteCedula
       ?? variables.identificacion
+      ?? variables.identificacion_cliente
       ?? variables.identification
       ?? variables.numero_cedula
       ?? ''
