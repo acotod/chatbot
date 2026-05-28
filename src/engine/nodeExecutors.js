@@ -462,7 +462,7 @@ async function executeMenu({ node, input, variables }) {
  *   Phase 2 (capture answer): variables.__awaiting_input === node.id
  *     → capture input into variable, clear __awaiting_input, advance
  */
-async function executeInput({ node, input, variables, llmService, tenantId }) {
+async function executeInput({ node, input, variables, llmService, integrationRunner, tenantId }) {
   const cfg = resolveConfig(node.config, variables);
   const updatedVars = {};
   const crmTouch = {};
@@ -492,6 +492,31 @@ async function executeInput({ node, input, variables, llmService, tenantId }) {
     // Capture value into named variable
     if (cfg.variable && input != null) {
       updatedVars[cfg.variable] = capturedInput;
+    }
+
+    // Optional integration call for input nodes (e.g. lookup by cedula).
+    // Uses current variables + captured value so body mappings can resolve.
+    if (cfg.integration_ref && integrationRunner) {
+      try {
+        const integrationVars = {
+          ...variables,
+          ...updatedVars,
+        };
+
+        const { responseVars } = await integrationRunner.run(tenantId, cfg.integration_ref, integrationVars, {
+          conversationId: variables.conversation_id ?? null,
+          nodeRef: node.id ?? null,
+          nodeType: node.type ?? 'input',
+          trigger: 'flow_node',
+        });
+
+        Object.assign(updatedVars, responseVars ?? {});
+      } catch (err) {
+        logger.warn(
+          { tenantId, nodeId: node.id, integrationRef: cfg.integration_ref, message: err.message },
+          'nodeExecutors.input: integration failed',
+        );
+      }
     }
 
     // Clear the waiting flag

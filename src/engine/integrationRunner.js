@@ -415,7 +415,17 @@ function _sanitizeErrorBody(body, maxLen = 2000) {
 function _mapResponse(response, mapping) {
   const result = {};
   for (const [varName, path] of Object.entries(mapping)) {
-    result[varName] = _getByPath(response, path);
+    const value = _getByPath(response, path);
+    result[varName] = value;
+
+    // Backward compatibility for mappings like "variables.nombre": "nombre"
+    // so templates using {{nombre}} also resolve correctly.
+    if (typeof varName === 'string' && varName.startsWith('variables.')) {
+      const shortName = varName.slice('variables.'.length).trim();
+      if (shortName) {
+        result[shortName] = value;
+      }
+    }
   }
   return result;
 }

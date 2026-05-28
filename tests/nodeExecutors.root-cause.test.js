@@ -148,6 +148,49 @@ describe('nodeExecutors root-cause guards', () => {
     );
   });
 
+  test('input node runs integration_ref and merges response vars for nombre', async () => {
+    const node = {
+      id: 'node_input_cedula',
+      type: 'input',
+      next: 'node_next',
+      config: {
+        text: 'Dame tu numero de cedula',
+        variable: 'cliente_cedula',
+        integration_ref: 'updateContactByIdentification',
+      },
+    };
+
+    const integrationRunner = {
+      run: jest.fn().mockResolvedValue({
+        responseVars: {
+          'variables.nombre': 'ANDRES COTO DOBLES',
+          nombre: 'ANDRES COTO DOBLES',
+        },
+      }),
+    };
+
+    const result = await executeNode(node, {
+      input: '107910975',
+      variables: { __awaiting_input: 'node_input_cedula' },
+      tenantId: 'tenant-1',
+      integrationRunner,
+    });
+
+    expect(integrationRunner.run).toHaveBeenCalledWith(
+      'tenant-1',
+      'updateContactByIdentification',
+      expect.objectContaining({ cliente_cedula: '107910975' }),
+      expect.objectContaining({ nodeRef: 'node_input_cedula', nodeType: 'input' }),
+    );
+    expect(result.updatedVars).toEqual(
+      expect.objectContaining({
+        cliente_cedula: '107910975',
+        nombre: 'ANDRES COTO DOBLES',
+        __awaiting_input: null,
+      }),
+    );
+  });
+
   test('handoff creates task control and transfers conversation by default', async () => {
     const node = {
       id: 'node_handoff',
