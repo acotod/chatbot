@@ -359,6 +359,66 @@ function parseCalendarSelection(value) {
     return { provided: true, clear: false, calendarId: raw };
 }
 
+function buildDefaultInternalCalendarConfig() {
+    return {
+        working_hours: {
+            mon: ['09:00', '17:00'],
+            tue: ['09:00', '17:00'],
+            wed: ['09:00', '17:00'],
+            thu: ['09:00', '17:00'],
+            fri: ['09:00', '17:00'],
+        },
+        slot_duration_min: 30,
+        advance_days: 14,
+        provider: 'internal',
+        sync: false,
+    };
+}
+
+function normalizeCalendarNameBase({ agenteNombre, agenteEmail, agenteId }) {
+    const nameSource = String(agenteNombre || '').trim() || String(agenteEmail || '').trim() || `Agente ${agenteId}`;
+    const collapsed = nameSource.replace(/\s+/g, ' ').trim();
+    const maxLabelLength = 170; // Keep room for suffixes under varchar(200).
+    return `Agenda ${collapsed.slice(0, maxLabelLength)}`;
+}
+
+async function findAvailableCalendarName(tenantId, baseName) {
+    for (let idx = 0; idx < 500; idx += 1) {
+        const suffix = idx === 0 ? '' : ` (${idx + 1})`;
+        const candidate = `${baseName}${suffix}`;
+        const exists = await prisma.calendar.findFirst({
+            where: { tenantId, name: candidate },
+            select: { id: true },
+        });
+        if (!exists) return candidate;
+    }
+    return `${baseName} ${Date.now()}`;
+}
+
+async function ensureInternalCalendarForAgente({ tenantId, agenteId, agenteNombre, agenteEmail }) {
+    const existing = await prisma.calendar.findFirst({
+        where: { tenantId, agenteId, activo: true },
+        select: { id: true },
+        orderBy: { createdAt: 'desc' },
+    });
+    if (existing?.id) return existing.id;
+
+    const baseName = normalizeCalendarNameBase({ agenteNombre, agenteEmail, agenteId });
+    const uniqueName = await findAvailableCalendarName(tenantId, baseName);
+
+    const created = await prisma.calendar.create({
+        data: {
+            tenantId,
+            agenteId,
+            name: uniqueName,
+            config: buildDefaultInternalCalendarConfig(),
+        },
+        select: { id: true },
+    });
+
+    return created.id;
+}
+
 async function assignCalendarToAgente({ tenantId, agenteId, calendarId }) {
     await prisma.calendar.updateMany({
         where: { tenantId, agenteId },
@@ -1139,11 +1199,18 @@ router.post('/tenants/:slug/agentes', requirePermiso('EDIT_AGENTES'), async (req
             passwordHash,
         });
 
-        const assignedCalendarId = await assignCalendarToAgente({
-            tenantId: tenant.id,
-            agenteId: agente.id,
-            calendarId: calendarSelection.calendarId,
-        });
+        const assignedCalendarId = calendarSelection.calendarId
+            ? await assignCalendarToAgente({
+                tenantId: tenant.id,
+                agenteId: agente.id,
+                calendarId: calendarSelection.calendarId,
+            })
+            : await ensureInternalCalendarForAgente({
+                tenantId: tenant.id,
+                agenteId: agente.id,
+                agenteNombre: agente.nombre,
+                agenteEmail: agente.email,
+            });
 
         res.status(201).json({ ...agente, assignedCalendarId });
     } catch (err) {

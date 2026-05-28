@@ -11,6 +11,8 @@
     "db:migrate:deploy": "prisma migrate deploy",
     "db:generate": "prisma generate",
     "db:push": "prisma db push",
+    "calendars:backfill-agentes": "node scripts/backfill-agent-calendars.js",
+    "calendars:backfill-agentes:dry": "node scripts/backfill-agent-calendars.js --dry-run",
     "docker:up": "docker compose up --build -d",
     "docker:down": "docker compose down",
     "docker:logs": "docker compose logs -f api"
