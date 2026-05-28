@@ -28,7 +28,7 @@ import {
   ArrowDown,
   Zap,
 } from "lucide-react";
-import { wabaFlowsApi, integrationsApi, variablesApi } from "@/lib/api";
+import { wabaFlowsApi, integrationsApi, variablesApi, agentesApi, agentePuestosApi } from "@/lib/api";
 import { useAuthStore } from "@/store/auth";
 import MenuOptionsEditor from "@/components/flujos/MenuOptionsEditor";
 import CanvasEditor from "@/components/FlowBuilder/CanvasEditor";
@@ -1200,6 +1200,8 @@ function NodeEditModal({
   allNodes,
   catalogEndpoints,
   flowVariables,
+  agentes,
+  agentePuestos,
   integrations,
   onSave,
   onClose,
@@ -1209,6 +1211,8 @@ function NodeEditModal({
   allNodes?: NodeDef[];
   catalogEndpoints: CatalogEndpoint[];
   flowVariables: string[];
+  agentes: { id: number; nombre: string; email?: string | null }[];
+  agentePuestos: { id: number; nombre: string }[];
   integrations: { id: number; nombre: string; tipo: string }[];
   onSave: (n: NodeDef) => void;
   onClose: () => void;
@@ -1323,11 +1327,22 @@ function NodeEditModal({
     String(
       cfg.assignment_mode
       ?? cfg.assign_mode
-      ?? ((cfg.assign_to_var ?? "").toString().trim() ? "variable" : ((cfg.assign_to ?? "").toString().trim() ? "fixed" : "none"))
+      ?? ((cfg.assign_to_var ?? "").toString().trim()
+        ? "variable"
+        : (((cfg.assign_to_puesto_id ?? cfg.agente_puesto_id ?? cfg.puesto_id ?? "").toString().trim()
+          || (cfg.assign_to_puesto_nombre ?? cfg.agente_puesto_nombre ?? cfg.puesto_nombre ?? "").toString().trim())
+          ? "by_puesto"
+          : ((cfg.assign_to ?? "").toString().trim() ? "fixed" : "none")))
     )
   );
   const [taskAssignTo, setTaskAssignTo] = useState(String(cfg.assign_to ?? ""));
   const [taskAssignVar, setTaskAssignVar] = useState(String(cfg.assign_to_var ?? ""));
+  const [taskAssignPuestoId, setTaskAssignPuestoId] = useState(
+    String(cfg.assign_to_puesto_id ?? cfg.agente_puesto_id ?? cfg.puesto_id ?? "")
+  );
+  const [taskAssignPuestoNombre, setTaskAssignPuestoNombre] = useState(
+    String(cfg.assign_to_puesto_nombre ?? cfg.agente_puesto_nombre ?? cfg.puesto_nombre ?? "")
+  );
   // llm — multi-prompt config
   const [llmPrompts, setLlmPrompts] = useState<LlmPromptItem[]>(() => {
     if (Array.isArray((cfg as Record<string, unknown>).prompts) && ((cfg as Record<string, unknown>).prompts as LlmPromptItem[]).length > 0) {
@@ -1699,6 +1714,15 @@ function NodeEditModal({
         }
         if (taskAssignMode === "variable" && taskAssignVar.trim()) {
           createCfg.assign_to_var = taskAssignVar.trim();
+        }
+        if (taskAssignMode === "by_puesto") {
+          const parsedPuestoId = Number.parseInt(taskAssignPuestoId, 10);
+          if (Number.isInteger(parsedPuestoId) && parsedPuestoId > 0) {
+            createCfg.assign_to_puesto_id = parsedPuestoId;
+          }
+          if (taskAssignPuestoNombre.trim()) {
+            createCfg.assign_to_puesto_nombre = taskAssignPuestoNombre.trim();
+          }
         }
 
         return createCfg;
@@ -2354,33 +2378,74 @@ function NodeEditModal({
                             className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white"
                           >
                             <option value="none">Sin asignar</option>
-                            <option value="fixed">Agente fijo (ID)</option>
+                            <option value="fixed">Agente fijo</option>
+                            <option value="by_puesto">Por puesto</option>
                             <option value="variable">Desde variable</option>
                             <option value="least_load">Automática por menor carga</option>
                           </select>
                         </div>
 
-                        <div className="bg-slate-50 rounded-lg border border-slate-100 p-4">
-                          <label className="block text-xs font-medium text-slate-600 mb-2">Agente ID (si fijo)</label>
-                          <input
-                            value={taskAssignTo}
-                            onChange={(e) => setTaskAssignTo(e.target.value)}
-                            placeholder="15"
-                            disabled={taskAssignMode !== "fixed"}
-                            className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-emerald-500 disabled:bg-slate-100"
-                          />
-                        </div>
+                        {taskAssignMode === "fixed" && (
+                          <div className="bg-slate-50 rounded-lg border border-slate-100 p-4 col-span-2">
+                            <label className="block text-xs font-medium text-slate-600 mb-2">Agente destino</label>
+                            <select
+                              value={taskAssignTo}
+                              onChange={(e) => setTaskAssignTo(String(e.target.value ?? ""))}
+                              className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white"
+                            >
+                              <option value="">Selecciona un agente</option>
+                              {agentes.map((agente) => (
+                                <option key={agente.id} value={String(agente.id)}>
+                                  {agente.nombre}{agente.email ? ` (${agente.email})` : ""}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                        )}
 
-                        <div className="bg-slate-50 rounded-lg border border-slate-100 p-4">
-                          <label className="block text-xs font-medium text-slate-600 mb-2">Variable agente (si variable)</label>
-                          <VarComboInput
-                            value={taskAssignVar}
-                            onChange={setTaskAssignVar}
-                            placeholder="variables.agente_id"
-                            suggestions={flowVariables.length > 0 ? flowVariables : MENU_VARIABLE_PRESETS}
-                            className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white"
-                          />
-                        </div>
+                        {taskAssignMode === "by_puesto" && (
+                          <div className="bg-slate-50 rounded-lg border border-slate-100 p-4 col-span-2">
+                            <label className="block text-xs font-medium text-slate-600 mb-2">Puesto destino</label>
+                            <select
+                              value={taskAssignPuestoId}
+                              onChange={(e) => {
+                                const nextId = String(e.target.value ?? "");
+                                setTaskAssignPuestoId(nextId);
+                                const selectedPuesto = agentePuestos.find((puesto) => String(puesto.id) === nextId);
+                                setTaskAssignPuestoNombre(selectedPuesto?.nombre ?? "");
+                              }}
+                              className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white"
+                            >
+                              <option value="">Selecciona un puesto</option>
+                              {agentePuestos.map((puesto) => (
+                                <option key={puesto.id} value={String(puesto.id)}>{puesto.nombre}</option>
+                              ))}
+                            </select>
+                          </div>
+                        )}
+
+                        {taskAssignMode === "variable" && (
+                          <div className="bg-slate-50 rounded-lg border border-slate-100 p-4 col-span-2">
+                            <label className="block text-xs font-medium text-slate-600 mb-2">Variable agente (si variable)</label>
+                            <VarComboInput
+                              value={taskAssignVar}
+                              onChange={setTaskAssignVar}
+                              placeholder="variables.agente_id"
+                              suggestions={flowVariables.length > 0 ? flowVariables : MENU_VARIABLE_PRESETS}
+                              className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white"
+                            />
+                          </div>
+                        )}
+
+                        {(taskAssignMode === "none" || taskAssignMode === "least_load") && (
+                          <div className="bg-slate-50 rounded-lg border border-slate-100 p-4 col-span-2 flex items-center">
+                            <p className="text-xs text-slate-500">
+                              {taskAssignMode === "least_load"
+                                ? "La asignación se resolverá automáticamente al agente activo con menor carga."
+                                : "La solicitud se crea sin agente asignado."}
+                            </p>
+                          </div>
+                        )}
                       </div>
                     </>
                   )}
@@ -2675,6 +2740,8 @@ function FlowBuilder({
   const [integrations, setIntegrations] = useState<{ id: number; nombre: string; tipo: string }[]>([]);
   const [catalogEndpoints, setCatalogEndpoints] = useState<CatalogEndpoint[]>([]);
   const [flowVariables, setFlowVariables] = useState<string[]>([]);
+  const [agentes, setAgentes] = useState<{ id: number; nombre: string; email?: string | null }[]>([]);
+  const [agentePuestos, setAgentePuestos] = useState<{ id: number; nombre: string }[]>([]);
   const validationErrors = validation?.internal?.errors ?? [];
   const validationWarnings = validation?.internal?.warnings ?? [];
   const wabaValidationErrors = validation?.waba?.errors ?? [];
@@ -2726,6 +2793,8 @@ function FlowBuilder({
       .catch(() => setCatalogEndpoints([]));
     if (!tenantSlug) {
       setFlowVariables([]);
+      setAgentes([]);
+      setAgentePuestos([]);
       return;
     }
 
@@ -2735,6 +2804,42 @@ function FlowBuilder({
         setFlowVariables(vars.map((v: { nombre: string }) => `variables.${v.nombre}`));
       })
       .catch(() => setFlowVariables([]));
+
+    agentesApi.list(tenantSlug)
+      .then(({ data }) => {
+        const rows = Array.isArray(data)
+          ? data
+          : (Array.isArray((data as { data?: unknown[] })?.data) ? (data as { data: unknown[] }).data : []);
+        setAgentes(rows
+          .map((row) => {
+            const item = row as { id?: unknown; nombre?: unknown; email?: unknown };
+            const idNum = Number(item.id);
+            return {
+              id: idNum,
+              nombre: String(item.nombre ?? "").trim(),
+              email: item.email == null ? null : String(item.email),
+            };
+          })
+          .filter((row) => Number.isInteger(row.id) && row.id > 0 && row.nombre));
+      })
+      .catch(() => setAgentes([]));
+
+    agentePuestosApi.list(tenantSlug)
+      .then(({ data }) => {
+        const rows = Array.isArray(data)
+          ? data
+          : (Array.isArray((data as { data?: unknown[] })?.data) ? (data as { data: unknown[] }).data : []);
+        setAgentePuestos(rows
+          .map((row) => {
+            const item = row as { id?: unknown; nombre?: unknown };
+            return {
+              id: Number(item.id),
+              nombre: String(item.nombre ?? "").trim(),
+            };
+          })
+          .filter((row) => Number.isInteger(row.id) && row.id > 0 && row.nombre));
+      })
+      .catch(() => setAgentePuestos([]));
   }, [loadLatestVersion, tenantSlug]);
 
   function handleAddNode() {
@@ -3106,6 +3211,8 @@ function FlowBuilder({
           allNodes={flatNodesList}
           catalogEndpoints={catalogEndpoints}
           flowVariables={flowVariables}
+          agentes={agentes}
+          agentePuestos={agentePuestos}
           integrations={integrations}
           onSave={handleSaveNode}
           onClose={() => setEditingNode(null)}

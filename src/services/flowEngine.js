@@ -682,9 +682,22 @@ function _extractPositiveInt(value) {
   return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
 }
 
-async function _pickLeastLoadAgentId(tenantId) {
+async function _pickLeastLoadAgentId(tenantId, { puestoId = null, puestoNombre = null } = {}) {
+  const where = { tenantId, estado: 'activo' };
+
+  if (Number.isInteger(puestoId) && puestoId > 0) {
+    where.puestoId = puestoId;
+  } else if (puestoNombre && String(puestoNombre).trim()) {
+    where.puesto = {
+      nombre: {
+        equals: String(puestoNombre).trim(),
+        mode: 'insensitive',
+      },
+    };
+  }
+
   const activeAgents = await prisma.agente.findMany({
-    where: { tenantId, estado: 'activo' },
+    where,
     select: { id: true },
   });
 
@@ -735,6 +748,32 @@ async function _resolveTaskAssignTo({ tenantId, cfg, variables }) {
       return await _pickLeastLoadAgentId(tenantId);
     } catch (err) {
       logger.warn({ tenantId, message: err.message }, 'flowEngine: failed to resolve least-load assignment');
+      return null;
+    }
+  }
+
+  if (mode === 'by_puesto' || mode === 'puesto') {
+    const parsedPuestoId = _extractPositiveInt(
+      cfg.assign_to_puesto_id
+      ?? cfg.agente_puesto_id
+      ?? cfg.puesto_id
+      ?? null,
+    );
+
+    const puestoNombre = String(
+      cfg.assign_to_puesto_nombre
+      ?? cfg.agente_puesto_nombre
+      ?? cfg.puesto_nombre
+      ?? '',
+    ).trim();
+
+    try {
+      return await _pickLeastLoadAgentId(tenantId, {
+        puestoId: parsedPuestoId,
+        puestoNombre,
+      });
+    } catch (err) {
+      logger.warn({ tenantId, message: err.message }, 'flowEngine: failed to resolve puesto assignment');
       return null;
     }
   }
