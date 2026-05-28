@@ -957,19 +957,31 @@ async function executeCalendar({ node, input, variables, tenantId }) {
   const calendarId = await resolveCalendarId();
 
   if (action === 'show_availability') {
+    const availabilityVarName = String(cfg.availability_variable || 'agenda_horarios_disponibles').trim() || 'agenda_horarios_disponibles';
+
     if (!calendarId) {
       logger.warn({ tenantId, nodeId: node.id }, 'calendar node: missing calendar_id');
-      return { output: null, nextNodeId: node.next, updatedVars: {}, terminal: false, fallback: false };
+      return {
+        output: null,
+        nextNodeId: node.next,
+        updatedVars: { [availabilityVarName]: [] },
+        terminal: false,
+        fallback: false,
+      };
     }
+
     const slots = await calSvc.getAvailableSlots(calendarId, cfg.range_days || 5);
     if (!slots.length) {
       return {
         output: { type: 'text', text: cfg.no_slots_text || 'No hay horarios disponibles. Un agente te contactara.' },
         nextNodeId: (node.branches && node.branches.no_slots) || node.next,
-        updatedVars: {}, terminal: false, fallback: false,
+        updatedVars: { [availabilityVarName]: [] }, terminal: false, fallback: false,
       };
     }
+
     const buttons = slots.slice(0, 10).map(s => ({ id: s.id, title: _formatSlotLabel(s.startTime) }));
+    const availabilityLabels = buttons.map((slot) => slot.title);
+
     return {
       output: {
         type    : buttons.length <= 3 ? 'buttons' : 'list',
@@ -977,7 +989,12 @@ async function executeCalendar({ node, input, variables, tenantId }) {
         buttons,
         sections: buttons.length > 3 ? [{ title: 'Horarios disponibles', rows: buttons }] : [],
       },
-      nextNodeId: node.id, updatedVars: {}, terminal: false, fallback: false,
+      nextNodeId: node.id,
+      updatedVars: {
+        [availabilityVarName]: availabilityLabels,
+      },
+      terminal: false,
+      fallback: false,
     };
   }
 
