@@ -28,7 +28,7 @@ type AgendaApiAssignment = {
 };
 
 type AgendaApiEvent = {
-  id: number;
+  id: number | string;
   titulo: string;
   descripcion: string | null;
   tipo: AgendaTipo;
@@ -43,6 +43,7 @@ type AgendaApiEvent = {
   webhookMethod: string | null;
   webhookHeaders: Record<string, unknown> | null;
   webhookPayload: Record<string, unknown> | null;
+  source?: "agenda" | "appointment";
   assignments: AgendaApiAssignment[];
 };
 
@@ -63,6 +64,9 @@ function startOfWeekMonday(value: Date) {
 }
 
 function toFormEvent(event: AgendaApiEvent): AgendaEventFormData {
+  if (typeof event.id !== "number") {
+    throw new Error("Readonly events cannot be edited");
+  }
   return {
     id: event.id,
     titulo: event.titulo,
@@ -276,6 +280,7 @@ export default function AgendaPage() {
   function handleEventClick(arg: { event: { id: string; extendedProps: Record<string, unknown> } }) {
     const raw = arg.event.extendedProps.raw as AgendaApiEvent | undefined;
     if (!raw) return;
+    if (raw.source === "appointment" || typeof raw.id !== "number") return;
     setSelectedEvent(toFormEvent(raw));
     setModalOpen(true);
   }
@@ -314,6 +319,7 @@ export default function AgendaPage() {
         end: event.endAt,
         backgroundColor: event.color,
         borderColor: event.color,
+        editable: event.source !== "appointment",
         extendedProps: { raw: event },
       })),
     [eventsQuery.data]

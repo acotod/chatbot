@@ -443,12 +443,58 @@ async function assignCalendarToAgente({ tenantId, agenteId, calendarId }) {
 function serializeAgendaEvent(event) {
     return {
         ...event,
+        source: 'agenda',
         assignments: (event.assignments || []).map((a) => ({
             agenteId: a.agenteId,
             nombre: a.agente?.nombre ?? null,
             email: a.agente?.email ?? null,
             estado: a.agente?.estado ?? null,
         })),
+    };
+}
+
+function mapAppointmentStatusToAgendaStatus(status) {
+    if (status === 'completed') return 'completado';
+    if (status === 'scheduled' || status === 'rescheduled') return 'pendiente';
+    return 'en_progreso';
+}
+
+function serializeAppointmentAsAgendaEvent(appointment) {
+    return {
+        id: `appt:${appointment.id}`,
+        tenantId: appointment.tenantId,
+        createdByAdminUserId: null,
+        flowId: null,
+        titulo:
+            String(appointment?.metadata?.user_name || '').trim() ||
+            String(appointment?.calendar?.name || '').trim() ||
+            'Cita reservada',
+        descripcion: appointment?.metadata?.notes ? String(appointment.metadata.notes) : null,
+        tipo: 'reunion',
+        color: '#0EA5E9',
+        estado: mapAppointmentStatusToAgendaStatus(appointment.status),
+        startAt: appointment.startTime,
+        endAt: appointment.endTime,
+        reminderMinutes: null,
+        triggerWebhookOnStart: false,
+        webhookUrl: null,
+        webhookMethod: null,
+        webhookHeaders: null,
+        webhookPayload: null,
+        createdAt: appointment.createdAt,
+        updatedAt: appointment.updatedAt,
+        source: 'appointment',
+        appointmentId: appointment.id,
+        assignments: appointment?.calendar?.agente
+            ? [
+                  {
+                      agenteId: appointment.calendar.agente.id,
+                      nombre: appointment.calendar.agente.nombre ?? null,
+                      email: appointment.calendar.agente.email ?? null,
+                      estado: appointment.calendar.agente.estado ?? null,
+                  },
+              ]
+            : [],
     };
 }
 
@@ -2741,15 +2787,67 @@ router.get('/tenants/:slug/agenda', requirePermiso('VIEW_AGENDA'), async (req, r
             where.assignments = { some: { agenteId: Number(req.query.agenteId) } };
         }
 
-        const events = await prisma.agendaEvent.findMany({
-            where,
-            include: {
-                assignments: { include: { agente: true } },
-            },
-            orderBy: [{ startAt: 'asc' }, { id: 'asc' }],
+        const shouldIncludeAppointments = !req.query.tipo || String(req.query.tipo) === 'reunion';
+
+        let appointmentStatusFilter = null;
+        if (req.query.estado) {
+            const estado = String(req.query.estado);
+            if (estado === 'pendiente') appointmentStatusFilter = ['scheduled', 'rescheduled'];
+            else if (estado === 'completado') appointmentStatusFilter = ['completed'];
+            else appointmentStatusFilter = [];
+        }
+
+        const [events, appointments] = await Promise.all([
+            prisma.agendaEvent.findMany({
+                where,
+                include: {
+                    assignments: { include: { agente: true } },
+                },
+                orderBy: [{ startAt: 'asc' }, { id: 'asc' }],
+            }),
+            shouldIncludeAppointments
+                ? prisma.appointment.findMany({
+                      where: {
+                          tenantId: tenant.id,
+                          startTime: { lt: endAt },
+                          endTime: { gt: startAt },
+                          ...(Array.isArray(appointmentStatusFilter)
+                              ? {
+                                    status:
+                                        appointmentStatusFilter.length > 0
+                                            ? { in: appointmentStatusFilter }
+                                            : { in: [] },
+                                }
+                              : { status: { not: 'cancelled' } }),
+                          ...(req.query.agenteId
+                              ? { calendar: { agenteId: Number(req.query.agenteId) } }
+                              : {}),
+                      },
+                      include: {
+                          calendar: {
+                              include: {
+                                  agente: {
+                                      select: { id: true, nombre: true, email: true, estado: true },
+                                  },
+                              },
+                          },
+                      },
+                      orderBy: [{ startTime: 'asc' }, { id: 'asc' }],
+                  })
+                : Promise.resolve([]),
+        ]);
+
+        const merged = [
+            ...events.map(serializeAgendaEvent),
+            ...appointments.map(serializeAppointmentAsAgendaEvent),
+        ].sort((a, b) => {
+            const tA = new Date(a.startAt).getTime();
+            const tB = new Date(b.startAt).getTime();
+            if (tA !== tB) return tA - tB;
+            return String(a.id).localeCompare(String(b.id));
         });
 
-        res.json({ data: events.map(serializeAgendaEvent) });
+        res.json({ data: merged });
     } catch (err) {
         next(err);
     }
