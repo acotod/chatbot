@@ -58,11 +58,61 @@ function readVariableValue(variables, rawPath) {
   return undefined;
 }
 
+function formatTemplateValue(value) {
+  if (value === null || value === undefined) return '';
+
+  if (Array.isArray(value)) {
+    if (value.length === 0) return '';
+
+    const rendered = value
+      .map((item) => {
+        if (item === null || item === undefined) return '';
+        if (typeof item === 'string' || typeof item === 'number' || typeof item === 'boolean') {
+          return String(item).trim();
+        }
+        if (typeof item === 'object') {
+          const preferred = [
+            item.label,
+            item.title,
+            item.summary,
+            item.horario,
+            item.slotLabel,
+            item.slot_label,
+            item.startTime,
+          ].find((v) => typeof v === 'string' && v.trim());
+
+          if (preferred) return String(preferred).trim();
+
+          try {
+            return JSON.stringify(item);
+          } catch (_err) {
+            return String(item);
+          }
+        }
+        return String(item).trim();
+      })
+      .filter(Boolean);
+
+    if (rendered.length === 0) return '';
+    return rendered.map((entry, index) => `${index + 1}. ${entry}`).join('\n');
+  }
+
+  if (typeof value === 'object') {
+    try {
+      return JSON.stringify(value);
+    } catch (_err) {
+      return String(value);
+    }
+  }
+
+  return String(value);
+}
+
 function resolveTemplate(template, variables) {
   if (typeof template !== 'string') return template;
   return template.replace(/\{\{\s*([\w.]+)\s*\}\}/g, (match, key) => {
     const value = readVariableValue(variables, key);
-    return value !== undefined ? String(value) : match;
+    return value !== undefined ? formatTemplateValue(value) : match;
   });
 }
 
