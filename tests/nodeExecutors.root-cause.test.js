@@ -316,7 +316,7 @@ describe('nodeExecutors root-cause guards', () => {
     };
 
     const result = await executeNode(node, {
-      input: 'slot-1',
+      input: '11111111-1111-1111-1111-111111111111',
       variables: {
         selected_calendar_id: 'cal-1',
         cedula: '107910975',
@@ -327,7 +327,7 @@ describe('nodeExecutors root-cause guards', () => {
 
     expect(bookSlotSpy).toHaveBeenCalledWith(expect.objectContaining({
       calendarId: 'cal-1',
-      slotId: 'slot-1',
+      slotId: '11111111-1111-1111-1111-111111111111',
     }));
     expect(getCalendarAssignmentContextSpy).toHaveBeenCalledWith('cal-1', 'tenant-1');
     expect(result.control).toEqual(expect.objectContaining({
@@ -348,5 +348,84 @@ describe('nodeExecutors root-cause guards', () => {
 
     bookSlotSpy.mockRestore();
     getCalendarAssignmentContextSpy.mockRestore();
+  });
+
+  test('calendar select_slot accepts option index and resolves to slot id', async () => {
+    const calendarService = require('../src/services/calendarService');
+    const getAvailableSlotsSpy = jest.spyOn(calendarService, 'getAvailableSlots').mockResolvedValue([
+      { id: '11111111-1111-1111-1111-111111111111', startTime: new Date('2026-05-29T15:00:00.000Z') },
+      { id: '22222222-2222-2222-2222-222222222222', startTime: new Date('2026-05-29T16:00:00.000Z') },
+    ]);
+    const bookSlotSpy = jest.spyOn(calendarService, 'bookSlot').mockResolvedValue({
+      appointment: {
+        id: 'appt-idx-1',
+        startTime: new Date('2026-05-29T16:00:00.000Z'),
+        endTime: new Date('2026-05-29T17:00:00.000Z'),
+      },
+    });
+    const getCalendarAssignmentContextSpy = jest
+      .spyOn(calendarService, 'getCalendarAssignmentContext')
+      .mockResolvedValue(null);
+
+    const node = {
+      id: 'node_calendar',
+      type: 'calendar',
+      next: 'node_confirm',
+      config: {
+        action: 'select_slot',
+      },
+    };
+
+    const result = await executeNode(node, {
+      input: '2',
+      variables: { selected_calendar_id: 'cal-1' },
+      tenantId: 'tenant-1',
+    });
+
+    expect(bookSlotSpy).toHaveBeenCalledWith(expect.objectContaining({
+      slotId: '22222222-2222-2222-2222-222222222222',
+    }));
+    expect(result.nextNodeId).toBe('node_confirm');
+    expect(result.updatedVars).toEqual(expect.objectContaining({
+      appointment_id: 'appt-idx-1',
+    }));
+
+    getAvailableSlotsSpy.mockRestore();
+    bookSlotSpy.mockRestore();
+    getCalendarAssignmentContextSpy.mockRestore();
+  });
+
+  test('calendar select_slot retries with friendly error when input is not a valid slot', async () => {
+    const calendarService = require('../src/services/calendarService');
+    const getAvailableSlotsSpy = jest.spyOn(calendarService, 'getAvailableSlots').mockResolvedValue([
+      { id: '11111111-1111-1111-1111-111111111111', startTime: new Date('2026-05-29T15:00:00.000Z') },
+    ]);
+    const bookSlotSpy = jest.spyOn(calendarService, 'bookSlot').mockResolvedValue({ error: 'SLOT_NOT_FOUND' });
+
+    const node = {
+      id: 'node_calendar',
+      type: 'calendar',
+      next: 'node_confirm',
+      config: {
+        action: 'select_slot',
+        error_text: 'La opcion no es valida. Selecciona una fecha y hora de la lista.',
+      },
+    };
+
+    const result = await executeNode(node, {
+      input: 'hola',
+      variables: { selected_calendar_id: 'cal-1' },
+      tenantId: 'tenant-1',
+    });
+
+    expect(bookSlotSpy).not.toHaveBeenCalled();
+    expect(result.nextNodeId).toBe('node_calendar');
+    expect(result.output).toEqual({
+      type: 'text',
+      text: 'La opcion no es valida. Selecciona una fecha y hora de la lista.',
+    });
+
+    getAvailableSlotsSpy.mockRestore();
+    bookSlotSpy.mockRestore();
   });
 });

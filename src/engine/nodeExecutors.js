@@ -216,6 +216,12 @@ function _extractHourFromText(text) {
   return _toHour24(m[1], m[2]);
 }
 
+function _normalizeUuid(value) {
+  const raw = String(value ?? '').trim();
+  if (!raw) return null;
+  return /^[0-9a-fA-F-]{36}$/.test(raw) ? raw : null;
+}
+
 function _coerceBoolean(value, fallback = false) {
   if (typeof value === 'boolean') return value;
   if (value == null) return fallback;
@@ -1159,8 +1165,68 @@ async function executeCalendar({ node, input, variables, tenantId }) {
     if (!calendarId) {
       return { output: { type: 'text', text: cfg.error_text || 'No pude completar la reserva. Intenta de nuevo.' }, nextNodeId: (node.branches && node.branches.error) || node.next, updatedVars: {}, terminal: false, fallback: false };
     }
+
+    const resolveSlotIdFromInput = async () => {
+      const rawInput = String(input ?? '').trim();
+      if (!rawInput) return null;
+
+      const asUuid = _normalizeUuid(rawInput);
+      if (asUuid) return asUuid;
+
+      const rangeDays = Number.isFinite(Number(cfg.range_days)) ? Number(cfg.range_days) : 5;
+      let slots = [];
+      try {
+        slots = await calSvc.getAvailableSlots(calendarId, rangeDays);
+      } catch (_) {
+        slots = [];
+      }
+      if (!Array.isArray(slots) || slots.length === 0) return null;
+
+      const topSlots = slots.slice(0, 10);
+      const normalizedInput = rawInput.toLowerCase();
+
+      const byExactId = topSlots.find((slot) => String(slot?.id || '') === rawInput);
+      if (byExactId?.id) return byExactId.id;
+
+      const byExactLabel = topSlots.find((slot) => _formatSlotLabel(slot?.startTime).toLowerCase() === normalizedInput);
+      if (byExactLabel?.id) return byExactLabel.id;
+
+      const asIndex = Number.parseInt(rawInput, 10);
+      if (Number.isInteger(asIndex) && asIndex >= 1 && asIndex <= topSlots.length) {
+        return topSlots[asIndex - 1]?.id ?? null;
+      }
+
+      const targetHour = _extractHourFromText(rawInput);
+      if (targetHour !== null) {
+        const byHour = topSlots.find((slot) => _extractHourFromText(_formatSlotLabel(slot?.startTime)) === targetHour);
+        if (byHour?.id) return byHour.id;
+      }
+
+      const allowFuzzyContains = /[a-zA-Z]/.test(rawInput) && normalizedInput.length >= 4;
+      if (!allowFuzzyContains) return null;
+
+      const byContainsLabel = topSlots.find((slot) => {
+        const label = _formatSlotLabel(slot?.startTime).toLowerCase();
+        return label.includes(normalizedInput) || normalizedInput.includes(label);
+      });
+      if (byContainsLabel?.id) return byContainsLabel.id;
+
+      return null;
+    };
+
+    const resolvedSlotId = await resolveSlotIdFromInput();
+    if (!resolvedSlotId) {
+      return {
+        output: { type: 'text', text: cfg.error_text || 'La opcion no es valida. Selecciona un horario de la lista.' },
+        nextNodeId: node.id,
+        updatedVars: {},
+        terminal: false,
+        fallback: false,
+      };
+    }
+
     const bookResult = await calSvc.bookSlot({
-      calendarId, slotId: input, tenantId,
+      calendarId, slotId: resolvedSlotId, tenantId,
       userKey: variables.phone || variables.user_key || 'unknown',
       conversationId: variables.conversation_id || null,
       metadata: { user_name: variables.name || null },
