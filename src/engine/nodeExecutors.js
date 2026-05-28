@@ -33,11 +33,45 @@ function readVariableValue(variables, rawPath) {
   const path = String(rawPath ?? '').trim();
   if (!path) return undefined;
 
+  const normalizeToken = (value) => String(value ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, '');
+
+  const pickByLooseKey = (source, keyPath) => {
+    if (!source || typeof source !== 'object') return undefined;
+
+    const exactKey = Object.keys(source).find((candidate) => String(candidate).toLowerCase() === String(keyPath).toLowerCase());
+    if (exactKey && source[exactKey] !== undefined) return source[exactKey];
+
+    const normalizedPath = normalizeToken(keyPath);
+    if (!normalizedPath) return undefined;
+
+    const fuzzyKey = Object.keys(source).find((candidate) => normalizeToken(candidate) === normalizedPath);
+    if (fuzzyKey && source[fuzzyKey] !== undefined) return source[fuzzyKey];
+
+    return undefined;
+  };
+
   const direct = variables[path];
   if (direct !== undefined) return direct;
 
   const normalized = path.startsWith('variables.') ? path.slice('variables.'.length) : path;
   if (variables[normalized] !== undefined) return variables[normalized];
+
+  const directLoose = pickByLooseKey(variables, path);
+  if (directLoose !== undefined) return directLoose;
+
+  const normalizedLoose = pickByLooseKey(variables, normalized);
+  if (normalizedLoose !== undefined) return normalizedLoose;
+
+  const scopedVariables = variables && typeof variables === 'object' ? variables.variables : undefined;
+  const scopedDirect = pickByLooseKey(scopedVariables, path);
+  if (scopedDirect !== undefined) return scopedDirect;
+
+  const scopedNormalized = pickByLooseKey(scopedVariables, normalized);
+  if (scopedNormalized !== undefined) return scopedNormalized;
 
   const tryNested = (base, parts) => {
     let cursor = base;
@@ -110,7 +144,9 @@ function formatTemplateValue(value) {
 
 function resolveTemplate(template, variables) {
   if (typeof template !== 'string') return template;
-  return template.replace(/\{\{\s*([\w.]+)\s*\}\}/g, (match, key) => {
+  return template.replace(/\{\{\s*([^{}]+?)\s*\}\}|\{\s*([^{}]+?)\s*\}/g, (match, doubleKey, singleKey) => {
+    const key = String(doubleKey ?? singleKey ?? '').trim();
+    if (!key) return match;
     const value = readVariableValue(variables, key);
     return value !== undefined ? formatTemplateValue(value) : match;
   });

@@ -81,6 +81,29 @@ describe('nodeExecutors root-cause guards', () => {
     );
   });
 
+  test('message node interpolates single-brace placeholders with spaced keys', async () => {
+    const node = {
+      id: 'node_msg',
+      type: 'message',
+      next: 'node_next',
+      config: { text: '¿Cómo te has sentido últimamente? {Cliente Cedula}' },
+    };
+
+    const result = await executeNode(node, {
+      input: null,
+      variables: {
+        cliente_cedula: '107910975',
+      },
+      tenantId: 'tenant-1',
+    });
+
+    expect(result.output).toEqual({
+      type: 'text',
+      text: '¿Cómo te has sentido últimamente? 107910975',
+    });
+    expect(result.nextNodeId).toBe('node_next');
+  });
+
   test('input node validates format and retries when invalid', async () => {
     const node = {
       id: 'node_input',
