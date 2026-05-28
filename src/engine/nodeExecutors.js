@@ -942,6 +942,75 @@ async function executeCalendar({ node, input, variables, tenantId }) {
     ?? 'random'
   ).trim().toLowerCase();
 
+  const buildBookingTaskPayload = async ({ appointment, selectedCalendarId }) => {
+    const shouldCreateTask = _coerceBoolean(
+      cfg.create_task_on_booking ?? cfg.auto_create_task ?? cfg.create_task ?? true,
+      true,
+    );
+    if (!shouldCreateTask) return null;
+
+    const calendarCtx = await calSvc.getCalendarAssignmentContext(selectedCalendarId, tenantId);
+    const agreedStartIso = appointment?.startTime?.toISOString?.() ?? null;
+    const agreedEndIso = appointment?.endTime?.toISOString?.() ?? null;
+    const agreedStartLabel = agreedStartIso ? _formatSlotLabel(agreedStartIso) : '';
+
+    const customerName = String(
+      variables.nombre
+      ?? variables.name
+      ?? variables.user_name
+      ?? variables.full_name
+      ?? variables.cliente_nombre
+      ?? ''
+    ).trim();
+
+    const customerCedula = String(
+      variables.cedula
+      ?? variables.identificacion
+      ?? variables.identification
+      ?? variables.numero_cedula
+      ?? ''
+    ).trim();
+
+    const agenteNombre = String(calendarCtx?.agenteNombre || '').trim();
+    const taskTitle = String(
+      cfg.task_title
+      || `Cita acordada${customerName ? ` - ${customerName}` : ''}${agreedStartLabel ? ` (${agreedStartLabel})` : ''}`
+    ).trim();
+
+    const summaryParts = [
+      agreedStartLabel ? `Horario acordado: ${agreedStartLabel}` : '',
+      agenteNombre ? `Agente: ${agenteNombre}` : '',
+      customerName ? `Nombre: ${customerName}` : '',
+      customerCedula ? `Cedula: ${customerCedula}` : '',
+    ].filter(Boolean);
+
+    return {
+      control: {
+        type: 'task',
+        action: 'create_task',
+        config: {
+          action: 'create_task',
+          title: taskTitle,
+          assignment_mode: calendarCtx?.agenteId ? 'fixed' : 'none',
+          assign_to: calendarCtx?.agenteId ?? null,
+          priority: cfg.task_priority || 'normal',
+          status: cfg.task_status || 'open',
+        },
+      },
+      vars: {
+        appointment_calendar_id: calendarCtx?.calendarId ?? selectedCalendarId ?? null,
+        appointment_calendar_name: calendarCtx?.calendarName ?? null,
+        appointment_agente_id: calendarCtx?.agenteId ?? null,
+        appointment_agente_nombre: calendarCtx?.agenteNombre ?? null,
+        appointment_customer_name: customerName || null,
+        appointment_customer_cedula: customerCedula || null,
+        appointment_notes_summary: summaryParts.join(' | ') || null,
+        appointment_start: agreedStartIso,
+        appointment_end: agreedEndIso,
+      },
+    };
+  };
+
   const resolveCalendarId = async () => {
     const calendarFromVar = String(variables?.[calendarVarName] ?? '').trim();
     if (calendarFromVar) return calendarFromVar;
@@ -1067,6 +1136,7 @@ async function executeCalendar({ node, input, variables, tenantId }) {
       return { output: { type: 'text', text: errText }, nextNodeId: node.id, updatedVars: {}, terminal: false, fallback: false };
     }
     const a = bookResult.appointment;
+    const taskPayload = await buildBookingTaskPayload({ appointment: a, selectedCalendarId: calendarId });
     return {
       output: null, nextNodeId: node.next,
       updatedVars: {
@@ -1075,7 +1145,9 @@ async function executeCalendar({ node, input, variables, tenantId }) {
         appointment_start: a.startTime.toISOString(),
         appointment_end: a.endTime.toISOString(),
         appointment_status: 'scheduled',
+        ...(taskPayload?.vars ?? {}),
       },
+      ...(taskPayload?.control ? { control: taskPayload.control } : {}),
       terminal: false, fallback: false,
     };
   }
@@ -1088,7 +1160,21 @@ async function executeCalendar({ node, input, variables, tenantId }) {
     const bookResult = await calSvc.bookSlot({ calendarId, slotId, tenantId, userKey: variables.phone || 'unknown', conversationId: variables.conversation_id || null, metadata: { user_name: variables.name || null } });
     if (bookResult.error) return { output: null, nextNodeId: (node.branches && node.branches.error) || node.next, updatedVars: {}, terminal: false, fallback: false };
     const a = bookResult.appointment;
-    return { output: null, nextNodeId: node.next, updatedVars: { appointment_id: a.id, appointment_start: a.startTime.toISOString(), appointment_end: a.endTime.toISOString(), appointment_status: 'scheduled' }, terminal: false, fallback: false };
+    const taskPayload = await buildBookingTaskPayload({ appointment: a, selectedCalendarId: calendarId });
+    return {
+      output: null,
+      nextNodeId: node.next,
+      updatedVars: {
+        appointment_id: a.id,
+        appointment_start: a.startTime.toISOString(),
+        appointment_end: a.endTime.toISOString(),
+        appointment_status: 'scheduled',
+        ...(taskPayload?.vars ?? {}),
+      },
+      ...(taskPayload?.control ? { control: taskPayload.control } : {}),
+      terminal: false,
+      fallback: false,
+    };
   }
 
   if (action === 'reschedule_appointment') {

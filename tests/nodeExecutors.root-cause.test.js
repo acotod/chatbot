@@ -263,4 +263,67 @@ describe('nodeExecutors root-cause guards', () => {
     getCalendarIdForPuestoSpy.mockRestore();
     getAvailableSlotsSpy.mockRestore();
   });
+
+  test('calendar select_slot creates task control with agreed details and assigned agent', async () => {
+    const calendarService = require('../src/services/calendarService');
+    const bookSlotSpy = jest.spyOn(calendarService, 'bookSlot').mockResolvedValue({
+      appointment: {
+        id: 'appt-123',
+        startTime: new Date('2026-05-29T15:00:00.000Z'),
+        endTime: new Date('2026-05-29T16:00:00.000Z'),
+      },
+    });
+    const getCalendarAssignmentContextSpy = jest
+      .spyOn(calendarService, 'getCalendarAssignmentContext')
+      .mockResolvedValue({
+        calendarId: 'cal-1',
+        calendarName: 'Agenda Psicologia',
+        agenteId: 2,
+        agenteNombre: 'Pedro Perez',
+      });
+
+    const node = {
+      id: 'node_calendar',
+      type: 'calendar',
+      next: 'node_confirm',
+      config: {
+        action: 'select_slot',
+        create_task_on_booking: true,
+      },
+    };
+
+    const result = await executeNode(node, {
+      input: 'slot-1',
+      variables: {
+        selected_calendar_id: 'cal-1',
+        cedula: '107910975',
+        nombre: 'Andres Coto',
+      },
+      tenantId: 'tenant-1',
+    });
+
+    expect(bookSlotSpy).toHaveBeenCalledWith(expect.objectContaining({
+      calendarId: 'cal-1',
+      slotId: 'slot-1',
+    }));
+    expect(getCalendarAssignmentContextSpy).toHaveBeenCalledWith('cal-1', 'tenant-1');
+    expect(result.control).toEqual(expect.objectContaining({
+      type: 'task',
+      action: 'create_task',
+      config: expect.objectContaining({
+        assignment_mode: 'fixed',
+        assign_to: 2,
+      }),
+    }));
+    expect(result.updatedVars).toEqual(expect.objectContaining({
+      appointment_id: 'appt-123',
+      appointment_agente_id: 2,
+      appointment_agente_nombre: 'Pedro Perez',
+      appointment_customer_name: 'Andres Coto',
+      appointment_customer_cedula: '107910975',
+    }));
+
+    bookSlotSpy.mockRestore();
+    getCalendarAssignmentContextSpy.mockRestore();
+  });
 });

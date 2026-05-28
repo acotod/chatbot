@@ -557,6 +557,10 @@ async function _handleTaskControl({
 
   if (action === 'create_task') {
     const resolvedAssignTo = await _resolveTaskAssignTo({ tenantId, cfg, variables });
+    const mergedTaskVariables = {
+      ...(variables ?? {}),
+      ...(updatedVarsBase ?? {}),
+    };
 
     const created = await db.createOrReuseFlowTask({
       tenantId,
@@ -568,7 +572,7 @@ async function _handleTaskControl({
       title: cfg.title,
       assignTo: resolvedAssignTo,
       priority: cfg.priority,
-      variables,
+      variables: mergedTaskVariables,
       requestedStatus: cfg.status,
     });
 

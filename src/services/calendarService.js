@@ -513,6 +513,39 @@ async function getCalendarIdForAgente(tenantId, agenteId) {
   return calendar?.id ?? null;
 }
 
+/**
+ * Resolve calendar + assigned agent metadata for downstream task routing.
+ *
+ * @param {string} calendarId
+ * @param {string} tenantId
+ * @returns {Promise<{ calendarId: string, calendarName: string|null, agenteId: number|null, agenteNombre: string|null }|null>}
+ */
+async function getCalendarAssignmentContext(calendarId, tenantId) {
+  if (!calendarId || !tenantId) return null;
+
+  const calendar = await prisma.calendar.findFirst({
+    where: { id: calendarId, tenantId, activo: true },
+    select: {
+      id: true,
+      name: true,
+      agenteId: true,
+      agente: {
+        select: { id: true, nombre: true, estado: true },
+      },
+    },
+  });
+
+  if (!calendar) return null;
+
+  const isAgentActive = String(calendar.agente?.estado || '').toLowerCase() === 'activo';
+  return {
+    calendarId: calendar.id,
+    calendarName: calendar.name ?? null,
+    agenteId: isAgentActive ? Number(calendar.agente?.id ?? calendar.agenteId ?? 0) || null : null,
+    agenteNombre: isAgentActive ? (calendar.agente?.nombre ?? null) : null,
+  };
+}
+
 function buildPuestoCursorKey({ tenantId, puestoId = null, puestoNombre = null }) {
   const safeTenant = String(tenantId || '').trim();
   const safePuestoId = Number.isInteger(puestoId) && puestoId > 0 ? String(puestoId) : '';
@@ -834,6 +867,7 @@ module.exports = {
   generateSlots,
   getAvailableSlots,
   getCalendarIdForAgente,
+  getCalendarAssignmentContext,
   getCalendarIdForPuesto,
   getRandomCalendarIdForPuesto,
   bookSlot,
