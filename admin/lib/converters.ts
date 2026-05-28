@@ -20,6 +20,35 @@ interface FlattenedNode {
   order: number;
 }
 
+function pickDisplayLabel(node: NodeDef): string {
+  const config = asObjectRecord(node.config) ?? {};
+
+  const readText = (key: string): string => {
+    const value = config[key];
+    return typeof value === 'string' ? value.trim() : '';
+  };
+
+  const primaryLabel = readText('label') || readText('text') || readText('title');
+  const variable = readText('variable') || readText('availability_variable') || readText('targetVariable');
+
+  if (primaryLabel && variable) {
+    return `${primaryLabel} -> ${variable}`;
+  }
+
+  if (primaryLabel) return primaryLabel;
+  if (variable) return variable;
+
+  // For condition-like nodes, expression is often the only human-readable cue.
+  const expression = readText('expression');
+  if (expression) return expression;
+
+  // Endpoint hint for action/webhook nodes when label/text is absent.
+  const endpoint = readText('endpoint');
+  if (endpoint) return endpoint;
+
+  return node.id;
+}
+
 function asObjectRecord(value: unknown): Record<string, unknown> | null {
   return value && typeof value === 'object' ? value as Record<string, unknown> : null;
 }
@@ -98,7 +127,7 @@ export function toReactFlowNodes(definition: FlowDefinition): FlowNode[] {
       data: {
         id: node.id,
         type: node.type,
-        label: node.config?.label || node.config?.text || node.id,
+        label: pickDisplayLabel(node),
         config: node.config,
         next: node.next,
         branches: node.branches,
