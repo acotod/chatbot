@@ -270,34 +270,57 @@ router.patch('/contacts/by-cedula', [
       return res.status(400).json({ error: 'tenantSlug required to sync with TSE' });
     }
 
-    const tseLookup = await fetchTseProfileByCedula(targetTenantId, cedula);
-    let effectiveLookup = tseLookup;
-    if (!effectiveLookup.ok) {
-      if (effectiveLookup.notFound) {
-        return res.status(404).json({ error: 'Cedula not found in TSE', detail: effectiveLookup.error ?? null });
-      }
+    const padronLookup = await lookupPadronByCedula(cedula);
+    let effectiveLookup = null;
 
-      if (!CRM_CEDULA_ALLOW_EXTERNAL_DOWN) {
-        return res.status(502).json({
-          error: 'TSE lookup failed',
-          detail: effectiveLookup.error ?? 'Unable to fetch data from TSE API',
-          message: TSE_EXTERNAL_DOWN_USER_MESSAGE,
-        });
-      }
-
-      // Soft-fail mode: continue contact sync even when external service is down.
+    if (padronLookup.ok) {
       effectiveLookup = {
         ok: true,
-        profile: {
-          nombre: null,
-          email: null,
-          phone: null,
-          empresa: null,
-          cargo: null,
-        },
-        source: 'external_unavailable_soft_fail',
-        fallbackReason: effectiveLookup.error ?? 'External ID validation unavailable',
+        profile: padronLookup.profile,
+        raw: padronLookup.raw,
+        source: 'padron_primary',
       };
+    } else {
+      const tseLookup = await fetchTseProfileByCedula(targetTenantId, cedula);
+      effectiveLookup = tseLookup;
+
+      if (!effectiveLookup.ok) {
+        if (effectiveLookup.notFound) {
+          const padronDetail = padronLookup.error ?? null;
+          return res.status(404).json({
+            error: 'Cedula not found in padron or TSE',
+            detail: {
+              padron: padronDetail,
+              tse: effectiveLookup.error ?? null,
+            },
+          });
+        }
+
+        if (!CRM_CEDULA_ALLOW_EXTERNAL_DOWN) {
+          return res.status(502).json({
+            error: 'Cedula lookup failed',
+            detail: {
+              padron: padronLookup.error ?? null,
+              tse: effectiveLookup.error ?? 'Unable to fetch data from TSE API',
+            },
+            message: TSE_EXTERNAL_DOWN_USER_MESSAGE,
+          });
+        }
+
+        // Soft-fail mode: continue contact sync even when external service is down.
+        effectiveLookup = {
+          ok: true,
+          profile: {
+            nombre: null,
+            email: null,
+            phone: null,
+            empresa: null,
+            cargo: null,
+          },
+          source: 'external_unavailable_soft_fail',
+          fallbackReason: effectiveLookup.error ?? 'External ID validation unavailable',
+        };
+      }
     }
 
     const tseProfile = effectiveLookup.profile ?? {};
