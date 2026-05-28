@@ -513,14 +513,46 @@ async function getCalendarIdForAgente(tenantId, agenteId) {
   return calendar?.id ?? null;
 }
 
+function buildPuestoCursorKey({ tenantId, puestoId = null, puestoNombre = null }) {
+  const safeTenant = String(tenantId || '').trim();
+  const safePuestoId = Number.isInteger(puestoId) && puestoId > 0 ? String(puestoId) : '';
+  const safePuestoNombre = String(puestoNombre || '').trim().toLowerCase();
+  const puestoToken = safePuestoId || safePuestoNombre || 'unknown';
+  return `calendar:rr:${safeTenant}:${puestoToken}`;
+}
+
+async function chooseCalendarByRoundRobin(calendars, { tenantId, puestoId = null, puestoNombre = null }) {
+  if (!Array.isArray(calendars) || calendars.length === 0) return null;
+  const redis = getRedis();
+
+  // Fallback to local random choice if Redis is unavailable.
+  if (!redis) {
+    const idx = Math.floor(Math.random() * calendars.length);
+    return calendars[idx]?.id ?? null;
+  }
+
+  try {
+    const cursorKey = buildPuestoCursorKey({ tenantId, puestoId, puestoNombre });
+    const nextIdxRaw = await redis.incr(cursorKey);
+    // Keep a bounded TTL so stale puesto keys disappear automatically.
+    await redis.expire(cursorKey, 60 * 60 * 24 * 30);
+    const index = (Number(nextIdxRaw) - 1) % calendars.length;
+    return calendars[index]?.id ?? null;
+  } catch (_) {
+    const idx = Math.floor(Math.random() * calendars.length);
+    return calendars[idx]?.id ?? null;
+  }
+}
+
 /**
- * Resolve a random active calendar for agents matching a puesto in a tenant.
+ * Resolve an active calendar for agents matching a puesto in a tenant.
+ * Strategy can be random (default) or round_robin.
  *
  * @param {string} tenantId
- * @param {{ puestoId?: number|null, puestoNombre?: string|null }} opts
+ * @param {{ puestoId?: number|null, puestoNombre?: string|null, strategy?: string|null }} opts
  * @returns {Promise<string|null>}
  */
-async function getRandomCalendarIdForPuesto(tenantId, { puestoId = null, puestoNombre = null } = {}) {
+async function getCalendarIdForPuesto(tenantId, { puestoId = null, puestoNombre = null, strategy = 'random' } = {}) {
   if (!tenantId) return null;
 
   const hasPuestoId = Number.isInteger(puestoId) && puestoId > 0;
@@ -551,12 +583,30 @@ async function getRandomCalendarIdForPuesto(tenantId, { puestoId = null, puestoN
         },
       },
     },
+    orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
     select: { id: true },
   });
 
   if (!calendars.length) return null;
+
+  const normalizedStrategy = String(strategy || 'random').trim().toLowerCase();
+  if (normalizedStrategy === 'round_robin' || normalizedStrategy === 'roundrobin') {
+    return chooseCalendarByRoundRobin(calendars, { tenantId, puestoId, puestoNombre: normalizedPuestoNombre });
+  }
+
   const randomIndex = Math.floor(Math.random() * calendars.length);
   return calendars[randomIndex]?.id ?? null;
+}
+
+/**
+ * Resolve a random active calendar for agents matching a puesto in a tenant.
+ *
+ * @param {string} tenantId
+ * @param {{ puestoId?: number|null, puestoNombre?: string|null }} opts
+ * @returns {Promise<string|null>}
+ */
+async function getRandomCalendarIdForPuesto(tenantId, { puestoId = null, puestoNombre = null } = {}) {
+  return getCalendarIdForPuesto(tenantId, { puestoId, puestoNombre, strategy: 'random' });
 }
 
 /**
@@ -784,6 +834,7 @@ module.exports = {
   generateSlots,
   getAvailableSlots,
   getCalendarIdForAgente,
+  getCalendarIdForPuesto,
   getRandomCalendarIdForPuesto,
   bookSlot,
   cancelAppointment,

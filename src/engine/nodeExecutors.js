@@ -984,9 +984,17 @@ async function executeCalendar({ node, input, variables, tenantId }) {
       ?? ''
     ).trim();
 
-    return calSvc.getRandomCalendarIdForPuesto(tenantId, {
+    const selectionStrategy = String(
+      cfg.assignment_strategy
+      ?? cfg.calendar_selection_strategy
+      ?? cfg.strategy
+      ?? 'random'
+    ).trim().toLowerCase();
+
+    return calSvc.getCalendarIdForPuesto(tenantId, {
       puestoId: Number.isInteger(puestoId) && puestoId > 0 ? puestoId : null,
       puestoNombre: puestoNombre || null,
+      strategy: selectionStrategy,
     });
   };
 
