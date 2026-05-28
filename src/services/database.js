@@ -1683,6 +1683,9 @@ async function createOrReuseFlowTask({
   title,
   assignTo,
   priority,
+  nombre,
+  customerNotes,
+  horario,
   variables,
   requestedStatus,
 }) {
@@ -1701,7 +1704,26 @@ async function createOrReuseFlowTask({
     where: whereOpen,
     orderBy: { createdAt: 'desc' },
   });
-  if (existing) return { solicitud: existing, created: false };
+  if (existing) {
+    const normalizedName = normalizeOptionalText(nombre, 100);
+    const normalizedNotes = normalizeOptionalText(customerNotes);
+    const normalizedSchedule = normalizeOptionalText(horario, 20);
+
+    const patch = {};
+    if (!existing.nombre && normalizedName) patch.nombre = normalizedName;
+    if (!existing.customerNotes && normalizedNotes) patch.customerNotes = normalizedNotes;
+    if (!existing.horario && normalizedSchedule) patch.horario = normalizedSchedule;
+
+    if (Object.keys(patch).length > 0) {
+      const updated = await client.solicitud.update({
+        where: { id: existing.id },
+        data: patch,
+      });
+      return { solicitud: updated, created: false };
+    }
+
+    return { solicitud: existing, created: false };
+  }
 
   let agenteId = null;
   if (assignTo != null) {
@@ -1713,6 +1735,9 @@ async function createOrReuseFlowTask({
   }
 
   const estado = normalizeSolicitudStatus(requestedStatus, SOLICITUD_STATUS.OPEN);
+  const normalizedName = normalizeOptionalText(nombre, 100);
+  const normalizedNotes = normalizeOptionalText(customerNotes);
+  const normalizedSchedule = normalizeOptionalText(horario, 20);
   const created = await client.solicitud.create({
     data: {
       tenantId,
@@ -1725,6 +1750,9 @@ async function createOrReuseFlowTask({
       prioridad: priority || 'normal',
       estado,
       agenteId,
+      nombre: normalizedName,
+      horario: normalizedSchedule,
+      customerNotes: normalizedNotes,
       telefonoContacto: sessionKey || null,
       variablesJson: variables || {},
       attachmentsJson: [],

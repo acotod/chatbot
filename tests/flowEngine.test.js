@@ -71,6 +71,7 @@ const contextStore = require('../src/engine/contextStore');
 const integrationRunner = require('../src/engine/integrationRunner');
 const convLogger = require('../src/engine/conversationLogger');
 const { getCatalog } = require('../src/services/endpointCatalog');
+const db = require('../src/services/database');
 const { executeStep } = require('../src/services/flowEngine');
 
 describe('flowEngine bootstrap', () => {
@@ -111,6 +112,11 @@ describe('flowEngine bootstrap', () => {
       rawResponse: { ok: true },
     });
     convLogger.getOrCreate.mockResolvedValue('conv-1');
+    db.createOrReuseFlowTask.mockResolvedValue({
+      created: true,
+      solicitud: { id: 77, estado: 'open', origin: 'bot', agenteId: 2 },
+    });
+    db.findTaskForWait.mockResolvedValue(null);
     executeNode.mockResolvedValue({
       output: { type: 'text', text: 'Hola' },
       nextNodeId: null,
@@ -170,5 +176,43 @@ describe('flowEngine bootstrap', () => {
         }),
       })
     );
+  });
+
+  test('passes customer name and notes to task creation payload', async () => {
+    executeNode.mockResolvedValueOnce({
+      output: { type: 'handoff', text: 'Te paso con un agente' },
+      nextNodeId: null,
+      updatedVars: {
+        appointment_customer_name: 'Andres Coto',
+        appointment_notes_summary: 'Horario acordado: 29/05/2026 11:00 a. m. | Agente: Pedro Perez',
+      },
+      terminal: true,
+      fallback: true,
+      control: {
+        type: 'task',
+        action: 'create_task',
+        config: {
+          action: 'create_task',
+          title: 'Solicitud de cita',
+          assignment_mode: 'fixed',
+          assign_to: 2,
+        },
+      },
+    });
+
+    await executeStep({
+      tenantId: 'tenant-1',
+      currentNodeId: null,
+      input: 'hola',
+      userId: 42,
+      sessionKey: '58412121212',
+    });
+
+    expect(db.createOrReuseFlowTask).toHaveBeenCalledWith(expect.objectContaining({
+      tenantId: 'tenant-1',
+      nombre: 'Andres Coto',
+      customerNotes: 'Horario acordado: 29/05/2026 11:00 a. m. | Agente: Pedro Perez',
+      assignTo: 2,
+    }));
   });
 });

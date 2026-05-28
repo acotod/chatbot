@@ -555,12 +555,49 @@ async function _handleTaskControl({
   const action = execResult.control?.action;
   const cfg = execResult.control?.config ?? {};
 
+  const pickFirstText = (...candidates) => {
+    for (const candidate of candidates) {
+      const text = String(candidate ?? '').trim();
+      if (text) return text;
+    }
+    return null;
+  };
+
   if (action === 'create_task') {
     const resolvedAssignTo = await _resolveTaskAssignTo({ tenantId, cfg, variables });
     const mergedTaskVariables = {
       ...(variables ?? {}),
       ...(updatedVarsBase ?? {}),
     };
+
+    const taskCustomerName = pickFirstText(
+      cfg.nombre,
+      cfg.customer_name,
+      cfg.name,
+      mergedTaskVariables.appointment_customer_name,
+      mergedTaskVariables.nombre,
+      mergedTaskVariables.name,
+      mergedTaskVariables.user_name,
+      mergedTaskVariables.full_name,
+      mergedTaskVariables.cliente_nombre,
+    );
+
+    const taskCustomerNotes = pickFirstText(
+      cfg.customer_notes,
+      cfg.notes,
+      cfg.note,
+      mergedTaskVariables.appointment_notes_summary,
+      mergedTaskVariables.customer_notes,
+      mergedTaskVariables.notes,
+      mergedTaskVariables.notas,
+    );
+
+    const taskSchedule = pickFirstText(
+      cfg.horario,
+      mergedTaskVariables.horario,
+      mergedTaskVariables.appointment_start,
+      mergedTaskVariables.agenda_hora_seleccionada,
+    );
 
     const created = await db.createOrReuseFlowTask({
       tenantId,
@@ -572,6 +609,9 @@ async function _handleTaskControl({
       title: cfg.title,
       assignTo: resolvedAssignTo,
       priority: cfg.priority,
+      nombre: taskCustomerName,
+      customerNotes: taskCustomerNotes,
+      horario: taskSchedule,
       variables: mergedTaskVariables,
       requestedStatus: cfg.status,
     });
