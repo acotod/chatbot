@@ -9,7 +9,7 @@
  *   enrichDefinition(def, intMaps)   → merge integration refs into node configs
  *   simulateFlow(def, input)         → step-by-step dry-run (no side-effects)
  *
- * Node types recognized: message, input, menu, condition, action, task, delay, end
+ * Node types recognized: message, input, menu, condition, action, task, delay, end, calendar
  * (mapped from Meta WABA screen types: text_input, opt_in, dropdown, footer, etc.)
  */
 
@@ -36,7 +36,7 @@ const WABA_COMPONENT_TO_NODE_TYPE = {
 };
 
 const VALID_INTERNAL_NODE_TYPES = new Set([
-  'message', 'input', 'menu', 'condition', 'action', 'task', 'delay', 'end', 'start', 'handoff', 'llm',
+  'message', 'input', 'menu', 'condition', 'action', 'task', 'delay', 'end', 'start', 'handoff', 'llm', 'calendar',
 ]);
 
 function asArray(value) {
@@ -146,6 +146,12 @@ function validateInternalDefinition(def) {
     if (node.type === 'menu') {
       if (!Array.isArray(node.config?.options) || node.config.options.length === 0) {
         errors.push(`${prefix}: menu node must have non-empty "config.options" array`);
+      }
+    }
+    if (node.type === 'calendar') {
+      const action = String(node.action || node.config?.action || '').trim();
+      if (!action) {
+        warnings.push(`${prefix}: calendar node is missing action; default behavior may be applied by runtime`);
       }
     }
     if (node.type === 'end') endNodes.push(node.id);
