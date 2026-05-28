@@ -1064,7 +1064,7 @@ function NodeCard({
 // ─────────────────────────────────────────────────────────────────────────────
 // Sub-component: NodeEditModal
 // ─────────────────────────────────────────────────────────────────────────────
-const NODE_TYPES = ["message", "input", "menu", "condition", "action", "task", "delay", "end", "handoff", "llm"];
+const NODE_TYPES = ["message", "input", "menu", "condition", "action", "task", "delay", "end", "handoff", "llm", "calendar"];
 const HTTP_METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE"];
 const CONDITION_OPS = ["equals", "not_equals", "contains", "starts_with", "ends_with", "greater_than", "less_than", "is_empty", "is_not_empty"];
 const CONDITION_TRUE_ALIASES = ["true", "si", "sí", "yes"];
@@ -1352,6 +1352,13 @@ function NodeEditModal({
       : "sequential")
   );
   const [llmFallbackText, setLlmFallbackText] = useState(String((cfg as Record<string, unknown>).fallback_text ?? ""));
+  const [calendarAction, setCalendarAction] = useState(String(cfg.action ?? "show_availability"));
+  const [calendarId, setCalendarId] = useState(String(cfg.calendar_id ?? ""));
+  const [calendarRangeDays, setCalendarRangeDays] = useState(Number(cfg.range_days ?? 15));
+  const [calendarPrompt, setCalendarPrompt] = useState(String(cfg.prompt ?? ""));
+  const [calendarNoSlotsText, setCalendarNoSlotsText] = useState(String(cfg.no_slots_text ?? ""));
+  const [calendarErrorText, setCalendarErrorText] = useState(String(cfg.error_text ?? ""));
+  const [calendarAvailabilityVar, setCalendarAvailabilityVar] = useState(String(cfg.availability_variable ?? "agenda_horarios_disponibles"));
   // action
   const [actionRef, setActionRef]       = useState(String(cfg.integration_ref ?? ""));
   const [actionUrl, setActionUrl]       = useState(String((cfg.endpoint ?? (cfg as Record<string,unknown>).url) ?? ""));
@@ -1646,6 +1653,18 @@ function NodeEditModal({
       case "end":       return { text: endMsg, ...(endMsg.trim() ? { message: endMsg } : {}), ...actionFragment };
       case "handoff":   return { department: handoffDept, text: handoffMsg, ...(handoffMsg.trim() ? { message: handoffMsg } : {}), ...actionFragment };
       case "llm":       return { prompts: llmPrompts, composeMode: llmComposeMode, ...(llmFallbackText.trim() ? { fallback_text: llmFallbackText.trim() } : {}), ...actionFragment };
+      case "calendar": {
+        const parsedRangeDays = Number.isFinite(calendarRangeDays) ? Math.max(1, Math.trunc(calendarRangeDays)) : 15;
+        return {
+          action: (calendarAction || "show_availability").trim(),
+          ...(calendarId.trim() ? { calendar_id: calendarId.trim() } : {}),
+          range_days: parsedRangeDays,
+          ...(calendarPrompt.trim() ? { prompt: calendarPrompt.trim() } : {}),
+          ...(calendarNoSlotsText.trim() ? { no_slots_text: calendarNoSlotsText.trim() } : {}),
+          ...(calendarErrorText.trim() ? { error_text: calendarErrorText.trim() } : {}),
+          ...(calendarAvailabilityVar.trim() ? { availability_variable: calendarAvailabilityVar.trim() } : {}),
+        };
+      }
       case "action":    return actionFragment;
       case "task": {
         if (taskAction === "wait_for_task") {
@@ -1930,6 +1949,80 @@ function NodeEditModal({
                     <VarComboInput value={menuVar} onChange={setMenuVar} placeholder="variables.opcion_menu"
                       suggestions={flowVariables.length > 0 ? flowVariables : MENU_VARIABLE_PRESETS}
                       className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                  </div>
+                </div>
+              )}
+
+              {type === "calendar" && (
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="bg-slate-50 rounded-lg border border-slate-100 p-4">
+                    <label className="block text-xs font-medium text-slate-600 mb-2">Accion calendario</label>
+                    <select
+                      value={calendarAction}
+                      onChange={(e) => setCalendarAction(String(e.target.value ?? "show_availability"))}
+                      className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                      <option value="show_availability">show_availability</option>
+                      <option value="select_slot">select_slot</option>
+                      <option value="create_appointment">create_appointment</option>
+                      <option value="reschedule_appointment">reschedule_appointment</option>
+                      <option value="cancel_appointment">cancel_appointment</option>
+                    </select>
+                  </div>
+                  <div className="bg-slate-50 rounded-lg border border-slate-100 p-4">
+                    <label className="block text-xs font-medium text-slate-600 mb-2">Calendar ID</label>
+                    <input
+                      value={calendarId}
+                      onChange={(e) => setCalendarId(e.target.value)}
+                      placeholder="UUID del calendario"
+                      className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                  <div className="bg-slate-50 rounded-lg border border-slate-100 p-4">
+                    <label className="block text-xs font-medium text-slate-600 mb-2">Range days</label>
+                    <input
+                      type="number"
+                      min={1}
+                      value={calendarRangeDays}
+                      onChange={(e) => setCalendarRangeDays(Number(e.target.value || 1))}
+                      className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                  <div className="bg-slate-50 rounded-lg border border-slate-100 p-4">
+                    <label className="block text-xs font-medium text-slate-600 mb-2">Variable disponibilidad</label>
+                    <input
+                      value={calendarAvailabilityVar}
+                      onChange={(e) => setCalendarAvailabilityVar(e.target.value)}
+                      placeholder="agenda_horarios_disponibles"
+                      className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                  <div className="bg-slate-50 rounded-lg border border-slate-100 p-4 col-span-2">
+                    <label className="block text-xs font-medium text-slate-600 mb-2">Prompt</label>
+                    <textarea
+                      value={calendarPrompt}
+                      onChange={(e) => setCalendarPrompt(e.target.value)}
+                      rows={2}
+                      className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                  <div className="bg-slate-50 rounded-lg border border-slate-100 p-4">
+                    <label className="block text-xs font-medium text-slate-600 mb-2">No slots text</label>
+                    <textarea
+                      value={calendarNoSlotsText}
+                      onChange={(e) => setCalendarNoSlotsText(e.target.value)}
+                      rows={2}
+                      className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                  <div className="bg-slate-50 rounded-lg border border-slate-100 p-4">
+                    <label className="block text-xs font-medium text-slate-600 mb-2">Error text</label>
+                    <textarea
+                      value={calendarErrorText}
+                      onChange={(e) => setCalendarErrorText(e.target.value)}
+                      rows={2}
+                      className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
                   </div>
                 </div>
               )}
