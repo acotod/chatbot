@@ -20,6 +20,9 @@
  */
 
 const logger = require('../utils/logger');
+const CEDULA_SYNC_TIMEOUT_MS = Number.isFinite(Number(process.env.CEDULA_SYNC_TIMEOUT_MS))
+  ? Number(process.env.CEDULA_SYNC_TIMEOUT_MS)
+  : 45000;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Helpers
@@ -509,7 +512,7 @@ async function executeInput({ node, input, variables, llmService, integrationRun
           nodeRef: node.id ?? null,
           nodeType: node.type ?? 'input',
           trigger: 'flow_node',
-          ...(isCedulaSync ? { timeoutMs: 15000 } : {}),
+          ...(isCedulaSync ? { timeoutMs: CEDULA_SYNC_TIMEOUT_MS } : {}),
         });
 
         Object.assign(updatedVars, responseVars ?? {});
