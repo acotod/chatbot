@@ -1692,6 +1692,35 @@ async function createOrReuseFlowTask({
   const client = getPrismaClient();
   if (!client) return null;
 
+  let cachedResolvedName;
+  const resolveTaskCustomerName = async () => {
+    if (cachedResolvedName !== undefined) return cachedResolvedName;
+
+    const normalizedInputName = normalizeOptionalText(nombre, 100);
+    if (normalizedInputName) {
+      cachedResolvedName = normalizedInputName;
+      return cachedResolvedName;
+    }
+
+    const parsedUserId = Number(userId);
+    if (!Number.isInteger(parsedUserId) || parsedUserId <= 0) {
+      cachedResolvedName = null;
+      return cachedResolvedName;
+    }
+
+    try {
+      const user = await client.user.findFirst({
+        where: { id: parsedUserId, tenantId },
+        select: { nombre: true },
+      });
+      cachedResolvedName = normalizeOptionalText(user?.nombre, 100);
+      return cachedResolvedName;
+    } catch (_err) {
+      cachedResolvedName = null;
+      return cachedResolvedName;
+    }
+  };
+
   const whereOpen = {
     tenantId,
     flowNodeRef: flowNodeRef ?? null,
@@ -1705,7 +1734,7 @@ async function createOrReuseFlowTask({
     orderBy: { createdAt: 'desc' },
   });
   if (existing) {
-    const normalizedName = normalizeOptionalText(nombre, 100);
+    const normalizedName = await resolveTaskCustomerName();
     const normalizedNotes = normalizeOptionalText(customerNotes);
     const normalizedSchedule = normalizeOptionalText(horario, 20);
 
@@ -1735,7 +1764,7 @@ async function createOrReuseFlowTask({
   }
 
   const estado = normalizeSolicitudStatus(requestedStatus, SOLICITUD_STATUS.OPEN);
-  const normalizedName = normalizeOptionalText(nombre, 100);
+  const normalizedName = await resolveTaskCustomerName();
   const normalizedNotes = normalizeOptionalText(customerNotes);
   const normalizedSchedule = normalizeOptionalText(horario, 20);
   const created = await client.solicitud.create({
