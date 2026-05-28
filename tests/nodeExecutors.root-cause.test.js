@@ -221,4 +221,46 @@ describe('nodeExecutors root-cause guards', () => {
       }),
     );
   });
+
+  test('calendar node resolves by puesto with round_robin strategy before fixed calendar_id', async () => {
+    const calendarService = require('../src/services/calendarService');
+    const getCalendarIdForPuestoSpy = jest
+      .spyOn(calendarService, 'getCalendarIdForPuesto')
+      .mockResolvedValue('cal-rr-1');
+    const getAvailableSlotsSpy = jest
+      .spyOn(calendarService, 'getAvailableSlots')
+      .mockResolvedValue([]);
+
+    const node = {
+      id: 'node_calendar',
+      type: 'calendar',
+      next: 'node_next',
+      config: {
+        action: 'show_availability',
+        calendar_id: 'cal-fixed-1',
+        assignment_strategy: 'round_robin',
+        agente_puesto_id: 7,
+      },
+      branches: {
+        no_slots: 'node_no_slots',
+      },
+    };
+
+    const result = await executeNode(node, {
+      input: null,
+      variables: {},
+      tenantId: 'tenant-1',
+    });
+
+    expect(getCalendarIdForPuestoSpy).toHaveBeenCalledWith('tenant-1', {
+      puestoId: 7,
+      puestoNombre: null,
+      strategy: 'round_robin',
+    });
+    expect(getAvailableSlotsSpy).toHaveBeenCalledWith('cal-rr-1', 5);
+    expect(result.nextNodeId).toBe('node_no_slots');
+
+    getCalendarIdForPuestoSpy.mockRestore();
+    getAvailableSlotsSpy.mockRestore();
+  });
 });

@@ -1359,6 +1359,9 @@ function NodeEditModal({
   const [calendarNoSlotsText, setCalendarNoSlotsText] = useState(String(cfg.no_slots_text ?? ""));
   const [calendarErrorText, setCalendarErrorText] = useState(String(cfg.error_text ?? ""));
   const [calendarAvailabilityVar, setCalendarAvailabilityVar] = useState(String(cfg.availability_variable ?? "agenda_horarios_disponibles"));
+  const [calendarAssignmentStrategy, setCalendarAssignmentStrategy] = useState(String(cfg.assignment_strategy ?? cfg.calendar_selection_strategy ?? "random"));
+  const [calendarPuestoId, setCalendarPuestoId] = useState(String(cfg.agente_puesto_id ?? cfg.puesto_id ?? ""));
+  const [calendarPuestoNombre, setCalendarPuestoNombre] = useState(String(cfg.agente_puesto_nombre ?? cfg.puesto_nombre ?? ""));
   // action
   const [actionRef, setActionRef]       = useState(String(cfg.integration_ref ?? ""));
   const [actionUrl, setActionUrl]       = useState(String((cfg.endpoint ?? (cfg as Record<string,unknown>).url) ?? ""));
@@ -1655,10 +1658,15 @@ function NodeEditModal({
       case "llm":       return { prompts: llmPrompts, composeMode: llmComposeMode, ...(llmFallbackText.trim() ? { fallback_text: llmFallbackText.trim() } : {}), ...actionFragment };
       case "calendar": {
         const parsedRangeDays = Number.isFinite(calendarRangeDays) ? Math.max(1, Math.trunc(calendarRangeDays)) : 15;
+        const parsedPuestoId = Number.parseInt(String(calendarPuestoId || "").trim(), 10);
+        const normalizedAssignmentStrategy = String(calendarAssignmentStrategy || "random").trim().toLowerCase();
         return {
           action: (calendarAction || "show_availability").trim(),
           ...(calendarId.trim() ? { calendar_id: calendarId.trim() } : {}),
           range_days: parsedRangeDays,
+          ...(normalizedAssignmentStrategy ? { assignment_strategy: normalizedAssignmentStrategy } : {}),
+          ...(Number.isInteger(parsedPuestoId) && parsedPuestoId > 0 ? { agente_puesto_id: parsedPuestoId } : {}),
+          ...(calendarPuestoNombre.trim() ? { agente_puesto_nombre: calendarPuestoNombre.trim() } : {}),
           ...(calendarPrompt.trim() ? { prompt: calendarPrompt.trim() } : {}),
           ...(calendarNoSlotsText.trim() ? { no_slots_text: calendarNoSlotsText.trim() } : {}),
           ...(calendarErrorText.trim() ? { error_text: calendarErrorText.trim() } : {}),
@@ -1985,6 +1993,37 @@ function NodeEditModal({
                       min={1}
                       value={calendarRangeDays}
                       onChange={(e) => setCalendarRangeDays(Number(e.target.value || 1))}
+                      className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                  <div className="bg-slate-50 rounded-lg border border-slate-100 p-4">
+                    <label className="block text-xs font-medium text-slate-600 mb-2">Asignacion por puesto</label>
+                    <select
+                      value={calendarAssignmentStrategy}
+                      onChange={(e) => setCalendarAssignmentStrategy(String(e.target.value ?? "random"))}
+                      className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                      <option value="random">random</option>
+                      <option value="round_robin">round_robin</option>
+                    </select>
+                  </div>
+                  <div className="bg-slate-50 rounded-lg border border-slate-100 p-4">
+                    <label className="block text-xs font-medium text-slate-600 mb-2">Puesto ID</label>
+                    <input
+                      type="number"
+                      min={1}
+                      value={calendarPuestoId}
+                      onChange={(e) => setCalendarPuestoId(String(e.target.value ?? ""))}
+                      placeholder="Ej: 3"
+                      className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                  <div className="bg-slate-50 rounded-lg border border-slate-100 p-4">
+                    <label className="block text-xs font-medium text-slate-600 mb-2">Puesto nombre</label>
+                    <input
+                      value={calendarPuestoNombre}
+                      onChange={(e) => setCalendarPuestoNombre(e.target.value)}
+                      placeholder="Ej: Recepcion"
                       className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                     />
                   </div>

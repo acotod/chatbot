@@ -935,12 +935,16 @@ async function executeCalendar({ node, input, variables, tenantId }) {
   const cfg    = resolveConfig(node.config || {}, variables);
   const action = node.action || cfg.action || 'show_availability';
   const calendarVarName = String(cfg.calendar_variable || 'selected_calendar_id').trim() || 'selected_calendar_id';
+  const selectionStrategy = String(
+    cfg.assignment_strategy
+    ?? cfg.calendar_selection_strategy
+    ?? cfg.strategy
+    ?? 'random'
+  ).trim().toLowerCase();
 
   const resolveCalendarId = async () => {
     const calendarFromVar = String(variables?.[calendarVarName] ?? '').trim();
     if (calendarFromVar) return calendarFromVar;
-
-    if (cfg.calendar_id) return cfg.calendar_id;
 
     const rawAgenteId = cfg.agente_id
       ?? cfg.agenteId
@@ -984,18 +988,20 @@ async function executeCalendar({ node, input, variables, tenantId }) {
       ?? ''
     ).trim();
 
-    const selectionStrategy = String(
-      cfg.assignment_strategy
-      ?? cfg.calendar_selection_strategy
-      ?? cfg.strategy
-      ?? 'random'
-    ).trim().toLowerCase();
+    const usePuestoResolution = Number.isInteger(puestoId) && puestoId > 0
+      || Boolean(puestoNombre);
 
-    return calSvc.getCalendarIdForPuesto(tenantId, {
-      puestoId: Number.isInteger(puestoId) && puestoId > 0 ? puestoId : null,
-      puestoNombre: puestoNombre || null,
-      strategy: selectionStrategy,
-    });
+    if (usePuestoResolution) {
+      return calSvc.getCalendarIdForPuesto(tenantId, {
+        puestoId: Number.isInteger(puestoId) && puestoId > 0 ? puestoId : null,
+        puestoNombre: puestoNombre || null,
+        strategy: selectionStrategy,
+      });
+    }
+
+    if (cfg.calendar_id) return cfg.calendar_id;
+
+    return null;
   };
 
   const calendarId = await resolveCalendarId();
