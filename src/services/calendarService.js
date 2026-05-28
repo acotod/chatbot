@@ -514,6 +514,52 @@ async function getCalendarIdForAgente(tenantId, agenteId) {
 }
 
 /**
+ * Resolve a random active calendar for agents matching a puesto in a tenant.
+ *
+ * @param {string} tenantId
+ * @param {{ puestoId?: number|null, puestoNombre?: string|null }} opts
+ * @returns {Promise<string|null>}
+ */
+async function getRandomCalendarIdForPuesto(tenantId, { puestoId = null, puestoNombre = null } = {}) {
+  if (!tenantId) return null;
+
+  const hasPuestoId = Number.isInteger(puestoId) && puestoId > 0;
+  const normalizedPuestoNombre = String(puestoNombre || '').trim();
+  const hasPuestoNombre = normalizedPuestoNombre.length > 0;
+  if (!hasPuestoId && !hasPuestoNombre) return null;
+
+  const calendars = await prisma.calendar.findMany({
+    where: {
+      tenantId,
+      activo: true,
+      agente: {
+        is: {
+          tenantId,
+          estado: 'activo',
+          ...(hasPuestoId
+            ? { puestoId }
+            : {
+                puesto: {
+                  is: {
+                    nombre: {
+                      equals: normalizedPuestoNombre,
+                      mode: 'insensitive',
+                    },
+                  },
+                },
+              }),
+        },
+      },
+    },
+    select: { id: true },
+  });
+
+  if (!calendars.length) return null;
+  const randomIndex = Math.floor(Math.random() * calendars.length);
+  return calendars[randomIndex]?.id ?? null;
+}
+
+/**
  * Book a slot atomically.
  * Uses SELECT FOR UPDATE NOWAIT inside a transaction to prevent double-booking.
  *
@@ -738,6 +784,7 @@ module.exports = {
   generateSlots,
   getAvailableSlots,
   getCalendarIdForAgente,
+  getRandomCalendarIdForPuesto,
   bookSlot,
   cancelAppointment,
   rescheduleAppointment,

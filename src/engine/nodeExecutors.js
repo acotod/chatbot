@@ -934,8 +934,12 @@ async function executeCalendar({ node, input, variables, tenantId }) {
   const calSvc = require('../services/calendarService');
   const cfg    = resolveConfig(node.config || {}, variables);
   const action = node.action || cfg.action || 'show_availability';
+  const calendarVarName = String(cfg.calendar_variable || 'selected_calendar_id').trim() || 'selected_calendar_id';
 
   const resolveCalendarId = async () => {
+    const calendarFromVar = String(variables?.[calendarVarName] ?? '').trim();
+    if (calendarFromVar) return calendarFromVar;
+
     if (cfg.calendar_id) return cfg.calendar_id;
 
     const rawAgenteId = cfg.agente_id
@@ -950,8 +954,40 @@ async function executeCalendar({ node, input, variables, tenantId }) {
       ? null
       : Number(rawAgenteId);
 
-    if (!Number.isInteger(agenteId) || agenteId <= 0) return null;
-    return calSvc.getCalendarIdForAgente(tenantId, agenteId);
+    if (Number.isInteger(agenteId) && agenteId > 0) {
+      return calSvc.getCalendarIdForAgente(tenantId, agenteId);
+    }
+
+    const rawPuestoId = cfg.agente_puesto_id
+      ?? cfg.puesto_id
+      ?? cfg.agentePuestoId
+      ?? cfg.puestoId
+      ?? variables.agente_puesto_id
+      ?? variables.puesto_id
+      ?? variables.agentePuestoId
+      ?? variables.puestoId
+      ?? null;
+
+    const puestoId = rawPuestoId === null || rawPuestoId === undefined || rawPuestoId === ''
+      ? null
+      : Number(rawPuestoId);
+
+    const puestoNombre = String(
+      cfg.agente_puesto_nombre
+      ?? cfg.puesto_nombre
+      ?? cfg.agentePuestoNombre
+      ?? cfg.puestoNombre
+      ?? variables.agente_puesto_nombre
+      ?? variables.puesto_nombre
+      ?? variables.agentePuestoNombre
+      ?? variables.puestoNombre
+      ?? ''
+    ).trim();
+
+    return calSvc.getRandomCalendarIdForPuesto(tenantId, {
+      puestoId: Number.isInteger(puestoId) && puestoId > 0 ? puestoId : null,
+      puestoNombre: puestoNombre || null,
+    });
   };
 
   const calendarId = await resolveCalendarId();
@@ -991,6 +1027,7 @@ async function executeCalendar({ node, input, variables, tenantId }) {
       },
       nextNodeId: node.id,
       updatedVars: {
+        [calendarVarName]: calendarId,
         [availabilityVarName]: availabilityLabels,
       },
       terminal: false,
@@ -1018,7 +1055,13 @@ async function executeCalendar({ node, input, variables, tenantId }) {
     const a = bookResult.appointment;
     return {
       output: null, nextNodeId: node.next,
-      updatedVars: { appointment_id: a.id, appointment_start: a.startTime.toISOString(), appointment_end: a.endTime.toISOString(), appointment_status: 'scheduled' },
+      updatedVars: {
+        [calendarVarName]: calendarId,
+        appointment_id: a.id,
+        appointment_start: a.startTime.toISOString(),
+        appointment_end: a.endTime.toISOString(),
+        appointment_status: 'scheduled',
+      },
       terminal: false, fallback: false,
     };
   }
