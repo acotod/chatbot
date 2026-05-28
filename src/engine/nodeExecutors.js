@@ -29,12 +29,40 @@ const logger = require('../utils/logger');
  * Resolve template strings like "Hola {{name}}" against a variables map.
  * Unknown variables are left as-is.
  */
+function readVariableValue(variables, rawPath) {
+  const path = String(rawPath ?? '').trim();
+  if (!path) return undefined;
+
+  const direct = variables[path];
+  if (direct !== undefined) return direct;
+
+  const normalized = path.startsWith('variables.') ? path.slice('variables.'.length) : path;
+  if (variables[normalized] !== undefined) return variables[normalized];
+
+  const tryNested = (base, parts) => {
+    let cursor = base;
+    for (const part of parts) {
+      if (!cursor || typeof cursor !== 'object') return undefined;
+      cursor = cursor[part];
+    }
+    return cursor;
+  };
+
+  const directNested = tryNested(variables, path.split('.'));
+  if (directNested !== undefined) return directNested;
+
+  if (normalized !== path) {
+    return tryNested(variables, normalized.split('.'));
+  }
+
+  return undefined;
+}
+
 function resolveTemplate(template, variables) {
   if (typeof template !== 'string') return template;
-  return template.replace(/\{\{(\w+)\}\}/g, (_, key) => {
-    return Object.prototype.hasOwnProperty.call(variables, key)
-      ? String(variables[key])
-      : `{{${key}}}`;
+  return template.replace(/\{\{\s*([\w.]+)\s*\}\}/g, (match, key) => {
+    const value = readVariableValue(variables, key);
+    return value !== undefined ? String(value) : match;
   });
 }
 
@@ -440,33 +468,9 @@ async function executeCondition({ node, variables }) {
   const resolved = expr ? resolveTemplate(expr, variables) : '';
   let   result   = false;
 
-  const readVariableValue = (rawPath) => {
+  const readConditionVariableValue = (rawPath) => {
     const path = String(rawPath ?? '').trim().replace(/^\{\{\s*/, '').replace(/\s*\}\}$/, '');
-    if (!path) return undefined;
-
-    const direct = variables[path];
-    if (direct !== undefined) return direct;
-
-    const normalized = path.startsWith('variables.') ? path.slice('variables.'.length) : path;
-    if (variables[normalized] !== undefined) return variables[normalized];
-
-    const tryNested = (base, parts) => {
-      let cursor = base;
-      for (const part of parts) {
-        if (!cursor || typeof cursor !== 'object') return undefined;
-        cursor = cursor[part];
-      }
-      return cursor;
-    };
-
-    const directNested = tryNested(variables, path.split('.'));
-    if (directNested !== undefined) return directNested;
-
-    if (normalized !== path) {
-      return tryNested(variables, normalized.split('.'));
-    }
-
-    return undefined;
+    return readVariableValue(variables, path);
   };
 
   const evaluateFromFields = () => {
@@ -476,7 +480,7 @@ async function executeCondition({ node, variables }) {
 
     if (!variable || !operator) return null;
 
-    const actualRaw = readVariableValue(variable);
+    const actualRaw = readConditionVariableValue(variable);
     const actual = typeof actualRaw === 'string' ? _coerce(actualRaw.trim()) : actualRaw;
     const expected = typeof rawValue === 'string' ? _coerce(rawValue.trim()) : rawValue;
 
