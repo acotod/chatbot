@@ -184,6 +184,7 @@
       "timezoneLabel": "Zona horaria",
       "dayLabel": "Dia",
       "enabledLabel": "Activo",
+      "availableHoursLabel": "Horas disponibles",
       "dayStartLabel": "Inicio jornada",
       "dayEndLabel": "Fin jornada",
       "lunchLabel": "Horario de almuerzo (Lun y Mar)",
@@ -196,7 +197,7 @@
       "tuesdayAfternoonLabel": "Martes - tarde",
       "startLabel": "Inicio",
       "endLabel": "Fin",
-      "scheduleHint": "Define cada dia en un solo lugar. Si hay almuerzo, usa inicio/fin de almuerzo para crear el hueco automaticamente.",
+      "scheduleHint": "Marca las horas disponibles por dia. El sistema arma los rangos automaticamente.",
       "saveAppearance": "Guardar color"
     }
   },

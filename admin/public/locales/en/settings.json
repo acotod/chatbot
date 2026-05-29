@@ -184,6 +184,7 @@
       "timezoneLabel": "Time zone",
       "dayLabel": "Day",
       "enabledLabel": "Enabled",
+      "availableHoursLabel": "Available hours",
       "dayStartLabel": "Day start",
       "dayEndLabel": "Day end",
       "lunchLabel": "Lunch break schedule (Mon/Tue)",
@@ -196,7 +197,7 @@
       "tuesdayAfternoonLabel": "Tuesday - afternoon",
       "startLabel": "Start",
       "endLabel": "End",
-      "scheduleHint": "Define each day in one place. If you need lunch break, use lunch start/end to create the gap automatically.",
+      "scheduleHint": "Mark available hours per day. The system builds working ranges automatically.",
       "saveAppearance": "Save color"
     }
   },

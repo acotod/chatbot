@@ -88,15 +88,9 @@ interface AudioTranscriptionTenantConfig {
 type AgendaDayKey = "sun" | "mon" | "tue" | "wed" | "thu" | "fri" | "sat";
 type AgendaTimeRange = [string, string];
 type AgendaWorkingHours = Record<AgendaDayKey, AgendaTimeRange[]>;
-type AgendaDaySchedule = {
-  enabled: boolean;
-  dayStart: string;
-  lunchStart: string;
-  lunchEnd: string;
-  dayEnd: string;
-};
 
 const AGENDA_DAY_ORDER: AgendaDayKey[] = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
+const AGENDA_HOUR_OPTIONS = [8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18];
 
 const EMPTY_AGENDA_WORKING_HOURS: AgendaWorkingHours = {
   sun: [],
@@ -141,65 +135,55 @@ function normalizeAgendaWorkingHours(rawValue: unknown): AgendaWorkingHours {
   return result;
 }
 
-function getAgendaDaySchedule(hours: AgendaWorkingHours, day: AgendaDayKey): AgendaDaySchedule {
-  const ranges = Array.isArray(hours[day]) ? hours[day] : [];
-  const defaults: AgendaDaySchedule = {
-    enabled: false,
-    dayStart: "08:00",
-    lunchStart: "12:00",
-    lunchEnd: "13:00",
-    dayEnd: "17:00",
-  };
-
-  if (ranges.length === 0) return defaults;
-
-  const first = ranges[0] ?? ["", ""];
-  const second = ranges[1] ?? ["", ""];
-
-  if (!second[0] || !second[1]) {
-    return {
-      enabled: true,
-      dayStart: String(first[0] || defaults.dayStart),
-      lunchStart: String(first[1] || defaults.lunchStart),
-      lunchEnd: String(first[1] || defaults.lunchEnd),
-      dayEnd: String(first[1] || defaults.dayEnd),
-    };
-  }
-
-  return {
-    enabled: true,
-    dayStart: String(first[0] || defaults.dayStart),
-    lunchStart: String(first[1] || defaults.lunchStart),
-    lunchEnd: String(second[0] || defaults.lunchEnd),
-    dayEnd: String(second[1] || defaults.dayEnd),
-  };
+function hourToLabel(hour: number): string {
+  return `${String(hour).padStart(2, "0")}:00`;
 }
 
-function buildAgendaRangesFromSchedule(schedule: AgendaDaySchedule): AgendaTimeRange[] {
-  if (!schedule.enabled) return [];
-
-  const dayStart = String(schedule.dayStart || "").trim();
-  const lunchStart = String(schedule.lunchStart || "").trim();
-  const lunchEnd = String(schedule.lunchEnd || "").trim();
-  const dayEnd = String(schedule.dayEnd || "").trim();
-
-  if (!dayStart || !dayEnd || dayStart >= dayEnd) return [];
-
-  if (lunchStart && lunchEnd && dayStart < lunchStart && lunchStart <= lunchEnd && lunchEnd < dayEnd) {
-    return [
-      [dayStart, lunchStart],
-      [lunchEnd, dayEnd],
-    ];
-  }
-
-  return [[dayStart, dayEnd]];
+function labelToHour(label: string): number | null {
+  const match = String(label || "").trim().match(/^(\d{2}):(\d{2})$/);
+  if (!match) return null;
+  const hour = Number(match[1]);
+  const minute = Number(match[2]);
+  if (!Number.isInteger(hour) || !Number.isInteger(minute) || minute !== 0) return null;
+  if (hour < 0 || hour > 23) return null;
+  return hour;
 }
 
-function setAgendaDaySchedule(hours: AgendaWorkingHours, day: AgendaDayKey, schedule: AgendaDaySchedule): AgendaWorkingHours {
-  return {
-    ...hours,
-    [day]: buildAgendaRangesFromSchedule(schedule),
-  };
+function rangesToSelectedHours(ranges: AgendaTimeRange[]): number[] {
+  const selected = new Set<number>();
+  for (const [start, end] of ranges) {
+    const s = labelToHour(start);
+    const e = labelToHour(end);
+    if (s === null || e === null || e <= s) continue;
+    for (let hour = s; hour < e; hour += 1) selected.add(hour);
+  }
+  return [...selected].sort((a, b) => a - b);
+}
+
+function selectedHoursToRanges(selectedHours: number[]): AgendaTimeRange[] {
+  const hours = [...new Set(selectedHours)]
+    .filter((hour) => Number.isInteger(hour) && hour >= 0 && hour <= 23)
+    .sort((a, b) => a - b);
+
+  if (hours.length === 0) return [];
+
+  const ranges: AgendaTimeRange[] = [];
+  let start = hours[0];
+  let prev = hours[0];
+
+  for (let i = 1; i < hours.length; i += 1) {
+    const current = hours[i];
+    if (current === prev + 1) {
+      prev = current;
+      continue;
+    }
+    ranges.push([hourToLabel(start), hourToLabel(prev + 1)]);
+    start = current;
+    prev = current;
+  }
+
+  ranges.push([hourToLabel(start), hourToLabel(prev + 1)]);
+  return ranges;
 }
 
 const DEFAULT_AUDIO_TRANSCRIPTION_CONFIG: AudioTranscriptionTenantConfig = {
@@ -875,14 +859,24 @@ export default function ConfiguracionPage() {
 
   const [refreshingTab, setRefreshingTab] = useState<string | null>(null);
 
-  function setAgendaDayField(day: AgendaDayKey, field: keyof AgendaDaySchedule, value: string | boolean) {
+  function setAgendaDayEnabled(day: AgendaDayKey, enabled: boolean) {
     setAgendaWorkingHours((prev) => {
-      const current = getAgendaDaySchedule(prev, day);
-      const nextSchedule: AgendaDaySchedule = {
-        ...current,
-        [field]: value as never,
-      };
-      return setAgendaDaySchedule(prev, day, nextSchedule);
+      if (!enabled) {
+        return { ...prev, [day]: [] };
+      }
+
+      const currentHours = rangesToSelectedHours(prev[day] || []);
+      const nextHours = currentHours.length > 0 ? currentHours : [8, 9, 14, 15];
+      return { ...prev, [day]: selectedHoursToRanges(nextHours) };
+    });
+  }
+
+  function toggleAgendaHour(day: AgendaDayKey, hour: number) {
+    setAgendaWorkingHours((prev) => {
+      const selected = rangesToSelectedHours(prev[day] || []);
+      const exists = selected.includes(hour);
+      const nextSelected = exists ? selected.filter((h) => h !== hour) : [...selected, hour];
+      return { ...prev, [day]: selectedHoursToRanges(nextSelected) };
     });
   }
 
@@ -1816,61 +1810,43 @@ export default function ConfiguracionPage() {
                         <tr className="text-left text-slate-600 border-b border-slate-200">
                           <th className="py-2 pr-3">{t("modules.agenda.dayLabel")}</th>
                           <th className="py-2 pr-3">{t("modules.agenda.enabledLabel")}</th>
-                          <th className="py-2 pr-3">{t("modules.agenda.dayStartLabel")}</th>
-                          <th className="py-2 pr-3">{t("modules.agenda.lunchStartLabel")}</th>
-                          <th className="py-2 pr-3">{t("modules.agenda.lunchEndLabel")}</th>
-                          <th className="py-2">{t("modules.agenda.dayEndLabel")}</th>
+                          <th className="py-2">{t("modules.agenda.availableHoursLabel")}</th>
                         </tr>
                       </thead>
                       <tbody>
                         {AGENDA_DAY_ORDER.map((day) => {
-                          const row = getAgendaDaySchedule(agendaWorkingHours, day);
+                          const selectedHours = rangesToSelectedHours(agendaWorkingHours[day] || []);
+                          const enabled = selectedHours.length > 0;
                           return (
                             <tr key={day} className="border-b last:border-b-0 border-slate-100">
                               <td className="py-2 pr-3 font-medium text-slate-700">{t(`horarios.days.${day}`)}</td>
                               <td className="py-2 pr-3">
                                 <input
                                   type="checkbox"
-                                  checked={row.enabled}
-                                  onChange={(e) => setAgendaDayField(day, "enabled", e.target.checked)}
+                                  checked={enabled}
+                                  onChange={(e) => setAgendaDayEnabled(day, e.target.checked)}
                                   className="h-4 w-4 rounded border-slate-300 text-blue-600"
                                 />
                               </td>
-                              <td className="py-2 pr-3">
-                                <input
-                                  type="time"
-                                  value={row.dayStart}
-                                  disabled={!row.enabled}
-                                  onChange={(e) => setAgendaDayField(day, "dayStart", e.target.value)}
-                                  className="w-full rounded-md border border-slate-300 px-2 py-1 disabled:bg-slate-100"
-                                />
-                              </td>
-                              <td className="py-2 pr-3">
-                                <input
-                                  type="time"
-                                  value={row.lunchStart}
-                                  disabled={!row.enabled}
-                                  onChange={(e) => setAgendaDayField(day, "lunchStart", e.target.value)}
-                                  className="w-full rounded-md border border-slate-300 px-2 py-1 disabled:bg-slate-100"
-                                />
-                              </td>
-                              <td className="py-2 pr-3">
-                                <input
-                                  type="time"
-                                  value={row.lunchEnd}
-                                  disabled={!row.enabled}
-                                  onChange={(e) => setAgendaDayField(day, "lunchEnd", e.target.value)}
-                                  className="w-full rounded-md border border-slate-300 px-2 py-1 disabled:bg-slate-100"
-                                />
-                              </td>
                               <td className="py-2">
-                                <input
-                                  type="time"
-                                  value={row.dayEnd}
-                                  disabled={!row.enabled}
-                                  onChange={(e) => setAgendaDayField(day, "dayEnd", e.target.value)}
-                                  className="w-full rounded-md border border-slate-300 px-2 py-1 disabled:bg-slate-100"
-                                />
+                                <div className="flex flex-wrap gap-1.5">
+                                  {AGENDA_HOUR_OPTIONS.map((hour) => {
+                                    const active = selectedHours.includes(hour);
+                                    return (
+                                      <button
+                                        key={`${day}-${hour}`}
+                                        type="button"
+                                        disabled={!enabled}
+                                        onClick={() => toggleAgendaHour(day, hour)}
+                                        className={`rounded-md border px-2 py-1 text-xs transition ${active
+                                          ? "border-blue-500 bg-blue-50 text-blue-700"
+                                          : "border-slate-300 bg-white text-slate-600"} disabled:opacity-40`}
+                                      >
+                                        {hourToLabel(hour)}
+                                      </button>
+                                    );
+                                  })}
+                                </div>
                               </td>
                             </tr>
                           );
