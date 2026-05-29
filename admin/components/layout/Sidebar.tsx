@@ -1,6 +1,6 @@
 "use client";
 
-import { authApi, solicitudesApi, tenantApi } from "@/lib/api";
+import { authApi, solicitudesApi, tenantApi, whatsappApi } from "@/lib/api";
 import { agentAuthApi } from "@/lib/agentApi";
 import { addLog } from "@/lib/errorLogger";
 import { buildPermissionSet, normalizePermissions, type Permission } from "@/lib/permissions";
@@ -266,6 +266,7 @@ export function Sidebar() {
   ]);
 
   const canViewSolicitudes = superAdmin || permissionSet.has("VIEW_SOLICITUDES");
+  const canViewConversaciones = superAdmin || permissionSet.has("VIEW_CONVERSACIONES");
 
   const { data: solicitudesPendientesData } = useQuery({
     queryKey: ["sidebar-solicitudes-pendientes", tenantSlug],
@@ -278,6 +279,22 @@ export function Sidebar() {
   });
 
   const solicitudesPendientes = Number(solicitudesPendientesData?.total ?? 0);
+
+  const { data: conversacionesData } = useQuery({
+    queryKey: ["sidebar-conversaciones-total", tenantSlug],
+    queryFn: () =>
+      whatsappApi
+        .listConversaciones({ tenantSlug: tenantSlug! })
+        .then((r) => r.data),
+    enabled: hasAccessToken && !isAgentSession && !!tenantSlug && canViewConversaciones,
+    staleTime: 30_000,
+  });
+
+  const conversacionesTotal = Number(
+    conversacionesData?.total ??
+      conversacionesData?.count ??
+      (Array.isArray(conversacionesData?.data) ? conversacionesData.data.length : 0)
+  );
 
   if (!isClient) {
     return (
@@ -355,6 +372,18 @@ export function Sidebar() {
               {item.href === "/solicitudes" && !isAgentSession && solicitudesPendientes > 0 && (
                 <span className="ml-auto bg-red-100 text-red-600 text-xs font-semibold px-2 py-0.5 rounded-full">
                   {solicitudesPendientes > 99 ? "99+" : solicitudesPendientes}
+                </span>
+              )}
+              {item.href === "/conversaciones" && !isAgentSession && canViewConversaciones && !!tenantSlug && (
+                <span
+                  className={cn(
+                    "ml-auto text-xs font-semibold px-2 py-0.5 rounded-full",
+                    conversacionesTotal > 0
+                      ? "bg-emerald-100 text-emerald-700"
+                      : "bg-slate-100 text-slate-500"
+                  )}
+                >
+                  {conversacionesTotal > 99 ? "99+" : conversacionesTotal}
                 </span>
               )}
             </Link>
