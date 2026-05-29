@@ -122,6 +122,24 @@ function normalizeHexColor(value, fallback = '#0EA5E9') {
   return /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(normalized) ? normalized : fallback;
 }
 
+function normalizeAgentColorMap(value) {
+  const source = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+  const result = {};
+  for (const [key, color] of Object.entries(source)) {
+    const agenteId = Number(key);
+    if (!Number.isInteger(agenteId) || agenteId <= 0) continue;
+    result[String(agenteId)] = normalizeHexColor(color, '#0EA5E9');
+  }
+  return result;
+}
+
+function resolveAppointmentColor(agendaSettingsValue, agenteId) {
+  const fallback = normalizeHexColor(agendaSettingsValue?.appointmentColor, '#0EA5E9');
+  if (!Number.isInteger(agenteId) || agenteId <= 0) return fallback;
+  const agentColors = normalizeAgentColorMap(agendaSettingsValue?.agentColors);
+  return normalizeHexColor(agentColors[String(agenteId)], fallback);
+}
+
 function pickFirstNonEmpty(...values) {
   for (const value of values) {
     const normalized = String(value ?? '').trim();
@@ -1990,7 +2008,9 @@ router.get('/agent/agenda', requireAgentJwt, async (req, res, next) => {
       }),
       db.getConfig(tenantId, 'agenda_settings'),
     ]);
-    const appointmentColor = normalizeHexColor(agendaSettings?.valor?.appointmentColor, '#0EA5E9');
+    const agendaSettingsValue = agendaSettings?.valor && typeof agendaSettings.valor === 'object'
+      ? agendaSettings.valor
+      : {};
 
     const mapAppointmentStatus = (status) => {
       if (status === 'completed') return 'completado';
@@ -2000,6 +2020,8 @@ router.get('/agent/agenda', requireAgentJwt, async (req, res, next) => {
 
     const mappedAppointments = appointments.map((appointment) => {
       const details = buildAppointmentDetails(appointment);
+      const agenteId = Number(appointment?.calendar?.agente?.id);
+      const appointmentColor = resolveAppointmentColor(agendaSettingsValue, agenteId);
       return {
       id: `appt:${appointment.id}`,
       titulo:

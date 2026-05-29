@@ -580,6 +580,24 @@ function normalizeWorkingHoursByDay(value) {
     return result;
 }
 
+function normalizeAgentColorMap(value) {
+    const source = asObject(value);
+    const result = {};
+    for (const [key, color] of Object.entries(source)) {
+        const agenteId = Number(key);
+        if (!Number.isInteger(agenteId) || agenteId <= 0) continue;
+        result[String(agenteId)] = normalizeHexColor(color, '#0EA5E9');
+    }
+    return result;
+}
+
+function resolveAppointmentColor(agendaSettingsValue, agenteId) {
+    const fallback = normalizeHexColor(agendaSettingsValue?.appointmentColor, '#0EA5E9');
+    if (!Number.isInteger(agenteId) || agenteId <= 0) return fallback;
+    const agentColors = normalizeAgentColorMap(agendaSettingsValue?.agentColors);
+    return normalizeHexColor(agentColors[String(agenteId)], fallback);
+}
+
 function normalizeAgendaSettings(value) {
     const source = asObject(value);
     const workingHoursSource = source.workingHours || source.working_hours;
@@ -589,6 +607,7 @@ function normalizeAgendaSettings(value) {
         appointmentColor: normalizeHexColor(source.appointmentColor, '#0EA5E9'),
         timeZone: normalizeTimeZone(source.timeZone || source.timezone, 'America/Costa_Rica'),
         workingHours,
+        agentColors: normalizeAgentColorMap(source.agentColors),
     };
 }
 
@@ -2957,7 +2976,7 @@ router.get('/tenants/:slug/agenda', requirePermiso('VIEW_AGENDA'), async (req, r
 
         const shouldIncludeAppointments = !req.query.tipo || String(req.query.tipo) === 'reunion';
         const agendaSettings = await db.getConfig(tenant.id, 'agenda_settings');
-        const appointmentColor = normalizeHexColor(agendaSettings?.valor?.appointmentColor, '#0EA5E9');
+        const agendaSettingsValue = asObject(agendaSettings?.valor);
 
         let appointmentStatusFilter = null;
         if (req.query.estado) {
@@ -3009,7 +3028,11 @@ router.get('/tenants/:slug/agenda', requirePermiso('VIEW_AGENDA'), async (req, r
 
         const merged = [
             ...events.map(serializeAgendaEvent),
-            ...appointments.map((appointment) => serializeAppointmentAsAgendaEvent(appointment, appointmentColor)),
+            ...appointments.map((appointment) => {
+                const agenteId = Number(appointment?.calendar?.agente?.id);
+                const appointmentColor = resolveAppointmentColor(agendaSettingsValue, agenteId);
+                return serializeAppointmentAsAgendaEvent(appointment, appointmentColor);
+            }),
         ].sort((a, b) => {
             const tA = new Date(a.startAt).getTime();
             const tB = new Date(b.startAt).getTime();

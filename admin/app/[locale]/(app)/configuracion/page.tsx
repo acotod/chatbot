@@ -1,6 +1,6 @@
 "use client";
 
-import { adminUsersApi, agentePuestosApi, agendaApi, apiClient, configApi, solicitudesApi, tenantApi } from "@/lib/api";
+import { adminUsersApi, agentePuestosApi, agentesApi, agendaApi, apiClient, configApi, solicitudesApi, tenantApi } from "@/lib/api";
 import { useAuthStore } from "@/store/auth";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
@@ -59,6 +59,13 @@ function ConfigSection({
 interface AgentePuesto {
   id: number;
   nombre: string;
+}
+
+interface AgendaAgentItem {
+  id: number;
+  nombre: string;
+  email?: string | null;
+  estado?: string | null;
 }
 
 interface SolicitudesTenantConfig {
@@ -808,9 +815,17 @@ export default function ConfiguracionPage() {
   });
   const agendaEnabled: boolean = agendaFeature?.enabled ?? false;
   const [agendaAppointmentColor, setAgendaAppointmentColor] = useState("#0EA5E9");
+  const [agendaAgentColors, setAgendaAgentColors] = useState<Record<string, string>>({});
   const [agendaTimeZone, setAgendaTimeZone] = useState("America/Costa_Rica");
   const [agendaWorkingHours, setAgendaWorkingHours] = useState<AgendaWorkingHours>(DEFAULT_AGENDA_WORKING_HOURS);
   const [agendaAppearanceSaved, setAgendaAppearanceSaved] = useState(false);
+
+  const { data: agendaAgentsData } = useQuery({
+    queryKey: ["agentes", tenantSlug],
+    queryFn: () => agentesApi.list(tenantSlug!).then((r) => r.data),
+    enabled: !!tenantSlug,
+  });
+  const agendaAgents: AgendaAgentItem[] = agendaAgentsData?.data ?? agendaAgentsData ?? [];
 
   const { data: agendaSettingsData } = useQuery({
     queryKey: ["config", tenantSlug, "agenda_settings"],
@@ -823,6 +838,16 @@ export default function ConfiguracionPage() {
         } else {
           setAgendaAppointmentColor("#0EA5E9");
         }
+
+        const rawAgentColors = v?.agentColors && typeof v.agentColors === "object" ? v.agentColors : {};
+        const sanitizedAgentColors: Record<string, string> = {};
+        for (const [agenteId, agentColor] of Object.entries(rawAgentColors)) {
+          const normalized = String(agentColor ?? "").trim();
+          if (/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(normalized)) {
+            sanitizedAgentColors[String(agenteId)] = normalized;
+          }
+        }
+        setAgendaAgentColors(sanitizedAgentColors);
 
         const tz = typeof v?.timeZone === "string" ? v.timeZone.trim() : "";
         setAgendaTimeZone(tz || "America/Costa_Rica");
@@ -847,6 +872,7 @@ export default function ConfiguracionPage() {
     mutationFn: () =>
       configApi.set(tenantSlug!, "agenda_settings", {
         appointmentColor: agendaAppointmentColor,
+        agentColors: agendaAgentColors,
         timeZone: agendaTimeZone,
         workingHours: agendaWorkingHours,
       }),
@@ -878,6 +904,13 @@ export default function ConfiguracionPage() {
       const nextSelected = exists ? selected.filter((h) => h !== hour) : [...selected, hour];
       return { ...prev, [day]: selectedHoursToRanges(nextSelected) };
     });
+  }
+
+  function setAgendaAgentColor(agenteId: number, color: string) {
+    setAgendaAgentColors((prev) => ({
+      ...prev,
+      [String(agenteId)]: color,
+    }));
   }
 
   async function refreshTab(
@@ -1854,6 +1887,46 @@ export default function ConfiguracionPage() {
                       </tbody>
                     </table>
                     <p className="mt-3 text-xs text-slate-500">{t("modules.agenda.scheduleHint")}</p>
+                  </div>
+
+                  <div className="rounded-lg border border-slate-200 bg-white p-3 space-y-3">
+                    <p className="text-sm font-medium text-slate-700">{t("modules.agenda.agentColorsTitle")}</p>
+                    {agendaAgents.length === 0 ? (
+                      <p className="text-xs text-slate-500">{t("modules.agenda.agentColorsEmpty")}</p>
+                    ) : (
+                      <div className="grid gap-2 md:grid-cols-2">
+                        {agendaAgents
+                          .slice()
+                          .sort((a, b) => String(a.nombre || "").localeCompare(String(b.nombre || "")))
+                          .map((agente) => {
+                            const agenteId = Number(agente.id);
+                            const color = agendaAgentColors[String(agenteId)] || agendaAppointmentColor;
+                            return (
+                              <div key={agenteId} className="flex items-center justify-between rounded-md border border-slate-200 px-2 py-2">
+                                <div className="min-w-0 pr-2">
+                                  <p className="truncate text-sm font-medium text-slate-700">{agente.nombre}</p>
+                                  <p className="truncate text-xs text-slate-500">{agente.email || ""}</p>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <input
+                                    type="color"
+                                    value={color}
+                                    onChange={(e) => setAgendaAgentColor(agenteId, e.target.value)}
+                                    className="h-8 w-10 rounded border border-slate-300 bg-white"
+                                  />
+                                  <input
+                                    type="text"
+                                    value={color}
+                                    onChange={(e) => setAgendaAgentColor(agenteId, e.target.value)}
+                                    className="w-24 rounded-md border border-slate-300 px-2 py-1 text-xs"
+                                  />
+                                </div>
+                              </div>
+                            );
+                          })}
+                      </div>
+                    )}
+                    <p className="text-xs text-slate-500">{t("modules.agenda.agentColorsHint")}</p>
                   </div>
                 </div>
 
