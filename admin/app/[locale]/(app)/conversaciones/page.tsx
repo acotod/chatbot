@@ -804,9 +804,9 @@ export default function ConversacionesPage() {
     enabled: (!!effectiveTenantSlug || !!tenantId) && !!activeThread?.userId,
     staleTime: 0,
   });
-  // Backend returns newest-first (desc). No reverse — display newest at top.
+  // Backend returns newest-first (desc). Invertir para mostrar orden natural (más antiguo a más reciente)
   const latestMessages: Mensaje[] = mensajesData?.data ?? [];
-  const messages: Mensaje[] = [...latestMessages, ...olderMessages];
+  const messages: Mensaje[] = [...latestMessages, ...olderMessages].slice().reverse();
 
   async function loadMoreMessages() {
     if ((!effectiveTenantSlug && !tenantId) || !activeThread?.userId || loadingMore) return;
