@@ -221,6 +221,10 @@ export default function SolicitudesPage() {
   const [messageStartDate, setMessageStartDate] = useState("");
   const [messageEndDate, setMessageEndDate] = useState("");
   const [messageReadStatus, setMessageReadStatus] = useState<"" | "leido" | "no_leido">("");
+  const [viewMode, setViewMode] = useState<"table" | "pipeline">("table");
+  const [selectedSolicitudIds, setSelectedSolicitudIds] = useState<number[]>([]);
+  const [bulkEstado, setBulkEstado] = useState("");
+  const [bulkAgenteId, setBulkAgenteId] = useState("");
   const [conversationDetailModal, setConversationDetailModal] = useState<{
     open: boolean;
     conversation: ConversationItem | null;
@@ -387,6 +391,23 @@ export default function SolicitudesPage() {
       estado: string;
     }) => solicitudesApi.updateEstado(tenantSlug, id, estado),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["solicitudes"] }),
+  });
+
+  const bulkUpdateSolicitudes = useMutation({
+    mutationFn: ({
+      ids,
+      updates,
+    }: {
+      ids: number[];
+      updates: Record<string, unknown>;
+    }) => solicitudesApi.bulkUpdate(tenantSlug, ids, updates),
+    onSuccess: () => {
+      setSelectedSolicitudIds([]);
+      setBulkEstado("");
+      setBulkAgenteId("");
+      qc.invalidateQueries({ queryKey: ["solicitudes"] });
+      qc.invalidateQueries({ queryKey: ["solicitudes-stats"] });
+    },
   });
 
   const assignAgente = useMutation({
@@ -1062,6 +1083,12 @@ export default function SolicitudesPage() {
   const agentesActivos = agentes.filter((agente) => agente.estado === "activo");
   const adminUsers: Array<{ id: number; nombre: string; email: string; jefeId: number | null; superAdmin: boolean }> =
     adminUsersData?.data ?? adminUsersData ?? [];
+  const selectedCount = selectedSolicitudIds.length;
+  const allVisibleSelected = solicitudes.length > 0 && solicitudes.every((s) => selectedSolicitudIds.includes(s.id));
+  const pipelineColumns = ESTADOS.filter(Boolean).map((estado) => ({
+    estado,
+    items: solicitudes.filter((s) => s.estado === estado),
+  }));
 
   // Build AdminUser tree: group by root (no jefeId) vs children
   const rootAdminUsers = adminUsers.filter((u) => !u.jefeId);
@@ -1094,6 +1121,37 @@ export default function SolicitudesPage() {
       id: escalationModal.solicitud.id,
       reason: escalationReason.trim() || undefined,
       targetAdminUserId: Number(escalationTargetAdminUserId),
+    });
+  }
+
+  function toggleSolicitudSelection(solicitudId: number) {
+    setSelectedSolicitudIds((prev) =>
+      prev.includes(solicitudId) ? prev.filter((id) => id !== solicitudId) : [...prev, solicitudId]
+    );
+  }
+
+  function toggleSelectAllVisible() {
+    if (allVisibleSelected) {
+      setSelectedSolicitudIds((prev) => prev.filter((id) => !solicitudes.some((s) => s.id === id)));
+      return;
+    }
+    const visibleIds = solicitudes.map((s) => s.id);
+    setSelectedSolicitudIds((prev) => Array.from(new Set([...prev, ...visibleIds])));
+  }
+
+  function handleBulkEstadoApply() {
+    if (!bulkEstado || selectedSolicitudIds.length === 0) return;
+    bulkUpdateSolicitudes.mutate({
+      ids: selectedSolicitudIds,
+      updates: { estado: bulkEstado },
+    });
+  }
+
+  function handleBulkAgenteApply() {
+    if (!bulkAgenteId || selectedSolicitudIds.length === 0) return;
+    bulkUpdateSolicitudes.mutate({
+      ids: selectedSolicitudIds,
+      updates: { agenteId: Number(bulkAgenteId) },
     });
   }
 
@@ -1835,6 +1893,99 @@ export default function SolicitudesPage() {
         <span className="text-sm text-slate-500 ml-auto">
           {t("totalCount", { count: total })}
         </span>
+
+        <div className="inline-flex rounded-xl border border-slate-200 bg-slate-50 p-1">
+          <button
+            type="button"
+            onClick={() => setViewMode("table")}
+            className={cn(
+              "px-3 py-1.5 text-sm rounded-lg",
+              viewMode === "table" ? "bg-white text-slate-900 shadow-sm" : "text-slate-600"
+            )}
+          >
+            {t("enterprise.tableView")}
+          </button>
+          <button
+            type="button"
+            onClick={() => setViewMode("pipeline")}
+            className={cn(
+              "px-3 py-1.5 text-sm rounded-lg",
+              viewMode === "pipeline" ? "bg-white text-slate-900 shadow-sm" : "text-slate-600"
+            )}
+          >
+            {t("enterprise.pipelineView")}
+          </button>
+        </div>
+      </div>
+
+      <div className="rounded-xl border border-slate-200 bg-white p-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-sm font-medium text-slate-800">
+            {selectedCount > 0
+              ? t("enterprise.selectedCount", { count: selectedCount })
+              : t("enterprise.bulkActions")}
+          </span>
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => setSelectedSolicitudIds([])}
+            disabled={selectedCount === 0 || bulkUpdateSolicitudes.isPending}
+          >
+            {t("enterprise.clearSelection")}
+          </Button>
+        </div>
+        <div className="mt-3 grid gap-3 md:grid-cols-2">
+          <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+            <p className="text-xs font-medium uppercase tracking-wide text-slate-500">{t("enterprise.bulkStatus")}</p>
+            <div className="mt-2 flex items-center gap-2">
+              <select
+                value={bulkEstado}
+                onChange={(e) => setBulkEstado(e.target.value)}
+                className="flex-1 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
+                disabled={bulkUpdateSolicitudes.isPending}
+              >
+                <option value="">{t("enterprise.chooseStatus")}</option>
+                {ESTADOS.filter(Boolean).map((estado) => (
+                  <option key={estado} value={estado}>
+                    {estadoLabel(estado)}
+                  </option>
+                ))}
+              </select>
+              <Button
+                size="sm"
+                onClick={handleBulkEstadoApply}
+                disabled={!bulkEstado || selectedCount === 0 || bulkUpdateSolicitudes.isPending}
+              >
+                {bulkUpdateSolicitudes.isPending ? t("saving") : t("enterprise.apply")}
+              </Button>
+            </div>
+          </div>
+          <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+            <p className="text-xs font-medium uppercase tracking-wide text-slate-500">{t("enterprise.bulkAssign")}</p>
+            <div className="mt-2 flex items-center gap-2">
+              <select
+                value={bulkAgenteId}
+                onChange={(e) => setBulkAgenteId(e.target.value)}
+                className="flex-1 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
+                disabled={bulkUpdateSolicitudes.isPending}
+              >
+                <option value="">{t("enterprise.chooseAgent")}</option>
+                {agentesActivos.map((agente) => (
+                  <option key={agente.id} value={String(agente.id)}>
+                    {agente.nombre}
+                  </option>
+                ))}
+              </select>
+              <Button
+                size="sm"
+                onClick={handleBulkAgenteApply}
+                disabled={!bulkAgenteId || selectedCount === 0 || bulkUpdateSolicitudes.isPending}
+              >
+                {bulkUpdateSolicitudes.isPending ? t("assigning") : t("enterprise.apply")}
+              </Button>
+            </div>
+          </div>
+        </div>
       </div>
 
       <Card>
@@ -1846,11 +1997,81 @@ export default function SolicitudesPage() {
           <div className="py-16 text-center">
             <p className="text-slate-400 text-sm">{t("emptyFilter")}</p>
           </div>
+        ) : viewMode === "pipeline" ? (
+          <div className="overflow-x-auto">
+            <div className="grid min-w-[980px] grid-cols-5 gap-3 p-3">
+              {pipelineColumns.map((column) => (
+                <div key={column.estado} className="rounded-xl border border-slate-200 bg-slate-50">
+                  <div className="border-b border-slate-200 bg-white px-3 py-2">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">
+                      {estadoLabel(column.estado)}
+                    </p>
+                    <p className="text-xs text-slate-500">{t("enterprise.cardsCount", { count: column.items.length })}</p>
+                  </div>
+                  <div className="max-h-[60vh] space-y-2 overflow-auto p-2">
+                    {column.items.length === 0 ? (
+                      <div className="rounded-lg border border-dashed border-slate-200 bg-white p-3 text-xs text-slate-400">
+                        {t("enterprise.emptyColumn")}
+                      </div>
+                    ) : (
+                      column.items.map((s) => {
+                        const isSelected = selectedSolicitudIds.includes(s.id);
+                        return (
+                          <div key={s.id} className="rounded-lg border border-slate-200 bg-white p-3 shadow-sm">
+                            <div className="flex items-start gap-2">
+                              <input
+                                type="checkbox"
+                                checked={isSelected}
+                                onChange={() => toggleSolicitudSelection(s.id)}
+                                className="mt-1 h-4 w-4 rounded border-slate-300"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => openSolicitudDetail(s as Solicitud)}
+                                className="min-w-0 text-left"
+                              >
+                                <p className="truncate text-sm font-semibold text-slate-900">
+                                  {s.nombre || t("withoutName")}
+                                </p>
+                                <p className="mt-0.5 text-xs text-slate-500">#{s.id} · {s.telefonoContacto || "-"}</p>
+                              </button>
+                            </div>
+                            <div className="mt-2 flex flex-wrap gap-1.5">
+                              <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] text-slate-600">
+                                {prioridadLabel(s.prioridad)}
+                              </span>
+                              <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] text-slate-600">
+                                {categoriaLabel(s.categoria)}
+                              </span>
+                              <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] text-slate-600">
+                                {s.agente?.nombre || t("withoutAssignee")}
+                              </span>
+                            </div>
+                            <p className="mt-2 text-[11px] text-slate-500">
+                              {t("tableHeaders.due")}: {s.dueAt ? formatDate(s.dueAt) : "-"}
+                            </p>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="bg-slate-50 border-b border-slate-200">
                 <tr>
+                  <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">
+                    <input
+                      type="checkbox"
+                      checked={allVisibleSelected}
+                      onChange={toggleSelectAllVisible}
+                      className="h-4 w-4 rounded border-slate-300"
+                    />
+                  </th>
                   {[t("tableHeaders.name"), t("tableHeaders.phone"), t("tableHeaders.category"), t("tableHeaders.priority"), t("tableHeaders.sla"), t("tableHeaders.agent"), t("tableHeaders.status"), t("tableHeaders.due"), t("tableHeaders.date"), t("tableHeaders.actions")].map(
                     (h) => (
                       <th
@@ -1866,6 +2087,14 @@ export default function SolicitudesPage() {
               <tbody className="divide-y divide-slate-100">
                 {solicitudes.map((s) => (
                   <tr key={s.id} className="hover:bg-slate-50/60 transition group">
+                    <td className="px-5 py-3.5">
+                      <input
+                        type="checkbox"
+                        checked={selectedSolicitudIds.includes(s.id)}
+                        onChange={() => toggleSolicitudSelection(s.id)}
+                        className="h-4 w-4 rounded border-slate-300"
+                      />
+                    </td>
                     <td className="px-5 py-3.5 font-medium text-slate-900">
                       {s.nombre || t("withoutName")}
                     </td>

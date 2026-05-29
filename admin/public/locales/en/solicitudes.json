@@ -193,6 +193,20 @@
     "byPriority": "Filter by priority",
     "byAssignee": "Filter by assignee"
   },
+  "enterprise": {
+    "tableView": "Table",
+    "pipelineView": "Pipeline",
+    "bulkActions": "Bulk actions",
+    "selectedCount": "{count} selected",
+    "clearSelection": "Clear selection",
+    "bulkStatus": "Bulk status update",
+    "chooseStatus": "Choose status",
+    "bulkAssign": "Bulk assign agent",
+    "chooseAgent": "Choose agent",
+    "apply": "Apply",
+    "cardsCount": "{count} cards",
+    "emptyColumn": "No requests in this status"
+  },
   "actions": {
     "assign": "Assign",
     "reassign": "Reassign",

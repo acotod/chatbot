@@ -193,6 +193,20 @@
     "byPriority": "Filtrar por prioridad",
     "byAssignee": "Filtrar por asignado"
   },
+  "enterprise": {
+    "tableView": "Tabla",
+    "pipelineView": "Pipeline",
+    "bulkActions": "Acciones masivas",
+    "selectedCount": "{count} seleccionadas",
+    "clearSelection": "Limpiar seleccion",
+    "bulkStatus": "Cambiar estado masivo",
+    "chooseStatus": "Elegir estado",
+    "bulkAssign": "Asignar agente masivo",
+    "chooseAgent": "Elegir agente",
+    "apply": "Aplicar",
+    "cardsCount": "{count} tarjetas",
+    "emptyColumn": "Sin solicitudes en este estado"
+  },
   "actions": {
     "assign": "Asignar",
     "reassign": "Reasignar",
