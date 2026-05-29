@@ -161,17 +161,15 @@ function buildAppointmentDetails(appointment) {
   );
 
   const descripcion = [
-    nombre ? `Nombre: ${nombre}` : '',
-    cedula ? `Cedula: ${cedula}` : '',
-    telefono ? `Telefono: ${telefono}` : '',
-    comentarios ? `Comentarios: ${comentarios}` : '',
-  ]
-    .filter(Boolean)
-    .join('\n');
+    `Nombre: ${nombre || '-'}`,
+    `Cedula: ${cedula || '-'}`,
+    `Telefono: ${telefono || '-'}`,
+    `Comentarios: ${comentarios || '-'}`,
+  ].join('\n');
 
   return {
     nombre,
-    descripcion: descripcion || null,
+    descripcion,
   };
 }
 
