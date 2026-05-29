@@ -1175,7 +1175,10 @@ async function executeCalendar({ node, input, variables, tenantId, llmService })
       };
     }
 
-    const buttons = slots.slice(0, 10).map(s => ({ id: s.id, title: _formatSlotLabel(s.startTime) }));
+    const buttons = slots.slice(0, 10).map((s) => ({
+      id: s.id,
+      title: _formatSlotLabel(s.startTime, s.timezone),
+    }));
     const availabilityLabels = buttons.map((slot) => slot.title);
 
     return {
@@ -1223,7 +1226,9 @@ async function executeCalendar({ node, input, variables, tenantId, llmService })
       const byExactId = topSlots.find((slot) => String(slot?.id || '') === rawInput);
       if (byExactId?.id) return byExactId.id;
 
-      const byExactLabel = topSlots.find((slot) => _formatSlotLabel(slot?.startTime).toLowerCase() === normalizedInput);
+      const byExactLabel = topSlots.find(
+        (slot) => _formatSlotLabel(slot?.startTime, slot?.timezone).toLowerCase() === normalizedInput,
+      );
       if (byExactLabel?.id) return byExactLabel.id;
 
       const asIndex = Number.parseInt(rawInput, 10);
@@ -1233,7 +1238,9 @@ async function executeCalendar({ node, input, variables, tenantId, llmService })
 
       const targetHour = _extractHourFromText(rawInput);
       if (targetHour !== null) {
-        const byHour = topSlots.find((slot) => _extractHourFromText(_formatSlotLabel(slot?.startTime)) === targetHour);
+        const byHour = topSlots.find(
+          (slot) => _extractHourFromText(_formatSlotLabel(slot?.startTime, slot?.timezone)) === targetHour,
+        );
         if (byHour?.id) return byHour.id;
       }
 
@@ -1241,7 +1248,7 @@ async function executeCalendar({ node, input, variables, tenantId, llmService })
       if (!allowFuzzyContains) return null;
 
       const byContainsLabel = topSlots.find((slot) => {
-        const label = _formatSlotLabel(slot?.startTime).toLowerCase();
+        const label = _formatSlotLabel(slot?.startTime, slot?.timezone).toLowerCase();
         return label.includes(normalizedInput) || normalizedInput.includes(label);
       });
       if (byContainsLabel?.id) return byContainsLabel.id;
@@ -1355,9 +1362,17 @@ async function executeCalendar({ node, input, variables, tenantId, llmService })
   return { output: null, nextNodeId: node.next, updatedVars: {}, terminal: false, fallback: false };
 }
 
-function _formatSlotLabel(date) {
+function _formatSlotLabel(date, timeZone = null) {
   if (!(date instanceof Date)) date = new Date(date);
-  return date.toLocaleDateString('es-MX', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+  const options = {
+    weekday: 'short',
+    day: 'numeric',
+    month: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+  };
+  if (timeZone) options.timeZone = String(timeZone);
+  return date.toLocaleDateString('es-MX', options);
 }
 
 function _pickFirstNonEmpty(...values) {

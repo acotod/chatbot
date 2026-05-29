@@ -487,7 +487,10 @@ async function generateSlots(calendarId, days = null) {
   });
   if (!calendar) throw new Error(`Calendar ${calendarId} not found`);
 
-  const config    = calendar.config ?? {};
+  const config    = {
+    ...(calendar.config ?? {}),
+    timezone: String(calendar?.config?.timezone || calendar?.timezone || 'UTC'),
+  };
   const rangeDays = days ?? config.advance_days ?? 14;
   const maxPerDay = config.max_per_day ?? 999;
 
@@ -538,8 +541,9 @@ async function getAvailableSlots(calendarId, rangeDays = null) {
 
   const calendar = await prisma.calendar.findUnique({
     where : { id: calendarId },
-    select: { config: true },
+    select: { config: true, timezone: true },
   });
+  const calendarTimeZone = String(calendar?.config?.timezone || calendar?.timezone || 'UTC');
   const days = rangeDays ?? calendar?.config?.range_days ?? calendar?.config?.advance_days ?? 5;
 
   const from = new Date();
@@ -560,8 +564,13 @@ async function getAvailableSlots(calendarId, rangeDays = null) {
     select : { id: true, startTime: true, endTime: true },
   });
 
-  await cacheSet(cacheKey, slots);
-  return slots;
+  const slotsWithTimeZone = slots.map((slot) => ({
+    ...slot,
+    timezone: calendarTimeZone,
+  }));
+
+  await cacheSet(cacheKey, slotsWithTimeZone);
+  return slotsWithTimeZone;
 }
 
 /**
