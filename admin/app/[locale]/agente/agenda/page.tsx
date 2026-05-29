@@ -69,7 +69,7 @@ export default function AgentAgendaPage() {
 
 				<div className="rounded-2xl border bg-white p-5">
 					{googleEmbedUrl ? (
-						<div className="space-y-3">
+						<div className="space-y-4">
 							<iframe
 								title="Google Calendar"
 								src={googleEmbedUrl}
@@ -86,6 +86,36 @@ export default function AgentAgendaPage() {
 									{isEn ? "Open in Google Calendar" : "Abrir en Google Calendar"}
 								</a>
 							)}
+							<div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+								<div className="flex items-center justify-between gap-3">
+									<div>
+										<p className="text-sm font-semibold text-slate-900">{isEn ? "System bookings" : "Reservas del sistema"}</p>
+										<p className="text-xs text-slate-500">{isEn ? "Reservations created in Zentra Bot still appear here even if Google Calendar is connected." : "Las reservas creadas en Zentra Bot siguen apareciendo aqui aunque Google Calendar este conectado."}</p>
+									</div>
+									<p className="text-xs text-slate-500">{t("eventsCount", { count: events.length })}</p>
+								</div>
+								{events.length === 0 ? (
+									<p className="mt-4 text-sm text-slate-500">{t("noAssignedEvents")}</p>
+								) : (
+									<ul className="mt-4 divide-y divide-slate-200 rounded-lg border border-slate-200 bg-white">
+										{events.map((event) => (
+											<li key={event.id} className="px-4 py-3">
+												<div className="flex items-start justify-between gap-3">
+													<div>
+														<p className="text-sm font-medium text-slate-800">{event.titulo}</p>
+														<p className="mt-1 text-xs text-slate-500">
+															{new Date(event.startAt).toLocaleString(dateLocale)} - {new Date(event.endAt).toLocaleString(dateLocale)}
+														</p>
+													</div>
+													<span className="rounded-full px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-600 bg-slate-100">
+														{event.source === "appointment" ? (isEn ? "Reservation" : "Reserva") : (isEn ? "Event" : "Evento")}
+													</span>
+												</div>
+											</li>
+										))}
+									</ul>
+								)}
+						</div>
 						</div>
 					) : (
 						<>
