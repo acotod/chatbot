@@ -460,6 +460,59 @@ function mapAppointmentStatusToAgendaStatus(status) {
     return 'en_progreso';
 }
 
+function pickFirstNonEmpty(...values) {
+    for (const value of values) {
+        const normalized = String(value ?? '').trim();
+        if (normalized) return normalized;
+    }
+    return '';
+}
+
+function buildAppointmentDetails(appointment) {
+    const meta = asObject(appointment?.metadata);
+    const nombre = pickFirstNonEmpty(
+        meta.user_name,
+        meta.nombre,
+        meta.cliente_nombre,
+        meta.customer_name
+    );
+    const cedula = pickFirstNonEmpty(
+        meta.appointment_customer_cedula,
+        meta.cliente_cedula,
+        meta.cedula,
+        meta.identificacion,
+        meta.identification
+    );
+    const telefono = pickFirstNonEmpty(
+        meta.user_phone,
+        meta.telefono,
+        meta.cliente_telefono,
+        meta.phone,
+        appointment?.userKey
+    );
+    const comentarios = pickFirstNonEmpty(
+        meta.appointment_notes_summary,
+        meta.customer_notes,
+        meta.notes,
+        meta.comentarios,
+        meta.comments
+    );
+
+    const descripcion = [
+        nombre ? `Nombre: ${nombre}` : '',
+        cedula ? `Cedula: ${cedula}` : '',
+        telefono ? `Telefono: ${telefono}` : '',
+        comentarios ? `Comentarios: ${comentarios}` : '',
+    ]
+        .filter(Boolean)
+        .join('\n');
+
+    return {
+        nombre,
+        descripcion: descripcion || null,
+    };
+}
+
 function normalizeHexColor(value, fallback = '#0EA5E9') {
     if (typeof value !== 'string') return fallback;
     const normalized = value.trim();
@@ -576,16 +629,17 @@ async function applyAgendaScheduleToTenantCalendars(tenantId, agendaSettings) {
 }
 
 function serializeAppointmentAsAgendaEvent(appointment, appointmentColor = '#0EA5E9') {
+    const details = buildAppointmentDetails(appointment);
     return {
         id: `appt:${appointment.id}`,
         tenantId: appointment.tenantId,
         createdByAdminUserId: null,
         flowId: null,
         titulo:
-            String(appointment?.metadata?.user_name || '').trim() ||
+            details.nombre ||
             String(appointment?.calendar?.name || '').trim() ||
             'Cita reservada',
-        descripcion: appointment?.metadata?.notes ? String(appointment.metadata.notes) : null,
+        descripcion: details.descripcion,
         tipo: 'reunion',
         color: appointmentColor,
         estado: mapAppointmentStatusToAgendaStatus(appointment.status),

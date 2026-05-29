@@ -116,6 +116,65 @@ function normalizeEmail(value) {
   return value.trim().toLowerCase();
 }
 
+function normalizeHexColor(value, fallback = '#0EA5E9') {
+  if (typeof value !== 'string') return fallback;
+  const normalized = value.trim();
+  return /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(normalized) ? normalized : fallback;
+}
+
+function pickFirstNonEmpty(...values) {
+  for (const value of values) {
+    const normalized = String(value ?? '').trim();
+    if (normalized) return normalized;
+  }
+  return '';
+}
+
+function buildAppointmentDetails(appointment) {
+  const meta = appointment?.metadata && typeof appointment.metadata === 'object' ? appointment.metadata : {};
+  const nombre = pickFirstNonEmpty(
+    meta.user_name,
+    meta.nombre,
+    meta.cliente_nombre,
+    meta.customer_name
+  );
+  const cedula = pickFirstNonEmpty(
+    meta.appointment_customer_cedula,
+    meta.cliente_cedula,
+    meta.cedula,
+    meta.identificacion,
+    meta.identification
+  );
+  const telefono = pickFirstNonEmpty(
+    meta.user_phone,
+    meta.telefono,
+    meta.cliente_telefono,
+    meta.phone,
+    appointment?.userKey
+  );
+  const comentarios = pickFirstNonEmpty(
+    meta.appointment_notes_summary,
+    meta.customer_notes,
+    meta.notes,
+    meta.comentarios,
+    meta.comments
+  );
+
+  const descripcion = [
+    nombre ? `Nombre: ${nombre}` : '',
+    cedula ? `Cedula: ${cedula}` : '',
+    telefono ? `Telefono: ${telefono}` : '',
+    comentarios ? `Comentarios: ${comentarios}` : '',
+  ]
+    .filter(Boolean)
+    .join('\n');
+
+  return {
+    nombre,
+    descripcion: descripcion || null,
+  };
+}
+
 function isConfiguredEnvAdminEmail(email) {
   const configured = normalizeEmail(process.env.ADMIN_EMAIL);
   return Boolean(configured && normalizeEmail(email) === configured);
@@ -952,19 +1011,42 @@ router.post('/agent/login/with-tenant', loginRateLimiter, async (req, res) => {
 
 // ── POST /auth/agent/forgot-password ─────────────────────────────────────────
 router.post('/agent/forgot-password', loginRateLimiter, async (req, res) => {
-  const tenantSlug = String(req.body?.tenantSlug ?? '').trim().toLowerCase();
   const email = normalizeEmail(req.body?.email);
+  const tenantSlug = String(req.body?.tenantSlug ?? '').trim().toLowerCase();
   const ip = req.ip;
   const userAgent = req.headers['user-agent'] || '';
 
-  if (!tenantSlug || !email) {
-    return res.status(400).json({ error: 'tenantSlug and email are required' });
+  if (!email) {
+    return res.status(400).json({ error: 'email is required' });
   }
 
   try {
-    const agent = await findAgentByTenantAndEmailCaseInsensitive(tenantSlug, email);
-    if (!agent || !agent.passwordHash || agent.estado !== 'activo') {
-      audit({ accion: 'PASSWORD_RESET_REQUEST', entidad: 'agente', ip, userAgent, metadata: { tenantSlug, email, delivered: false } });
+    const agents = tenantSlug
+      ? [await findAgentByTenantAndEmailCaseInsensitive(tenantSlug, email)].filter(Boolean)
+      : await findAgentsByEmailCaseInsensitive(email);
+
+    if (agents.length === 0) {
+      audit({ accion: 'PASSWORD_RESET_REQUEST', entidad: 'agente', ip, userAgent, metadata: { tenantSlug: tenantSlug || null, email, delivered: false } });
+      return res.json({ message: 'Si el agente existe y tiene acceso habilitado, se generó un enlace de recuperación.' });
+    }
+
+    if (!tenantSlug && agents.length > 1) {
+      return res.json({
+        requiresTenantSelection: true,
+        email,
+        tenants: agents.map((agent) => ({
+          tenantId: agent.tenantId,
+          tenantSlug: agent.tenant.slug,
+          tenantNombre: agent.tenant.nombre,
+          agenteId: agent.id,
+        })),
+      });
+    }
+
+    const agent = agents[0];
+
+    if (!agent.passwordHash || agent.estado !== 'activo') {
+      audit({ accion: 'PASSWORD_RESET_REQUEST', entidad: 'agente', ip, userAgent, metadata: { tenantSlug: agent.tenant.slug, email, delivered: false } });
       return res.json({ message: 'Si el agente existe y tiene acceso habilitado, se generó un enlace de recuperación.' });
     }
 
@@ -1843,8 +1925,11 @@ router.get('/agent/agenda', requireAgentJwt, async (req, res, next) => {
       tenantId,
       assignments: { some: { agenteId } },
     };
-    if (req.query.estado) {
-      where.estado = String(req.query.estado);
+    const requestedEstado = req.query.estado ? String(req.query.estado).trim() : '';
+    const normalizedEstado = requestedEstado === 'programado' ? 'pendiente' : requestedEstado;
+
+    if (normalizedEstado) {
+      where.estado = normalizedEstado;
     }
     if (start || end) {
       where.startAt = {};
@@ -1852,17 +1937,120 @@ router.get('/agent/agenda', requireAgentJwt, async (req, res, next) => {
       if (end) where.startAt.lte = end;
     }
 
-    const data = await prisma.agendaEvent.findMany({
-      where,
-      orderBy: [{ startAt: 'asc' }, { id: 'asc' }],
-      include: {
-        assignments: {
-          include: {
-            agente: { select: { id: true, nombre: true, email: true, estado: true } },
+    let appointmentStatusFilter = null;
+    if (normalizedEstado) {
+      if (normalizedEstado === 'pendiente') appointmentStatusFilter = ['scheduled', 'rescheduled'];
+      else if (normalizedEstado === 'completado') appointmentStatusFilter = ['completed'];
+      else appointmentStatusFilter = [];
+    }
+
+    const [agendaEvents, appointments, agendaSettings] = await Promise.all([
+      prisma.agendaEvent.findMany({
+        where,
+        orderBy: [{ startAt: 'asc' }, { id: 'asc' }],
+        include: {
+          assignments: {
+            include: {
+              agente: { select: { id: true, nombre: true, email: true, estado: true } },
+            },
           },
         },
-      },
-      take: 200,
+        take: 200,
+      }),
+      prisma.appointment.findMany({
+        where: {
+          tenantId,
+          calendar: { agenteId },
+          ...(start || end
+            ? {
+                startTime: {
+                  ...(start ? { gte: start } : {}),
+                  ...(end ? { lte: end } : {}),
+                },
+              }
+            : {}),
+          ...(Array.isArray(appointmentStatusFilter)
+            ? {
+                status:
+                  appointmentStatusFilter.length > 0
+                    ? { in: appointmentStatusFilter }
+                    : { in: [] },
+              }
+            : { status: { not: 'cancelled' } }),
+        },
+        include: {
+          calendar: {
+            select: {
+              id: true,
+              name: true,
+              agente: { select: { id: true, nombre: true, email: true, estado: true } },
+            },
+          },
+        },
+        orderBy: [{ startTime: 'asc' }, { id: 'asc' }],
+        take: 200,
+      }),
+      db.getConfig(tenantId, 'agenda_settings'),
+    ]);
+    const appointmentColor = normalizeHexColor(agendaSettings?.valor?.appointmentColor, '#0EA5E9');
+
+    const mapAppointmentStatus = (status) => {
+      if (status === 'completed') return 'completado';
+      if (status === 'scheduled' || status === 'rescheduled') return 'pendiente';
+      return 'en_progreso';
+    };
+
+    const mappedAppointments = appointments.map((appointment) => {
+      const details = buildAppointmentDetails(appointment);
+      return {
+      id: `appt:${appointment.id}`,
+      titulo:
+        details.nombre ||
+        String(appointment?.calendar?.name || '').trim() ||
+        'Cita reservada',
+      descripcion: details.descripcion,
+      tipo: 'reunion',
+      color: appointmentColor,
+      estado: mapAppointmentStatus(appointment.status),
+      startAt: appointment.startTime,
+      endAt: appointment.endTime,
+      source: 'appointment',
+      assignments: appointment?.calendar?.agente
+        ? [
+            {
+              agenteId: appointment.calendar.agente.id,
+              nombre: appointment.calendar.agente.nombre ?? null,
+              email: appointment.calendar.agente.email ?? null,
+              estado: appointment.calendar.agente.estado ?? null,
+            },
+          ]
+        : [],
+      };
+    });
+
+    const mappedAgenda = agendaEvents.map((event) => ({
+      id: event.id,
+      titulo: event.titulo,
+      descripcion: event.descripcion,
+      tipo: event.tipo,
+      color: event.color,
+      estado: event.estado,
+      startAt: event.startAt,
+      endAt: event.endAt,
+      source: 'agenda',
+      assignments: (event.assignments || []).map((a) => ({
+        agenteId: a.agenteId,
+        nombre: a.agente?.nombre ?? null,
+        email: a.agente?.email ?? null,
+        estado: a.agente?.estado ?? null,
+      })),
+    }));
+
+    const data = [...mappedAgenda, ...mappedAppointments].sort((a, b) => {
+      const tA = new Date(a.startAt).getTime();
+      const tB = new Date(b.startAt).getTime();
+      if (tA !== tB) return tA - tB;
+      return String(a.id).localeCompare(String(b.id));
     });
 
     return res.json({ total: data.length, data });
