@@ -145,6 +145,7 @@ export default function AgendaPage() {
   const [modalOpen, setModalOpen] = useState(false);
   const [selectedEvent, setSelectedEvent] = useState<AgendaEventFormData | null>(null);
   const [modalReadOnly, setModalReadOnly] = useState(false);
+  const [modalHideTechnicalSections, setModalHideTechnicalSections] = useState(false);
 
   const { data: agentAgenda, isLoading: agentAgendaLoading } = useQuery({
     queryKey: ["agent-agenda", agentAgendaRange.start.toISOString(), agentAgendaRange.end.toISOString()],
@@ -310,6 +311,7 @@ export default function AgendaPage() {
 
   function openCreateFromRange(start: Date, end: Date) {
     setModalReadOnly(false);
+    setModalHideTechnicalSections(false);
     setSelectedEvent({
       titulo: "",
       descripcion: "",
@@ -345,12 +347,14 @@ export default function AgendaPage() {
     if (!raw) return;
     if (raw.source === "appointment") {
       setModalReadOnly(true);
+      setModalHideTechnicalSections(true);
       setSelectedEvent(toReadOnlyFormEvent(raw));
       setModalOpen(true);
       return;
     }
     if (typeof raw.id !== "number") return;
     setModalReadOnly(false);
+    setModalHideTechnicalSections(false);
     setSelectedEvent(toFormEvent(raw));
     setModalOpen(true);
   }
@@ -621,11 +625,13 @@ export default function AgendaPage() {
         event={selectedEvent}
         agentes={agentes}
         readOnly={modalReadOnly}
+        hideTechnicalSections={modalHideTechnicalSections}
         saving={saveMutation.isPending || deleteMutation.isPending || triggerMutation.isPending}
         onClose={() => {
           setModalOpen(false);
           setSelectedEvent(null);
           setModalReadOnly(false);
+          setModalHideTechnicalSections(false);
         }}
         onSave={async (payload) => {
           await saveMutation.mutateAsync(payload);

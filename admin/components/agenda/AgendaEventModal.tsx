@@ -44,6 +44,7 @@ interface AgendaEventModalProps {
   agentes: AgenteOption[];
   saving: boolean;
   readOnly?: boolean;
+  hideTechnicalSections?: boolean;
   onClose: () => void;
   onSave: (payload: AgendaEventFormData) => Promise<void>;
   onDelete?: (id: number) => Promise<void>;
@@ -74,6 +75,7 @@ export function AgendaEventModal({
   agentes,
   saving,
   readOnly = false,
+  hideTechnicalSections = false,
   onClose,
   onSave,
   onDelete,
@@ -88,6 +90,7 @@ export function AgendaEventModal({
   }, [event, open]);
 
   const isEdit = useMemo(() => Boolean(form.id), [form.id]);
+  const showWebhookSections = !hideTechnicalSections && form.tipo === "webhook";
 
   function set<K extends keyof AgendaEventFormData>(key: K, value: AgendaEventFormData[K]) {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -220,64 +223,68 @@ export function AgendaEventModal({
           />
         </div>
 
-        <div className="rounded-xl border border-slate-200 px-3.5 py-2.5">
-            <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
-              <input
-                type="checkbox"
-                checked={form.triggerWebhookOnStart}
-                onChange={(e) => set("triggerWebhookOnStart", e.target.checked)}
+        {showWebhookSections && (
+          <>
+            <div className="rounded-xl border border-slate-200 px-3.5 py-2.5">
+                <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
+                  <input
+                    type="checkbox"
+                    checked={form.triggerWebhookOnStart}
+                    onChange={(e) => set("triggerWebhookOnStart", e.target.checked)}
+                    disabled={readOnly}
+                  />
+                  Disparar webhook al iniciar
+                </label>
+                <p className="mt-1 text-xs text-slate-500">
+                  Se ejecuta cuando el estado cambia a En progreso o manualmente.
+                </p>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <Input
+                label="Webhook URL"
+                value={form.webhookUrl}
+                onChange={(e) => set("webhookUrl", e.target.value)}
+                placeholder="https://api.tu-dominio.com/hook"
                 disabled={readOnly}
               />
-              Disparar webhook al iniciar
-            </label>
-            <p className="mt-1 text-xs text-slate-500">
-              Se ejecuta cuando el estado cambia a En progreso o manualmente.
-            </p>
-        </div>
+              <div className="flex flex-col gap-1.5">
+                <label className="text-sm font-medium text-slate-700">Método del webhook</label>
+                <select
+                  className="h-11 rounded-xl border border-slate-200 px-3 text-sm"
+                  value={form.webhookMethod}
+                  onChange={(e) => set("webhookMethod", e.target.value)}
+                  disabled={readOnly}
+                >
+                  <option value="POST">POST</option>
+                  <option value="PUT">PUT</option>
+                  <option value="PATCH">PATCH</option>
+                </select>
+              </div>
+            </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <Input
-            label="Webhook URL"
-            value={form.webhookUrl}
-            onChange={(e) => set("webhookUrl", e.target.value)}
-            placeholder="https://api.tu-dominio.com/hook"
-            disabled={readOnly}
-          />
-          <div className="flex flex-col gap-1.5">
-            <label className="text-sm font-medium text-slate-700">Método del webhook</label>
-            <select
-              className="h-11 rounded-xl border border-slate-200 px-3 text-sm"
-              value={form.webhookMethod}
-              onChange={(e) => set("webhookMethod", e.target.value)}
-              disabled={readOnly}
-            >
-              <option value="POST">POST</option>
-              <option value="PUT">PUT</option>
-              <option value="PATCH">PATCH</option>
-            </select>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div className="flex flex-col gap-1.5">
-            <label className="text-sm font-medium text-slate-700">Cabeceras del webhook (JSON)</label>
-            <textarea
-              className="min-h-20 rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500/40 font-mono"
-              value={form.webhookHeadersJson}
-              onChange={(e) => set("webhookHeadersJson", e.target.value)}
-              readOnly={readOnly}
-            />
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <label className="text-sm font-medium text-slate-700">Carga útil del webhook (JSON)</label>
-            <textarea
-              className="min-h-20 rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500/40 font-mono"
-              value={form.webhookPayloadJson}
-              onChange={(e) => set("webhookPayloadJson", e.target.value)}
-              readOnly={readOnly}
-            />
-          </div>
-        </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="flex flex-col gap-1.5">
+                <label className="text-sm font-medium text-slate-700">Cabeceras del webhook (JSON)</label>
+                <textarea
+                  className="min-h-20 rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500/40 font-mono"
+                  value={form.webhookHeadersJson}
+                  onChange={(e) => set("webhookHeadersJson", e.target.value)}
+                  readOnly={readOnly}
+                />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <label className="text-sm font-medium text-slate-700">Carga útil del webhook (JSON)</label>
+                <textarea
+                  className="min-h-20 rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500/40 font-mono"
+                  value={form.webhookPayloadJson}
+                  onChange={(e) => set("webhookPayloadJson", e.target.value)}
+                  readOnly={readOnly}
+                />
+              </div>
+            </div>
+          </>
+        )}
 
         <div className="rounded-xl border border-slate-200 p-3.5">
           <h4 className="text-sm font-semibold text-slate-900 mb-2">Responsables</h4>
