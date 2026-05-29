@@ -804,9 +804,9 @@ export default function ConversacionesPage() {
     enabled: (!!effectiveTenantSlug || !!tenantId) && !!activeThread?.userId,
     staleTime: 0,
   });
-  // Backend returns newest-first (desc). Invertir para mostrar orden natural (más antiguo a más reciente)
+  // Orden cronológico natural (más antiguo a más reciente) usando sort por fecha
   const latestMessages: Mensaje[] = mensajesData?.data ?? [];
-  const messages: Mensaje[] = [...latestMessages, ...olderMessages].slice().reverse();
+  const messages: Mensaje[] = [...olderMessages, ...latestMessages].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
 
   async function loadMoreMessages() {
     if ((!effectiveTenantSlug && !tenantId) || !activeThread?.userId || loadingMore) return;
