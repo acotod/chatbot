@@ -357,6 +357,50 @@ function parseTime(str) {
   return { hours: h, minutes: m };
 }
 
+function getTimeZoneOffsetMs(date, timeZone) {
+  const dtf = new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  });
+
+  const parts = dtf.formatToParts(date);
+  const map = {};
+  for (const part of parts) {
+    if (part.type !== 'literal') map[part.type] = part.value;
+  }
+
+  const asUtc = Date.UTC(
+    Number(map.year),
+    Number(map.month) - 1,
+    Number(map.day),
+    Number(map.hour),
+    Number(map.minute),
+    Number(map.second)
+  );
+
+  return asUtc - date.getTime();
+}
+
+function zonedDateTimeToUtc({ year, month, day, hour, minute }, timeZone) {
+  const localAsUtc = Date.UTC(year, month - 1, day, hour, minute, 0, 0);
+  let guess = localAsUtc;
+
+  for (let i = 0; i < 3; i += 1) {
+    const offset = getTimeZoneOffsetMs(new Date(guess), timeZone);
+    const next = localAsUtc - offset;
+    if (next === guess) break;
+    guess = next;
+  }
+
+  return new Date(guess);
+}
+
 function normalizeWorkingHourRanges(hours) {
   // Backward-compatible: ['09:00','18:00']
   if (Array.isArray(hours) && hours.length >= 2 && typeof hours[0] === 'string' && typeof hours[1] === 'string') {
@@ -389,6 +433,10 @@ function generateSlotsForDay(date, config) {
   const hours   = config.working_hours?.[dayName];
   const ranges = normalizeWorkingHourRanges(hours);
   if (ranges.length === 0) return [];
+  const timeZone = String(config.timezone || 'UTC');
+  const year = date.getUTCFullYear();
+  const month = date.getUTCMonth() + 1;
+  const day = date.getUTCDate();
 
   const slotDuration = (config.slot_duration_min ?? 30) * 60 * 1000;
   const buffer       = (config.buffer_min ?? 0)         * 60 * 1000;
@@ -398,10 +446,14 @@ function generateSlotsForDay(date, config) {
     const startT = parseTime(startStr);
     const endT   = parseTime(endStr);
 
-    const dayStart = new Date(date);
-    dayStart.setHours(startT.hours, startT.minutes, 0, 0);
-    const dayEnd   = new Date(date);
-    dayEnd.setHours(endT.hours, endT.minutes, 0, 0);
+    const dayStart = zonedDateTimeToUtc(
+      { year, month, day, hour: startT.hours, minute: startT.minutes },
+      timeZone
+    );
+    const dayEnd = zonedDateTimeToUtc(
+      { year, month, day, hour: endT.hours, minute: endT.minutes },
+      timeZone
+    );
 
     let cursor = dayStart.getTime();
     while (cursor + slotDuration <= dayEnd.getTime()) {
