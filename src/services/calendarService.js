@@ -357,6 +357,22 @@ function parseTime(str) {
   return { hours: h, minutes: m };
 }
 
+function normalizeWorkingHourRanges(hours) {
+  // Backward-compatible: ['09:00','18:00']
+  if (Array.isArray(hours) && hours.length >= 2 && typeof hours[0] === 'string' && typeof hours[1] === 'string') {
+    return [[hours[0], hours[1]]];
+  }
+
+  // New format: [['08:00','10:00'], ['14:00','16:00']]
+  if (Array.isArray(hours)) {
+    return hours
+      .filter((range) => Array.isArray(range) && range.length >= 2)
+      .map((range) => [String(range[0]), String(range[1])]);
+  }
+
+  return [];
+}
+
 /**
  * Generate slot start/end pairs for a single day based on working_hours config.
  *
@@ -371,28 +387,30 @@ function parseTime(str) {
 function generateSlotsForDay(date, config) {
   const dayName = DAY_NAMES[date.getDay()];
   const hours   = config.working_hours?.[dayName];
-  if (!hours || hours.length < 2) return [];
-
-  const [startStr, endStr] = hours;
-  const startT = parseTime(startStr);
-  const endT   = parseTime(endStr);
+  const ranges = normalizeWorkingHourRanges(hours);
+  if (ranges.length === 0) return [];
 
   const slotDuration = (config.slot_duration_min ?? 30) * 60 * 1000;
   const buffer       = (config.buffer_min ?? 0)         * 60 * 1000;
 
   const slots = [];
-  const dayStart = new Date(date);
-  dayStart.setHours(startT.hours, startT.minutes, 0, 0);
-  const dayEnd   = new Date(date);
-  dayEnd.setHours(endT.hours, endT.minutes, 0, 0);
+  for (const [startStr, endStr] of ranges) {
+    const startT = parseTime(startStr);
+    const endT   = parseTime(endStr);
 
-  let cursor = dayStart.getTime();
-  while (cursor + slotDuration <= dayEnd.getTime()) {
-    slots.push({
-      start: new Date(cursor),
-      end  : new Date(cursor + slotDuration),
-    });
-    cursor += slotDuration + buffer;
+    const dayStart = new Date(date);
+    dayStart.setHours(startT.hours, startT.minutes, 0, 0);
+    const dayEnd   = new Date(date);
+    dayEnd.setHours(endT.hours, endT.minutes, 0, 0);
+
+    let cursor = dayStart.getTime();
+    while (cursor + slotDuration <= dayEnd.getTime()) {
+      slots.push({
+        start: new Date(cursor),
+        end  : new Date(cursor + slotDuration),
+      });
+      cursor += slotDuration + buffer;
+    }
   }
 
   return slots;
