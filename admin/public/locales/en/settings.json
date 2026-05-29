@@ -182,6 +182,10 @@
       "appointmentColorHint": "This color is applied to appointment bookings in the calendar.",
       "scheduleTitle": "Reservation schedule",
       "timezoneLabel": "Time zone",
+      "dayLabel": "Day",
+      "enabledLabel": "Enabled",
+      "dayStartLabel": "Day start",
+      "dayEndLabel": "Day end",
       "lunchLabel": "Lunch break schedule (Mon/Tue)",
       "lunchStartLabel": "Lunch start",
       "lunchEndLabel": "Lunch end",
@@ -192,7 +196,7 @@
       "tuesdayAfternoonLabel": "Tuesday - afternoon",
       "startLabel": "Start",
       "endLabel": "End",
-      "scheduleHint": "When saved, this schedule is applied to active tenant calendars and future slots are regenerated.",
+      "scheduleHint": "Define each day in one place. If you need lunch break, use lunch start/end to create the gap automatically.",
       "saveAppearance": "Save color"
     }
   },

@@ -182,6 +182,10 @@
       "appointmentColorHint": "Este color se aplica a las reservas de citas (appointments) en el calendario.",
       "scheduleTitle": "Horario de reservas",
       "timezoneLabel": "Zona horaria",
+      "dayLabel": "Dia",
+      "enabledLabel": "Activo",
+      "dayStartLabel": "Inicio jornada",
+      "dayEndLabel": "Fin jornada",
       "lunchLabel": "Horario de almuerzo (Lun y Mar)",
       "lunchStartLabel": "Inicio almuerzo",
       "lunchEndLabel": "Fin almuerzo",
@@ -192,7 +196,7 @@
       "tuesdayAfternoonLabel": "Martes - tarde",
       "startLabel": "Inicio",
       "endLabel": "Fin",
-      "scheduleHint": "Al guardar, este horario se aplica a los calendarios activos del tenant y se regeneran los slots futuros.",
+      "scheduleHint": "Define cada dia en un solo lugar. Si hay almuerzo, usa inicio/fin de almuerzo para crear el hueco automaticamente.",
       "saveAppearance": "Guardar color"
     }
   },

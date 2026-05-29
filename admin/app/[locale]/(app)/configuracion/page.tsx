@@ -88,6 +88,15 @@ interface AudioTranscriptionTenantConfig {
 type AgendaDayKey = "sun" | "mon" | "tue" | "wed" | "thu" | "fri" | "sat";
 type AgendaTimeRange = [string, string];
 type AgendaWorkingHours = Record<AgendaDayKey, AgendaTimeRange[]>;
+type AgendaDaySchedule = {
+  enabled: boolean;
+  dayStart: string;
+  lunchStart: string;
+  lunchEnd: string;
+  dayEnd: string;
+};
+
+const AGENDA_DAY_ORDER: AgendaDayKey[] = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
 
 const EMPTY_AGENDA_WORKING_HOURS: AgendaWorkingHours = {
   sun: [],
@@ -132,27 +141,65 @@ function normalizeAgendaWorkingHours(rawValue: unknown): AgendaWorkingHours {
   return result;
 }
 
-function getAgendaRange(hours: AgendaWorkingHours, day: AgendaDayKey, index: number): AgendaTimeRange {
-  const range = hours[day]?.[index];
-  if (Array.isArray(range) && range.length >= 2) return [String(range[0]), String(range[1])];
-  return ["", ""];
+function getAgendaDaySchedule(hours: AgendaWorkingHours, day: AgendaDayKey): AgendaDaySchedule {
+  const ranges = Array.isArray(hours[day]) ? hours[day] : [];
+  const defaults: AgendaDaySchedule = {
+    enabled: false,
+    dayStart: "08:00",
+    lunchStart: "12:00",
+    lunchEnd: "13:00",
+    dayEnd: "17:00",
+  };
+
+  if (ranges.length === 0) return defaults;
+
+  const first = ranges[0] ?? ["", ""];
+  const second = ranges[1] ?? ["", ""];
+
+  if (!second[0] || !second[1]) {
+    return {
+      enabled: true,
+      dayStart: String(first[0] || defaults.dayStart),
+      lunchStart: String(first[1] || defaults.lunchStart),
+      lunchEnd: String(first[1] || defaults.lunchEnd),
+      dayEnd: String(first[1] || defaults.dayEnd),
+    };
+  }
+
+  return {
+    enabled: true,
+    dayStart: String(first[0] || defaults.dayStart),
+    lunchStart: String(first[1] || defaults.lunchStart),
+    lunchEnd: String(second[0] || defaults.lunchEnd),
+    dayEnd: String(second[1] || defaults.dayEnd),
+  };
 }
 
-function setAgendaRangeValue(
-  hours: AgendaWorkingHours,
-  day: AgendaDayKey,
-  index: number,
-  part: 0 | 1,
-  value: string
-): AgendaWorkingHours {
-  const next: AgendaWorkingHours = {
+function buildAgendaRangesFromSchedule(schedule: AgendaDaySchedule): AgendaTimeRange[] {
+  if (!schedule.enabled) return [];
+
+  const dayStart = String(schedule.dayStart || "").trim();
+  const lunchStart = String(schedule.lunchStart || "").trim();
+  const lunchEnd = String(schedule.lunchEnd || "").trim();
+  const dayEnd = String(schedule.dayEnd || "").trim();
+
+  if (!dayStart || !dayEnd || dayStart >= dayEnd) return [];
+
+  if (lunchStart && lunchEnd && dayStart < lunchStart && lunchStart <= lunchEnd && lunchEnd < dayEnd) {
+    return [
+      [dayStart, lunchStart],
+      [lunchEnd, dayEnd],
+    ];
+  }
+
+  return [[dayStart, dayEnd]];
+}
+
+function setAgendaDaySchedule(hours: AgendaWorkingHours, day: AgendaDayKey, schedule: AgendaDaySchedule): AgendaWorkingHours {
+  return {
     ...hours,
-    [day]: [...(hours[day] || [])],
+    [day]: buildAgendaRangesFromSchedule(schedule),
   };
-  while (next[day].length <= index) next[day].push(["", ""]);
-  const current = next[day][index] ?? ["", ""];
-  next[day][index] = part === 0 ? [value, current[1]] : [current[0], value];
-  return next;
 }
 
 const DEFAULT_AUDIO_TRANSCRIPTION_CONFIG: AudioTranscriptionTenantConfig = {
@@ -828,17 +875,14 @@ export default function ConfiguracionPage() {
 
   const [refreshingTab, setRefreshingTab] = useState<string | null>(null);
 
-  function setAgendaRange(day: AgendaDayKey, index: number, part: 0 | 1, value: string) {
+  function setAgendaDayField(day: AgendaDayKey, field: keyof AgendaDaySchedule, value: string | boolean) {
     setAgendaWorkingHours((prev) => {
-      return setAgendaRangeValue(prev, day, index, part, value);
-    });
-  }
-
-  function setAgendaLunch(part: 0 | 1, value: string) {
-    setAgendaWorkingHours((prev) => {
-      let next = setAgendaRangeValue(prev, "mon", part === 0 ? 0 : 1, part === 0 ? 1 : 0, value);
-      next = setAgendaRangeValue(next, "tue", part === 0 ? 0 : 1, part === 0 ? 1 : 0, value);
-      return next;
+      const current = getAgendaDaySchedule(prev, day);
+      const nextSchedule: AgendaDaySchedule = {
+        ...current,
+        [field]: value as never,
+      };
+      return setAgendaDaySchedule(prev, day, nextSchedule);
     });
   }
 
@@ -1766,100 +1810,75 @@ export default function ConfiguracionPage() {
                     />
                   </div>
 
-                  <div className="rounded-lg border border-slate-200 bg-white p-3 space-y-2">
-                    <p className="text-sm font-medium text-slate-700">{t("modules.agenda.lunchLabel")}</p>
-                    <div className="grid grid-cols-2 gap-2 md:max-w-md">
-                      <Input
-                        label={t("modules.agenda.lunchStartLabel")}
-                        type="time"
-                        value={getAgendaRange(agendaWorkingHours, "mon", 0)[1]}
-                        onChange={(e) => setAgendaLunch(0, e.target.value)}
-                      />
-                      <Input
-                        label={t("modules.agenda.lunchEndLabel")}
-                        type="time"
-                        value={getAgendaRange(agendaWorkingHours, "mon", 1)[0]}
-                        onChange={(e) => setAgendaLunch(1, e.target.value)}
-                      />
-                    </div>
-                    <p className="text-xs text-slate-500">{t("modules.agenda.lunchHint")}</p>
+                  <div className="rounded-lg border border-slate-200 bg-white p-3 overflow-x-auto">
+                    <table className="min-w-[860px] w-full text-sm">
+                      <thead>
+                        <tr className="text-left text-slate-600 border-b border-slate-200">
+                          <th className="py-2 pr-3">{t("modules.agenda.dayLabel")}</th>
+                          <th className="py-2 pr-3">{t("modules.agenda.enabledLabel")}</th>
+                          <th className="py-2 pr-3">{t("modules.agenda.dayStartLabel")}</th>
+                          <th className="py-2 pr-3">{t("modules.agenda.lunchStartLabel")}</th>
+                          <th className="py-2 pr-3">{t("modules.agenda.lunchEndLabel")}</th>
+                          <th className="py-2">{t("modules.agenda.dayEndLabel")}</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {AGENDA_DAY_ORDER.map((day) => {
+                          const row = getAgendaDaySchedule(agendaWorkingHours, day);
+                          return (
+                            <tr key={day} className="border-b last:border-b-0 border-slate-100">
+                              <td className="py-2 pr-3 font-medium text-slate-700">{t(`horarios.days.${day}`)}</td>
+                              <td className="py-2 pr-3">
+                                <input
+                                  type="checkbox"
+                                  checked={row.enabled}
+                                  onChange={(e) => setAgendaDayField(day, "enabled", e.target.checked)}
+                                  className="h-4 w-4 rounded border-slate-300 text-blue-600"
+                                />
+                              </td>
+                              <td className="py-2 pr-3">
+                                <input
+                                  type="time"
+                                  value={row.dayStart}
+                                  disabled={!row.enabled}
+                                  onChange={(e) => setAgendaDayField(day, "dayStart", e.target.value)}
+                                  className="w-full rounded-md border border-slate-300 px-2 py-1 disabled:bg-slate-100"
+                                />
+                              </td>
+                              <td className="py-2 pr-3">
+                                <input
+                                  type="time"
+                                  value={row.lunchStart}
+                                  disabled={!row.enabled}
+                                  onChange={(e) => setAgendaDayField(day, "lunchStart", e.target.value)}
+                                  className="w-full rounded-md border border-slate-300 px-2 py-1 disabled:bg-slate-100"
+                                />
+                              </td>
+                              <td className="py-2 pr-3">
+                                <input
+                                  type="time"
+                                  value={row.lunchEnd}
+                                  disabled={!row.enabled}
+                                  onChange={(e) => setAgendaDayField(day, "lunchEnd", e.target.value)}
+                                  className="w-full rounded-md border border-slate-300 px-2 py-1 disabled:bg-slate-100"
+                                />
+                              </td>
+                              <td className="py-2">
+                                <input
+                                  type="time"
+                                  value={row.dayEnd}
+                                  disabled={!row.enabled}
+                                  onChange={(e) => setAgendaDayField(day, "dayEnd", e.target.value)}
+                                  className="w-full rounded-md border border-slate-300 px-2 py-1 disabled:bg-slate-100"
+                                />
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                    <p className="mt-3 text-xs text-slate-500">{t("modules.agenda.scheduleHint")}</p>
                   </div>
-
-                  <div className="grid gap-3 md:grid-cols-2">
-                    <div className="rounded-lg border border-slate-200 bg-white p-3 space-y-2">
-                      <p className="text-sm font-medium text-slate-700">{t("modules.agenda.mondayMorningLabel")}</p>
-                      <div className="grid grid-cols-2 gap-2">
-                        <Input
-                          label={t("modules.agenda.startLabel")}
-                          type="time"
-                          value={getAgendaRange(agendaWorkingHours, "mon", 0)[0]}
-                          onChange={(e) => setAgendaRange("mon", 0, 0, e.target.value)}
-                        />
-                        <Input
-                          label={t("modules.agenda.endLabel")}
-                          type="time"
-                          value={getAgendaRange(agendaWorkingHours, "mon", 0)[1]}
-                          onChange={(e) => setAgendaRange("mon", 0, 1, e.target.value)}
-                        />
-                      </div>
-                    </div>
-
-                    <div className="rounded-lg border border-slate-200 bg-white p-3 space-y-2">
-                      <p className="text-sm font-medium text-slate-700">{t("modules.agenda.mondayAfternoonLabel")}</p>
-                      <div className="grid grid-cols-2 gap-2">
-                        <Input
-                          label={t("modules.agenda.startLabel")}
-                          type="time"
-                          value={getAgendaRange(agendaWorkingHours, "mon", 1)[0]}
-                          onChange={(e) => setAgendaRange("mon", 1, 0, e.target.value)}
-                        />
-                        <Input
-                          label={t("modules.agenda.endLabel")}
-                          type="time"
-                          value={getAgendaRange(agendaWorkingHours, "mon", 1)[1]}
-                          onChange={(e) => setAgendaRange("mon", 1, 1, e.target.value)}
-                        />
-                      </div>
-                    </div>
-
-                    <div className="rounded-lg border border-slate-200 bg-white p-3 space-y-2">
-                      <p className="text-sm font-medium text-slate-700">{t("modules.agenda.tuesdayMorningLabel")}</p>
-                      <div className="grid grid-cols-2 gap-2">
-                        <Input
-                          label={t("modules.agenda.startLabel")}
-                          type="time"
-                          value={getAgendaRange(agendaWorkingHours, "tue", 0)[0]}
-                          onChange={(e) => setAgendaRange("tue", 0, 0, e.target.value)}
-                        />
-                        <Input
-                          label={t("modules.agenda.endLabel")}
-                          type="time"
-                          value={getAgendaRange(agendaWorkingHours, "tue", 0)[1]}
-                          onChange={(e) => setAgendaRange("tue", 0, 1, e.target.value)}
-                        />
-                      </div>
-                    </div>
-
-                    <div className="rounded-lg border border-slate-200 bg-white p-3 space-y-2">
-                      <p className="text-sm font-medium text-slate-700">{t("modules.agenda.tuesdayAfternoonLabel")}</p>
-                      <div className="grid grid-cols-2 gap-2">
-                        <Input
-                          label={t("modules.agenda.startLabel")}
-                          type="time"
-                          value={getAgendaRange(agendaWorkingHours, "tue", 1)[0]}
-                          onChange={(e) => setAgendaRange("tue", 1, 0, e.target.value)}
-                        />
-                        <Input
-                          label={t("modules.agenda.endLabel")}
-                          type="time"
-                          value={getAgendaRange(agendaWorkingHours, "tue", 1)[1]}
-                          onChange={(e) => setAgendaRange("tue", 1, 1, e.target.value)}
-                        />
-                      </div>
-                    </div>
-                  </div>
-
-                  <p className="text-xs text-slate-500">{t("modules.agenda.scheduleHint")}</p>
                 </div>
 
                 <div className="mt-3 flex justify-end">
