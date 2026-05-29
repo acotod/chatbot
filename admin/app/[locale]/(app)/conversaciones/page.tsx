@@ -748,7 +748,7 @@ export default function ConversacionesPage() {
   const threads: Thread[] = threadsData?.data ?? [];
 
   // For superadmins, if current tenant is empty, find a tenant that has conversations.
-  const { data: tenantWithThreads } = useQuery({
+  const { data: tenantWithThreads, isLoading: tenantWithThreadsLoading } = useQuery({
     queryKey: ["conversaciones-tenant-fallback", tenantSlug, threads.length, tenants.map((t: { slug?: string }) => t.slug).join(",")],
     queryFn: async () => {
       const candidates = tenants.filter(
@@ -780,6 +780,14 @@ export default function ConversacionesPage() {
       setTenantSlug(tenantWithThreads);
     }
   }, [tenantWithThreads, tenantSlug, setTenantSlug]);
+
+  const isResolvingTenantWithThreads =
+    superAdmin &&
+    !threadsLoading &&
+    threads.length === 0 &&
+    tenants.length > 1 &&
+    !!effectiveTenantSlug &&
+    tenantWithThreadsLoading;
 
   // Messages for active thread
   const { data: mensajesData, isLoading: mensajesLoading } = useQuery({
@@ -989,7 +997,7 @@ export default function ConversacionesPage() {
         </div>
 
         <div className="flex-1 overflow-y-auto">
-          {threadsLoading && (
+          {(threadsLoading || isResolvingTenantWithThreads) && (
             <div className="flex flex-col gap-2 p-4">
               {[1, 2, 3].map((i) => (
                   <div key={i} className="animate-pulse flex gap-3 p-2">
@@ -1003,7 +1011,7 @@ export default function ConversacionesPage() {
             </div>
           )}
 
-          {!threadsLoading && filtered.length === 0 && (
+          {!threadsLoading && !isResolvingTenantWithThreads && filtered.length === 0 && (
             <div className="flex flex-col items-center justify-center h-40 text-[#5B6670] text-sm gap-2 px-4 text-center">
               <p>{t("emptyList")}</p>
               <p className="text-xs text-[#7A8792]">

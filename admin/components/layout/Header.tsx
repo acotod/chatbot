@@ -92,7 +92,7 @@ export function Header() {
     staleTime: 60_000,
   });
 
-  const { data: tenants = [] } = useQuery<TenantOption[]>({
+  const { data: tenants = [], isLoading: tenantsLoading } = useQuery<TenantOption[]>({
     queryKey: ["tenants", "header"],
     queryFn: async () => {
       const res = await tenantApi.list();
@@ -169,7 +169,11 @@ export function Header() {
             onChange={(e) => setTenantSlug(e.target.value)}
             className="px-3 py-2 rounded-xl bg-[#FFFFFF] border border-[#D9E5EB] text-sm text-[#0D2B3E] shadow-sm focus:outline-none focus:ring-2 focus:ring-[#00BFAE]/25 min-w-44"
           >
-            {tenants.length === 0 && <option value="">{t("noCompanies")}</option>}
+            {tenants.length === 0 && (
+              <option value="">
+                {tenantSlug || (tenantsLoading ? t("loading") : t("noCompanies"))}
+              </option>
+            )}
             {tenants.map((tenant) => (
               <option key={tenant.id} value={tenant.slug}>
                 {`${normalizeTenantName(tenant.nombre, tenant.slug)} (${tenant.slug})`}
