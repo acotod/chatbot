@@ -22,9 +22,12 @@ import ReactFlow, {
   Controls,
   Background,
   BackgroundVariant,
+  Panel,
   ReactFlowProvider,
+  useReactFlow,
 } from 'reactflow';
 import 'reactflow/dist/style.css';
+import { Compass, Crosshair, Keyboard, Maximize2, Minimize2, ZoomIn, ZoomOut } from 'lucide-react';
 
 import { FlowDefinition, FlowNode, FlowEdge } from '@/lib/flowTypes';
 import { toReactFlowNodes, toReactFlowEdges, fromReactFlowNodes, fromReactFlowEdges } from '@/lib/converters';
@@ -86,11 +89,13 @@ function CanvasEditorInner({
   readOnly = false,
   className = '',
 }: CanvasEditorProps) {
+  const { fitView, zoomIn, zoomOut } = useReactFlow();
   const [nodes, setNodes] = useNodesState<FlowNode>([]);
   const [edges, setEdges] = useEdgesState<FlowEdge>([]);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; nodeId: string } | null>(null);
   const [jsonViewNode, setJsonViewNode] = useState<string | null>(null);
+  const [showShortcuts, setShowShortcuts] = useState(false);
 
   // Initialize nodes and edges from definition
   useEffect(() => {
@@ -208,6 +213,8 @@ function CanvasEditorInner({
     setContextMenu(null);
   }, []);
 
+  const selectedNode = nodes.find((node) => node.id === selectedNodeId);
+
   // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -229,6 +236,13 @@ function CanvasEditorInner({
       if (e.key === 'Escape') {
         setSelectedNodeId(null);
         setContextMenu(null);
+        setShowShortcuts(false);
+      }
+
+      // Toggle shortcuts helper
+      if (e.key === '?') {
+        e.preventDefault();
+        setShowShortcuts((prev) => !prev);
       }
     };
 
@@ -237,7 +251,7 @@ function CanvasEditorInner({
   }, [selectedNodeId, handleDeleteNode, handleDuplicateNode]);
 
   return (
-    <div className={`w-full h-full relative ${className}`} style={{ background: '#f0f4f8' }}>
+    <div className={`w-full h-full relative ${className}`} style={{ background: '#ffffff' }}>
       <ReactFlow
         nodes={nodes}
         edges={edges}
@@ -252,9 +266,104 @@ function CanvasEditorInner({
         fitView
         attributionPosition="bottom-left"
       >
-        <Background variant={BackgroundVariant.Dots} gap={12} size={1} />
-        <Controls showInteractive={!readOnly} />
-        <MiniMap position="bottom-right" width={200} height={150} />
+        <Background variant={BackgroundVariant.Dots} gap={16} size={1} color="#d8e2eb" />
+        <Controls showInteractive={!readOnly} className="!rounded-xl !border !border-slate-200 !bg-white !shadow-sm" />
+        <MiniMap
+          position="bottom-right"
+          width={210}
+          height={140}
+          pannable
+          zoomable
+          className="!rounded-xl !border !border-slate-200 !bg-white !shadow-sm"
+          nodeColor={(node) => (node.id === selectedNodeId ? '#0D2B3E' : '#00BFAE')}
+          maskColor="rgba(13, 43, 62, 0.06)"
+        />
+
+        <Panel position="top-left" className="m-3 max-w-sm rounded-2xl border border-slate-200 bg-white/95 p-3 shadow-sm backdrop-blur">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Flow Workspace</p>
+              <p className="text-sm font-semibold text-slate-800">Visor operacional</p>
+            </div>
+            <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${readOnly ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700'}`}>
+              {readOnly ? 'Solo lectura' : 'Editable'}
+            </span>
+          </div>
+
+          <div className="mt-2 grid grid-cols-3 gap-2 text-[11px]">
+            <div className="rounded-lg border border-slate-200 bg-white px-2 py-1.5">
+              <p className="text-slate-500">Nodos</p>
+              <p className="text-sm font-semibold text-slate-800">{nodes.length}</p>
+            </div>
+            <div className="rounded-lg border border-slate-200 bg-white px-2 py-1.5">
+              <p className="text-slate-500">Conexiones</p>
+              <p className="text-sm font-semibold text-slate-800">{edges.length}</p>
+            </div>
+            <div className="rounded-lg border border-slate-200 bg-white px-2 py-1.5">
+              <p className="text-slate-500">Activo</p>
+              <p className="truncate text-sm font-semibold text-slate-800">{selectedNode?.id ?? 'Ninguno'}</p>
+            </div>
+          </div>
+
+          {showShortcuts && (
+            <div className="mt-2 rounded-xl border border-slate-200 bg-slate-50 p-2 text-[11px] text-slate-600">
+              <p><span className="font-semibold text-slate-700">Delete</span> elimina nodo</p>
+              <p><span className="font-semibold text-slate-700">Ctrl/Cmd + D</span> duplica nodo</p>
+              <p><span className="font-semibold text-slate-700">Esc</span> limpia selección</p>
+              <p><span className="font-semibold text-slate-700">?</span> muestra/oculta esta ayuda</p>
+            </div>
+          )}
+        </Panel>
+
+        <Panel position="top-right" className="m-3 rounded-2xl border border-slate-200 bg-white/95 p-2 shadow-sm backdrop-blur">
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={() => fitView({ duration: 250, padding: 0.2 })}
+              className="rounded-lg border border-slate-200 bg-white p-2 text-slate-600 transition hover:border-[#00BFAE] hover:text-[#0D2B3E]"
+              title="Ajustar al lienzo"
+            >
+              <Maximize2 className="h-4 w-4" />
+            </button>
+            <button
+              type="button"
+              onClick={() => zoomIn({ duration: 180 })}
+              className="rounded-lg border border-slate-200 bg-white p-2 text-slate-600 transition hover:border-[#00BFAE] hover:text-[#0D2B3E]"
+              title="Acercar"
+            >
+              <ZoomIn className="h-4 w-4" />
+            </button>
+            <button
+              type="button"
+              onClick={() => zoomOut({ duration: 180 })}
+              className="rounded-lg border border-slate-200 bg-white p-2 text-slate-600 transition hover:border-[#00BFAE] hover:text-[#0D2B3E]"
+              title="Alejar"
+            >
+              <ZoomOut className="h-4 w-4" />
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowShortcuts((prev) => !prev)}
+              className={`rounded-lg border p-2 transition ${showShortcuts ? 'border-[#00BFAE] bg-[#E8FBF8] text-[#0D2B3E]' : 'border-slate-200 bg-white text-slate-600 hover:border-[#00BFAE] hover:text-[#0D2B3E]'}`}
+              title="Atajos de teclado"
+            >
+              <Keyboard className="h-4 w-4" />
+            </button>
+          </div>
+        </Panel>
+
+        <Panel position="bottom-left" className="mb-6 ml-3 rounded-xl border border-slate-200 bg-white/95 px-3 py-2 text-[11px] text-slate-600 shadow-sm backdrop-blur">
+          <div className="flex items-center gap-2">
+            <Compass className="h-3.5 w-3.5 text-slate-500" />
+            <span>Arrastra para mover nodos</span>
+            <span className="text-slate-300">|</span>
+            <Crosshair className="h-3.5 w-3.5 text-slate-500" />
+            <span>Click derecho para acciones rápidas</span>
+            <span className="text-slate-300">|</span>
+            <Minimize2 className="h-3.5 w-3.5 text-slate-500" />
+            <span>Scroll para zoom</span>
+          </div>
+        </Panel>
       </ReactFlow>
 
       {/* Context menu */}
@@ -282,11 +391,11 @@ function CanvasEditorInner({
           onClick={() => setJsonViewNode(null)}
         >
           <div
-            className="bg-white rounded-lg p-6 max-w-2xl w-full max-h-96 overflow-auto"
+            className="bg-white rounded-2xl p-6 max-w-2xl w-full max-h-96 overflow-auto border border-slate-200 shadow-xl"
             onClick={(e) => e.stopPropagation()}
           >
-            <h3 className="text-lg font-bold mb-4">Node JSON</h3>
-            <pre className="bg-gray-100 p-4 rounded text-sm overflow-auto">
+            <h3 className="text-lg font-semibold mb-4 text-slate-800">Node JSON</h3>
+            <pre className="bg-slate-50 p-4 rounded-xl text-sm overflow-auto border border-slate-200">
               {JSON.stringify(
                 definition.nodes.find((n) => n.id === jsonViewNode),
                 null,
@@ -295,7 +404,7 @@ function CanvasEditorInner({
             </pre>
             <button
               onClick={() => setJsonViewNode(null)}
-              className="mt-4 px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
+              className="mt-4 px-4 py-2 rounded-xl border border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
             >
               Cerrar
             </button>
