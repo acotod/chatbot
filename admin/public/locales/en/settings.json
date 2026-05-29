@@ -222,6 +222,8 @@
     "selectImage": "Select image",
     "saveLogo": "Save logo",
     "saving": "Uploading...",
+    "saveButton": "Save branding",
+    "saved": "Branding saved",
     "logoSaved": "Logo updated",
     "logoError": "Error uploading logo. Try again.",
     "logoHint": "PNG, JPG or SVG. Recommended: 200×60 px.",

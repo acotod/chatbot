@@ -193,6 +193,11 @@ function selectedHoursToRanges(selectedHours: number[]): AgendaTimeRange[] {
   return ranges;
 }
 
+function normalizeHexColor(value: string, fallback = "#2563eb"): string {
+  const raw = String(value || "").trim();
+  return /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(raw) ? raw : fallback;
+}
+
 const DEFAULT_AUDIO_TRANSCRIPTION_CONFIG: AudioTranscriptionTenantConfig = {
   enabled: false,
   provider: "openai",
@@ -335,6 +340,9 @@ export default function ConfiguracionPage() {
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
   const [logoFile, setLogoFile] = useState<File | null>(null);
   const [logoSaved, setLogoSaved] = useState(false);
+  const [brandingOrgName, setBrandingOrgName] = useState("");
+  const [brandingPrimaryColor, setBrandingPrimaryColor] = useState("#2563eb");
+  const [brandingSaved, setBrandingSaved] = useState(false);
   const uploadLogoMutation = useMutation({
     mutationFn: (file: File) => tenantApi.uploadLogo(tenantSlug!, file),
     onSuccess: () => {
@@ -827,6 +835,21 @@ export default function ConfiguracionPage() {
   });
   const agendaAgents: AgendaAgentItem[] = agendaAgentsData?.data ?? agendaAgentsData ?? [];
 
+  const { data: brandingSettingsData } = useQuery({
+    queryKey: ["config", tenantSlug, "branding_settings"],
+    queryFn: () =>
+      configApi.get(tenantSlug!, "branding_settings").then((r) => {
+        const v = r?.data?.valor;
+        const orgName = typeof v?.orgName === "string" ? v.orgName : "";
+        const primaryColor = normalizeHexColor(v?.primaryColor, "#2563eb");
+        setBrandingOrgName(orgName);
+        setBrandingPrimaryColor(primaryColor);
+        return r?.data;
+      }),
+    enabled: !!tenantSlug,
+  });
+  void brandingSettingsData;
+
   const { data: agendaSettingsData } = useQuery({
     queryKey: ["config", tenantSlug, "agenda_settings"],
     queryFn: () =>
@@ -880,6 +903,19 @@ export default function ConfiguracionPage() {
       qc.invalidateQueries({ queryKey: ["config", tenantSlug, "agenda_settings"] });
       setAgendaAppearanceSaved(true);
       setTimeout(() => setAgendaAppearanceSaved(false), 3000);
+    },
+  });
+
+  const saveBrandingMutation = useMutation({
+    mutationFn: () =>
+      configApi.set(tenantSlug!, "branding_settings", {
+        orgName: brandingOrgName.trim(),
+        primaryColor: normalizeHexColor(brandingPrimaryColor, "#2563eb"),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["config", tenantSlug, "branding_settings"] });
+      setBrandingSaved(true);
+      setTimeout(() => setBrandingSaved(false), 3000);
     },
   });
 
@@ -952,6 +988,13 @@ export default function ConfiguracionPage() {
           qc.invalidateQueries({ queryKey: ["config", tenantSlug, "agenda_feature"] }),
           qc.invalidateQueries({ queryKey: ["config", tenantSlug, "agenda_settings"] }),
           qc.invalidateQueries({ queryKey: ["lockout-policy", tenantSlug] }),
+        ]);
+        return;
+      }
+
+      if (tab === "branding") {
+        await Promise.all([
+          qc.invalidateQueries({ queryKey: ["config", tenantSlug, "branding_settings"] }),
         ]);
         return;
       }
@@ -2076,8 +2119,41 @@ export default function ConfiguracionPage() {
                 </div>
               </div>
 
-              <Input label={t("branding.orgName")} placeholder="Clínica Esperanza" />
-              <Input label={t("branding.primaryColor")} placeholder="#2563eb" />
+              <Input
+                label={t("branding.orgName")}
+                placeholder="Clínica Esperanza"
+                value={brandingOrgName}
+                onChange={(e) => setBrandingOrgName(e.target.value)}
+              />
+              <div className="grid grid-cols-1 sm:grid-cols-[120px_1fr] gap-3 items-end">
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-sm font-medium text-slate-700">{t("branding.primaryColor")}</label>
+                  <input
+                    type="color"
+                    value={normalizeHexColor(brandingPrimaryColor, "#2563eb")}
+                    onChange={(e) => setBrandingPrimaryColor(e.target.value)}
+                    className="h-10 w-full rounded-lg border border-slate-300 bg-white"
+                  />
+                </div>
+                <Input
+                  label=""
+                  placeholder="#2563eb"
+                  value={brandingPrimaryColor}
+                  onChange={(e) => setBrandingPrimaryColor(e.target.value)}
+                />
+              </div>
+
+              <div className="flex justify-end">
+                <Button
+                  type="button"
+                  onClick={() => saveBrandingMutation.mutate()}
+                  disabled={saveBrandingMutation.isPending}
+                >
+                  {brandingSaved ? (
+                    <><Check size={16} /> {t("branding.saved")}</>
+                  ) : saveBrandingMutation.isPending ? t("branding.saving") : t("branding.saveButton")}
+                </Button>
+              </div>
             </div>
           </ConfigSection>
         </TabsContent>
