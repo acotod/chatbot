@@ -3089,7 +3089,7 @@ function FlowBuilder({
             </div>
           ) : (
             <div className="flex flex-col flex-1 gap-3 min-h-0">
-              <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-xs text-slate-500">
+              <div className="pointer-events-none select-none rounded-2xl border border-slate-200 bg-white px-4 py-3 text-xs text-slate-500">
                 {t("builder.visualHint")}
               </div>
               <div className="flex-1 min-h-0 rounded-2xl border border-slate-200 bg-white overflow-hidden">
