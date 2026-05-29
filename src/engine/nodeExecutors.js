@@ -1002,7 +1002,7 @@ async function executeHandoff({ node, variables }) {
  * Supported actions: show_availability, select_slot, create_appointment,
  * reschedule_appointment, cancel_appointment.
  */
-async function executeCalendar({ node, input, variables, tenantId }) {
+async function executeCalendar({ node, input, variables, tenantId, llmService }) {
   const calSvc = require('../services/calendarService');
   const cfg    = resolveConfig(node.config || {}, variables);
   const action = node.action || cfg.action || 'show_availability';
@@ -1260,11 +1260,18 @@ async function executeCalendar({ node, input, variables, tenantId }) {
       };
     }
 
+    const appointmentMetadata = await _buildAppointmentMetadata({
+      tenantId,
+      llmService,
+      variables,
+      cfg,
+    });
+
     const bookResult = await calSvc.bookSlot({
       calendarId, slotId: resolvedSlotId, tenantId,
       userKey: variables.phone || variables.user_key || 'unknown',
       conversationId: variables.conversation_id || null,
-      metadata: { user_name: variables.name || null },
+      metadata: appointmentMetadata,
     });
     if (bookResult.error) {
       const errText = bookResult.error === 'SLOT_TAKEN'
@@ -1294,7 +1301,20 @@ async function executeCalendar({ node, input, variables, tenantId }) {
     if (!slotId || !calendarId) {
       return { output: null, nextNodeId: node.next, updatedVars: {}, terminal: false, fallback: false };
     }
-    const bookResult = await calSvc.bookSlot({ calendarId, slotId, tenantId, userKey: variables.phone || 'unknown', conversationId: variables.conversation_id || null, metadata: { user_name: variables.name || null } });
+    const appointmentMetadata = await _buildAppointmentMetadata({
+      tenantId,
+      llmService,
+      variables,
+      cfg,
+    });
+    const bookResult = await calSvc.bookSlot({
+      calendarId,
+      slotId,
+      tenantId,
+      userKey: variables.phone || 'unknown',
+      conversationId: variables.conversation_id || null,
+      metadata: appointmentMetadata,
+    });
     if (bookResult.error) return { output: null, nextNodeId: (node.branches && node.branches.error) || node.next, updatedVars: {}, terminal: false, fallback: false };
     const a = bookResult.appointment;
     const taskPayload = await buildBookingTaskPayload({ appointment: a, selectedCalendarId: calendarId });
@@ -1338,6 +1358,222 @@ async function executeCalendar({ node, input, variables, tenantId }) {
 function _formatSlotLabel(date) {
   if (!(date instanceof Date)) date = new Date(date);
   return date.toLocaleDateString('es-MX', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+}
+
+function _pickFirstNonEmpty(...values) {
+  for (const value of values) {
+    const normalized = String(value ?? '').trim();
+    if (normalized) return normalized;
+  }
+  return '';
+}
+
+function _truncateText(value, maxLen = 400) {
+  const text = String(value ?? '').trim();
+  if (!text) return '';
+  if (text.length <= maxLen) return text;
+  return `${text.slice(0, maxLen - 3)}...`;
+}
+
+function _sanitizeTextArray(values, maxItems = 8, maxLen = 220) {
+  if (!Array.isArray(values)) return [];
+  return values
+    .map((value) => _truncateText(value, maxLen))
+    .filter(Boolean)
+    .slice(0, maxItems);
+}
+
+function _collectAppointmentCustomerData(variables, cfg = {}) {
+  const nombre = _pickFirstNonEmpty(
+    variables.nombre,
+    variables.name,
+    variables.user_name,
+    variables.full_name,
+    variables.nombre_completo,
+    variables.cliente_nombre,
+    variables.clienteNombre,
+    variables.customer_name,
+    variables.customerName,
+    cfg.customer_name,
+  );
+
+  const cedula = _pickFirstNonEmpty(
+    variables.cedula,
+    variables.cliente_cedula,
+    variables.clienteCedula,
+    variables.identificacion,
+    variables.identificacion_cliente,
+    variables.identification,
+    variables.numero_cedula,
+    variables.documento,
+    cfg.customer_cedula,
+  );
+
+  const telefono = _pickFirstNonEmpty(
+    variables.telefono,
+    variables.phone,
+    variables.user_phone,
+    variables.cliente_telefono,
+    variables.clienteTelefono,
+    variables.telefono_contacto,
+    variables.telefonoContacto,
+    variables.user_key,
+    cfg.customer_phone,
+  );
+
+  const email = _pickFirstNonEmpty(
+    variables.email,
+    variables.correo,
+    variables.customer_email,
+    variables.cliente_email,
+    cfg.customer_email,
+  );
+
+  const motivo = _pickFirstNonEmpty(
+    variables.motivo,
+    variables.reason,
+    variables.tipo_necesidad,
+    variables.subject,
+    variables.asunto,
+    variables.appointment_reason,
+    variables.customer_reason,
+  );
+
+  const comentarios = _pickFirstNonEmpty(
+    variables.customer_notes,
+    variables.notes,
+    variables.note,
+    variables.comentarios,
+    variables.comentario,
+    variables.observaciones,
+    variables.detalle,
+    variables.detalles,
+    variables.appointment_notes_summary,
+    cfg.customer_notes,
+    cfg.notes,
+  );
+
+  const direccion = _pickFirstNonEmpty(
+    variables.direccion,
+    variables.address,
+    variables.customer_address,
+    variables.cliente_direccion,
+  );
+
+  const customerIndications = {
+    nombre,
+    cedula,
+    telefono,
+    email,
+    motivo,
+    comentarios,
+    direccion,
+  };
+
+  const summaryParts = [
+    nombre ? `Nombre: ${nombre}` : '',
+    cedula ? `Cedula: ${cedula}` : '',
+    telefono ? `Telefono: ${telefono}` : '',
+    email ? `Email: ${email}` : '',
+    motivo ? `Motivo: ${motivo}` : '',
+    comentarios ? `Comentarios: ${comentarios}` : '',
+    direccion ? `Direccion: ${direccion}` : '',
+  ].filter(Boolean);
+
+  const contextParts = [
+    variables.last_user_message,
+    variables.last_user_input,
+    variables.user_message,
+    variables.latest_message,
+    variables.resumen,
+    variables.summary,
+    variables.descripcion,
+    variables.description,
+    variables.observaciones,
+  ]
+    .map((value) => _truncateText(value, 600))
+    .filter(Boolean);
+
+  return {
+    customerIndications,
+    appointmentNotesSummary: _truncateText(summaryParts.join(' | '), 1000),
+    contextText: _truncateText(contextParts.join(' || '), 1200),
+  };
+}
+
+async function _buildAppointmentLlmEnhancement({ tenantId, llmService, payload }) {
+  if (!llmService || !tenantId || !payload) return null;
+
+  const hasBaseSignal = String(payload?.appointmentNotesSummary || '').trim().length > 0
+    || String(payload?.contextText || '').trim().length > 0;
+  if (!hasBaseSignal) return null;
+
+  const systemPrompt = [
+    'Eres un asistente de calidad para agendas medicas/comerciales.',
+    'Resume TODO lo indicado por el cliente para una cita.',
+    'Devuelve SOLO JSON valido con estructura:',
+    '{"resumen":"string","detalles_relevantes":["..."],"faltantes":["..."]}',
+    'No inventes datos.',
+  ].join('\n');
+
+  const userPrompt = JSON.stringify({
+    customer_indications: payload.customerIndications,
+    appointment_notes_summary: payload.appointmentNotesSummary,
+    extra_context: payload.contextText,
+  });
+
+  try {
+    const result = await llmService.callLlmForJson(tenantId, systemPrompt, userPrompt);
+    const json = result?.json;
+    if (!json || typeof json !== 'object' || Array.isArray(json)) return null;
+
+    const summary = _truncateText(json.resumen, 1200);
+    const relevant = _sanitizeTextArray(json.detalles_relevantes, 10, 240);
+    const missing = _sanitizeTextArray(json.faltantes, 10, 180);
+
+    return {
+      appointment_llm_summary: summary || null,
+      appointment_llm_relevant_details: relevant,
+      appointment_llm_missing_data: missing,
+    };
+  } catch (err) {
+    logger.warn(
+      { tenantId, message: err.message },
+      'calendar node: failed to enrich appointment metadata with llm'
+    );
+    return null;
+  }
+}
+
+async function _buildAppointmentMetadata({ tenantId, llmService, variables, cfg }) {
+  const collected = _collectAppointmentCustomerData(variables, cfg);
+  const baseMetadata = {
+    user_name: collected.customerIndications.nombre || null,
+    appointment_customer_cedula: collected.customerIndications.cedula || null,
+    user_phone: collected.customerIndications.telefono || null,
+    user_email: collected.customerIndications.email || null,
+    customer_reason: collected.customerIndications.motivo || null,
+    customer_notes: collected.customerIndications.comentarios || null,
+    customer_address: collected.customerIndications.direccion || null,
+    appointment_notes_summary: collected.appointmentNotesSummary || null,
+    customer_indications: collected.customerIndications,
+  };
+
+  const useLlm = _coerceBoolean(
+    cfg.llm_enhance_metadata ?? cfg.use_llm_for_appointment_metadata ?? true,
+    true,
+  );
+
+  if (!useLlm) return baseMetadata;
+
+  const llmEnhancement = await _buildAppointmentLlmEnhancement({
+    tenantId,
+    llmService,
+    payload: collected,
+  });
+
+  if (!llmEnhancement) return baseMetadata;
+  return { ...baseMetadata, ...llmEnhancement };
 }
 
 const EXECUTORS = {
