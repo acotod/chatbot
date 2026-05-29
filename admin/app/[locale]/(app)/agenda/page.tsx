@@ -204,6 +204,8 @@ export default function AgendaPage() {
     return /^\d{2}:\d{2}$/.test(raw) ? raw : "17:00";
   }, [horariosConfig?.fin]);
 
+  const isWorkingDay = (date: Date) => calendarWorkingDays.includes(date.getDay());
+
   const eventsQuery = useQuery({
     queryKey: ["agenda-events", tenantSlug, range.start.toISOString(), range.end.toISOString(), filterTipo, filterEstado, filterAgenteId],
     enabled: Boolean(tenantSlug && agendaEnabled),
@@ -459,13 +461,15 @@ export default function AgendaPage() {
             </span>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="rounded-2xl border border-[#D9E5EB] overflow-hidden bg-white">
+            <div className="agenda-mini-calendar rounded-2xl border border-[#D9E5EB] overflow-hidden bg-white">
               <FullCalendar
                 plugins={[dayGridPlugin, interactionPlugin]}
                 initialView="dayGridMonth"
                 headerToolbar={{ left: "", center: "title", right: "prev,next" }}
                 fixedWeekCount={false}
                 height={300}
+                dayCellClassNames={(arg) => (isWorkingDay(arg.date) ? [] : ["fc-day-non-working"])}
+                dayHeaderClassNames={(arg) => (isWorkingDay(arg.date) ? [] : ["fc-day-non-working-header"])}
                 dateClick={(arg) => {
                   calendarRef.current?.getApi().gotoDate(arg.date);
                 }}
@@ -604,6 +608,22 @@ export default function AgendaPage() {
       />
 
       <style jsx global>{`
+        .agenda-mini-calendar .fc .fc-daygrid-day.fc-day-non-working {
+          background: #f8fafc;
+        }
+
+        .agenda-mini-calendar .fc .fc-daygrid-day.fc-day-non-working .fc-daygrid-day-number {
+          color: #94a3b8;
+        }
+
+        .agenda-mini-calendar .fc .fc-col-header-cell.fc-day-non-working-header {
+          background: #f8fafc;
+        }
+
+        .agenda-mini-calendar .fc .fc-col-header-cell.fc-day-non-working-header .fc-col-header-cell-cushion {
+          color: #94a3b8;
+        }
+
         .agenda-calendar .fc .fc-timegrid-slot,
         .agenda-calendar .fc .fc-timegrid-col,
         .agenda-calendar .fc .fc-scrollgrid-section > * {
