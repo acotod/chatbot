@@ -4,7 +4,7 @@ import { AgendaEventFormData, AgendaEventModal, AgendaTipo } from "@/components/
 import { Button } from "@/components/ui/Button";
 import { Card, CardContent, CardHeader } from "@/components/ui/Card";
 import { agentAuthApi, type AgentAgendaEvent } from "@/lib/agentApi";
-import { agendaApi, agentesApi, tenantApi } from "@/lib/api";
+import { agendaApi, agentesApi, configApi, tenantApi } from "@/lib/api";
 import { getMe } from "@/lib/useMe";
 import { getStoredAgentAccessToken } from "@/store/agentAuth";
 import { useAuthStore } from "@/store/auth";
@@ -48,6 +48,12 @@ type AgendaApiEvent = {
 };
 
 type SlotMinutes = 15 | 30 | 60;
+
+type HorariosConfig = {
+  inicio?: string;
+  fin?: string;
+  dias?: number[];
+};
 
 function toLocalInputValue(date: Date) {
   const pad = (n: number) => String(n).padStart(2, "0");
@@ -164,6 +170,39 @@ export default function AgendaPage() {
       return Array.isArray(res.data) ? res.data : [];
     },
   });
+
+  const { data: horariosConfig } = useQuery({
+    queryKey: ["config", tenantSlug, "horarios"],
+    enabled: Boolean(tenantSlug && agendaEnabled),
+    queryFn: async () => {
+      const res = await configApi.get(tenantSlug, "horarios");
+      return (res?.data?.valor || null) as HorariosConfig | null;
+    },
+  });
+
+  const calendarWorkingDays = useMemo(() => {
+    const dias = Array.isArray(horariosConfig?.dias) ? horariosConfig.dias : [1, 2, 3, 4, 5];
+    const normalized = [...new Set(dias)]
+      .map((d) => Number(d))
+      .filter((d) => Number.isInteger(d) && d >= 0 && d <= 6)
+      .sort((a, b) => a - b);
+    return normalized.length > 0 ? normalized : [1, 2, 3, 4, 5];
+  }, [horariosConfig?.dias]);
+
+  const calendarHiddenDays = useMemo(
+    () => [0, 1, 2, 3, 4, 5, 6].filter((d) => !calendarWorkingDays.includes(d)),
+    [calendarWorkingDays]
+  );
+
+  const calendarStartTime = useMemo(() => {
+    const raw = String(horariosConfig?.inicio || "").trim();
+    return /^\d{2}:\d{2}$/.test(raw) ? raw : "08:00";
+  }, [horariosConfig?.inicio]);
+
+  const calendarEndTime = useMemo(() => {
+    const raw = String(horariosConfig?.fin || "").trim();
+    return /^\d{2}:\d{2}$/.test(raw) ? raw : "17:00";
+  }, [horariosConfig?.fin]);
 
   const eventsQuery = useQuery({
     queryKey: ["agenda-events", tenantSlug, range.start.toISOString(), range.end.toISOString(), filterTipo, filterEstado, filterAgenteId],
@@ -509,8 +548,16 @@ export default function AgendaPage() {
                 plugins={[timeGridPlugin, interactionPlugin]}
                 initialView="timeGridWeek"
                 firstDay={1}
+                hiddenDays={calendarHiddenDays}
+                businessHours={{
+                  daysOfWeek: calendarWorkingDays,
+                  startTime: calendarStartTime,
+                  endTime: calendarEndTime,
+                }}
                 height="auto"
                 allDaySlot={false}
+                slotMinTime={`${calendarStartTime}:00`}
+                slotMaxTime={`${calendarEndTime}:00`}
                 slotDuration={`00:${String(slotMinutes).padStart(2, "0")}:00`}
                 slotLabelInterval="01:00:00"
                 selectable
