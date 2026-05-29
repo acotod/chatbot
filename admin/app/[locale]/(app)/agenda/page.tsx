@@ -93,6 +93,26 @@ function toFormEvent(event: AgendaApiEvent): AgendaEventFormData {
   };
 }
 
+function toReadOnlyFormEvent(event: AgendaApiEvent): AgendaEventFormData {
+  return {
+    titulo: event.titulo,
+    descripcion: event.descripcion ?? "",
+    tipo: event.tipo,
+    color: event.color,
+    estado: event.estado,
+    startAt: toLocalInputValue(new Date(event.startAt)),
+    endAt: toLocalInputValue(new Date(event.endAt)),
+    reminderMinutes: event.reminderMinutes,
+    flowId: event.flowId,
+    triggerWebhookOnStart: Boolean(event.triggerWebhookOnStart),
+    webhookUrl: event.webhookUrl ?? "",
+    webhookMethod: event.webhookMethod ?? "POST",
+    webhookHeadersJson: JSON.stringify(event.webhookHeaders ?? {}, null, 2),
+    webhookPayloadJson: JSON.stringify(event.webhookPayload ?? {}, null, 2),
+    assignments: event.assignments.map((a) => ({ agenteId: a.agenteId })),
+  };
+}
+
 export default function AgendaPage() {
   const t = useTranslations("agenda");
   const locale = useCurrentLocale();
@@ -124,6 +144,7 @@ export default function AgendaPage() {
 
   const [modalOpen, setModalOpen] = useState(false);
   const [selectedEvent, setSelectedEvent] = useState<AgendaEventFormData | null>(null);
+  const [modalReadOnly, setModalReadOnly] = useState(false);
 
   const { data: agentAgenda, isLoading: agentAgendaLoading } = useQuery({
     queryKey: ["agent-agenda", agentAgendaRange.start.toISOString(), agentAgendaRange.end.toISOString()],
@@ -288,6 +309,7 @@ export default function AgendaPage() {
   useSocket(activeTenantId, "agenda:event_assignment_changed", refreshEvents);
 
   function openCreateFromRange(start: Date, end: Date) {
+    setModalReadOnly(false);
     setSelectedEvent({
       titulo: "",
       descripcion: "",
@@ -321,7 +343,14 @@ export default function AgendaPage() {
   function handleEventClick(arg: { event: { id: string; extendedProps: Record<string, unknown> } }) {
     const raw = arg.event.extendedProps.raw as AgendaApiEvent | undefined;
     if (!raw) return;
-    if (raw.source === "appointment" || typeof raw.id !== "number") return;
+    if (raw.source === "appointment") {
+      setModalReadOnly(true);
+      setSelectedEvent(toReadOnlyFormEvent(raw));
+      setModalOpen(true);
+      return;
+    }
+    if (typeof raw.id !== "number") return;
+    setModalReadOnly(false);
     setSelectedEvent(toFormEvent(raw));
     setModalOpen(true);
   }
@@ -591,10 +620,12 @@ export default function AgendaPage() {
         open={modalOpen}
         event={selectedEvent}
         agentes={agentes}
+        readOnly={modalReadOnly}
         saving={saveMutation.isPending || deleteMutation.isPending || triggerMutation.isPending}
         onClose={() => {
           setModalOpen(false);
           setSelectedEvent(null);
+          setModalReadOnly(false);
         }}
         onSave={async (payload) => {
           await saveMutation.mutateAsync(payload);

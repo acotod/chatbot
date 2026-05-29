@@ -43,6 +43,7 @@ interface AgendaEventModalProps {
   event: AgendaEventFormData | null;
   agentes: AgenteOption[];
   saving: boolean;
+  readOnly?: boolean;
   onClose: () => void;
   onSave: (payload: AgendaEventFormData) => Promise<void>;
   onDelete?: (id: number) => Promise<void>;
@@ -72,6 +73,7 @@ export function AgendaEventModal({
   event,
   agentes,
   saving,
+  readOnly = false,
   onClose,
   onSave,
   onDelete,
@@ -105,6 +107,7 @@ export function AgendaEventModal({
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (readOnly) return;
     setError("");
 
     if (!form.titulo.trim()) {
@@ -128,10 +131,10 @@ export function AgendaEventModal({
   }
 
   return (
-    <Modal open={open} onClose={onClose} title={isEdit ? "Editar evento" : "Nuevo evento"} className="max-w-3xl">
+    <Modal open={open} onClose={onClose} title={readOnly ? "Detalle de cita" : isEdit ? "Editar evento" : "Nuevo evento"} className="max-w-3xl">
       <form onSubmit={handleSubmit} className="space-y-4">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <Input label="Titulo" value={form.titulo} onChange={(e) => set("titulo", e.target.value)} required />
+          <Input label="Titulo" value={form.titulo} onChange={(e) => set("titulo", e.target.value)} required disabled={readOnly} />
           <div className="flex flex-col gap-1.5">
             <label className="text-sm font-medium text-slate-700">Color</label>
             <input
@@ -139,6 +142,7 @@ export function AgendaEventModal({
               className="h-11 w-full rounded-xl border border-slate-200 bg-white px-2"
               value={form.color}
               onChange={(e) => set("color", e.target.value)}
+              disabled={readOnly}
             />
           </div>
         </div>
@@ -149,6 +153,7 @@ export function AgendaEventModal({
             className="min-h-20 rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
             value={form.descripcion}
             onChange={(e) => set("descripcion", e.target.value)}
+            readOnly={readOnly}
           />
         </div>
 
@@ -159,6 +164,7 @@ export function AgendaEventModal({
               className="h-11 rounded-xl border border-slate-200 px-3 text-sm"
               value={form.tipo}
               onChange={(e) => set("tipo", e.target.value as AgendaTipo)}
+              disabled={readOnly}
             >
               <option value="reunion">Reunion</option>
               <option value="tarea">Tarea</option>
@@ -172,6 +178,7 @@ export function AgendaEventModal({
               className="h-11 rounded-xl border border-slate-200 px-3 text-sm"
               value={form.estado}
               onChange={(e) => set("estado", e.target.value as AgendaEstado)}
+              disabled={readOnly}
             >
               <option value="pendiente">Pendiente</option>
               <option value="en_progreso">En progreso</option>
@@ -189,6 +196,7 @@ export function AgendaEventModal({
                 const next = e.target.value === "" ? null : Number(e.target.value);
                 set("reminderMinutes", Number.isNaN(next) ? null : next);
               }}
+              disabled={readOnly}
             />
           </div>
         </div>
@@ -200,6 +208,7 @@ export function AgendaEventModal({
             value={form.startAt}
             onChange={(e) => set("startAt", e.target.value)}
             required
+            disabled={readOnly}
           />
           <Input
             type="datetime-local"
@@ -207,6 +216,7 @@ export function AgendaEventModal({
             value={form.endAt}
             onChange={(e) => set("endAt", e.target.value)}
             required
+            disabled={readOnly}
           />
         </div>
 
@@ -216,6 +226,7 @@ export function AgendaEventModal({
                 type="checkbox"
                 checked={form.triggerWebhookOnStart}
                 onChange={(e) => set("triggerWebhookOnStart", e.target.checked)}
+                disabled={readOnly}
               />
               Disparar webhook al iniciar
             </label>
@@ -230,6 +241,7 @@ export function AgendaEventModal({
             value={form.webhookUrl}
             onChange={(e) => set("webhookUrl", e.target.value)}
             placeholder="https://api.tu-dominio.com/hook"
+            disabled={readOnly}
           />
           <div className="flex flex-col gap-1.5">
             <label className="text-sm font-medium text-slate-700">Método del webhook</label>
@@ -237,6 +249,7 @@ export function AgendaEventModal({
               className="h-11 rounded-xl border border-slate-200 px-3 text-sm"
               value={form.webhookMethod}
               onChange={(e) => set("webhookMethod", e.target.value)}
+              disabled={readOnly}
             >
               <option value="POST">POST</option>
               <option value="PUT">PUT</option>
@@ -252,6 +265,7 @@ export function AgendaEventModal({
               className="min-h-20 rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500/40 font-mono"
               value={form.webhookHeadersJson}
               onChange={(e) => set("webhookHeadersJson", e.target.value)}
+              readOnly={readOnly}
             />
           </div>
           <div className="flex flex-col gap-1.5">
@@ -260,6 +274,7 @@ export function AgendaEventModal({
               className="min-h-20 rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500/40 font-mono"
               value={form.webhookPayloadJson}
               onChange={(e) => set("webhookPayloadJson", e.target.value)}
+              readOnly={readOnly}
             />
           </div>
         </div>
@@ -275,7 +290,7 @@ export function AgendaEventModal({
               return (
                 <label key={agente.id} className="flex items-center justify-between rounded-lg px-2 py-1.5 hover:bg-slate-50">
                   <span className="text-sm text-slate-700">{agente.nombre} ({agente.email})</span>
-                  <input type="checkbox" checked={checked} onChange={() => toggleAssignment(agente.id)} />
+                  <input type="checkbox" checked={checked} onChange={() => toggleAssignment(agente.id)} disabled={readOnly} />
                 </label>
               );
             })}
@@ -288,7 +303,7 @@ export function AgendaEventModal({
 
         <div className="flex items-center justify-between gap-2 pt-1">
           <div className="flex items-center gap-2">
-            {isEdit && onDelete && form.id && (
+            {!readOnly && isEdit && onDelete && form.id && (
               <Button
                 type="button"
                 variant="danger"
@@ -299,7 +314,7 @@ export function AgendaEventModal({
                 Eliminar
               </Button>
             )}
-            {isEdit && onTriggerStart && form.id && (
+            {!readOnly && isEdit && onTriggerStart && form.id && (
               <Button
                 type="button"
                 variant="secondary"
@@ -312,8 +327,10 @@ export function AgendaEventModal({
             )}
           </div>
           <div className="flex items-center gap-2">
-            <Button type="button" variant="ghost" onClick={onClose} disabled={saving}>Cancelar</Button>
-            <Button type="submit" disabled={saving}>{saving ? "Guardando..." : "Guardar"}</Button>
+            <Button type="button" variant="ghost" onClick={onClose} disabled={saving}>{readOnly ? "Cerrar" : "Cancelar"}</Button>
+            {!readOnly && (
+              <Button type="submit" disabled={saving}>{saving ? "Guardando..." : "Guardar"}</Button>
+            )}
           </div>
         </div>
       </form>
