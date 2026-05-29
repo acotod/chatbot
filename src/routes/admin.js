@@ -16,6 +16,7 @@ const { generatePortalToken } = require('../services/portalAccess');
 const { WEBHOOK_EVENTS, dispatchSolicitudesWebhookEvent } = require('../services/solicitudesWebhooks');
 const lockoutPolicy = require('../services/lockoutPolicy');
 const { createAdminNotification, serializeNotification } = require('../services/adminNotifications');
+const calendarService = require('../services/calendarService');
 
 // Multer: store logos under /app/uploads/logos (persisted volume in prod)
 const UPLOADS_DIR = path.join(process.cwd(), 'uploads', 'logos');
@@ -459,7 +460,122 @@ function mapAppointmentStatusToAgendaStatus(status) {
     return 'en_progreso';
 }
 
-function serializeAppointmentAsAgendaEvent(appointment) {
+function normalizeHexColor(value, fallback = '#0EA5E9') {
+    if (typeof value !== 'string') return fallback;
+    const normalized = value.trim();
+    return /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(normalized) ? normalized : fallback;
+}
+
+const AGENDA_DAY_KEYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
+
+function normalizeTimeZone(value, fallback = 'America/Costa_Rica') {
+    const raw = String(value || '').trim();
+    if (!raw) return fallback;
+    try {
+        Intl.DateTimeFormat('en-US', { timeZone: raw }).format(new Date());
+        return raw;
+    } catch (_err) {
+        return fallback;
+    }
+}
+
+function normalizeTimeString(value) {
+    const raw = String(value || '').trim();
+    return /^([01]\d|2[0-3]):([0-5]\d)$/.test(raw) ? raw : null;
+}
+
+function normalizeWorkingHoursByDay(value) {
+    const source = asObject(value);
+    const result = {
+        sun: [],
+        mon: [],
+        tue: [],
+        wed: [],
+        thu: [],
+        fri: [],
+        sat: [],
+    };
+
+    for (const day of AGENDA_DAY_KEYS) {
+        const dayValue = source[day];
+        if (!Array.isArray(dayValue)) continue;
+
+        // Backward compatible: ["09:00", "17:00"]
+        if (
+            dayValue.length >= 2
+            && typeof dayValue[0] === 'string'
+            && typeof dayValue[1] === 'string'
+        ) {
+            const start = normalizeTimeString(dayValue[0]);
+            const end = normalizeTimeString(dayValue[1]);
+            if (start && end && start < end) {
+                result[day] = [[start, end]];
+            }
+            continue;
+        }
+
+        // New format: [["08:00", "10:00"], ["14:00", "16:00"]]
+        const ranges = [];
+        for (const range of dayValue) {
+            if (!Array.isArray(range) || range.length < 2) continue;
+            const start = normalizeTimeString(range[0]);
+            const end = normalizeTimeString(range[1]);
+            if (!start || !end || start >= end) continue;
+            ranges.push([start, end]);
+        }
+        result[day] = ranges;
+    }
+
+    return result;
+}
+
+function normalizeAgendaSettings(value) {
+    const source = asObject(value);
+    const workingHoursSource = source.workingHours || source.working_hours;
+    const workingHours = normalizeWorkingHoursByDay(workingHoursSource);
+
+    return {
+        appointmentColor: normalizeHexColor(source.appointmentColor, '#0EA5E9'),
+        timeZone: normalizeTimeZone(source.timeZone || source.timezone, 'America/Costa_Rica'),
+        workingHours,
+    };
+}
+
+async function applyAgendaScheduleToTenantCalendars(tenantId, agendaSettings) {
+    const timezone = normalizeTimeZone(agendaSettings?.timeZone, 'America/Costa_Rica');
+    const workingHours = normalizeWorkingHoursByDay(agendaSettings?.workingHours);
+
+    const calendars = await prisma.calendar.findMany({
+        where: { tenantId, activo: true },
+        select: { id: true, config: true },
+    });
+
+    for (const calendar of calendars) {
+        const currentConfig = asObject(calendar.config);
+        const nextConfig = {
+            ...currentConfig,
+            timezone,
+            working_hours: workingHours,
+        };
+
+        await prisma.calendar.update({
+            where: { id: calendar.id },
+            data: { timezone, config: nextConfig },
+        });
+
+        await prisma.calendarSlot.deleteMany({
+            where: {
+                calendarId: calendar.id,
+                status: 'available',
+                startTime: { gte: new Date() },
+            },
+        });
+
+        await calendarService.generateSlots(calendar.id);
+    }
+}
+
+function serializeAppointmentAsAgendaEvent(appointment, appointmentColor = '#0EA5E9') {
     return {
         id: `appt:${appointment.id}`,
         tenantId: appointment.tenantId,
@@ -471,7 +587,7 @@ function serializeAppointmentAsAgendaEvent(appointment) {
             'Cita reservada',
         descripcion: appointment?.metadata?.notes ? String(appointment.metadata.notes) : null,
         tipo: 'reunion',
-        color: '#0EA5E9',
+        color: appointmentColor,
         estado: mapAppointmentStatusToAgendaStatus(appointment.status),
         startAt: appointment.startTime,
         endAt: appointment.endTime,
@@ -2788,6 +2904,8 @@ router.get('/tenants/:slug/agenda', requirePermiso('VIEW_AGENDA'), async (req, r
         }
 
         const shouldIncludeAppointments = !req.query.tipo || String(req.query.tipo) === 'reunion';
+        const agendaSettings = await db.getConfig(tenant.id, 'agenda_settings');
+        const appointmentColor = normalizeHexColor(agendaSettings?.valor?.appointmentColor, '#0EA5E9');
 
         let appointmentStatusFilter = null;
         if (req.query.estado) {
@@ -2839,7 +2957,7 @@ router.get('/tenants/:slug/agenda', requirePermiso('VIEW_AGENDA'), async (req, r
 
         const merged = [
             ...events.map(serializeAgendaEvent),
-            ...appointments.map(serializeAppointmentAsAgendaEvent),
+            ...appointments.map((appointment) => serializeAppointmentAsAgendaEvent(appointment, appointmentColor)),
         ].sort((a, b) => {
             const tA = new Date(a.startAt).getTime();
             const tB = new Date(b.startAt).getTime();
@@ -3250,6 +3368,10 @@ router.put('/tenants/:slug/config/:clave', requirePermiso('MANAGE_TENANTS'), asy
         let { valor } = req.body;
         if (valor === undefined) return res.status(400).json({ error: 'valor is required' });
 
+        if (req.params.clave === 'agenda_settings') {
+            valor = normalizeAgendaSettings(valor);
+        }
+
         // For llm_config: if api_key is the sentinel or absent, preserve the existing key from DB
         if (req.params.clave === 'llm_config' && typeof valor === 'object' && valor !== null) {
             const incoming = valor.api_key;
@@ -3267,6 +3389,10 @@ router.put('/tenants/:slug/config/:clave', requirePermiso('MANAGE_TENANTS'), asy
         }
 
         const config = await db.setConfig(tenant.id, req.params.clave, valor);
+
+        if (req.params.clave === 'agenda_settings') {
+            await applyAgendaScheduleToTenantCalendars(tenant.id, config?.valor || valor);
+        }
 
         if (req.params.clave === 'wa_app_secret') {
             const resolvedSecret = await db.getWaAppSecret(tenant.id);

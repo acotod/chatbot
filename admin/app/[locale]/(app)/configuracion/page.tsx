@@ -85,6 +85,59 @@ interface AudioTranscriptionTenantConfig {
   timeoutMs: number;
 }
 
+type AgendaDayKey = "sun" | "mon" | "tue" | "wed" | "thu" | "fri" | "sat";
+type AgendaTimeRange = [string, string];
+type AgendaWorkingHours = Record<AgendaDayKey, AgendaTimeRange[]>;
+
+const EMPTY_AGENDA_WORKING_HOURS: AgendaWorkingHours = {
+  sun: [],
+  mon: [],
+  tue: [],
+  wed: [],
+  thu: [],
+  fri: [],
+  sat: [],
+};
+
+const DEFAULT_AGENDA_WORKING_HOURS: AgendaWorkingHours = {
+  ...EMPTY_AGENDA_WORKING_HOURS,
+  mon: [["08:00", "10:00"], ["14:00", "16:00"]],
+  tue: [["08:00", "10:00"], ["14:00", "16:00"]],
+};
+
+function normalizeAgendaWorkingHours(rawValue: unknown): AgendaWorkingHours {
+  const source = rawValue && typeof rawValue === "object" ? (rawValue as Record<string, unknown>) : {};
+  const result: AgendaWorkingHours = {
+    ...EMPTY_AGENDA_WORKING_HOURS,
+  };
+
+  const dayKeys: AgendaDayKey[] = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"];
+  for (const day of dayKeys) {
+    const dayValue = source[day];
+    if (!Array.isArray(dayValue)) continue;
+
+    if (dayValue.length >= 2 && typeof dayValue[0] === "string" && typeof dayValue[1] === "string") {
+      result[day] = [[dayValue[0], dayValue[1]]];
+      continue;
+    }
+
+    const ranges: AgendaTimeRange[] = [];
+    for (const item of dayValue) {
+      if (!Array.isArray(item) || item.length < 2) continue;
+      ranges.push([String(item[0]), String(item[1])]);
+    }
+    result[day] = ranges;
+  }
+
+  return result;
+}
+
+function getAgendaRange(hours: AgendaWorkingHours, day: AgendaDayKey, index: number): AgendaTimeRange {
+  const range = hours[day]?.[index];
+  if (Array.isArray(range) && range.length >= 2) return [String(range[0]), String(range[1])];
+  return ["", ""];
+}
+
 const DEFAULT_AUDIO_TRANSCRIPTION_CONFIG: AudioTranscriptionTenantConfig = {
   enabled: false,
   provider: "openai",
@@ -706,6 +759,34 @@ export default function ConfiguracionPage() {
     enabled: !!tenantSlug,
   });
   const agendaEnabled: boolean = agendaFeature?.enabled ?? false;
+  const [agendaAppointmentColor, setAgendaAppointmentColor] = useState("#0EA5E9");
+  const [agendaTimeZone, setAgendaTimeZone] = useState("America/Costa_Rica");
+  const [agendaWorkingHours, setAgendaWorkingHours] = useState<AgendaWorkingHours>(DEFAULT_AGENDA_WORKING_HOURS);
+  const [agendaAppearanceSaved, setAgendaAppearanceSaved] = useState(false);
+
+  const { data: agendaSettingsData } = useQuery({
+    queryKey: ["config", tenantSlug, "agenda_settings"],
+    queryFn: () =>
+      configApi.get(tenantSlug!, "agenda_settings").then((r) => {
+        const v = r?.data?.valor;
+        const color = typeof v?.appointmentColor === "string" ? v.appointmentColor.trim() : "";
+        if (/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(color)) {
+          setAgendaAppointmentColor(color);
+        } else {
+          setAgendaAppointmentColor("#0EA5E9");
+        }
+
+        const tz = typeof v?.timeZone === "string" ? v.timeZone.trim() : "";
+        setAgendaTimeZone(tz || "America/Costa_Rica");
+
+        const workingHours = normalizeAgendaWorkingHours(v?.workingHours || v?.working_hours);
+        const hasSchedule = Object.values(workingHours).some((ranges) => ranges.length > 0);
+        setAgendaWorkingHours(hasSchedule ? workingHours : DEFAULT_AGENDA_WORKING_HOURS);
+        return r?.data;
+      }),
+    enabled: !!tenantSlug,
+  });
+  void agendaSettingsData;
 
   const agendaToggleMutation = useMutation({
     mutationFn: (enabled: boolean) => agendaApi.feature.set(tenantSlug!, enabled),
@@ -714,7 +795,34 @@ export default function ConfiguracionPage() {
     },
   });
 
+  const saveAgendaAppearanceMutation = useMutation({
+    mutationFn: () =>
+      configApi.set(tenantSlug!, "agenda_settings", {
+        appointmentColor: agendaAppointmentColor,
+        timeZone: agendaTimeZone,
+        workingHours: agendaWorkingHours,
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["config", tenantSlug, "agenda_settings"] });
+      setAgendaAppearanceSaved(true);
+      setTimeout(() => setAgendaAppearanceSaved(false), 3000);
+    },
+  });
+
   const [refreshingTab, setRefreshingTab] = useState<string | null>(null);
+
+  function setAgendaRange(day: AgendaDayKey, index: number, part: 0 | 1, value: string) {
+    setAgendaWorkingHours((prev) => {
+      const next: AgendaWorkingHours = {
+        ...prev,
+        [day]: [...(prev[day] || [])],
+      };
+      while (next[day].length <= index) next[day].push(["", ""]);
+      const current = next[day][index] ?? ["", ""];
+      next[day][index] = part === 0 ? [value, current[1]] : [current[0], value];
+      return next;
+    });
+  }
 
   async function refreshTab(
     tab: "comunicacion" | "email-ia" | "organizacion" | "modulos" | "branding"
@@ -753,6 +861,7 @@ export default function ConfiguracionPage() {
       if (tab === "modulos") {
         await Promise.all([
           qc.invalidateQueries({ queryKey: ["config", tenantSlug, "agenda_feature"] }),
+          qc.invalidateQueries({ queryKey: ["config", tenantSlug, "agenda_settings"] }),
           qc.invalidateQueries({ queryKey: ["lockout-policy", tenantSlug] }),
         ]);
         return;
@@ -1578,32 +1687,156 @@ export default function ConfiguracionPage() {
             title={t("modules.title")}
             description={t("modules.description")}
           >
-            <div className="flex items-center justify-between py-1">
-              <div className="flex items-center gap-3">
-                <CalendarDays size={20} className="text-blue-500" />
-                <div>
-                  <p className="text-sm font-medium text-slate-800">{t("modules.agenda.name")}</p>
-                  <p className="text-xs text-slate-400">
-                    {t("modules.agenda.description")}
-                  </p>
+            <div className="space-y-4">
+              <div className="flex items-center justify-between py-1">
+                <div className="flex items-center gap-3">
+                  <CalendarDays size={20} className="text-blue-500" />
+                  <div>
+                    <p className="text-sm font-medium text-slate-800">{t("modules.agenda.name")}</p>
+                    <p className="text-xs text-slate-400">
+                      {t("modules.agenda.description")}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={agendaEnabled}
+                  disabled={agendaToggleMutation.isPending}
+                  onClick={() => agendaToggleMutation.mutate(!agendaEnabled)}
+                  className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500/30 disabled:opacity-50 ${
+                    agendaEnabled ? "bg-blue-500" : "bg-slate-200"
+                  }`}
+                >
+                  <span
+                    className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ${
+                      agendaEnabled ? "translate-x-5" : "translate-x-0"
+                    }`}
+                  />
+                </button>
+              </div>
+
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-sm font-medium text-slate-700">{t("modules.agenda.appointmentColorLabel")}</label>
+                  <div className="flex items-center gap-3">
+                    <input
+                      type="color"
+                      value={agendaAppointmentColor}
+                      onChange={(e) => setAgendaAppointmentColor(e.target.value)}
+                      className="h-10 w-14 rounded-lg border border-slate-300 bg-white"
+                    />
+                    <Input
+                      label=""
+                      value={agendaAppointmentColor}
+                      onChange={(e) => setAgendaAppointmentColor(e.target.value)}
+                      placeholder="#0EA5E9"
+                    />
+                  </div>
+                  <p className="text-xs text-slate-500">{t("modules.agenda.appointmentColorHint")}</p>
+                </div>
+
+                <div className="mt-4 border-t border-slate-200 pt-4 space-y-3">
+                  <p className="text-sm font-medium text-slate-700">{t("modules.agenda.scheduleTitle")}</p>
+
+                  <div className="grid gap-3 md:grid-cols-2">
+                    <Input
+                      label={t("modules.agenda.timezoneLabel")}
+                      value={agendaTimeZone}
+                      onChange={(e) => setAgendaTimeZone(e.target.value)}
+                      placeholder="America/Costa_Rica"
+                    />
+                  </div>
+
+                  <div className="grid gap-3 md:grid-cols-2">
+                    <div className="rounded-lg border border-slate-200 bg-white p-3 space-y-2">
+                      <p className="text-sm font-medium text-slate-700">{t("modules.agenda.mondayMorningLabel")}</p>
+                      <div className="grid grid-cols-2 gap-2">
+                        <Input
+                          label={t("modules.agenda.startLabel")}
+                          type="time"
+                          value={getAgendaRange(agendaWorkingHours, "mon", 0)[0]}
+                          onChange={(e) => setAgendaRange("mon", 0, 0, e.target.value)}
+                        />
+                        <Input
+                          label={t("modules.agenda.endLabel")}
+                          type="time"
+                          value={getAgendaRange(agendaWorkingHours, "mon", 0)[1]}
+                          onChange={(e) => setAgendaRange("mon", 0, 1, e.target.value)}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="rounded-lg border border-slate-200 bg-white p-3 space-y-2">
+                      <p className="text-sm font-medium text-slate-700">{t("modules.agenda.mondayAfternoonLabel")}</p>
+                      <div className="grid grid-cols-2 gap-2">
+                        <Input
+                          label={t("modules.agenda.startLabel")}
+                          type="time"
+                          value={getAgendaRange(agendaWorkingHours, "mon", 1)[0]}
+                          onChange={(e) => setAgendaRange("mon", 1, 0, e.target.value)}
+                        />
+                        <Input
+                          label={t("modules.agenda.endLabel")}
+                          type="time"
+                          value={getAgendaRange(agendaWorkingHours, "mon", 1)[1]}
+                          onChange={(e) => setAgendaRange("mon", 1, 1, e.target.value)}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="rounded-lg border border-slate-200 bg-white p-3 space-y-2">
+                      <p className="text-sm font-medium text-slate-700">{t("modules.agenda.tuesdayMorningLabel")}</p>
+                      <div className="grid grid-cols-2 gap-2">
+                        <Input
+                          label={t("modules.agenda.startLabel")}
+                          type="time"
+                          value={getAgendaRange(agendaWorkingHours, "tue", 0)[0]}
+                          onChange={(e) => setAgendaRange("tue", 0, 0, e.target.value)}
+                        />
+                        <Input
+                          label={t("modules.agenda.endLabel")}
+                          type="time"
+                          value={getAgendaRange(agendaWorkingHours, "tue", 0)[1]}
+                          onChange={(e) => setAgendaRange("tue", 0, 1, e.target.value)}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="rounded-lg border border-slate-200 bg-white p-3 space-y-2">
+                      <p className="text-sm font-medium text-slate-700">{t("modules.agenda.tuesdayAfternoonLabel")}</p>
+                      <div className="grid grid-cols-2 gap-2">
+                        <Input
+                          label={t("modules.agenda.startLabel")}
+                          type="time"
+                          value={getAgendaRange(agendaWorkingHours, "tue", 1)[0]}
+                          onChange={(e) => setAgendaRange("tue", 1, 0, e.target.value)}
+                        />
+                        <Input
+                          label={t("modules.agenda.endLabel")}
+                          type="time"
+                          value={getAgendaRange(agendaWorkingHours, "tue", 1)[1]}
+                          onChange={(e) => setAgendaRange("tue", 1, 1, e.target.value)}
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <p className="text-xs text-slate-500">{t("modules.agenda.scheduleHint")}</p>
+                </div>
+
+                <div className="mt-3 flex justify-end">
+                  <Button
+                    type="button"
+                    onClick={() => saveAgendaAppearanceMutation.mutate()}
+                    disabled={saveAgendaAppearanceMutation.isPending}
+                  >
+                    {agendaAppearanceSaved ? (
+                      <><Check size={16} /> {t("saved")}</>
+                    ) : saveAgendaAppearanceMutation.isPending ? t("saving") : t("modules.agenda.saveAppearance")}
+                  </Button>
                 </div>
               </div>
-              <button
-                type="button"
-                role="switch"
-                aria-checked={agendaEnabled}
-                disabled={agendaToggleMutation.isPending}
-                onClick={() => agendaToggleMutation.mutate(!agendaEnabled)}
-                className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500/30 disabled:opacity-50 ${
-                  agendaEnabled ? "bg-blue-500" : "bg-slate-200"
-                }`}
-              >
-                <span
-                  className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ${
-                    agendaEnabled ? "translate-x-5" : "translate-x-0"
-                  }`}
-                />
-              </button>
             </div>
           </ConfigSection>
 

@@ -177,7 +177,19 @@
     "description": "Activá o desactivá funcionalidades del sistema",
     "agenda": {
       "name": "Agenda",
-      "description": "Calendario de eventos semanales con asignación de agentes"
+      "description": "Calendario de eventos semanales con asignación de agentes",
+      "appointmentColorLabel": "Color de reservas",
+      "appointmentColorHint": "Este color se aplica a las reservas de citas (appointments) en el calendario.",
+      "scheduleTitle": "Horario de reservas",
+      "timezoneLabel": "Zona horaria",
+      "mondayMorningLabel": "Lunes - manana",
+      "mondayAfternoonLabel": "Lunes - tarde",
+      "tuesdayMorningLabel": "Martes - manana",
+      "tuesdayAfternoonLabel": "Martes - tarde",
+      "startLabel": "Inicio",
+      "endLabel": "Fin",
+      "scheduleHint": "Al guardar, este horario se aplica a los calendarios activos del tenant y se regeneran los slots futuros.",
+      "saveAppearance": "Guardar color"
     }
   },
   "security": {

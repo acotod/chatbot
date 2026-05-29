@@ -177,7 +177,19 @@
     "description": "Enable or disable system features",
     "agenda": {
       "name": "Agenda",
-      "description": "Weekly event calendar with agent assignment"
+      "description": "Weekly event calendar with agent assignment",
+      "appointmentColorLabel": "Reservation color",
+      "appointmentColorHint": "This color is applied to appointment bookings in the calendar.",
+      "scheduleTitle": "Reservation schedule",
+      "timezoneLabel": "Time zone",
+      "mondayMorningLabel": "Monday - morning",
+      "mondayAfternoonLabel": "Monday - afternoon",
+      "tuesdayMorningLabel": "Tuesday - morning",
+      "tuesdayAfternoonLabel": "Tuesday - afternoon",
+      "startLabel": "Start",
+      "endLabel": "End",
+      "scheduleHint": "When saved, this schedule is applied to active tenant calendars and future slots are regenerated.",
+      "saveAppearance": "Save color"
     }
   },
   "security": {
