@@ -138,6 +138,23 @@ function getAgendaRange(hours: AgendaWorkingHours, day: AgendaDayKey, index: num
   return ["", ""];
 }
 
+function setAgendaRangeValue(
+  hours: AgendaWorkingHours,
+  day: AgendaDayKey,
+  index: number,
+  part: 0 | 1,
+  value: string
+): AgendaWorkingHours {
+  const next: AgendaWorkingHours = {
+    ...hours,
+    [day]: [...(hours[day] || [])],
+  };
+  while (next[day].length <= index) next[day].push(["", ""]);
+  const current = next[day][index] ?? ["", ""];
+  next[day][index] = part === 0 ? [value, current[1]] : [current[0], value];
+  return next;
+}
+
 const DEFAULT_AUDIO_TRANSCRIPTION_CONFIG: AudioTranscriptionTenantConfig = {
   enabled: false,
   provider: "openai",
@@ -813,13 +830,14 @@ export default function ConfiguracionPage() {
 
   function setAgendaRange(day: AgendaDayKey, index: number, part: 0 | 1, value: string) {
     setAgendaWorkingHours((prev) => {
-      const next: AgendaWorkingHours = {
-        ...prev,
-        [day]: [...(prev[day] || [])],
-      };
-      while (next[day].length <= index) next[day].push(["", ""]);
-      const current = next[day][index] ?? ["", ""];
-      next[day][index] = part === 0 ? [value, current[1]] : [current[0], value];
+      return setAgendaRangeValue(prev, day, index, part, value);
+    });
+  }
+
+  function setAgendaLunch(part: 0 | 1, value: string) {
+    setAgendaWorkingHours((prev) => {
+      let next = setAgendaRangeValue(prev, "mon", part === 0 ? 0 : 1, part === 0 ? 1 : 0, value);
+      next = setAgendaRangeValue(next, "tue", part === 0 ? 0 : 1, part === 0 ? 1 : 0, value);
       return next;
     });
   }
@@ -1746,6 +1764,25 @@ export default function ConfiguracionPage() {
                       onChange={(e) => setAgendaTimeZone(e.target.value)}
                       placeholder="America/Costa_Rica"
                     />
+                  </div>
+
+                  <div className="rounded-lg border border-slate-200 bg-white p-3 space-y-2">
+                    <p className="text-sm font-medium text-slate-700">{t("modules.agenda.lunchLabel")}</p>
+                    <div className="grid grid-cols-2 gap-2 md:max-w-md">
+                      <Input
+                        label={t("modules.agenda.lunchStartLabel")}
+                        type="time"
+                        value={getAgendaRange(agendaWorkingHours, "mon", 0)[1]}
+                        onChange={(e) => setAgendaLunch(0, e.target.value)}
+                      />
+                      <Input
+                        label={t("modules.agenda.lunchEndLabel")}
+                        type="time"
+                        value={getAgendaRange(agendaWorkingHours, "mon", 1)[0]}
+                        onChange={(e) => setAgendaLunch(1, e.target.value)}
+                      />
+                    </div>
+                    <p className="text-xs text-slate-500">{t("modules.agenda.lunchHint")}</p>
                   </div>
 
                   <div className="grid gap-3 md:grid-cols-2">
