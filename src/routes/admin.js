@@ -507,6 +507,7 @@ function buildAppointmentDetails(appointment) {
 
     return {
         nombre,
+        telefono,
         descripcion,
     };
 }
@@ -647,15 +648,13 @@ async function applyAgendaScheduleToTenantCalendars(tenantId, agendaSettings) {
 
 function serializeAppointmentAsAgendaEvent(appointment, appointmentColor = '#0EA5E9') {
     const details = buildAppointmentDetails(appointment);
+    const cliente = pickFirstNonEmpty(details.nombre, details.telefono, appointment?.userKey);
     return {
         id: `appt:${appointment.id}`,
         tenantId: appointment.tenantId,
         createdByAdminUserId: null,
         flowId: null,
-        titulo:
-            details.nombre ||
-            String(appointment?.calendar?.name || '').trim() ||
-            'Cita reservada',
+        titulo: `Cliente: ${cliente || '-'}`,
         descripcion: details.descripcion,
         tipo: 'reunion',
         color: appointmentColor,

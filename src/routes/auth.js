@@ -187,6 +187,7 @@ function buildAppointmentDetails(appointment) {
 
   return {
     nombre,
+    telefono,
     descripcion,
   };
 }
@@ -2020,14 +2021,12 @@ router.get('/agent/agenda', requireAgentJwt, async (req, res, next) => {
 
     const mappedAppointments = appointments.map((appointment) => {
       const details = buildAppointmentDetails(appointment);
+      const cliente = pickFirstNonEmpty(details.nombre, details.telefono, appointment?.userKey);
       const agenteId = Number(appointment?.calendar?.agente?.id);
       const appointmentColor = resolveAppointmentColor(agendaSettingsValue, agenteId);
       return {
       id: `appt:${appointment.id}`,
-      titulo:
-        details.nombre ||
-        String(appointment?.calendar?.name || '').trim() ||
-        'Cita reservada',
+      titulo: `Cliente: ${cliente || '-'}`,
       descripcion: details.descripcion,
       tipo: 'reunion',
       color: appointmentColor,
