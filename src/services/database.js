@@ -327,8 +327,23 @@ async function findTenantBySlug(slug) {
 async function createTenant({ nombre, slug, apiKey, plan }) {
   const client = getPrismaClient();
   if (!client) return null;
-  // Store only the hash; raw key is returned to caller from admin route
-  return client.tenant.create({ data: { nombre, slug, apiKey: _hashApiKey(apiKey), plan: plan || 'free' } });
+  // Store only the hash; raw key is returned to caller from admin route.
+  // Seed editable UX overrides so every new tenant can customize flow output.
+  return client.$transaction(async (tx) => {
+    const tenant = await tx.tenant.create({
+      data: { nombre, slug, apiKey: _hashApiKey(apiKey), plan: plan || 'free' },
+    });
+
+    await tx.configuracion.create({
+      data: {
+        tenantId: tenant.id,
+        clave: 'flow_ux_overrides',
+        valor: { nodes: {} },
+      },
+    });
+
+    return tenant;
+  });
 }
 
 async function listTenants() {
