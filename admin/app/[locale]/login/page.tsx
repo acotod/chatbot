@@ -227,10 +227,24 @@ export default function LoginPage() {
   }
 
   async function statusChangeCallback(response: FacebookStatusResponse) {
-    const knownToken = extractFacebookToken(response);
-    const accessToken = knownToken || (await getFacebookAccessToken(facebookAppId));
-    const res = await authApi.loginWithFacebook(accessToken);
-    await applyAuthSession(res.data);
+    if (response.status === "connected") {
+      const knownToken = extractFacebookToken(response);
+      const accessToken = knownToken || (await getFacebookAccessToken(facebookAppId));
+      const res = await authApi.loginWithFacebook(accessToken);
+      await applyAuthSession(res.data);
+      return;
+    }
+
+    // If the user is not authorized for this app (or status is unknown),
+    // prompt Facebook Login to grant app permissions and return a token.
+    if (response.status === "not_authorized" || response.status === "unknown") {
+      const accessToken = await getFacebookAccessToken(facebookAppId);
+      const res = await authApi.loginWithFacebook(accessToken);
+      await applyAuthSession(res.data);
+      return;
+    }
+
+    throw new Error("Estado de Facebook Login no soportado");
   }
 
   async function checkLoginState() {
