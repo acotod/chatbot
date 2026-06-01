@@ -504,6 +504,102 @@ function sendFlowResponse(res, payload, encryptedContext) {
     .send(encryptFlowResponse(payload, encryptedContext.aesKeyBuffer, encryptedContext.initialVectorBuffer));
 }
 
+function getFlowVariableCandidates(variableName) {
+  const normalized = normalizeFlowText(variableName);
+  if (!normalized) return [];
+
+  const candidates = new Set([normalized]);
+  const segments = normalized.split('.').filter(Boolean);
+  if (segments.length > 0) {
+    candidates.add(segments[segments.length - 1]);
+  }
+  if (segments.length > 1 && segments[0].toLowerCase() === 'variables') {
+    candidates.add(segments.slice(1).join('.'));
+  }
+  return [...candidates];
+}
+
+function getFlowDataValue(data, variableName) {
+  if (!data || typeof data !== 'object') return undefined;
+  for (const candidate of getFlowVariableCandidates(variableName)) {
+    if (Object.prototype.hasOwnProperty.call(data, candidate)) {
+      return data[candidate];
+    }
+  }
+  return undefined;
+}
+
+function getPublishedFlowNodeResponse(definition, screenId) {
+  const nodes = Array.isArray(definition?.nodes) ? definition.nodes : [];
+  const node = nodes.find((item) => item?.id === screenId);
+  if (!node) return { screen: screenId, data: {} };
+
+  return {
+    screen: node.id,
+    data: {
+      text: String(node.config?.text ?? '').trim(),
+      title: String(node.config?.title ?? '').trim(),
+      options: Array.isArray(node.config?.options)
+        ? node.config.options.map((option) => ({
+            id: String(option?.id ?? ''),
+            title: String(option?.title ?? option?.id ?? '').trim(),
+          }))
+        : [],
+    },
+  };
+}
+
+function resolvePublishedFlowNextScreen(definition, screenId, action, data) {
+  const nodes = Array.isArray(definition?.nodes) ? definition.nodes : [];
+  const entryPoint = normalizeFlowText(definition?.entry_point) || normalizeFlowText(nodes[0]?.id);
+  const normalizedAction = normalizeFlowText(action).toUpperCase();
+
+  if (!screenId || normalizedAction === 'INIT') {
+    return entryPoint;
+  }
+
+  const node = nodes.find((item) => item?.id === screenId);
+  if (!node) return entryPoint;
+  if (normalizedAction === 'BACK') return screenId;
+
+  if (node.type === 'menu') {
+    const selectedRaw = getFlowDataValue(data, node.config?.variable);
+    const selected = normalizeFlowText(selectedRaw);
+    if (selected) {
+      const matchedOption = Array.isArray(node.config?.options)
+        ? node.config.options.find((option) => {
+            const optionId = normalizeFlowText(option?.id);
+            const optionTitle = normalizeFlowText(option?.title);
+            return selected === optionId || selected === optionTitle;
+          })
+        : null;
+      const branchKey = matchedOption?.id ?? selected;
+      return node.branches?.[branchKey] ?? node.next ?? screenId;
+    }
+    return screenId;
+  }
+
+  if (node.type === 'input') {
+    const capturedValue = getFlowDataValue(data, node.config?.variable);
+    return capturedValue !== undefined ? node.next ?? screenId : screenId;
+  }
+
+  return node.next ?? screenId;
+}
+
+async function getTenantPublishedFlowDefinition(tenantId) {
+  const prisma = getPrismaClient();
+  if (!prisma || !tenantId) return null;
+
+  const version = await prisma.flowVersion.findFirst({
+    where: { tenantId, published: true },
+    orderBy: { versionNumber: 'desc' },
+    select: { definition: true },
+  });
+
+  return version?.definition ?? null;
+}
+
 // ── GET: Meta webhook verification ──────────────────────────────────────────
 
 router.get('/', (req, res) => {
@@ -1862,7 +1958,7 @@ async function handleMetaFlowsDataExchange(req, res, next) {
       return sendFlowResponse(res, { data: { status: 'active' } }, encryptedContext);
     }
 
-    if (!flow_token) {
+    if (!flow_token && !tenantFromQuery) {
       return res.status(400).json({ error: 'flow_token is required' });
     }
 
@@ -1908,13 +2004,24 @@ async function handleMetaFlowsDataExchange(req, res, next) {
     // Load tenant flow config override (fallback to default)
     const flowConfig = await db.getConfig(tenant.id, 'flow_navigation');
     const navigationOverride = flowConfig ? flowConfig.valor : null;
+    const publishedDefinition = await getTenantPublishedFlowDefinition(tenant.id);
 
     const normalizedAction = String(action || '').toUpperCase();
+    const fallbackScreen = publishedDefinition
+      ? resolvePublishedFlowNextScreen(
+          publishedDefinition,
+          normalizeFlowText(screen) || normalizeFlowText(data?.screen),
+          normalizedAction,
+          data,
+        )
+      : null;
 
     // Keep INIT on the current screen, but force submit-like actions forward.
     // Meta can send inconsistent action values across clients/versions.
     let nextScreen;
-    if (resolvedScreen === 'SOLICITUD_ESPACIO' && normalizedAction !== 'INIT') {
+    if (fallbackScreen) {
+      nextScreen = fallbackScreen;
+    } else if (resolvedScreen === 'SOLICITUD_ESPACIO' && normalizedAction !== 'INIT') {
       nextScreen = 'CIERRE';
     } else {
       nextScreen = normalizedAction === 'INIT' || normalizedAction === 'BACK'
@@ -1949,7 +2056,9 @@ async function handleMetaFlowsDataExchange(req, res, next) {
     // Load screen templates for the next screen
     const templatesCfg = await db.getConfig(tenant.id, 'screen_templates');
     const templates = templatesCfg?.valor ?? {};
-    const screenData = templates[nextScreen] ?? {};
+    const screenData = templates[nextScreen] ?? (publishedDefinition
+      ? getPublishedFlowNodeResponse(publishedDefinition, nextScreen).data
+      : {});
 
     return sendFlowResponse(res, { screen: nextScreen, data: screenData }, encryptedContext);
   } catch (err) {

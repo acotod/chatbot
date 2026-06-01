@@ -22,6 +22,7 @@ jest.mock('../src/middleware/requireJwt', () => () => (_req, _res, next) => next
 
 jest.mock('../src/services/database', () => ({
   findTenantByApiKey: jest.fn().mockResolvedValue(TEST_TENANT),
+  findTenantBySlug: jest.fn().mockResolvedValue(TEST_TENANT),
   findTenantByFlowToken: jest.fn().mockResolvedValue(TEST_TENANT),
   findTenantByWaPhoneNumberId: jest.fn().mockResolvedValue(TEST_TENANT),
   findOrCreateUser: jest.fn().mockResolvedValue({ id: 1, phone: '1234567890' }),
@@ -39,7 +40,14 @@ jest.mock('../src/services/database', () => ({
     }
     return null;
   }),
-  getPrismaClient: jest.fn(),
+  getPrismaClient: jest.fn(() => ({
+    configuracion: {
+      findMany: jest.fn().mockResolvedValue([]),
+    },
+    flowVersion: {
+      findFirst: jest.fn().mockResolvedValue(null),
+    },
+  })),
 }));
 
 jest.mock('../src/services/socketService', () => ({
@@ -177,5 +185,72 @@ describe('POST /whatsapp/flows', () => {
 
     expect(res.status).toBe(200);
     expect(res.body).toEqual({ data: { status: 'active' } });
+  });
+
+  test('falls back to the published flow definition when legacy flow config is absent', async () => {
+    db.getConfig.mockImplementation(async (_tenantId, key) => {
+      if (key === 'flow_navigation') return null;
+      if (key === 'screen_templates') return null;
+      return null;
+    });
+    db.getPrismaClient.mockReturnValue({
+      configuracion: {
+        findMany: jest.fn().mockResolvedValue([]),
+      },
+      flowVersion: {
+        findFirst: jest.fn().mockResolvedValue({
+          definition: {
+            entry_point: 'node_1',
+            nodes: [
+              {
+                id: 'node_1',
+                type: 'menu',
+                next: null,
+                config: {
+                  text: 'Hola desde published flow',
+                  options: [{ id: 'opt_1', title: 'Proceder' }],
+                  variable: 'variables.opcion_menu',
+                },
+                branches: { opt_1: 'node_2' },
+              },
+              {
+                id: 'node_2',
+                type: 'message',
+                next: null,
+                config: { text: 'Pantalla siguiente' },
+              },
+            ],
+          },
+        }),
+      },
+    });
+
+    const initRes = await request(app)
+      .post('/whatsapp/flows?tenantSlug=global-med')
+      .send({ action: 'INIT', data: {} });
+
+    expect(initRes.status).toBe(200);
+    expect(initRes.body).toEqual({
+      screen: 'node_1',
+      data: {
+        text: 'Hola desde published flow',
+        title: '',
+        options: [{ id: 'opt_1', title: 'Proceder' }],
+      },
+    });
+
+    const nextRes = await request(app)
+      .post('/whatsapp/flows?tenantSlug=global-med')
+      .send({ action: 'data_exchange', screen: 'node_1', data: { opcion_menu: 'opt_1' } });
+
+    expect(nextRes.status).toBe(200);
+    expect(nextRes.body).toEqual({
+      screen: 'node_2',
+      data: {
+        text: 'Pantalla siguiente',
+        title: '',
+        options: [],
+      },
+    });
   });
 });
