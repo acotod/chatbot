@@ -764,6 +764,7 @@ const NODE_TYPE_COLOR: Record<string, string> = {
   start:     "border-teal-300 bg-teal-50",
   handoff:   "border-indigo-300 bg-indigo-50",
   llm:       "border-violet-300 bg-violet-50",
+  waba_flow: "border-cyan-300 bg-cyan-50",
 };
 
 function fmtDate(iso?: string) {
@@ -1021,6 +1022,11 @@ function NodeCard({
               {String(node.config?.integration_ref ?? node.config?.endpoint ?? "—")}
             </p>
           )}
+          {node.type === "waba_flow" && (
+            <p className="text-xs text-slate-500 mt-1 font-mono">
+              {String(node.config?.meta_flow_id ?? node.config?.flow_id ?? node.config?.flowId ?? "—")}
+            </p>
+          )}
           {node.next && (
             <div className="flex items-center gap-1 mt-2 text-xs text-slate-400">
               <ArrowRight className="w-3 h-3" />
@@ -1064,7 +1070,7 @@ function NodeCard({
 // ─────────────────────────────────────────────────────────────────────────────
 // Sub-component: NodeEditModal
 // ─────────────────────────────────────────────────────────────────────────────
-const NODE_TYPES = ["message", "input", "menu", "condition", "action", "task", "delay", "end", "handoff", "llm", "calendar"];
+const NODE_TYPES = ["message", "input", "menu", "condition", "action", "task", "delay", "end", "handoff", "llm", "calendar", "waba_flow"];
 const HTTP_METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE"];
 const CONDITION_OPS = ["equals", "not_equals", "contains", "starts_with", "ends_with", "greater_than", "less_than", "is_empty", "is_not_empty"];
 const CONDITION_TRUE_ALIASES = ["true", "si", "sí", "yes"];
@@ -1377,6 +1383,13 @@ function NodeEditModal({
   const [calendarAssignmentStrategy, setCalendarAssignmentStrategy] = useState(String(cfg.assignment_strategy ?? cfg.calendar_selection_strategy ?? "random"));
   const [calendarPuestoId, setCalendarPuestoId] = useState(String(cfg.agente_puesto_id ?? cfg.puesto_id ?? ""));
   const [calendarPuestoNombre, setCalendarPuestoNombre] = useState(String(cfg.agente_puesto_nombre ?? cfg.puesto_nombre ?? ""));
+  const [wabaFlowId, setWabaFlowId] = useState(String(cfg.meta_flow_id ?? cfg.flow_id ?? cfg.flowId ?? ""));
+  const [wabaFlowToken, setWabaFlowToken] = useState(String(cfg.flow_token ?? cfg.flowToken ?? ""));
+  const [wabaFlowCta, setWabaFlowCta] = useState(String(cfg.flow_cta ?? cfg.flowCta ?? "Abrir"));
+  const [wabaFlowBodyText, setWabaFlowBodyText] = useState(String(cfg.body_text ?? cfg.bodyText ?? cfg.text ?? ""));
+  const [wabaFlowHeaderText, setWabaFlowHeaderText] = useState(String(cfg.header_text ?? cfg.headerText ?? ""));
+  const [wabaFlowFooterText, setWabaFlowFooterText] = useState(String(cfg.footer_text ?? cfg.footerText ?? ""));
+  const [wabaFlowInitialScreen, setWabaFlowInitialScreen] = useState(String(cfg.initial_screen ?? cfg.initialScreen ?? "INIT"));
   // action
   const [actionRef, setActionRef]       = useState(String(cfg.integration_ref ?? ""));
   const [actionUrl, setActionUrl]       = useState(String((cfg.endpoint ?? (cfg as Record<string,unknown>).url) ?? ""));
@@ -1686,6 +1699,17 @@ function NodeEditModal({
           ...(calendarNoSlotsText.trim() ? { no_slots_text: calendarNoSlotsText.trim() } : {}),
           ...(calendarErrorText.trim() ? { error_text: calendarErrorText.trim() } : {}),
           ...(calendarAvailabilityVar.trim() ? { availability_variable: calendarAvailabilityVar.trim() } : {}),
+        };
+      }
+      case "waba_flow": {
+        return {
+          meta_flow_id: wabaFlowId.trim(),
+          ...(wabaFlowToken.trim() ? { flow_token: wabaFlowToken.trim() } : {}),
+          ...(wabaFlowCta.trim() ? { flow_cta: wabaFlowCta.trim() } : {}),
+          ...(wabaFlowBodyText.trim() ? { body_text: wabaFlowBodyText.trim() } : {}),
+          ...(wabaFlowHeaderText.trim() ? { header_text: wabaFlowHeaderText.trim() } : {}),
+          ...(wabaFlowFooterText.trim() ? { footer_text: wabaFlowFooterText.trim() } : {}),
+          ...(wabaFlowInitialScreen.trim() ? { initial_screen: wabaFlowInitialScreen.trim() } : {}),
         };
       }
       case "action":    return actionFragment;
@@ -2173,6 +2197,74 @@ function NodeEditModal({
               {/* llm */}
               {type === "llm" && (
                 <div className="space-y-4">
+              {type === "waba_flow" && (
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="bg-slate-50 rounded-lg border border-slate-100 p-4">
+                    <label className="block text-xs font-medium text-slate-600 mb-2">Meta Flow ID</label>
+                    <input
+                      value={wabaFlowId}
+                      onChange={(e) => setWabaFlowId(e.target.value)}
+                      placeholder="123456789012345"
+                      className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-cyan-500 bg-white"
+                    />
+                  </div>
+                  <div className="bg-slate-50 rounded-lg border border-slate-100 p-4">
+                    <label className="block text-xs font-medium text-slate-600 mb-2">CTA</label>
+                    <input
+                      value={wabaFlowCta}
+                      onChange={(e) => setWabaFlowCta(e.target.value)}
+                      placeholder="Abrir"
+                      className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-500 bg-white"
+                    />
+                  </div>
+                  <div className="bg-slate-50 rounded-lg border border-slate-100 p-4 col-span-2">
+                    <label className="block text-xs font-medium text-slate-600 mb-2">Texto principal</label>
+                    <textarea
+                      value={wabaFlowBodyText}
+                      onChange={(e) => setWabaFlowBodyText(e.target.value)}
+                      rows={2}
+                      placeholder="Haz clic para abrir el flujo"
+                      className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-500 bg-white"
+                    />
+                  </div>
+                  <div className="bg-slate-50 rounded-lg border border-slate-100 p-4">
+                    <label className="block text-xs font-medium text-slate-600 mb-2">Header opcional</label>
+                    <input
+                      value={wabaFlowHeaderText}
+                      onChange={(e) => setWabaFlowHeaderText(e.target.value)}
+                      placeholder="Información importante"
+                      className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-500 bg-white"
+                    />
+                  </div>
+                  <div className="bg-slate-50 rounded-lg border border-slate-100 p-4">
+                    <label className="block text-xs font-medium text-slate-600 mb-2">Footer opcional</label>
+                    <input
+                      value={wabaFlowFooterText}
+                      onChange={(e) => setWabaFlowFooterText(e.target.value)}
+                      placeholder="Comienza cuando quieras"
+                      className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-500 bg-white"
+                    />
+                  </div>
+                  <div className="bg-slate-50 rounded-lg border border-slate-100 p-4 col-span-2">
+                    <label className="block text-xs font-medium text-slate-600 mb-2">Pantalla inicial</label>
+                    <input
+                      value={wabaFlowInitialScreen}
+                      onChange={(e) => setWabaFlowInitialScreen(e.target.value)}
+                      placeholder="INIT"
+                      className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-cyan-500 bg-white"
+                    />
+                  </div>
+                  <div className="bg-slate-50 rounded-lg border border-slate-100 p-4 col-span-2">
+                    <label className="block text-xs font-medium text-slate-600 mb-2">Flow token opcional</label>
+                    <input
+                      value={wabaFlowToken}
+                      onChange={(e) => setWabaFlowToken(e.target.value)}
+                      placeholder="UUID o token de correlación"
+                      className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-cyan-500 bg-white"
+                    />
+                  </div>
+                </div>
+              )}
                   {/* Compose mode + fallback */}
                   <div className="grid grid-cols-2 gap-4">
                     <div className="bg-slate-50 rounded-lg border border-slate-100 p-4">
@@ -3552,7 +3644,7 @@ function SimulatePanel({ flow }: { flow: WabaFlow }) {
                       </span>
                     </div>
                     {step.input !== null && step.input !== undefined && (
-                      <p className="text-xs text-blue-600">↳ {t("simulate.input")} <span className="font-medium">"{step.input}"</span></p>
+                      <p className="text-xs text-blue-600">↳ {t("simulate.input")} <span className="font-medium">&quot;{step.input}&quot;</span></p>
                     )}
                     {step.output && (
                       <div className="text-xs text-slate-600 mt-1">
@@ -3620,7 +3712,7 @@ function SimulatePanel({ flow }: { flow: WabaFlow }) {
                           {step.llm_intent && <span className="text-xs px-1.5 py-0.5 rounded bg-violet-100 text-violet-700">{t("simulate.intent")} {step.llm_intent}</span>}
                         </div>
                         {step.input !== null && step.input !== undefined && (
-                          <p className="text-xs text-blue-600">↳ {t("simulate.input")} <span className="font-medium">"{step.input}"</span></p>
+                          <p className="text-xs text-blue-600">↳ {t("simulate.input")} <span className="font-medium">&quot;{step.input}&quot;</span></p>
                         )}
                         {step.output && (
                           <div className="text-xs text-slate-600 mt-1">
