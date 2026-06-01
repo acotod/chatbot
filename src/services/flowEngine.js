@@ -41,6 +41,9 @@ const crmSync                 = require('./crmSync');
 const logger                  = require('../utils/logger');
 
 const prisma = new PrismaClient();
+const FLOW_UX_OVERRIDES_KEY = 'flow_ux_overrides';
+const FLOW_UX_OVERRIDES_TTL_MS = 30 * 1000;
+const flowUxOverridesCache = new Map();
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Public: executeStep
@@ -173,6 +176,17 @@ async function executeStep({ tenantId, currentNodeId, input, userId, sessionKey,
 
   // ── Merge updated variables ───────────────────────────────────────────────
   const updatedVars = { ...variables, ...(execResult.updatedVars ?? {}) };
+
+  // Per-tenant/per-node UX customization. This allows business-specific copy
+  // and interactive layouts without code changes.
+  const effectiveOutput = await _applyTenantNodeUxOverride({
+    tenantId,
+    nodeRef: resolvedNodeRef,
+    output: execResult.output,
+  });
+  if (effectiveOutput !== execResult.output) {
+    execResult = { ...execResult, output: effectiveOutput };
+  }
 
   // Best-effort CRM enrichment from flow-captured values (e.g. input crmField=nombre).
   if (userId != null && execResult.crmTouch?.nombre) {
@@ -415,6 +429,109 @@ function _toIntOrNull(ref) {
   if (ref == null) return null;
   const n = parseInt(ref, 10);
   return Number.isNaN(n) ? null : n;
+}
+
+function _sanitizeOutputShape(rawOutput, fallbackOutput) {
+  if (!rawOutput || typeof rawOutput !== 'object' || Array.isArray(rawOutput)) {
+    return fallbackOutput;
+  }
+
+  const next = { ...rawOutput };
+
+  if (next.type != null) next.type = String(next.type);
+  if (next.text != null) next.text = String(next.text);
+
+  if (Array.isArray(next.buttons)) {
+    next.buttons = next.buttons
+      .filter((btn) => btn && typeof btn === 'object')
+      .map((btn) => ({
+        id: String(btn.id ?? '').trim(),
+        title: String(btn.title ?? '').trim(),
+      }))
+      .filter((btn) => btn.id && btn.title);
+  }
+
+  if (!Array.isArray(next.buttons)) delete next.buttons;
+  if (!Array.isArray(next.sections)) delete next.sections;
+
+  return next;
+}
+
+function _buildNodeOverrideCandidates(nodeRef) {
+  const ref = String(nodeRef ?? '').trim();
+  if (!ref) return [];
+
+  const candidates = [ref];
+  if (/^\d+$/.test(ref)) {
+    candidates.push(`node_${ref}`);
+  } else {
+    const match = ref.match(/^node_(\d+)$/i);
+    if (match) candidates.push(String(Number(match[1])));
+  }
+
+  return [...new Set(candidates)];
+}
+
+async function _getTenantFlowUxOverrides(tenantId) {
+  if (!tenantId) return null;
+
+  const now = Date.now();
+  const cached = flowUxOverridesCache.get(tenantId);
+  if (cached && now < cached.expiresAt) {
+    return cached.value;
+  }
+
+  let parsed = null;
+  try {
+    const row = await db.getConfig(tenantId, FLOW_UX_OVERRIDES_KEY);
+    const value = row?.valor;
+    if (value && typeof value === 'object' && !Array.isArray(value)) {
+      parsed = value;
+    }
+  } catch (err) {
+    logger.warn({ tenantId, message: err.message }, 'flowEngine: failed to load flow_ux_overrides config');
+  }
+
+  flowUxOverridesCache.set(tenantId, {
+    value: parsed,
+    expiresAt: now + FLOW_UX_OVERRIDES_TTL_MS,
+  });
+
+  return parsed;
+}
+
+async function _applyTenantNodeUxOverride({ tenantId, nodeRef, output }) {
+  if (!output || typeof output !== 'object' || Array.isArray(output)) return output;
+
+  const cfg = await _getTenantFlowUxOverrides(tenantId);
+  if (!cfg) return output;
+
+  const nodeMap = (cfg.nodes && typeof cfg.nodes === 'object' && !Array.isArray(cfg.nodes))
+    ? cfg.nodes
+    : cfg;
+
+  const candidates = _buildNodeOverrideCandidates(nodeRef);
+  let nodeOverride = null;
+  for (const key of candidates) {
+    if (nodeMap[key] && typeof nodeMap[key] === 'object' && !Array.isArray(nodeMap[key])) {
+      nodeOverride = nodeMap[key];
+      break;
+    }
+  }
+
+  if (!nodeOverride) return output;
+
+  if (nodeOverride.output && typeof nodeOverride.output === 'object' && !Array.isArray(nodeOverride.output)) {
+    return _sanitizeOutputShape(nodeOverride.output, output);
+  }
+
+  const patched = { ...output };
+  if (nodeOverride.type != null) patched.type = String(nodeOverride.type);
+  if (nodeOverride.text != null) patched.text = String(nodeOverride.text);
+  if (Array.isArray(nodeOverride.buttons)) patched.buttons = nodeOverride.buttons;
+  if (Array.isArray(nodeOverride.sections)) patched.sections = nodeOverride.sections;
+
+  return _sanitizeOutputShape(patched, output);
 }
 
 async function _bootstrapExecutionVariables({ tenantId, flowId, definitionVariables, sessionKey, variables }) {
