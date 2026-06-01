@@ -1185,6 +1185,38 @@ async function _sendChatbotResponse({ tenant, userId, phone, phoneNumberId, acce
         }
       }
       }
+    } else if (type === 'waba_flow') {
+      // Native WhatsApp Flow interactive message
+      const flowId = response.flow_id ?? response.flowId;
+      if (!flowId) {
+        logger.warn('_sendChatbotResponse: waba_flow content missing flow_id, falling back to text', {
+          tenantId: tenant.id, phone,
+        });
+        const fallback = String(response.body_text ?? response.bodyText ?? response.text ?? '').trim();
+        if (fallback) {
+          waResp = await wa.sendTextMessage(phoneNumberId, phone, fallback, accessToken);
+          persistedTipo = 'text';
+          persistedContenido = { type: 'text', text: fallback };
+        }
+      } else {
+        waResp = await wa.sendFlowMessage(
+          phoneNumberId,
+          phone,
+          {
+            flowId,
+            flowToken:     response.flow_token   ?? response.flowToken,
+            flowCta:       response.flow_cta      ?? response.flowCta      ?? 'Abrir',
+            bodyText:      response.body_text     ?? response.bodyText     ?? response.text ?? ' ',
+            headerText:    response.header_text   ?? response.headerText,
+            footerText:    response.footer_text   ?? response.footerText,
+            initialScreen: response.initial_screen ?? response.initialScreen,
+            screenData:    response.screen_data   ?? response.screenData,
+          },
+          accessToken,
+        );
+        persistedTipo = 'interactive';
+        persistedContenido = response;
+      }
     } else {
       // text or end
       waResp = await wa.sendTextMessage(phoneNumberId, phone, response.text ?? '', accessToken);
@@ -1990,6 +2022,12 @@ async function handleMetaFlowsDataExchange(req, res, next) {
 
     const resolvedScreen = resolveFlowScreenName(screen, data, action);
     if (!resolvedScreen) {
+      logger.warn('Meta Flows screen missing', {
+        tenantId: tenant.id,
+        action: normalizeFlowText(action) || null,
+        screen: normalizeFlowText(screen) || null,
+        dataKeys: data && typeof data === 'object' ? Object.keys(data).slice(0, 20) : [],
+      });
       return res.status(400).json({ error: 'screen is required' });
     }
 

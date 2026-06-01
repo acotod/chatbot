@@ -254,9 +254,89 @@ async function downloadMediaById(mediaId, accessToken) {
   };
 }
 
+/**
+ * Send a native WhatsApp Flow message (interactive.flow).
+ * Opens the Meta Flow UI directly in the user's WhatsApp conversation.
+ *
+ * @param {string} phoneNumberId
+ * @param {string} to                     - recipient phone (E.164, no +)
+ * @param {object} params
+ * @param {string} params.flowId          - Meta-assigned numeric Flow ID
+ * @param {string} [params.flowToken]     - unique token per send (UUID); auto-generated if omitted
+ * @param {string} [params.flowCta]       - CTA button label (max 20 chars, default "Abrir")
+ * @param {string} [params.bodyText]      - message body (required by Meta)
+ * @param {string} [params.headerText]    - optional header text
+ * @param {string} [params.footerText]    - optional footer text
+ * @param {string} [params.initialScreen] - first screen to open (default: first screen in definition)
+ * @param {object} [params.screenData]    - optional data payload for the initial screen
+ * @param {string} accessToken
+ */
+async function sendFlowMessage(phoneNumberId, to, params, accessToken) {
+  const {
+    flowId,
+    flowToken,
+    flowCta      = 'Abrir',
+    bodyText     = ' ',
+    headerText,
+    footerText,
+    initialScreen,
+    screenData,
+  } = params ?? {};
+
+  if (!flowId) {
+    const err = new Error('sendFlowMessage: flowId is required');
+    err.status = 400;
+    throw err;
+  }
+
+  // Generate a unique token per send if not provided
+  const token = flowToken || crypto.randomUUID();
+
+  const actionPayload = {
+    screen: initialScreen || 'INIT',
+    ...(screenData && typeof screenData === 'object' ? { data: screenData } : {}),
+  };
+
+  const interactive = {
+    type: 'flow',
+    body: { text: String(bodyText).trim() || ' ' },
+    action: {
+      name: 'flow',
+      parameters: {
+        flow_message_version: '3',
+        flow_token: String(token),
+        flow_id: String(flowId),
+        flow_cta: String(flowCta).trim().slice(0, 20) || 'Abrir',
+        flow_action: 'navigate',
+        flow_action_payload: actionPayload,
+      },
+    },
+  };
+
+  if (headerText) {
+    interactive.header = { type: 'text', text: String(headerText).trim() };
+  }
+
+  if (footerText) {
+    interactive.footer = { text: String(footerText).trim() };
+  }
+
+  const payload = {
+    messaging_product: 'whatsapp',
+    recipient_type: 'individual',
+    to,
+    type: 'interactive',
+    interactive,
+  };
+
+  return _post(phoneNumberId, payload, accessToken);
+}
+
 // ---------------------------------------------------------------------------
 // Private helpers
 // ---------------------------------------------------------------------------
+
+const crypto = require('crypto');
 
 async function _post(phoneNumberId, payload, accessToken) {
   const url = `${GRAPH_URL}/${phoneNumberId}/messages`;
@@ -293,6 +373,7 @@ module.exports = {
   sendButtonMessage,
   sendListMessage,
   sendTemplateMessage,
+  sendFlowMessage,
   markAsRead,
   getMediaMetadata,
   downloadMediaBuffer,

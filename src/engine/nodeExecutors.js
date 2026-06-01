@@ -1591,19 +1591,69 @@ async function _buildAppointmentMetadata({ tenantId, llmService, variables, cfg 
   return { ...baseMetadata, ...llmEnhancement };
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// waba_flow — send a native Meta WhatsApp Flow interactive message
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * executeWabaFlow
+ *
+ * Node config shape:
+ *   {
+ *     meta_flow_id    : string  — Meta-assigned numeric Flow ID (required)
+ *     flow_cta        : string  — CTA button label (max 20 chars)
+ *     body_text       : string  — Message body shown above the button
+ *     header_text     : string  — Optional header text
+ *     footer_text     : string  — Optional footer text
+ *     initial_screen  : string  — Screen name to open (default: "INIT")
+ *   }
+ *
+ * Emits content:
+ *   { type: 'waba_flow', flow_id, flow_cta, body_text, header_text, footer_text, initial_screen }
+ */
+async function executeWabaFlow({ node, variables }) {
+  const cfg = node.config ?? node.data ?? {};
+  const resolved = resolveConfig(cfg, variables);
+
+  const flowId = String(resolved.meta_flow_id ?? resolved.flow_id ?? '').trim();
+  if (!flowId) {
+    logger.warn({ nodeId: node.id }, 'nodeExecutors.waba_flow: meta_flow_id is missing — skipping node');
+    return { output: null, nextNodeId: node.next, updatedVars: {}, terminal: false, fallback: false };
+  }
+
+  const output = {
+    type: 'waba_flow',
+    flow_id:        flowId,
+    flow_cta:       String(resolved.flow_cta     ?? 'Abrir').trim().slice(0, 20) || 'Abrir',
+    body_text:      String(resolved.body_text    ?? resolved.text ?? ' ').trim() || ' ',
+    header_text:    resolved.header_text   ? String(resolved.header_text).trim()  : undefined,
+    footer_text:    resolved.footer_text   ? String(resolved.footer_text).trim()  : undefined,
+    initial_screen: resolved.initial_screen ? String(resolved.initial_screen).trim() : undefined,
+  };
+
+  return {
+    output,
+    nextNodeId: node.next,
+    updatedVars: {},
+    terminal: false,
+    fallback: false,
+  };
+}
+
 const EXECUTORS = {
-  start    : executeStart,
-  message  : executeMessage,
-  menu     : executeMenu,
-  input    : executeInput,
-  condition: executeCondition,
-  action   : executeAction,
-  task     : executeTask,
-  llm      : executeLlm,
-  delay    : executeDelay,
-  end      : executeEnd,
-  handoff  : executeHandoff,
-  calendar : executeCalendar,
+  start      : executeStart,
+  message    : executeMessage,
+  menu       : executeMenu,
+  input      : executeInput,
+  condition  : executeCondition,
+  action     : executeAction,
+  task       : executeTask,
+  llm        : executeLlm,
+  delay      : executeDelay,
+  end        : executeEnd,
+  handoff    : executeHandoff,
+  calendar   : executeCalendar,
+  waba_flow  : executeWabaFlow,
 };
 
 /**

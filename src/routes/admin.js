@@ -768,6 +768,23 @@ async function sendFlowContentToUser({ tenantId, userPhone, content }) {
         return;
     }
 
+    if (content.type === 'waba_flow') {
+        const flowId = content.flow_id ?? content.flowId;
+        if (flowId) {
+            await wa.sendFlowMessage(phoneNumberId, userPhone, {
+                flowId,
+                flowToken:     content.flow_token   ?? content.flowToken,
+                flowCta:       content.flow_cta      ?? content.flowCta      ?? 'Abrir',
+                bodyText:      content.body_text     ?? content.bodyText     ?? content.text ?? ' ',
+                headerText:    content.header_text   ?? content.headerText,
+                footerText:    content.footer_text   ?? content.footerText,
+                initialScreen: content.initial_screen ?? content.initialScreen,
+                screenData:    content.screen_data   ?? content.screenData,
+            }, accessToken);
+        }
+        return;
+    }
+
     if (content.type === 'buttons' && Array.isArray(content.buttons) && content.buttons.length > 0) {
         await wa.sendButtonMessage(phoneNumberId, userPhone, content.text || 'Selecciona una opción', content.buttons.slice(0, 3), accessToken);
         return;
