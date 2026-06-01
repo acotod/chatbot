@@ -521,7 +521,12 @@ router.get('/', (req, res) => {
 
 // ── POST: incoming events ────────────────────────────────────────────────────
 
-router.post('/', verifyMetaSignature, async (req, res) => {
+router.post('/', verifyMetaSignature, async (req, res, next) => {
+  // Be tolerant to misconfigured Flows endpoints that still post to /whatsapp.
+  if (isEncryptedFlowRequest(req.body) || req.body?.flow_token || req.body?.action === 'ping') {
+    return handleMetaFlowsDataExchange(req, res, next);
+  }
+
   // Always acknowledge immediately — Meta expects 200 within 20 s
   res.sendStatus(200);
 
@@ -1839,7 +1844,7 @@ router.get('/flows', (req, res) => {
   return res.sendStatus(403);
 });
 
-router.post('/flows', verifyMetaSignature, async (req, res, next) => {
+async function handleMetaFlowsDataExchange(req, res, next) {
   try {
     const tenantSlugFromQuery = normalizeFlowText(req.query.tenant || req.query.tenantSlug);
     const tenantFromQuery = tenantSlugFromQuery
@@ -1954,6 +1959,10 @@ router.post('/flows', verifyMetaSignature, async (req, res, next) => {
     }
     next(err);
   }
+}
+
+router.post('/flows', verifyMetaSignature, async (req, res, next) => {
+  return handleMetaFlowsDataExchange(req, res, next);
 });
 
 router._flowsCrypto = {
