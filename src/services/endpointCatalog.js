@@ -128,6 +128,15 @@ const DEFAULT_CATALOG = {
       description: 'Envía una notificación por el canal seleccionado (email, sms, whatsapp)',
     },
     {
+      id:          'listAvailableAgents',
+      name:        'Listar Agentes Disponibles',
+      method:      'GET',
+      url:         '/api/agents/available',
+      inputs:      ['tenant', 'puestoId', 'puesto'],
+      outputs:     ['tenantId', 'tenantSlug', 'filters', 'total', 'agentes'],
+      description: 'Lista agentes activos por tenant y puesto, devolviendo una respuesta JSON estructurada.',
+    },
+    {
       id:          'saveConversation',
       name:        'Guardar Conversación',
       method:      'POST',
