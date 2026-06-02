@@ -1076,11 +1076,29 @@ const CONDITION_OPS = ["equals", "not_equals", "contains", "starts_with", "ends_
 const CONDITION_TRUE_ALIASES = ["true", "si", "sí", "yes"];
 const CONDITION_FALSE_ALIASES = ["false", "no", "else", "default", "otherwise", "fallback"];
 const MENU_VARIABLE_PRESETS = [
+  "opcion_menu",
+  "menu_seleccion",
+  "menu_opcion_id",
+  "menu_opcion_titulo",
   "variables.opcion_menu",
   "variables.menu_seleccion",
   "variables.menu_opcion_id",
   "variables.menu_opcion_titulo",
 ];
+
+function normalizeMenuVariableName(raw: string): string {
+  const trimmed = String(raw ?? "").trim();
+  if (!trimmed) return "opcion_menu";
+
+  const withoutPrefix = trimmed.replace(/^variables\./i, "");
+  const normalized = withoutPrefix
+    .replace(/\s+/g, "_")
+    .replace(/[^a-zA-Z0-9_]/g, "_")
+    .replace(/_+/g, "_")
+    .replace(/^_+|_+$/g, "");
+
+  return normalized || "opcion_menu";
+}
 
 function parseConditionExpression(expression: string): { variable: string; operator: string; value: string } | null {
   const expr = String(expression ?? "").trim();
@@ -1288,7 +1306,7 @@ function NodeEditModal({
   const [inputValidationFlags, setInputValidationFlags] = useState(String(cfg.validationFlags ?? ""));
   const [inputValidationMessage, setInputValidationMessage] = useState(String(cfg.validationMessage ?? cfg.invalidMessage ?? ""));
   const [menuText, setMenuText]       = useState(String(cfg.text ?? ""));
-  const [menuVar, setMenuVar]         = useState(String(cfg.variable ?? "variables.opcion_menu"));
+  const [menuVar, setMenuVar]         = useState(String(cfg.variable ?? "opcion_menu"));
   const [menuOptions, setMenuOptions] = useState<{ id: string; title: string; next: string }[]>(
     Array.isArray(cfg.options)
       ? (cfg.options as Array<{ id?: string; title?: string; next?: string }>).map((option, index) => {
@@ -1669,7 +1687,15 @@ function NodeEditModal({
         }
         return baseConfig;
       }
-      case "menu":      return { text: menuText, options: menuOptions, ...(menuVar.trim() ? { variable: menuVar.trim() } : {}), ...actionFragment };
+      case "menu": {
+        const normalizedMenuVar = normalizeMenuVariableName(menuVar);
+        return {
+          text: menuText,
+          options: menuOptions,
+          ...(normalizedMenuVar ? { variable: normalizedMenuVar } : {}),
+          ...actionFragment,
+        };
+      }
       case "condition": {
         const expression = buildConditionExpression(condVar, condOp, condVal);
         return {
@@ -1760,6 +1786,23 @@ function NodeEditModal({
     if (type === "menu" && !showJson && hasMenuValidationErrors) {
       setErr(t("nodeModal.menuValidation"));
       return;
+    }
+    if (type === "menu" && !showJson) {
+      const hasFallbackNext = Boolean(String(next ?? "").trim());
+      const hasOptionsWithoutNext = menuValidation.missingNextIndexes.length > 0;
+      const isFirstMenuNode = id.trim().toLowerCase() === "node_1";
+
+      if (hasOptionsWithoutNext && !hasFallbackNext) {
+        setErr("Configura next en cada opción del menú o define un Siguiente nodo (next) como fallback.");
+        return;
+      }
+
+      if (isFirstMenuNode && !hasFallbackNext) {
+        setErr("En el nodo inicial se recomienda definir Siguiente nodo (next) para evitar bloqueos en clientes WABA.");
+        return;
+      }
+
+      setMenuVar(normalizeMenuVariableName(menuVar));
     }
     let branches: Record<string, string>;
     if (type === "condition" && !showJson) {
@@ -2002,7 +2045,7 @@ function NodeEditModal({
                   )}
                   <div className="bg-slate-50 rounded-lg border border-slate-100 p-4">
                     <label className="block text-xs font-medium text-slate-600 mb-2">Guardar selección en variable</label>
-                    <VarComboInput value={menuVar} onChange={setMenuVar} placeholder="variables.opcion_menu"
+                    <VarComboInput value={menuVar} onChange={setMenuVar} placeholder="opcion_menu"
                       suggestions={flowVariables.length > 0 ? flowVariables : MENU_VARIABLE_PRESETS}
                       className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500" />
                   </div>
