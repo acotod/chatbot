@@ -707,6 +707,9 @@ router.post('/', verifyMetaSignature, async (req, res, next) => {
           phoneNumberId: value?.metadata?.phone_number_id ?? null,
           messagesCount: Array.isArray(value?.messages) ? value.messages.length : 0,
           statusesCount: Array.isArray(value?.statuses) ? value.statuses.length : 0,
+          firstMessageId: value?.messages?.[0]?.id ?? null,
+          firstMessageFrom: value?.messages?.[0]?.from ?? null,
+          firstMessageType: value?.messages?.[0]?.type ?? null,
         }));
 
         if (!(value?.messages?.length) && !(value?.statuses?.length)) {
@@ -787,14 +790,32 @@ router.post('/', verifyMetaSignature, async (req, res, next) => {
 
         // Handle incoming messages
         for (const msg of value.messages ?? []) {
-          await _handleIncomingMessage({
-            msg,
-            contacts: value.contacts,
-            tenant,
-            phoneNumberId,
-            accessToken,
-            correlationId: req.correlationId,
-          });
+          try {
+            await _handleIncomingMessage({
+              msg,
+              contacts: value.contacts,
+              tenant,
+              phoneNumberId,
+              accessToken,
+              correlationId: req.correlationId,
+            });
+            console.warn('[WA_WEBHOOK_MESSAGE_HANDLED]', JSON.stringify({
+              tenantId: tenant.id,
+              phoneNumberId,
+              waMsgId: msg?.id ?? null,
+              from: msg?.from ?? null,
+              type: msg?.type ?? null,
+            }));
+          } catch (msgErr) {
+            console.error('[WA_WEBHOOK_MESSAGE_HANDLE_ERROR]', JSON.stringify({
+              tenantId: tenant.id,
+              phoneNumberId,
+              waMsgId: msg?.id ?? null,
+              from: msg?.from ?? null,
+              type: msg?.type ?? null,
+              message: msgErr?.message ?? String(msgErr),
+            }));
+          }
         }
       }
     }
