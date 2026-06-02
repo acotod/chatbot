@@ -1818,6 +1818,19 @@ router.post('/send', requireJwt, async (req, res, next) => {
 
     return res.json({ ok: true, mensajeId: mensaje.id, waResponse: waResp });
   } catch (err) {
+    const status = Number(err?.status) || 0;
+    const waMessage = String(err?.waError?.message ?? err?.message ?? '').toLowerCase();
+    const invalidMetaCredentials = status === 400
+      && (waMessage.includes('unsupported post request')
+        || waMessage.includes('does not exist')
+        || waMessage.includes('missing permissions'));
+
+    if (invalidMetaCredentials) {
+      return res.status(422).json({
+        error: 'Invalid WhatsApp credentials for tenant (phoneNumberId/accessToken)',
+      });
+    }
+
     next(err);
   }
 });
