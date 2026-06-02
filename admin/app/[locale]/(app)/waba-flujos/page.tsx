@@ -505,6 +505,160 @@ function normalizeFlowDefinition(definition: FlowDefinition): FlowDefinition {
   return withUniqueNodePositions(withAutoLayout, flatNodes);
 }
 
+function getNodeOutgoingTargets(node: NodeDef): string[] {
+  const targets = new Set<string>();
+  if (typeof node.next === "string" && node.next.trim()) {
+    targets.add(node.next.trim());
+  }
+
+  const branches = asObjectRecord(node.branches);
+  if (branches) {
+    Object.values(branches).forEach((value) => {
+      if (typeof value === "string" && value.trim()) {
+        targets.add(value.trim());
+      }
+    });
+  }
+
+  return Array.from(targets);
+}
+
+function findReachableNodeIds(entryPoint: string, adjacency: Map<string, string[]>): Set<string> {
+  const reachable = new Set<string>();
+  const stack = [entryPoint];
+
+  while (stack.length > 0) {
+    const current = stack.pop();
+    if (!current || reachable.has(current)) continue;
+    reachable.add(current);
+    const nextTargets = adjacency.get(current) ?? [];
+    nextTargets.forEach((target) => {
+      if (!reachable.has(target)) stack.push(target);
+    });
+  }
+
+  return reachable;
+}
+
+function detectClosedCycles(adjacency: Map<string, string[]>, entryPoint: string): string[][] {
+  const nodes = Array.from(adjacency.keys());
+  const indexMap = new Map<string, number>();
+  const lowMap = new Map<string, number>();
+  const onStack = new Set<string>();
+  const stack: string[] = [];
+  const components: string[][] = [];
+  let index = 0;
+
+  function strongConnect(nodeId: string) {
+    indexMap.set(nodeId, index);
+    lowMap.set(nodeId, index);
+    index += 1;
+    stack.push(nodeId);
+    onStack.add(nodeId);
+
+    const targets = adjacency.get(nodeId) ?? [];
+    targets.forEach((target) => {
+      if (!indexMap.has(target)) {
+        strongConnect(target);
+        lowMap.set(nodeId, Math.min(lowMap.get(nodeId) ?? 0, lowMap.get(target) ?? 0));
+      } else if (onStack.has(target)) {
+        lowMap.set(nodeId, Math.min(lowMap.get(nodeId) ?? 0, indexMap.get(target) ?? 0));
+      }
+    });
+
+    if ((lowMap.get(nodeId) ?? -1) === (indexMap.get(nodeId) ?? -1)) {
+      const component: string[] = [];
+      while (stack.length > 0) {
+        const current = stack.pop() as string;
+        onStack.delete(current);
+        component.push(current);
+        if (current === nodeId) break;
+      }
+      components.push(component);
+    }
+  }
+
+  nodes.forEach((nodeId) => {
+    if (!indexMap.has(nodeId)) strongConnect(nodeId);
+  });
+
+  const reachable = findReachableNodeIds(entryPoint, adjacency);
+
+  return components.filter((component) => {
+    const isReachableComponent = component.some((nodeId) => reachable.has(nodeId));
+    if (!isReachableComponent) return false;
+
+    const hasCycle = component.length > 1 || (adjacency.get(component[0]) ?? []).includes(component[0]);
+    if (!hasCycle) return false;
+
+    const componentSet = new Set(component);
+    const hasExit = component.some((nodeId) => {
+      const targets = adjacency.get(nodeId) ?? [];
+      return targets.some((target) => !componentSet.has(target));
+    });
+
+    return !hasExit;
+  });
+}
+
+function validateFlowGraph(definition: FlowDefinition): { errors: string[]; warnings: string[] } {
+  const errors: string[] = [];
+  const warnings: string[] = [];
+
+  const flatNodes = flattenNodes(definition.nodes);
+  const nodesById = new Map(flatNodes.map((node) => [node.id, node]));
+  const nodeIds = new Set(Array.from(nodesById.keys()));
+  const entryPoint = String(definition.entry_point ?? "").trim();
+
+  if (!entryPoint) {
+    errors.push("Falta entry_point en el flujo.");
+    return { errors, warnings };
+  }
+
+  if (!nodeIds.has(entryPoint)) {
+    errors.push(`El entry_point (${entryPoint}) no existe en la lista de nodos.`);
+    return { errors, warnings };
+  }
+
+  const adjacency = new Map<string, string[]>();
+
+  flatNodes.forEach((node) => {
+    const outgoing = getNodeOutgoingTargets(node);
+    adjacency.set(node.id, outgoing);
+
+    outgoing.forEach((target) => {
+      if (!nodeIds.has(target)) {
+        errors.push(`El nodo ${node.id} apunta a un destino inexistente: ${target}.`);
+      }
+    });
+
+    if (node.type !== "end" && outgoing.length === 0) {
+      const level = node.id === entryPoint ? errors : warnings;
+      level.push(`El nodo ${node.id} no tiene salida (next/branches).`);
+    }
+  });
+
+  const reachable = findReachableNodeIds(entryPoint, adjacency);
+  flatNodes.forEach((node) => {
+    if (!reachable.has(node.id)) {
+      warnings.push(`Nodo huérfano no alcanzable desde entry_point: ${node.id}.`);
+    }
+  });
+
+  const closedCycles = detectClosedCycles(adjacency, entryPoint);
+  closedCycles.forEach((component) => {
+    const hasTerminalInCycle = component.some((nodeId) => {
+      const node = nodesById.get(nodeId);
+      return node?.type === "end";
+    });
+    if (!hasTerminalInCycle) {
+      errors.push(`Ciclo sin salida detectado: ${component.join(" -> ")}.`);
+    }
+  });
+
+  return { errors, warnings };
+}
+
 function parseJsonLenient(raw: string): unknown {
   const base = raw.trim();
   if (!base) throw new Error("empty");
@@ -3104,6 +3258,22 @@ function FlowBuilder({
 
   async function handleSaveVersion() {
     if (!definition) return;
+    const graphValidation = validateFlowGraph(definition);
+    if (graphValidation.errors.length > 0) {
+      setValidation({
+        internal: {
+          valid: false,
+          errors: graphValidation.errors,
+          warnings: graphValidation.warnings,
+        },
+        waba: {
+          valid: true,
+          errors: [],
+        },
+      });
+      setSaveError(graphValidation.errors[0]);
+      return;
+    }
     setSaveError("");
     setSaving(true);
     try {
