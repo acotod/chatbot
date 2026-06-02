@@ -671,6 +671,13 @@ router.post('/', verifyMetaSignature, async (req, res, next) => {
       for (const change of entry.changes ?? []) {
         const changeField = change?.field;
         if (changeField !== 'messages') {
+          console.warn('[WA_WEBHOOK_IGNORED_FIELD]', JSON.stringify({
+            field: changeField,
+            hasValue: Boolean(change?.value),
+            hasMessages: Boolean(change?.value?.messages?.length),
+            hasStatuses: Boolean(change?.value?.statuses?.length),
+            phoneNumberId: change?.value?.metadata?.phone_number_id ?? null,
+          }));
           logger.warn('WhatsApp webhook change ignored (unsupported field)', {
             field: changeField,
             hasValue: Boolean(change?.value),
@@ -684,6 +691,10 @@ router.post('/', verifyMetaSignature, async (req, res, next) => {
 
         const phoneNumberId = value.metadata?.phone_number_id;
         if (!phoneNumberId) {
+          console.warn('[WA_WEBHOOK_MISSING_PHONE_ID]', JSON.stringify({
+            field: changeField,
+            valueKeys: Object.keys(value ?? {}),
+          }));
           logger.warn('WhatsApp webhook change ignored (missing phone_number_id)', {
             field: changeField,
             valueKeys: Object.keys(value ?? {}),
