@@ -296,6 +296,7 @@ async function resolveMetaAppSecrets(req) {
 
 async function verifyMetaSignature(req, res, next) {
   try {
+    const allowFailOpen = String(process.env.WA_SIGNATURE_FAIL_OPEN ?? '').trim() === '1';
     const secretCandidates = await resolveMetaAppSecrets(req);
     if (!secretCandidates.length) {
       logger.warn('WA_APP_SECRET not set: webhook signature verification is disabled');
@@ -304,6 +305,12 @@ async function verifyMetaSignature(req, res, next) {
 
     const sig = req.headers['x-hub-signature-256'];
     if (!sig) {
+      if (allowFailOpen) {
+        logger.warn('Missing webhook signature accepted because WA_SIGNATURE_FAIL_OPEN=1', {
+          correlationId: req.correlationId,
+        });
+        return next();
+      }
       return res.status(401).json({ error: 'Missing webhook signature' });
     }
 
@@ -320,6 +327,12 @@ async function verifyMetaSignature(req, res, next) {
         headerLength: received.length,
         headerSample: received.slice(0, 32),
       });
+      if (allowFailOpen) {
+        logger.warn('Invalid webhook signature format accepted because WA_SIGNATURE_FAIL_OPEN=1', {
+          correlationId: req.correlationId,
+        });
+        return next();
+      }
       return res.status(401).json({ error: 'Invalid webhook signature' });
     }
 
@@ -355,10 +368,22 @@ async function verifyMetaSignature(req, res, next) {
         bodyPreview,
         contentType: req.headers['content-type'],
       });
+      if (allowFailOpen) {
+        logger.warn('Webhook signature mismatch accepted because WA_SIGNATURE_FAIL_OPEN=1', {
+          correlationId: req.correlationId,
+        });
+        return next();
+      }
       return res.status(401).json({ error: 'Invalid webhook signature' });
     }
   } catch (err) {
     if (err instanceof RangeError) {
+      if (String(process.env.WA_SIGNATURE_FAIL_OPEN ?? '').trim() === '1') {
+        logger.warn('Webhook signature RangeError accepted because WA_SIGNATURE_FAIL_OPEN=1', {
+          correlationId: req.correlationId,
+        });
+        return next();
+      }
       return res.status(401).json({ error: 'Invalid webhook signature' });
     }
     return next(err);

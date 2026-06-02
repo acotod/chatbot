@@ -59,6 +59,7 @@ services:
       JWT_SECRET: ${JWT_SECRET}
       NODE_ENV: ${NODE_ENV:-production}
       PORT: ${PORT:-3000}
+      WA_SIGNATURE_FAIL_OPEN: ${WA_SIGNATURE_FAIL_OPEN:-0}
       WA_VERIFY_TOKEN: ${WA_VERIFY_TOKEN}
       ADMIN_API_KEY: ${ADMIN_API_KEY}
     ports:
