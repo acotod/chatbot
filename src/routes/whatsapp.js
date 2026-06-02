@@ -665,7 +665,14 @@ router.post('/', verifyMetaSignature, async (req, res, next) => {
 
   try {
     const body = req.body;
-    if (body.object !== 'whatsapp_business_account') return;
+    if (body.object !== 'whatsapp_business_account') {
+      const fields = (body?.entry ?? []).flatMap((entry) => (entry?.changes ?? []).map((change) => change?.field)).filter(Boolean);
+      console.warn('[WA_WEBHOOK_IGNORED_OBJECT]', JSON.stringify({
+        object: body?.object ?? null,
+        fields,
+      }));
+      return;
+    }
 
     for (const entry of body.entry ?? []) {
       for (const change of entry.changes ?? []) {
@@ -688,6 +695,14 @@ router.post('/', verifyMetaSignature, async (req, res, next) => {
           continue;
         }
         const value = change.value;
+
+        if (!(value?.messages?.length) && !(value?.statuses?.length)) {
+          console.warn('[WA_WEBHOOK_EMPTY_MESSAGES_CHANGE]', JSON.stringify({
+            field: changeField,
+            valueKeys: Object.keys(value ?? {}),
+            phoneNumberId: value?.metadata?.phone_number_id ?? null,
+          }));
+        }
 
         const phoneNumberId = value.metadata?.phone_number_id;
         if (!phoneNumberId) {
