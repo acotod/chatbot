@@ -703,6 +703,12 @@ router.post('/', verifyMetaSignature, async (req, res, next) => {
         }
         const value = change.value;
 
+        console.warn('[WA_WEBHOOK_MESSAGES_FIELD]', JSON.stringify({
+          phoneNumberId: value?.metadata?.phone_number_id ?? null,
+          messagesCount: Array.isArray(value?.messages) ? value.messages.length : 0,
+          statusesCount: Array.isArray(value?.statuses) ? value.statuses.length : 0,
+        }));
+
         if (!(value?.messages?.length) && !(value?.statuses?.length)) {
           console.warn('[WA_WEBHOOK_EMPTY_MESSAGES_CHANGE]', JSON.stringify({
             field: changeField,
