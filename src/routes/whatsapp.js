@@ -2032,6 +2032,16 @@ async function handleMetaFlowsDataExchange(req, res, next) {
     const requestBody = encryptedContext?.decryptedBody ?? req.body;
     const { flow_token, action, screen, data = {} } = requestBody;
 
+    logger.info('Meta Flows request received', {
+      tenantSlugFromQuery: tenantSlugFromQuery || null,
+      tenantIdFromQuery: tenantFromQuery?.id ?? null,
+      encrypted: Boolean(encryptedContext),
+      hasFlowToken: Boolean(flow_token),
+      action: normalizeFlowText(action) || null,
+      screen: normalizeFlowText(screen) || null,
+      dataKeys: data && typeof data === 'object' ? Object.keys(data).slice(0, 20) : [],
+    });
+
     // Ping health check from Meta
     if (action === 'ping') {
       return sendFlowResponse(res, { data: { status: 'active' } }, encryptedContext);
