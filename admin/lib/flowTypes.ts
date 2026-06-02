@@ -274,6 +274,10 @@ export interface NodeData {
   next?: string | null;
   branches?: Record<string, string>;
   parentId?: string | null;
+  validation?: {
+    severity: 'error' | 'warning';
+    messages: string[];
+  };
   hierarchy?: {
     depth: number;
     childCount: number;

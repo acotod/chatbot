@@ -73,6 +73,9 @@ export interface CanvasEditorProps {
   /** Callback when a node is selected for editing */
   onNodeClick?: (nodeId: string) => void;
 
+  /** Validation state per node id for visual highlighting */
+  nodeValidation?: Record<string, { severity: 'error' | 'warning'; messages: string[] }>;
+
   /** Whether the canvas is in read-only mode */
   readOnly?: boolean;
 
@@ -86,6 +89,7 @@ function CanvasEditorInner({
   definition,
   onChange,
   onNodeClick,
+  nodeValidation = {},
   readOnly = false,
   className = '',
 }: CanvasEditorProps) {
@@ -99,12 +103,21 @@ function CanvasEditorInner({
 
   // Initialize nodes and edges from definition
   useEffect(() => {
-    const rfNodes = toReactFlowNodes(definition);
+    const rfNodes = toReactFlowNodes(definition).map((node) => ({
+      ...node,
+      data: {
+        ...node.data,
+        validation: nodeValidation[node.id],
+      },
+    }));
     const rfEdges = toReactFlowEdges(definition);
 
     setNodes(rfNodes);
     setEdges(rfEdges);
-  }, [definition, setNodes, setEdges]);
+  }, [definition, nodeValidation, setNodes, setEdges]);
+
+  const errorNodeCount = Object.values(nodeValidation).filter((item) => item.severity === 'error').length;
+  const warningNodeCount = Object.values(nodeValidation).filter((item) => item.severity === 'warning').length;
 
   // Handle node position changes
   const handleNodesChange = useCallback(
@@ -304,6 +317,14 @@ function CanvasEditorInner({
               <p className="truncate text-sm font-semibold text-slate-800">{selectedNode?.id ?? 'Ninguno'}</p>
             </div>
           </div>
+
+          {(errorNodeCount > 0 || warningNodeCount > 0) && (
+            <div className="mt-2 rounded-xl border border-slate-200 bg-slate-50 p-2 text-[11px] text-slate-700">
+              <p className="font-semibold text-slate-700">Validacion visual</p>
+              <p className="text-red-700">Errores: {errorNodeCount}</p>
+              <p className="text-amber-700">Warnings: {warningNodeCount}</p>
+            </div>
+          )}
 
           {showShortcuts && (
             <div className="mt-2 rounded-xl border border-slate-200 bg-slate-50 p-2 text-[11px] text-slate-600">

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback, useRef } from "react";
+import { useEffect, useState, useCallback, useRef, useMemo } from "react";
 import {
   Upload,
   Download,
@@ -657,6 +657,50 @@ function validateFlowGraph(definition: FlowDefinition): { errors: string[]; warn
   });
 
   return { errors, warnings };
+}
+
+function buildNodeValidationMap(
+  nodeIds: string[],
+  errors: string[],
+  warnings: string[]
+): Record<string, { severity: "error" | "warning"; messages: string[] }> {
+  const map: Record<string, { severity: "error" | "warning"; messages: string[] }> = {};
+
+  function append(nodeId: string, severity: "error" | "warning", message: string) {
+    if (!map[nodeId]) {
+      map[nodeId] = { severity, messages: [] };
+    }
+    map[nodeId].messages.push(message);
+    if (severity === "error") {
+      map[nodeId].severity = "error";
+    }
+  }
+
+  function extractNodeId(message: string): string | null {
+    const directNodeMatch = message.match(/\b(node_[a-zA-Z0-9_\-]+)\b/i);
+    if (directNodeMatch?.[1]) return directNodeMatch[1];
+
+    const byPattern = message.match(/nodo\s+([a-zA-Z0-9_\-]+)/i);
+    if (byPattern?.[1]) return byPattern[1];
+
+    return null;
+  }
+
+  errors.forEach((message) => {
+    const nodeId = extractNodeId(message);
+    if (nodeId && nodeIds.includes(nodeId)) {
+      append(nodeId, "error", message);
+    }
+  });
+
+  warnings.forEach((message) => {
+    const nodeId = extractNodeId(message);
+    if (nodeId && nodeIds.includes(nodeId)) {
+      append(nodeId, "warning", message);
+    }
+  });
+
+  return map;
 }
 
 function parseJsonLenient(raw: string): unknown {
@@ -3035,6 +3079,10 @@ function FlowBuilder({
   const validationWarnings = validation?.internal?.warnings ?? [];
   const wabaValidationErrors = validation?.waba?.errors ?? [];
   const flatNodesList = definition ? flattenNodes(definition.nodes) : [];
+  const nodeValidationMap = useMemo(
+    () => buildNodeValidationMap(flatNodesList.map((node) => node.id), validationErrors, validationWarnings),
+    [flatNodesList, validationErrors, validationWarnings]
+  );
 
   const loadLatestVersion = useCallback(async () => {
     try {
@@ -3402,6 +3450,7 @@ function FlowBuilder({
                   <CanvasEditor
                     definition={definition}
                     onChange={handleCanvasChange}
+                    nodeValidation={nodeValidationMap}
                     onNodeClick={(nodeId) => {
                       const selectedNode = flatNodesList.find((node) => node.id === nodeId);
                       if (selectedNode) {

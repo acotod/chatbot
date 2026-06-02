@@ -22,19 +22,34 @@ export const BaseNode = React.memo(
       const typeKey = data.type as keyof typeof NODE_META;
       const meta = NODE_META[typeKey] || { color: '#888', bg: '#f0f0f0', label: data.type };
       const hierarchy = data.hierarchy;
+      const validation = data.validation;
+      const hasError = validation?.severity === 'error';
+      const hasWarning = validation?.severity === 'warning';
+      const issueCount = validation?.messages?.length ?? 0;
 
       // Truncate label for display
       const displayLabel = data.label ? (data.label.length > 25 ? `${data.label.substring(0, 22)}...` : data.label) : data.id;
+
+      const baseBorderClass = hasError
+        ? 'border-red-500'
+        : hasWarning
+        ? 'border-amber-500'
+        : 'border-gray-300';
+      const selectedClass = hasError
+        ? 'ring-2 ring-red-300 border-red-600'
+        : hasWarning
+        ? 'ring-2 ring-amber-300 border-amber-600'
+        : 'ring-2 ring-blue-400 border-blue-500';
 
       return (
         <div
           ref={ref}
           className={`px-3 py-2 rounded-lg border-2 transition-all ${
-            selected ? 'ring-2 ring-blue-400 border-blue-500' : 'border-gray-300'
+            selected ? selectedClass : baseBorderClass
           }`}
+          title={validation?.messages?.join('\n')}
           style={{
             backgroundColor: meta.bg,
-            borderColor: meta.color,
             minWidth: '140px',
             textAlign: 'center',
             fontSize: '12px',
@@ -59,6 +74,11 @@ export const BaseNode = React.memo(
           {data.parentId ? (
             <div className="mt-1 text-[10px] text-gray-500">
               Padre: {data.parentId}
+            </div>
+          ) : null}
+          {validation && issueCount > 0 ? (
+            <div className={`mt-1 text-[10px] font-semibold ${hasError ? 'text-red-700' : 'text-amber-700'}`}>
+              {hasError ? 'Errores' : 'Warnings'}: {issueCount}
             </div>
           ) : null}
 
