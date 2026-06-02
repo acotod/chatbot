@@ -576,11 +576,89 @@ describe('nodeExecutors root-cause guards', () => {
     getCalendarAssignmentContextSpy.mockRestore();
   });
 
+  test('calendar select_slot can resolve a natural-language psychologist choice with llm and reserve it', async () => {
+    const calendarService = require('../src/services/calendarService');
+    const bookSlotSpy = jest.spyOn(calendarService, 'bookSlot').mockResolvedValue({
+      appointment: {
+        id: 'appt-llm-1',
+        startTime: new Date('2026-06-03T13:00:00.000Z'),
+        endTime: new Date('2026-06-03T14:00:00.000Z'),
+      },
+    });
+    const getCalendarAssignmentContextSpy = jest
+      .spyOn(calendarService, 'getCalendarAssignmentContext')
+      .mockResolvedValue(null);
+
+    const llmService = {
+      callLlmForJson: jest.fn().mockResolvedValue({
+        json: {
+          matched: true,
+          slot_id: 'slot-2',
+          calendar_id: 'cal-2',
+          reason: 'El usuario eligio a Bruno el miercoles temprano.',
+        },
+      }),
+    };
+
+    const node = {
+      id: 'node_calendar',
+      type: 'calendar',
+      next: 'node_confirm',
+      config: {
+        action: 'select_slot',
+      },
+    };
+
+    const result = await executeNode(node, {
+      input: 'prefiero con Bruno el miercoles a las 8',
+      variables: {
+        selected_calendar_id: 'cal-1',
+        agenda_horarios_disponibles_items: [
+          {
+            slotId: 'slot-1',
+            calendarId: 'cal-1',
+            agenteNombre: 'Dra. Ana',
+            slotLabel: 'mié, 3 jun, 09:00',
+            dayLabel: 'miercoles 3 de junio',
+            hourLabel: '09:00',
+            startTime: '2026-06-03T14:00:00.000Z',
+          },
+          {
+            slotId: 'slot-2',
+            calendarId: 'cal-2',
+            agenteNombre: 'Dr. Bruno',
+            slotLabel: 'mié, 3 jun, 08:00',
+            dayLabel: 'miercoles 3 de junio',
+            hourLabel: '08:00',
+            startTime: '2026-06-03T13:00:00.000Z',
+          },
+        ],
+      },
+      tenantId: 'tenant-1',
+      llmService,
+    });
+
+    expect(bookSlotSpy).toHaveBeenCalledWith(expect.objectContaining({
+      calendarId: 'cal-2',
+      slotId: 'slot-2',
+    }));
+    expect(result.updatedVars).toEqual(expect.objectContaining({
+      selected_calendar_id: 'cal-2',
+      appointment_id: 'appt-llm-1',
+    }));
+
+    bookSlotSpy.mockRestore();
+    getCalendarAssignmentContextSpy.mockRestore();
+  });
+
   test('calendar select_slot retries with friendly error when input is not a valid slot', async () => {
     const calendarService = require('../src/services/calendarService');
     const getAvailableSlotsSpy = jest.spyOn(calendarService, 'getAvailableSlots').mockResolvedValue([
       { id: '11111111-1111-1111-1111-111111111111', startTime: new Date('2026-05-29T15:00:00.000Z') },
     ]);
+    const getCalendarAssignmentContextSpy = jest
+      .spyOn(calendarService, 'getCalendarAssignmentContext')
+      .mockResolvedValue(null);
     const bookSlotSpy = jest.spyOn(calendarService, 'bookSlot').mockResolvedValue({ error: 'SLOT_NOT_FOUND' });
 
     const node = {
@@ -595,18 +673,58 @@ describe('nodeExecutors root-cause guards', () => {
 
     const result = await executeNode(node, {
       input: 'hola',
-      variables: { selected_calendar_id: 'cal-1' },
+      variables: {
+        selected_calendar_id: 'cal-1',
+        agenda_horarios_disponibles_summary: 'Horarios disponibles: jueves 10:00 y jueves 11:00.',
+      },
       tenantId: 'tenant-1',
     });
 
     expect(bookSlotSpy).not.toHaveBeenCalled();
     expect(result.nextNodeId).toBe('node_calendar');
-    expect(result.output).toEqual({
-      type: 'text',
-      text: 'La opcion no es valida. Selecciona una fecha y hora de la lista.',
-    });
+    expect(result.output).toEqual(expect.objectContaining({
+      text: expect.stringContaining('La opcion no es valida. Selecciona una fecha y hora de la lista.'),
+    }));
 
     getAvailableSlotsSpy.mockRestore();
+    getCalendarAssignmentContextSpy.mockRestore();
+    bookSlotSpy.mockRestore();
+  });
+
+  test('calendar select_slot advances when user no longer wants the reservation', async () => {
+    const calendarService = require('../src/services/calendarService');
+    const bookSlotSpy = jest.spyOn(calendarService, 'bookSlot').mockResolvedValue({ error: 'SHOULD_NOT_CALL' });
+
+    const node = {
+      id: 'node_calendar',
+      type: 'calendar',
+      next: 'node_next',
+      config: {
+        action: 'select_slot',
+        cancel_text: 'Entendido, continuo sin agendar la cita.',
+      },
+      branches: {
+        cancel: 'node_skip_booking',
+      },
+    };
+
+    const result = await executeNode(node, {
+      input: 'ya no lo quiero',
+      variables: { selected_calendar_id: 'cal-1' },
+      tenantId: 'tenant-1',
+    });
+
+    expect(bookSlotSpy).not.toHaveBeenCalled();
+    expect(result.nextNodeId).toBe('node_skip_booking');
+    expect(result.output).toEqual({
+      type: 'text',
+      text: 'Entendido, continuo sin agendar la cita.',
+    });
+    expect(result.updatedVars).toEqual(expect.objectContaining({
+      appointment_status: 'cancelled_by_user',
+      selected_slot_id: null,
+    }));
+
     bookSlotSpy.mockRestore();
   });
 

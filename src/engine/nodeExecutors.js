@@ -1249,6 +1249,20 @@ async function executeCalendar({ node, input, variables, tenantId, llmService })
 
   if (action === 'select_slot') {
     if (!input) return executeCalendar({ node: Object.assign({}, node, { action: 'show_availability' }), input: null, variables, tenantId });
+    if (_looksLikeCalendarSelectionCancelled(input)) {
+      return {
+        output: cfg.cancel_text
+          ? { type: 'text', text: cfg.cancel_text }
+          : null,
+        nextNodeId: (node.branches && (node.branches.cancel || node.branches.cancelled || node.branches.decline || node.branches.rejected)) || node.next,
+        updatedVars: {
+          selected_slot_id: null,
+          appointment_status: 'cancelled_by_user',
+        },
+        terminal: false,
+        fallback: false,
+      };
+    }
     if (!calendarId) {
       return { output: { type: 'text', text: cfg.error_text || 'No pude completar la reserva. Intenta de nuevo.' }, nextNodeId: (node.branches && node.branches.error) || node.next, updatedVars: {}, terminal: false, fallback: false };
     }
@@ -1349,15 +1363,41 @@ async function executeCalendar({ node, input, variables, tenantId, llmService })
         };
       }
 
+      const llmMatch = await _resolveAvailabilitySelectionWithLlm({
+        tenantId,
+        llmService,
+        cfg,
+        userInput: rawInput,
+        entries: topSlots,
+        fallbackCalendarId: calendarId,
+      });
+      if (llmMatch?.slotId) return llmMatch;
+
       return null;
     };
 
     const resolvedSelection = await resolveSlotIdFromInput();
     if (!resolvedSelection?.slotId) {
+      const retryAvailability = await executeCalendar({
+        node: Object.assign({}, node, {
+          action: 'show_availability',
+          config: Object.assign({}, node.config || {}, {
+            action: 'show_availability',
+            prompt: [
+              cfg.retry_text || cfg.error_text || 'No identifique un horario valido. Elige una de estas opciones.',
+              String(variables?.[availabilitySummaryVarName] || '').trim(),
+            ].filter(Boolean).join('\n\n'),
+          }),
+        }),
+        input: null,
+        variables,
+        tenantId,
+        llmService,
+      });
       return {
-        output: { type: 'text', text: cfg.error_text || 'La opcion no es valida. Selecciona un horario de la lista.' },
-        nextNodeId: node.id,
-        updatedVars: {},
+        output: retryAvailability.output || { type: 'text', text: cfg.error_text || 'La opcion no es valida. Selecciona un horario de la lista.' },
+        nextNodeId: retryAvailability.nextNodeId || node.id,
+        updatedVars: retryAvailability.updatedVars || {},
         terminal: false,
         fallback: false,
       };
@@ -1516,8 +1556,8 @@ async function _collectAvailabilityEntries({ calendarService, calendarCandidates
         calendarName: candidate.name ?? null,
         agenteId: candidate.agenteId ?? null,
         agenteNombre: candidate.agenteNombre ?? null,
-        startTime: slot.startTime instanceof Date ? slot.startTime.toISOString() : new Date(slot.startTime).toISOString(),
-        endTime: slot.endTime instanceof Date ? slot.endTime.toISOString() : new Date(slot.endTime).toISOString(),
+        startTime: _toIsoOrNull(slot.startTime),
+        endTime: _toIsoOrNull(slot.endTime),
         timezone: slot.timezone ?? null,
         slotLabel: _formatSlotLabel(slot.startTime, slot.timezone),
         dayLabel: _formatSlotDay(slot.startTime, slot.timezone),
@@ -1701,6 +1741,100 @@ function _normalizeAvailabilityEntry(entry) {
     hourLabel,
     dateKey,
   };
+}
+
+function _toIsoOrNull(value) {
+  if (!value) return null;
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  return date.toISOString();
+}
+
+async function _resolveAvailabilitySelectionWithLlm({ tenantId, llmService, cfg, userInput, entries, fallbackCalendarId = null }) {
+  const useLlm = _coerceBoolean(
+    cfg.llm_select_slot ?? cfg.use_llm_for_slot_selection ?? cfg.select_slot_with_llm ?? true,
+    true,
+  );
+
+  if (!useLlm || !llmService || !tenantId) return null;
+  if (!Array.isArray(entries) || entries.length === 0) return null;
+
+  const normalizedEntries = entries
+    .map((entry) => _normalizeAvailabilityEntry(entry))
+    .filter(Boolean)
+    .slice(0, 10);
+  if (!normalizedEntries.length) return null;
+
+  const systemPrompt = [
+    'Eres un asistente que selecciona un horario exacto para reservar una cita.',
+    'Debes elegir SOLO entre las opciones disponibles entregadas.',
+    'Si el mensaje del usuario no confirma claramente una opcion, devuelve matched=false.',
+    'Devuelve SOLO JSON valido con esta estructura:',
+    '{"matched":true|false,"slot_id":"string|null","calendar_id":"string|null","reason":"string"}',
+  ].join('\n');
+
+  const userPrompt = JSON.stringify({
+    user_input: String(userInput || ''),
+    opciones: normalizedEntries.map((entry, index) => ({
+      index: index + 1,
+      slot_id: entry.slotId,
+      calendar_id: entry.calendarId,
+      agente: entry.agenteNombre,
+      agenda: entry.calendarName,
+      fecha: entry.dayLabel,
+      hora: entry.hourLabel,
+      slot_label: entry.slotLabel,
+    })),
+  });
+
+  try {
+    const result = await llmService.callLlmForJson(tenantId, systemPrompt, userPrompt);
+    const json = result?.json;
+    if (!json || typeof json !== 'object' || Array.isArray(json)) return null;
+    if (!_coerceBoolean(json.matched, false)) return null;
+
+    const slotId = String(json.slot_id ?? '').trim();
+    if (!slotId) return null;
+
+    const matchedEntry = normalizedEntries.find((entry) => entry.slotId === slotId);
+    if (!matchedEntry) return null;
+
+    return {
+      slotId: matchedEntry.slotId,
+      calendarId: matchedEntry.calendarId || String(json.calendar_id ?? '').trim() || fallbackCalendarId || null,
+    };
+  } catch (err) {
+    logger.warn(
+      { tenantId, message: err.message },
+      'calendar node: failed to resolve slot selection with llm'
+    );
+    return null;
+  }
+}
+
+function _looksLikeCalendarSelectionCancelled(input) {
+  const normalized = String(input ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim();
+
+  if (!normalized) return false;
+
+  return [
+    'ya no',
+    'ya no quiero',
+    'no lo quiero',
+    'no quiero',
+    'no deseo',
+    'cancelar',
+    'cancela',
+    'dejalo asi',
+    'mejor no',
+    'ninguno',
+    'ninguna',
+    'no gracias',
+  ].some((token) => normalized.includes(token));
 }
 
 function _formatSlotLabel(date, timeZone = null) {
