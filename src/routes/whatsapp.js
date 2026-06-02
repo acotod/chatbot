@@ -665,11 +665,18 @@ router.post('/', verifyMetaSignature, async (req, res, next) => {
 
   try {
     const body = req.body;
+    const entryCount = Array.isArray(body?.entry) ? body.entry.length : 0;
+    const changeFields = (body?.entry ?? []).flatMap((entry) => (entry?.changes ?? []).map((change) => change?.field)).filter(Boolean);
+    console.warn('[WA_WEBHOOK_POST_SUMMARY]', JSON.stringify({
+      object: body?.object ?? null,
+      entryCount,
+      changeFields,
+    }));
+
     if (body.object !== 'whatsapp_business_account') {
-      const fields = (body?.entry ?? []).flatMap((entry) => (entry?.changes ?? []).map((change) => change?.field)).filter(Boolean);
       console.warn('[WA_WEBHOOK_IGNORED_OBJECT]', JSON.stringify({
         object: body?.object ?? null,
-        fields,
+        fields: changeFields,
       }));
       return;
     }
