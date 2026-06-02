@@ -912,11 +912,19 @@ async function _handleIncomingMessage({ msg, contacts, tenant, phoneNumberId, ac
     const openSolicitud = await db.findOpenSolicitudForUser(userId, tenant.id);
     if (openSolicitud && !hasInitialWabaFlow) {
       // Opcional: puedes personalizar el mensaje
-      await wa.sendText(phoneNumberId, phone, 'Ya tienes una solicitud activa. Por favor espera a que sea atendida antes de iniciar un nuevo trámite.', accessToken, tenant, userId, correlationId);
+      await _sendText(
+        phoneNumberId,
+        phone,
+        'Ya tienes una solicitud activa. Por favor espera a que sea atendida antes de iniciar un nuevo trámite.',
+        accessToken,
+        tenant,
+        userId,
+        correlationId,
+      );
       logger.info('Intento de reinicio de flujo bloqueado por solicitud activa', { tenantId: tenant.id, userId, phone });
       return {
         userId,
-        messageId: mensaje?.id,
+        messageId: null,
         conversationId: null,
         blockedByOpenSolicitud: true,
       };
