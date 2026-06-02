@@ -669,11 +669,27 @@ router.post('/', verifyMetaSignature, async (req, res, next) => {
 
     for (const entry of body.entry ?? []) {
       for (const change of entry.changes ?? []) {
-        if (change.field !== 'messages') continue;
+        const changeField = change?.field;
+        if (changeField !== 'messages') {
+          logger.info('WhatsApp webhook change ignored (unsupported field)', {
+            field: changeField,
+            hasValue: Boolean(change?.value),
+            hasMessages: Boolean(change?.value?.messages?.length),
+            hasStatuses: Boolean(change?.value?.statuses?.length),
+            phoneNumberId: change?.value?.metadata?.phone_number_id ?? null,
+          });
+          continue;
+        }
         const value = change.value;
 
         const phoneNumberId = value.metadata?.phone_number_id;
-        if (!phoneNumberId) continue;
+        if (!phoneNumberId) {
+          logger.warn('WhatsApp webhook change ignored (missing phone_number_id)', {
+            field: changeField,
+            valueKeys: Object.keys(value ?? {}),
+          });
+          continue;
+        }
 
         // Resolve tenant by phone_number_id
         const tenant = await db.findTenantByWaPhoneNumberId(phoneNumberId);
