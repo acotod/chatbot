@@ -671,7 +671,7 @@ router.post('/', verifyMetaSignature, async (req, res, next) => {
       for (const change of entry.changes ?? []) {
         const changeField = change?.field;
         if (changeField !== 'messages') {
-          logger.info('WhatsApp webhook change ignored (unsupported field)', {
+          logger.warn('WhatsApp webhook change ignored (unsupported field)', {
             field: changeField,
             hasValue: Boolean(change?.value),
             hasMessages: Boolean(change?.value?.messages?.length),
