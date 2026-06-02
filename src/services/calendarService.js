@@ -656,21 +656,13 @@ async function chooseCalendarByRoundRobin(calendars, { tenantId, puestoId = null
   }
 }
 
-/**
- * Resolve an active calendar for agents matching a puesto in a tenant.
- * Strategy can be random (default) or round_robin.
- *
- * @param {string} tenantId
- * @param {{ puestoId?: number|null, puestoNombre?: string|null, strategy?: string|null }} opts
- * @returns {Promise<string|null>}
- */
-async function getCalendarIdForPuesto(tenantId, { puestoId = null, puestoNombre = null, strategy = 'random' } = {}) {
-  if (!tenantId) return null;
+async function getCalendarsForPuesto(tenantId, { puestoId = null, puestoNombre = null } = {}) {
+  if (!tenantId) return [];
 
   const hasPuestoId = Number.isInteger(puestoId) && puestoId > 0;
   const normalizedPuestoNombre = String(puestoNombre || '').trim();
   const hasPuestoNombre = normalizedPuestoNombre.length > 0;
-  if (!hasPuestoId && !hasPuestoNombre) return null;
+  if (!hasPuestoId && !hasPuestoNombre) return [];
 
   const calendars = await prisma.calendar.findMany({
     where: {
@@ -696,7 +688,39 @@ async function getCalendarIdForPuesto(tenantId, { puestoId = null, puestoNombre 
       },
     },
     orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
-    select: { id: true },
+    select: {
+      id: true,
+      name: true,
+      agenteId: true,
+      agente: {
+        select: { id: true, nombre: true },
+      },
+    },
+  });
+
+  return calendars.map((calendar) => ({
+    id: calendar.id,
+    name: calendar.name ?? null,
+    agenteId: Number(calendar.agente?.id ?? calendar.agenteId ?? 0) || null,
+    agenteNombre: calendar.agente?.nombre ?? null,
+  }));
+}
+
+/**
+ * Resolve an active calendar for agents matching a puesto in a tenant.
+ * Strategy can be random (default) or round_robin.
+ *
+ * @param {string} tenantId
+ * @param {{ puestoId?: number|null, puestoNombre?: string|null, strategy?: string|null }} opts
+ * @returns {Promise<string|null>}
+ */
+async function getCalendarIdForPuesto(tenantId, { puestoId = null, puestoNombre = null, strategy = 'random' } = {}) {
+  if (!tenantId) return null;
+
+  const normalizedPuestoNombre = String(puestoNombre || '').trim();
+  const calendars = await getCalendarsForPuesto(tenantId, {
+    puestoId,
+    puestoNombre: normalizedPuestoNombre,
   });
 
   if (!calendars.length) return null;
@@ -947,6 +971,7 @@ module.exports = {
   getAvailableSlots,
   getCalendarIdForAgente,
   getCalendarAssignmentContext,
+  getCalendarsForPuesto,
   getCalendarIdForPuesto,
   getRandomCalendarIdForPuesto,
   bookSlot,

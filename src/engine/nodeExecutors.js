@@ -1007,12 +1007,58 @@ async function executeCalendar({ node, input, variables, tenantId, llmService })
   const cfg    = resolveConfig(node.config || {}, variables);
   const action = node.action || cfg.action || 'show_availability';
   const calendarVarName = String(cfg.calendar_variable || 'selected_calendar_id').trim() || 'selected_calendar_id';
+  const availabilityVarName = String(cfg.availability_variable || 'agenda_horarios_disponibles').trim() || 'agenda_horarios_disponibles';
+  const availabilityItemsVarName = `${availabilityVarName}_items`;
+  const availabilityStructuredVarName = `${availabilityVarName}_structured`;
+  const availabilitySummaryVarName = `${availabilityVarName}_summary`;
+  const availabilityLlmVarName = `${availabilityVarName}_llm`;
   const selectionStrategy = String(
     cfg.assignment_strategy
     ?? cfg.calendar_selection_strategy
     ?? cfg.strategy
     ?? 'random'
   ).trim().toLowerCase();
+  const selectedCalendarFromVars = String(variables?.[calendarVarName] ?? '').trim();
+  const rawAgenteId = cfg.agente_id
+    ?? cfg.agenteId
+    ?? variables.agente_id
+    ?? variables.agenteId
+    ?? variables.assigned_agente_id
+    ?? variables.assignedAgenteId
+    ?? null;
+
+  const agenteId = rawAgenteId === null || rawAgenteId === undefined || rawAgenteId === ''
+    ? null
+    : Number(rawAgenteId);
+
+  const rawPuestoId = cfg.agente_puesto_id
+    ?? cfg.puesto_id
+    ?? cfg.agentePuestoId
+    ?? cfg.puestoId
+    ?? variables.agente_puesto_id
+    ?? variables.puesto_id
+    ?? variables.agentePuestoId
+    ?? variables.puestoId
+    ?? null;
+
+  const puestoId = rawPuestoId === null || rawPuestoId === undefined || rawPuestoId === ''
+    ? null
+    : Number(rawPuestoId);
+
+  const puestoNombre = String(
+    cfg.agente_puesto_nombre
+    ?? cfg.puesto_nombre
+    ?? cfg.agentePuestoNombre
+    ?? cfg.puestoNombre
+    ?? variables.agente_puesto_nombre
+    ?? variables.puesto_nombre
+    ?? variables.agentePuestoNombre
+    ?? variables.puestoNombre
+    ?? ''
+  ).trim();
+
+  const usePuestoResolution = Number.isInteger(puestoId) && puestoId > 0
+    || Boolean(puestoNombre);
 
   const buildBookingTaskPayload = async ({ appointment, selectedCalendarId }) => {
     const shouldCreateTask = _coerceBoolean(
@@ -1089,53 +1135,11 @@ async function executeCalendar({ node, input, variables, tenantId, llmService })
   };
 
   const resolveCalendarId = async () => {
-    const calendarFromVar = String(variables?.[calendarVarName] ?? '').trim();
-    if (calendarFromVar) return calendarFromVar;
-
-    const rawAgenteId = cfg.agente_id
-      ?? cfg.agenteId
-      ?? variables.agente_id
-      ?? variables.agenteId
-      ?? variables.assigned_agente_id
-      ?? variables.assignedAgenteId
-      ?? null;
-
-    const agenteId = rawAgenteId === null || rawAgenteId === undefined || rawAgenteId === ''
-      ? null
-      : Number(rawAgenteId);
+    if (selectedCalendarFromVars) return selectedCalendarFromVars;
 
     if (Number.isInteger(agenteId) && agenteId > 0) {
       return calSvc.getCalendarIdForAgente(tenantId, agenteId);
     }
-
-    const rawPuestoId = cfg.agente_puesto_id
-      ?? cfg.puesto_id
-      ?? cfg.agentePuestoId
-      ?? cfg.puestoId
-      ?? variables.agente_puesto_id
-      ?? variables.puesto_id
-      ?? variables.agentePuestoId
-      ?? variables.puestoId
-      ?? null;
-
-    const puestoId = rawPuestoId === null || rawPuestoId === undefined || rawPuestoId === ''
-      ? null
-      : Number(rawPuestoId);
-
-    const puestoNombre = String(
-      cfg.agente_puesto_nombre
-      ?? cfg.puesto_nombre
-      ?? cfg.agentePuestoNombre
-      ?? cfg.puestoNombre
-      ?? variables.agente_puesto_nombre
-      ?? variables.puesto_nombre
-      ?? variables.agentePuestoNombre
-      ?? variables.puestoNombre
-      ?? ''
-    ).trim();
-
-    const usePuestoResolution = Number.isInteger(puestoId) && puestoId > 0
-      || Boolean(puestoNombre);
 
     if (usePuestoResolution) {
       return calSvc.getCalendarIdForPuesto(tenantId, {
@@ -1150,36 +1154,75 @@ async function executeCalendar({ node, input, variables, tenantId, llmService })
     return null;
   };
 
-  const calendarId = await resolveCalendarId();
-
   if (action === 'show_availability') {
-    const availabilityVarName = String(cfg.availability_variable || 'agenda_horarios_disponibles').trim() || 'agenda_horarios_disponibles';
+    const calendarId = usePuestoResolution && !selectedCalendarFromVars
+      ? null
+      : await resolveCalendarId();
+    const rangeDays = Number.isFinite(Number(cfg.range_days)) ? Number(cfg.range_days) : 5;
+    const calendarCandidates = await _resolveCalendarAvailabilityCandidates({
+      calendarService: calSvc,
+      tenantId,
+      calendarId,
+      selectedCalendarFromVars,
+      agenteId,
+      puestoId,
+      puestoNombre,
+      usePuestoResolution,
+    });
 
-    if (!calendarId) {
+    if (!calendarCandidates.length) {
       logger.warn({ tenantId, nodeId: node.id }, 'calendar node: missing calendar_id');
       return {
         output: null,
         nextNodeId: node.next,
-        updatedVars: { [availabilityVarName]: [] },
+        updatedVars: {
+          [availabilityVarName]: [],
+          [availabilityItemsVarName]: [],
+          [availabilityStructuredVarName]: [],
+          [availabilitySummaryVarName]: '',
+          [availabilityLlmVarName]: null,
+        },
         terminal: false,
         fallback: false,
       };
     }
 
-    const slots = await calSvc.getAvailableSlots(calendarId, cfg.range_days || 5);
-    if (!slots.length) {
+    const availabilityEntries = await _collectAvailabilityEntries({
+      calendarService: calSvc,
+      calendarCandidates,
+      rangeDays,
+    });
+
+    if (!availabilityEntries.length) {
       return {
         output: { type: 'text', text: cfg.no_slots_text || 'No hay horarios disponibles. Un agente te contactara.' },
         nextNodeId: (node.branches && node.branches.no_slots) || node.next,
-        updatedVars: { [availabilityVarName]: [] }, terminal: false, fallback: false,
+        updatedVars: {
+          [availabilityVarName]: [],
+          [availabilityItemsVarName]: [],
+          [availabilityStructuredVarName]: [],
+          [availabilitySummaryVarName]: '',
+          [availabilityLlmVarName]: null,
+        }, terminal: false, fallback: false,
       };
     }
 
-    const buttons = slots.slice(0, 10).map((s) => ({
-      id: s.id,
-      title: _formatSlotLabel(s.startTime, s.timezone),
+    const topEntries = availabilityEntries.slice(0, 10);
+    const buttons = topEntries.map((entry) => ({
+      id: entry.slotId,
+      title: entry.slotLabel,
     }));
     const availabilityLabels = buttons.map((slot) => slot.title);
+    const structuredAvailability = _groupAvailabilityEntries(availabilityEntries);
+    const llmAvailability = await _buildAvailabilityLlmExtraction({
+      tenantId,
+      llmService,
+      cfg,
+      entries: availabilityEntries,
+      puestoId,
+      puestoNombre,
+    });
+    const summaryText = llmAvailability?.resumen || _buildAvailabilityDeterministicSummary(structuredAvailability);
 
     return {
       output: {
@@ -1190,13 +1233,19 @@ async function executeCalendar({ node, input, variables, tenantId, llmService })
       },
       nextNodeId: node.id,
       updatedVars: {
-        [calendarVarName]: calendarId,
+        [calendarVarName]: topEntries[0]?.calendarId ?? calendarId ?? null,
         [availabilityVarName]: availabilityLabels,
+        [availabilityItemsVarName]: topEntries,
+        [availabilityStructuredVarName]: structuredAvailability,
+        [availabilitySummaryVarName]: summaryText,
+        [availabilityLlmVarName]: llmAvailability,
       },
       terminal: false,
       fallback: false,
     };
   }
+
+  const calendarId = await resolveCalendarId();
 
   if (action === 'select_slot') {
     if (!input) return executeCalendar({ node: Object.assign({}, node, { action: 'show_availability' }), input: null, variables, tenantId });
@@ -1209,55 +1258,102 @@ async function executeCalendar({ node, input, variables, tenantId, llmService })
       if (!rawInput) return null;
 
       const asUuid = _normalizeUuid(rawInput);
-      if (asUuid) return asUuid;
-
-      const rangeDays = Number.isFinite(Number(cfg.range_days)) ? Number(cfg.range_days) : 5;
-      let slots = [];
-      try {
-        slots = await calSvc.getAvailableSlots(calendarId, rangeDays);
-      } catch (_) {
-        slots = [];
+      if (asUuid) {
+        const cachedEntryByUuid = Array.isArray(variables?.[availabilityItemsVarName])
+          ? variables[availabilityItemsVarName].find((entry) => String(entry?.slotId || '') === asUuid)
+          : null;
+        return {
+          slotId: asUuid,
+          calendarId: String(cachedEntryByUuid?.calendarId || calendarId || '').trim() || null,
+        };
       }
-      if (!Array.isArray(slots) || slots.length === 0) return null;
 
-      const topSlots = slots.slice(0, 10);
+      const cachedEntries = Array.isArray(variables?.[availabilityItemsVarName])
+        ? variables[availabilityItemsVarName]
+            .map((entry) => _normalizeAvailabilityEntry(entry))
+            .filter(Boolean)
+        : [];
+
+      let topSlots = cachedEntries;
+
+      if (!topSlots.length) {
+        const rangeDays = Number.isFinite(Number(cfg.range_days)) ? Number(cfg.range_days) : 5;
+        let slots = [];
+        try {
+          slots = await calSvc.getAvailableSlots(calendarId, rangeDays);
+        } catch (_) {
+          slots = [];
+        }
+        if (!Array.isArray(slots) || slots.length === 0) return null;
+
+        topSlots = slots.slice(0, 10).map((slot) => ({
+          slotId: slot.id,
+          calendarId,
+          slotLabel: _formatSlotLabel(slot?.startTime, slot?.timezone),
+          hourLabel: _formatSlotHour(slot?.startTime, slot?.timezone),
+        }));
+      }
+
       const normalizedInput = rawInput.toLowerCase();
 
-      const byExactId = topSlots.find((slot) => String(slot?.id || '') === rawInput);
-      if (byExactId?.id) return byExactId.id;
+      const byExactId = topSlots.find((slot) => String(slot?.slotId || slot?.id || '') === rawInput);
+      if (byExactId?.slotId || byExactId?.id) {
+        return {
+          slotId: byExactId?.slotId ?? byExactId?.id ?? null,
+          calendarId: byExactId?.calendarId ?? calendarId,
+        };
+      }
 
       const byExactLabel = topSlots.find(
-        (slot) => _formatSlotLabel(slot?.startTime, slot?.timezone).toLowerCase() === normalizedInput,
+        (slot) => String(slot?.slotLabel || _formatSlotLabel(slot?.startTime, slot?.timezone)).toLowerCase() === normalizedInput,
       );
-      if (byExactLabel?.id) return byExactLabel.id;
+      if (byExactLabel?.slotId || byExactLabel?.id) {
+        return {
+          slotId: byExactLabel?.slotId ?? byExactLabel?.id ?? null,
+          calendarId: byExactLabel?.calendarId ?? calendarId,
+        };
+      }
 
       const asIndex = Number.parseInt(rawInput, 10);
       if (Number.isInteger(asIndex) && asIndex >= 1 && asIndex <= topSlots.length) {
-        return topSlots[asIndex - 1]?.id ?? null;
+        return {
+          slotId: topSlots[asIndex - 1]?.slotId ?? topSlots[asIndex - 1]?.id ?? null,
+          calendarId: topSlots[asIndex - 1]?.calendarId ?? calendarId,
+        };
       }
 
       const targetHour = _extractHourFromText(rawInput);
       if (targetHour !== null) {
         const byHour = topSlots.find(
-          (slot) => _extractHourFromText(_formatSlotLabel(slot?.startTime, slot?.timezone)) === targetHour,
+          (slot) => _extractHourFromText(String(slot?.slotLabel || _formatSlotLabel(slot?.startTime, slot?.timezone))) === targetHour,
         );
-        if (byHour?.id) return byHour.id;
+        if (byHour?.slotId || byHour?.id) {
+          return {
+            slotId: byHour?.slotId ?? byHour?.id ?? null,
+            calendarId: byHour?.calendarId ?? calendarId,
+          };
+        }
       }
 
       const allowFuzzyContains = /[a-zA-Z]/.test(rawInput) && normalizedInput.length >= 4;
       if (!allowFuzzyContains) return null;
 
       const byContainsLabel = topSlots.find((slot) => {
-        const label = _formatSlotLabel(slot?.startTime, slot?.timezone).toLowerCase();
+        const label = String(slot?.slotLabel || _formatSlotLabel(slot?.startTime, slot?.timezone)).toLowerCase();
         return label.includes(normalizedInput) || normalizedInput.includes(label);
       });
-      if (byContainsLabel?.id) return byContainsLabel.id;
+      if (byContainsLabel?.slotId || byContainsLabel?.id) {
+        return {
+          slotId: byContainsLabel?.slotId ?? byContainsLabel?.id ?? null,
+          calendarId: byContainsLabel?.calendarId ?? calendarId,
+        };
+      }
 
       return null;
     };
 
-    const resolvedSlotId = await resolveSlotIdFromInput();
-    if (!resolvedSlotId) {
+    const resolvedSelection = await resolveSlotIdFromInput();
+    if (!resolvedSelection?.slotId) {
       return {
         output: { type: 'text', text: cfg.error_text || 'La opcion no es valida. Selecciona un horario de la lista.' },
         nextNodeId: node.id,
@@ -1275,7 +1371,9 @@ async function executeCalendar({ node, input, variables, tenantId, llmService })
     });
 
     const bookResult = await calSvc.bookSlot({
-      calendarId, slotId: resolvedSlotId, tenantId,
+      calendarId: resolvedSelection.calendarId || calendarId,
+      slotId: resolvedSelection.slotId,
+      tenantId,
       userKey: variables.phone || variables.user_key || 'unknown',
       conversationId: variables.conversation_id || null,
       metadata: appointmentMetadata,
@@ -1287,11 +1385,12 @@ async function executeCalendar({ node, input, variables, tenantId, llmService })
       return { output: { type: 'text', text: errText }, nextNodeId: node.id, updatedVars: {}, terminal: false, fallback: false };
     }
     const a = bookResult.appointment;
-    const taskPayload = await buildBookingTaskPayload({ appointment: a, selectedCalendarId: calendarId });
+    const selectedCalendarId = resolvedSelection.calendarId || calendarId;
+    const taskPayload = await buildBookingTaskPayload({ appointment: a, selectedCalendarId });
     return {
       output: null, nextNodeId: node.next,
       updatedVars: {
-        [calendarVarName]: calendarId,
+        [calendarVarName]: selectedCalendarId,
         appointment_id: a.id,
         appointment_start: a.startTime.toISOString(),
         appointment_end: a.endTime.toISOString(),
@@ -1362,6 +1461,248 @@ async function executeCalendar({ node, input, variables, tenantId, llmService })
   return { output: null, nextNodeId: node.next, updatedVars: {}, terminal: false, fallback: false };
 }
 
+async function _resolveCalendarAvailabilityCandidates({
+  calendarService,
+  tenantId,
+  calendarId,
+  selectedCalendarFromVars,
+  agenteId,
+  puestoId,
+  puestoNombre,
+  usePuestoResolution,
+}) {
+  if (selectedCalendarFromVars) {
+    const ctx = await calendarService.getCalendarAssignmentContext(selectedCalendarFromVars, tenantId);
+    return [{
+      id: selectedCalendarFromVars,
+      name: ctx?.calendarName ?? null,
+      agenteId: ctx?.agenteId ?? null,
+      agenteNombre: ctx?.agenteNombre ?? null,
+    }];
+  }
+
+  if (Number.isInteger(agenteId) && agenteId > 0 && calendarId) {
+    const ctx = await calendarService.getCalendarAssignmentContext(calendarId, tenantId);
+    return [{
+      id: calendarId,
+      name: ctx?.calendarName ?? null,
+      agenteId: ctx?.agenteId ?? agenteId,
+      agenteNombre: ctx?.agenteNombre ?? null,
+    }];
+  }
+
+  if (usePuestoResolution) {
+    return calendarService.getCalendarsForPuesto(tenantId, { puestoId, puestoNombre });
+  }
+
+  if (!calendarId) return [];
+
+  const ctx = await calendarService.getCalendarAssignmentContext(calendarId, tenantId);
+  return [{
+    id: calendarId,
+    name: ctx?.calendarName ?? null,
+    agenteId: ctx?.agenteId ?? null,
+    agenteNombre: ctx?.agenteNombre ?? null,
+  }];
+}
+
+async function _collectAvailabilityEntries({ calendarService, calendarCandidates, rangeDays }) {
+  const availabilityByCalendar = await Promise.all(
+    calendarCandidates.map(async (candidate) => {
+      const slots = await calendarService.getAvailableSlots(candidate.id, rangeDays);
+      return slots.map((slot) => ({
+        slotId: slot.id,
+        calendarId: candidate.id,
+        calendarName: candidate.name ?? null,
+        agenteId: candidate.agenteId ?? null,
+        agenteNombre: candidate.agenteNombre ?? null,
+        startTime: slot.startTime instanceof Date ? slot.startTime.toISOString() : new Date(slot.startTime).toISOString(),
+        endTime: slot.endTime instanceof Date ? slot.endTime.toISOString() : new Date(slot.endTime).toISOString(),
+        timezone: slot.timezone ?? null,
+        slotLabel: _formatSlotLabel(slot.startTime, slot.timezone),
+        dayLabel: _formatSlotDay(slot.startTime, slot.timezone),
+        hourLabel: _formatSlotHour(slot.startTime, slot.timezone),
+      }));
+    }),
+  );
+
+  return availabilityByCalendar
+    .flat()
+    .sort((left, right) => new Date(left.startTime).getTime() - new Date(right.startTime).getTime());
+}
+
+function _groupAvailabilityEntries(entries) {
+  const grouped = new Map();
+
+  for (const rawEntry of Array.isArray(entries) ? entries : []) {
+    const entry = _normalizeAvailabilityEntry(rawEntry);
+    if (!entry) continue;
+
+    const agentKey = entry.agenteNombre || entry.calendarName || entry.calendarId;
+    if (!grouped.has(agentKey)) {
+      grouped.set(agentKey, {
+        agente: entry.agenteNombre || null,
+        calendarId: entry.calendarId,
+        calendarName: entry.calendarName || null,
+        dias: [],
+      });
+    }
+
+    const agentBucket = grouped.get(agentKey);
+    let dayBucket = agentBucket.dias.find((day) => day.fecha === entry.dateKey);
+    if (!dayBucket) {
+      dayBucket = {
+        fecha: entry.dateKey,
+        dia: entry.dayLabel,
+        horas: [],
+      };
+      agentBucket.dias.push(dayBucket);
+    }
+
+    dayBucket.horas.push({
+      hora: entry.hourLabel,
+      slotId: entry.slotId,
+      calendarId: entry.calendarId,
+      slotLabel: entry.slotLabel,
+      startTime: entry.startTime,
+    });
+  }
+
+  return Array.from(grouped.values()).map((agentBucket) => ({
+    ...agentBucket,
+    dias: agentBucket.dias.map((day) => ({
+      ...day,
+      horas: day.horas.sort((left, right) => new Date(left.startTime).getTime() - new Date(right.startTime).getTime()),
+    })),
+  }));
+}
+
+function _buildAvailabilityDeterministicSummary(groupedAvailability) {
+  if (!Array.isArray(groupedAvailability) || groupedAvailability.length === 0) return '';
+
+  return groupedAvailability
+    .slice(0, 3)
+    .map((agentBucket) => {
+      const firstDays = Array.isArray(agentBucket.dias) ? agentBucket.dias.slice(0, 2) : [];
+      const dayText = firstDays
+        .map((day) => {
+          const hours = Array.isArray(day.horas)
+            ? day.horas.slice(0, 4).map((hour) => hour.hora).filter(Boolean).join(', ')
+            : '';
+          return hours ? `${day.dia}: ${hours}` : day.dia;
+        })
+        .filter(Boolean)
+        .join(' | ');
+
+      return [agentBucket.agente || agentBucket.calendarName || 'Agenda', dayText]
+        .filter(Boolean)
+        .join(': ');
+    })
+    .filter(Boolean)
+    .join(' || ');
+}
+
+async function _buildAvailabilityLlmExtraction({ tenantId, llmService, cfg, entries, puestoId, puestoNombre }) {
+  const useLlm = _coerceBoolean(
+    cfg.llm_extract_availability ?? cfg.use_llm_for_availability ?? cfg.availability_llm_extract ?? true,
+    true,
+  );
+
+  if (!useLlm || !llmService || !tenantId || !Array.isArray(entries) || entries.length === 0) return null;
+
+  const sample = entries.slice(0, 20).map((entry) => ({
+    agente: entry.agenteNombre || null,
+    calendar: entry.calendarName || null,
+    fecha: entry.dayLabel,
+    hora: entry.hourLabel,
+    slot_label: entry.slotLabel,
+    start_time: entry.startTime,
+  }));
+
+  const systemPrompt = [
+    'Eres un asistente de agenda clinica.',
+    'Analiza disponibilidad de agentes de psicologia.',
+    'Extrae los dias mas proximos y las horas disponibles por agente sin inventar datos.',
+    'Devuelve SOLO JSON valido con esta estructura:',
+    '{"resumen":"string","dias_mas_proximos":[{"fecha":"string","dia":"string","horas":["string"],"agentes":["string"]}],"agentes":[{"agente":"string","primer_dia":"string","horas":["string"]}]}',
+  ].join('\n');
+
+  const userPrompt = JSON.stringify({
+    puesto_id: Number.isInteger(puestoId) ? puestoId : null,
+    puesto_nombre: puestoNombre || null,
+    disponibilidad: sample,
+  });
+
+  try {
+    const result = await llmService.callLlmForJson(tenantId, systemPrompt, userPrompt);
+    const json = result?.json;
+    if (!json || typeof json !== 'object' || Array.isArray(json)) return null;
+
+    const diasMasProximos = Array.isArray(json.dias_mas_proximos)
+      ? json.dias_mas_proximos.slice(0, 5).map((item) => ({
+          fecha: _truncateText(item?.fecha, 40),
+          dia: _truncateText(item?.dia, 80),
+          horas: _sanitizeTextArray(item?.horas, 6, 40),
+          agentes: _sanitizeTextArray(item?.agentes, 6, 120),
+        }))
+      : [];
+
+    const agentes = Array.isArray(json.agentes)
+      ? json.agentes.slice(0, 8).map((item) => ({
+          agente: _truncateText(item?.agente, 120),
+          primer_dia: _truncateText(item?.primer_dia, 80),
+          horas: _sanitizeTextArray(item?.horas, 6, 40),
+        }))
+      : [];
+
+    return {
+      resumen: _truncateText(json.resumen, 1200),
+      dias_mas_proximos: diasMasProximos,
+      agentes,
+    };
+  } catch (err) {
+    logger.warn(
+      { tenantId, message: err.message },
+      'calendar node: failed to extract availability with llm'
+    );
+    return null;
+  }
+}
+
+function _normalizeAvailabilityEntry(entry) {
+  if (!entry || typeof entry !== 'object') return null;
+
+  const slotId = String(entry.slotId ?? entry.id ?? '').trim();
+  const calendarId = String(entry.calendarId ?? '').trim();
+  const startValue = entry.startTime ?? entry.start_time ?? null;
+  const startDate = startValue ? new Date(startValue) : null;
+  const timezone = entry.timezone ?? null;
+  const slotLabel = String(entry.slotLabel ?? entry.slot_label ?? '').trim()
+    || (startDate ? _formatSlotLabel(startDate, timezone) : '');
+  const dayLabel = String(entry.dayLabel ?? entry.day_label ?? '').trim()
+    || (startDate ? _formatSlotDay(startDate, timezone) : '');
+  const hourLabel = String(entry.hourLabel ?? entry.hour_label ?? '').trim()
+    || (startDate ? _formatSlotHour(startDate, timezone) : '');
+  const dateKey = startDate && !Number.isNaN(startDate.getTime())
+    ? startDate.toISOString().slice(0, 10)
+    : String(entry.dateKey ?? entry.fecha ?? '').trim();
+
+  if (!slotId) return null;
+
+  return {
+    slotId,
+    calendarId: calendarId || null,
+    calendarName: String(entry.calendarName ?? entry.calendar_name ?? '').trim() || null,
+    agenteId: Number(entry.agenteId ?? entry.agente_id ?? 0) || null,
+    agenteNombre: String(entry.agenteNombre ?? entry.agente_nombre ?? '').trim() || null,
+    startTime: startDate && !Number.isNaN(startDate.getTime()) ? startDate.toISOString() : null,
+    slotLabel,
+    dayLabel,
+    hourLabel,
+    dateKey,
+  };
+}
+
 function _formatSlotLabel(date, timeZone = null) {
   if (!(date instanceof Date)) date = new Date(date);
   const options = {
@@ -1373,6 +1714,27 @@ function _formatSlotLabel(date, timeZone = null) {
   };
   if (timeZone) options.timeZone = String(timeZone);
   return date.toLocaleDateString('es-MX', options);
+}
+
+function _formatSlotDay(date, timeZone = null) {
+  if (!(date instanceof Date)) date = new Date(date);
+  const options = {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+  };
+  if (timeZone) options.timeZone = String(timeZone);
+  return date.toLocaleDateString('es-MX', options);
+}
+
+function _formatSlotHour(date, timeZone = null) {
+  if (!(date instanceof Date)) date = new Date(date);
+  const options = {
+    hour: '2-digit',
+    minute: '2-digit',
+  };
+  if (timeZone) options.timeZone = String(timeZone);
+  return date.toLocaleTimeString('es-MX', options);
 }
 
 function _pickFirstNonEmpty(...values) {

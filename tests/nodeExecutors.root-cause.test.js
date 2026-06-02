@@ -290,9 +290,11 @@ describe('nodeExecutors root-cause guards', () => {
 
   test('calendar node resolves by puesto with round_robin strategy before fixed calendar_id', async () => {
     const calendarService = require('../src/services/calendarService');
-    const getCalendarIdForPuestoSpy = jest
-      .spyOn(calendarService, 'getCalendarIdForPuesto')
-      .mockResolvedValue('cal-rr-1');
+    const getCalendarsForPuestoSpy = jest
+      .spyOn(calendarService, 'getCalendarsForPuesto')
+      .mockResolvedValue([
+        { id: 'cal-rr-1', name: 'Agenda Psicologia', agenteId: 7, agenteNombre: 'Pedro Perez' },
+      ]);
     const getAvailableSlotsSpy = jest
       .spyOn(calendarService, 'getAvailableSlots')
       .mockResolvedValue([]);
@@ -318,15 +320,96 @@ describe('nodeExecutors root-cause guards', () => {
       tenantId: 'tenant-1',
     });
 
-    expect(getCalendarIdForPuestoSpy).toHaveBeenCalledWith('tenant-1', {
+    expect(getCalendarsForPuestoSpy).toHaveBeenCalledWith('tenant-1', {
       puestoId: 7,
-      puestoNombre: null,
-      strategy: 'round_robin',
+      puestoNombre: '',
     });
     expect(getAvailableSlotsSpy).toHaveBeenCalledWith('cal-rr-1', 5);
     expect(result.nextNodeId).toBe('node_no_slots');
 
-    getCalendarIdForPuestoSpy.mockRestore();
+    getCalendarsForPuestoSpy.mockRestore();
+    getAvailableSlotsSpy.mockRestore();
+  });
+
+  test('calendar show_availability aggregates psychologist agents and stores llm extraction', async () => {
+    const calendarService = require('../src/services/calendarService');
+    const getCalendarsForPuestoSpy = jest
+      .spyOn(calendarService, 'getCalendarsForPuesto')
+      .mockResolvedValue([
+        { id: 'cal-1', name: 'Agenda Psicologia A', agenteId: 10, agenteNombre: 'Dra. Ana' },
+        { id: 'cal-2', name: 'Agenda Psicologia B', agenteId: 11, agenteNombre: 'Dr. Bruno' },
+      ]);
+    const getAvailableSlotsSpy = jest
+      .spyOn(calendarService, 'getAvailableSlots')
+      .mockImplementation(async (calendarId) => {
+        if (calendarId === 'cal-1') {
+          return [
+            { id: 'slot-1', startTime: new Date('2026-06-03T14:00:00.000Z'), endTime: new Date('2026-06-03T15:00:00.000Z') },
+          ];
+        }
+        return [
+          { id: 'slot-2', startTime: new Date('2026-06-03T13:00:00.000Z'), endTime: new Date('2026-06-03T14:00:00.000Z') },
+          { id: 'slot-3', startTime: new Date('2026-06-04T15:00:00.000Z'), endTime: new Date('2026-06-04T16:00:00.000Z') },
+        ];
+      });
+
+    const llmService = {
+      callLlmForJson: jest.fn().mockResolvedValue({
+        json: {
+          resumen: 'Los dias mas proximos disponibles son miercoles y jueves, con horarios para Dra. Ana y Dr. Bruno.',
+          dias_mas_proximos: [
+            { fecha: '2026-06-03', dia: 'miercoles 3 de junio', horas: ['08:00', '09:00'], agentes: ['Dr. Bruno', 'Dra. Ana'] },
+          ],
+          agentes: [
+            { agente: 'Dr. Bruno', primer_dia: 'miercoles 3 de junio', horas: ['08:00', '11:00'] },
+          ],
+        },
+      }),
+    };
+
+    const node = {
+      id: 'node_calendar',
+      type: 'calendar',
+      next: 'node_next',
+      config: {
+        action: 'show_availability',
+        agente_puesto_nombre: 'Psicologia',
+      },
+    };
+
+    const result = await executeNode(node, {
+      input: null,
+      variables: {},
+      tenantId: 'tenant-1',
+      llmService,
+    });
+
+    expect(getCalendarsForPuestoSpy).toHaveBeenCalledWith('tenant-1', {
+      puestoId: null,
+      puestoNombre: 'Psicologia',
+    });
+    expect(result.output).toEqual(expect.objectContaining({
+      type: 'buttons',
+      buttons: expect.arrayContaining([
+        expect.objectContaining({ id: 'slot-2' }),
+        expect.objectContaining({ id: 'slot-1' }),
+      ]),
+    }));
+    expect(result.updatedVars).toEqual(expect.objectContaining({
+      selected_calendar_id: 'cal-2',
+      agenda_horarios_disponibles_summary: 'Los dias mas proximos disponibles son miercoles y jueves, con horarios para Dra. Ana y Dr. Bruno.',
+      agenda_horarios_disponibles_llm: expect.objectContaining({
+        dias_mas_proximos: expect.any(Array),
+        agentes: expect.any(Array),
+      }),
+    }));
+    expect(result.updatedVars.agenda_horarios_disponibles_items).toEqual([
+      expect.objectContaining({ slotId: 'slot-2', calendarId: 'cal-2', agenteNombre: 'Dr. Bruno' }),
+      expect.objectContaining({ slotId: 'slot-1', calendarId: 'cal-1', agenteNombre: 'Dra. Ana' }),
+      expect.objectContaining({ slotId: 'slot-3', calendarId: 'cal-2', agenteNombre: 'Dr. Bruno' }),
+    ]);
+
+    getCalendarsForPuestoSpy.mockRestore();
     getAvailableSlotsSpy.mockRestore();
   });
 
@@ -434,6 +517,61 @@ describe('nodeExecutors root-cause guards', () => {
     }));
 
     getAvailableSlotsSpy.mockRestore();
+    bookSlotSpy.mockRestore();
+    getCalendarAssignmentContextSpy.mockRestore();
+  });
+
+  test('calendar select_slot uses cached availability item calendar when multiple psychologist agendas were shown', async () => {
+    const calendarService = require('../src/services/calendarService');
+    const bookSlotSpy = jest.spyOn(calendarService, 'bookSlot').mockResolvedValue({
+      appointment: {
+        id: 'appt-multi-1',
+        startTime: new Date('2026-06-03T13:00:00.000Z'),
+        endTime: new Date('2026-06-03T14:00:00.000Z'),
+      },
+    });
+    const getCalendarAssignmentContextSpy = jest
+      .spyOn(calendarService, 'getCalendarAssignmentContext')
+      .mockResolvedValue(null);
+
+    const node = {
+      id: 'node_calendar',
+      type: 'calendar',
+      next: 'node_confirm',
+      config: {
+        action: 'select_slot',
+      },
+    };
+
+    const result = await executeNode(node, {
+      input: '2',
+      variables: {
+        selected_calendar_id: 'cal-1',
+        agenda_horarios_disponibles_items: [
+          {
+            slotId: 'slot-1',
+            calendarId: 'cal-1',
+            slotLabel: 'mié, 3 jun, 09:00',
+          },
+          {
+            slotId: 'slot-2',
+            calendarId: 'cal-2',
+            slotLabel: 'mié, 3 jun, 10:00',
+          },
+        ],
+      },
+      tenantId: 'tenant-1',
+    });
+
+    expect(bookSlotSpy).toHaveBeenCalledWith(expect.objectContaining({
+      calendarId: 'cal-2',
+      slotId: 'slot-2',
+    }));
+    expect(result.updatedVars).toEqual(expect.objectContaining({
+      selected_calendar_id: 'cal-2',
+      appointment_id: 'appt-multi-1',
+    }));
+
     bookSlotSpy.mockRestore();
     getCalendarAssignmentContextSpy.mockRestore();
   });
