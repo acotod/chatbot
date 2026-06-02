@@ -1418,6 +1418,7 @@ function VarComboInput({
 
 function NodeEditModal({
   node,
+  nodeIssues,
   allNodeIds,
   allNodes,
   catalogEndpoints,
@@ -1429,6 +1430,7 @@ function NodeEditModal({
   onClose,
 }: {
   node: Partial<NodeDef>;
+  nodeIssues?: string[];
   allNodeIds: string[];
   allNodes?: NodeDef[];
   catalogEndpoints: CatalogEndpoint[];
@@ -1488,6 +1490,8 @@ function NodeEditModal({
   const [id, setId]     = useState(node.id ?? "");
   const [type, setType] = useState(node.type ?? "message");
   const [next, setNext] = useState(node.next ?? "");
+  const nextSelectRef = useRef<HTMLSelectElement | null>(null);
+  const branchesTextareaRef = useRef<HTMLTextAreaElement | null>(null);
   const [branchesJson, setBranchesJson] = useState(JSON.stringify(initialBranches, null, 2));
   const [err, setErr]   = useState("");
   const [showJson, setShowJson] = useState(false);
@@ -1777,6 +1781,11 @@ function NodeEditModal({
   const hasMenuValidationErrors =
     menuValidation.duplicateIds.length > 0 ||
     menuValidation.missingIdIndexes.length > 0;
+  const normalizedNodeIssues = (Array.isArray(nodeIssues) ? nodeIssues : []).filter(Boolean);
+  const shouldFocusNextField = normalizedNodeIssues.some((message) =>
+    /no tiene salida|ciclo sin salida|entry_point/i.test(message)
+  );
+  const shouldFocusBranchesField = normalizedNodeIssues.some((message) => /destino inexistente/i.test(message));
 
   useEffect(() => {
     if (type !== "menu") return;
@@ -1812,6 +1821,19 @@ function NodeEditModal({
     const serialized = JSON.stringify(nextBranches, null, 2);
     setBranchesJson((prev) => (prev === serialized ? prev : serialized));
   }, [type, condTrueNext, condFalseNext]);
+
+  useEffect(() => {
+    if (normalizedNodeIssues.length === 0) return;
+
+    if (shouldFocusBranchesField && branchesTextareaRef.current) {
+      branchesTextareaRef.current.focus();
+      return;
+    }
+
+    if (shouldFocusNextField && nextSelectRef.current) {
+      nextSelectRef.current.focus();
+    }
+  }, [normalizedNodeIssues, shouldFocusBranchesField, shouldFocusNextField]);
 
   function applyEndpoint(ep: CatalogEndpoint) {
     autoConfigureEndpoint(ep);
@@ -2079,7 +2101,7 @@ function NodeEditModal({
             {!isTerminalNode && (
               <div>
                 <label className="block text-xs font-medium text-slate-600 mb-2">Siguiente nodo (next)</label>
-                <select value={next} onChange={(e) => setNext(e.target.value)}
+                <select ref={nextSelectRef} value={next} onChange={(e) => setNext(e.target.value)}
                   className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
                   <option value="">— ninguno —</option>
                   {allNodeIds.filter((nid) => nid !== id).map((nid) => (
@@ -2093,6 +2115,35 @@ function NodeEditModal({
           {isTerminalNode && (
             <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-800 mb-6">
               Este nodo es terminal. Solo define el contenido; no usa next ni branches.
+            </div>
+          )}
+
+          {normalizedNodeIssues.length > 0 && (
+            <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-xs text-red-800 mb-6 space-y-2">
+              <p className="font-semibold">Problemas detectados en este nodo</p>
+              {normalizedNodeIssues.map((issue, idx) => (
+                <p key={`${issue}-${idx}`}>• {issue}</p>
+              ))}
+              <div className="flex flex-wrap gap-2 pt-1">
+                {shouldFocusNextField && (
+                  <button
+                    type="button"
+                    onClick={() => nextSelectRef.current?.focus()}
+                    className="px-2 py-1 rounded border border-red-300 bg-white text-red-700 hover:bg-red-100"
+                  >
+                    Ir a campo next
+                  </button>
+                )}
+                {shouldFocusBranchesField && (
+                  <button
+                    type="button"
+                    onClick={() => branchesTextareaRef.current?.focus()}
+                    className="px-2 py-1 rounded border border-red-300 bg-white text-red-700 hover:bg-red-100"
+                  >
+                    Ir a campo branches
+                  </button>
+                )}
+              </div>
             </div>
           )}
 
@@ -3023,7 +3074,7 @@ function NodeEditModal({
                 </div>
                 <div className="bg-slate-50 rounded-lg border border-slate-100 p-4">
                   <label className="block text-xs font-medium text-slate-600 mb-2">Branches (JSON)</label>
-                  <textarea value={branchesJson} onChange={(e) => setBranchesJson(e.target.value)} rows={3}
+                  <textarea ref={branchesTextareaRef} value={branchesJson} onChange={(e) => setBranchesJson(e.target.value)} rows={3}
                     className="w-full rounded-lg border border-slate-200 px-3 py-2 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white" />
                 </div>
               </div>
@@ -3561,6 +3612,7 @@ function FlowBuilder({
       {editingNode && (
         <NodeEditModal
           node={editingNode}
+          nodeIssues={editingNode?.id ? (nodeValidationMap[editingNode.id]?.messages ?? []) : []}
           allNodeIds={flatNodesList.map((n) => n.id)}
           allNodes={flatNodesList}
           catalogEndpoints={catalogEndpoints}
