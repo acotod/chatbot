@@ -1596,6 +1596,7 @@ function NodeEditModal({
   const [calendarAction, setCalendarAction] = useState(String(cfg.action ?? "show_availability"));
   const [calendarId, setCalendarId] = useState(String(cfg.calendar_id ?? ""));
   const [calendarRangeDays, setCalendarRangeDays] = useState(Number(cfg.range_days ?? 15));
+  const [calendarSlotDurationMin, setCalendarSlotDurationMin] = useState(Number(cfg.slot_duration_min ?? cfg.slotDurationMin ?? cfg.appointment_duration_min ?? 60));
   const [calendarPrompt, setCalendarPrompt] = useState(String(cfg.prompt ?? ""));
   const [calendarNoSlotsText, setCalendarNoSlotsText] = useState(String(cfg.no_slots_text ?? ""));
   const [calendarErrorText, setCalendarErrorText] = useState(String(cfg.error_text ?? ""));
@@ -1932,12 +1933,14 @@ function NodeEditModal({
       case "llm":       return { prompts: llmPrompts, composeMode: llmComposeMode, ...(llmFallbackText.trim() ? { fallback_text: llmFallbackText.trim() } : {}), ...actionFragment };
       case "calendar": {
         const parsedRangeDays = Number.isFinite(calendarRangeDays) ? Math.max(1, Math.trunc(calendarRangeDays)) : 15;
+        const parsedSlotDurationMin = Number.isFinite(calendarSlotDurationMin) ? Math.max(1, Math.trunc(calendarSlotDurationMin)) : 60;
         const parsedPuestoId = Number.parseInt(String(calendarPuestoId || "").trim(), 10);
         const normalizedAssignmentStrategy = String(calendarAssignmentStrategy || "random").trim().toLowerCase();
         return {
           action: (calendarAction || "show_availability").trim(),
           ...(calendarId.trim() ? { calendar_id: calendarId.trim() } : {}),
           range_days: parsedRangeDays,
+          slot_duration_min: parsedSlotDurationMin,
           ...(normalizedAssignmentStrategy ? { assignment_strategy: normalizedAssignmentStrategy } : {}),
           ...(Number.isInteger(parsedPuestoId) && parsedPuestoId > 0 ? { agente_puesto_id: parsedPuestoId } : {}),
           ...(calendarPuestoNombre.trim() ? { agente_puesto_nombre: calendarPuestoNombre.trim() } : {}),
@@ -2333,6 +2336,16 @@ function NodeEditModal({
                       min={1}
                       value={calendarRangeDays}
                       onChange={(e) => setCalendarRangeDays(Number(e.target.value || 1))}
+                      className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                  <div className="bg-slate-50 rounded-lg border border-slate-100 p-4">
+                    <label className="block text-xs font-medium text-slate-600 mb-2">Duracion cita (min)</label>
+                    <input
+                      type="number"
+                      min={1}
+                      value={calendarSlotDurationMin}
+                      onChange={(e) => setCalendarSlotDurationMin(Number(e.target.value || 1))}
                       className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                     />
                   </div>

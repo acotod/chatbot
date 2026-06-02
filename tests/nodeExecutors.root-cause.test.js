@@ -413,6 +413,64 @@ describe('nodeExecutors root-cause guards', () => {
     getAvailableSlotsSpy.mockRestore();
   });
 
+  test('calendar show_availability filters slots by node slot_duration_min', async () => {
+    const calendarService = require('../src/services/calendarService');
+    const getCalendarsForPuestoSpy = jest
+      .spyOn(calendarService, 'getCalendarsForPuesto')
+      .mockResolvedValue([
+        { id: 'cal-1', name: 'Agenda Psicologia A', agenteId: 10, agenteNombre: 'Dra. Ana' },
+      ]);
+    const getAvailableSlotsSpy = jest
+      .spyOn(calendarService, 'getAvailableSlots')
+      .mockResolvedValue([
+        {
+          id: 'slot-30',
+          startTime: new Date('2026-06-03T13:00:00.000Z'),
+          endTime: new Date('2026-06-03T13:30:00.000Z'),
+        },
+        {
+          id: 'slot-60',
+          startTime: new Date('2026-06-03T14:00:00.000Z'),
+          endTime: new Date('2026-06-03T15:00:00.000Z'),
+        },
+      ]);
+
+    const node = {
+      id: 'node_calendar',
+      type: 'calendar',
+      next: 'node_next',
+      config: {
+        action: 'show_availability',
+        agente_puesto_nombre: 'Psicologia',
+        slot_duration_min: 60,
+      },
+    };
+
+    const result = await executeNode(node, {
+      input: null,
+      variables: {},
+      tenantId: 'tenant-1',
+    });
+
+    expect(getCalendarsForPuestoSpy).toHaveBeenCalledWith('tenant-1', {
+      puestoId: null,
+      puestoNombre: 'Psicologia',
+    });
+    expect(result.updatedVars).toEqual(expect.objectContaining({
+      appointment_duration_min: 60,
+    }));
+    expect(result.output).toEqual(expect.objectContaining({
+      buttons: [expect.objectContaining({ id: 'slot-60' })],
+    }));
+    expect(result.updatedVars.agenda_horarios_disponibles_items).toHaveLength(1);
+    expect(result.updatedVars.agenda_horarios_disponibles_items[0]).toEqual(
+      expect.objectContaining({ slotId: 'slot-60', durationMin: 60 }),
+    );
+
+    getCalendarsForPuestoSpy.mockRestore();
+    getAvailableSlotsSpy.mockRestore();
+  });
+
   test('calendar select_slot creates task control with agreed details and assigned agent', async () => {
     const calendarService = require('../src/services/calendarService');
     const bookSlotSpy = jest.spyOn(calendarService, 'bookSlot').mockResolvedValue({

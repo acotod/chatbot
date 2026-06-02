@@ -1059,6 +1059,13 @@ async function executeCalendar({ node, input, variables, tenantId, llmService })
 
   const usePuestoResolution = Number.isInteger(puestoId) && puestoId > 0
     || Boolean(puestoNombre);
+  const requestedSlotDurationMin = _parseSlotDurationMin(
+    cfg.slot_duration_min
+    ?? cfg.slotDurationMin
+    ?? cfg.appointment_duration_min
+    ?? cfg.duration_min
+    ?? null,
+  );
 
   const buildBookingTaskPayload = async ({ appointment, selectedCalendarId }) => {
     const shouldCreateTask = _coerceBoolean(
@@ -1191,6 +1198,7 @@ async function executeCalendar({ node, input, variables, tenantId, llmService })
       calendarService: calSvc,
       calendarCandidates,
       rangeDays,
+      slotDurationMin: requestedSlotDurationMin,
     });
 
     if (!availabilityEntries.length) {
@@ -1239,6 +1247,7 @@ async function executeCalendar({ node, input, variables, tenantId, llmService })
         [availabilityStructuredVarName]: structuredAvailability,
         [availabilitySummaryVarName]: summaryText,
         [availabilityLlmVarName]: llmAvailability,
+        ...(requestedSlotDurationMin ? { appointment_duration_min: requestedSlotDurationMin } : {}),
       },
       terminal: false,
       fallback: false,
@@ -1279,6 +1288,7 @@ async function executeCalendar({ node, input, variables, tenantId, llmService })
         return {
           slotId: asUuid,
           calendarId: String(cachedEntryByUuid?.calendarId || calendarId || '').trim() || null,
+          durationMin: Number(cachedEntryByUuid?.durationMin ?? cachedEntryByUuid?.duration_min) || null,
         };
       }
 
@@ -1298,13 +1308,17 @@ async function executeCalendar({ node, input, variables, tenantId, llmService })
         } catch (_) {
           slots = [];
         }
-        if (!Array.isArray(slots) || slots.length === 0) return null;
+        const filteredSlots = Array.isArray(slots)
+          ? slots.filter((slot) => _slotMatchesDuration(slot, requestedSlotDurationMin))
+          : [];
+        if (filteredSlots.length === 0) return null;
 
-        topSlots = slots.slice(0, 10).map((slot) => ({
+        topSlots = filteredSlots.slice(0, 10).map((slot) => ({
           slotId: slot.id,
           calendarId,
           slotLabel: _formatSlotLabel(slot?.startTime, slot?.timezone),
           hourLabel: _formatSlotHour(slot?.startTime, slot?.timezone),
+          durationMin: _calcSlotDurationMin(slot?.startTime, slot?.endTime),
         }));
       }
 
@@ -1315,6 +1329,7 @@ async function executeCalendar({ node, input, variables, tenantId, llmService })
         return {
           slotId: byExactId?.slotId ?? byExactId?.id ?? null,
           calendarId: byExactId?.calendarId ?? calendarId,
+          durationMin: Number(byExactId?.durationMin ?? byExactId?.duration_min) || null,
         };
       }
 
@@ -1325,6 +1340,7 @@ async function executeCalendar({ node, input, variables, tenantId, llmService })
         return {
           slotId: byExactLabel?.slotId ?? byExactLabel?.id ?? null,
           calendarId: byExactLabel?.calendarId ?? calendarId,
+          durationMin: Number(byExactLabel?.durationMin ?? byExactLabel?.duration_min) || null,
         };
       }
 
@@ -1333,6 +1349,7 @@ async function executeCalendar({ node, input, variables, tenantId, llmService })
         return {
           slotId: topSlots[asIndex - 1]?.slotId ?? topSlots[asIndex - 1]?.id ?? null,
           calendarId: topSlots[asIndex - 1]?.calendarId ?? calendarId,
+          durationMin: Number(topSlots[asIndex - 1]?.durationMin ?? topSlots[asIndex - 1]?.duration_min) || null,
         };
       }
 
@@ -1345,6 +1362,7 @@ async function executeCalendar({ node, input, variables, tenantId, llmService })
           return {
             slotId: byHour?.slotId ?? byHour?.id ?? null,
             calendarId: byHour?.calendarId ?? calendarId,
+            durationMin: Number(byHour?.durationMin ?? byHour?.duration_min) || null,
           };
         }
       }
@@ -1360,6 +1378,7 @@ async function executeCalendar({ node, input, variables, tenantId, llmService })
         return {
           slotId: byContainsLabel?.slotId ?? byContainsLabel?.id ?? null,
           calendarId: byContainsLabel?.calendarId ?? calendarId,
+          durationMin: Number(byContainsLabel?.durationMin ?? byContainsLabel?.duration_min) || null,
         };
       }
 
@@ -1435,6 +1454,8 @@ async function executeCalendar({ node, input, variables, tenantId, llmService })
         appointment_start: a.startTime.toISOString(),
         appointment_end: a.endTime.toISOString(),
         appointment_status: 'scheduled',
+        ...(resolvedSelection?.durationMin ? { appointment_duration_min: resolvedSelection.durationMin } : {}),
+        ...(requestedSlotDurationMin ? { appointment_duration_min: requestedSlotDurationMin } : {}),
         ...(taskPayload?.vars ?? {}),
       },
       ...(taskPayload?.control ? { control: taskPayload.control } : {}),
@@ -1546,11 +1567,14 @@ async function _resolveCalendarAvailabilityCandidates({
   }];
 }
 
-async function _collectAvailabilityEntries({ calendarService, calendarCandidates, rangeDays }) {
+async function _collectAvailabilityEntries({ calendarService, calendarCandidates, rangeDays, slotDurationMin = null }) {
   const availabilityByCalendar = await Promise.all(
     calendarCandidates.map(async (candidate) => {
       const slots = await calendarService.getAvailableSlots(candidate.id, rangeDays);
-      return slots.map((slot) => ({
+      const filteredSlots = Array.isArray(slots)
+        ? slots.filter((slot) => _slotMatchesDuration(slot, slotDurationMin))
+        : [];
+      return filteredSlots.map((slot) => ({
         slotId: slot.id,
         calendarId: candidate.id,
         calendarName: candidate.name ?? null,
@@ -1562,6 +1586,7 @@ async function _collectAvailabilityEntries({ calendarService, calendarCandidates
         slotLabel: _formatSlotLabel(slot.startTime, slot.timezone),
         dayLabel: _formatSlotDay(slot.startTime, slot.timezone),
         hourLabel: _formatSlotHour(slot.startTime, slot.timezone),
+        durationMin: _calcSlotDurationMin(slot.startTime, slot.endTime),
       }));
     }),
   );
@@ -1726,6 +1751,9 @@ function _normalizeAvailabilityEntry(entry) {
   const dateKey = startDate && !Number.isNaN(startDate.getTime())
     ? startDate.toISOString().slice(0, 10)
     : String(entry.dateKey ?? entry.fecha ?? '').trim();
+  const durationMin = Number(entry.durationMin ?? entry.duration_min)
+    || _calcSlotDurationMin(startValue, entry.endTime ?? entry.end_time ?? null)
+    || null;
 
   if (!slotId) return null;
 
@@ -1740,6 +1768,7 @@ function _normalizeAvailabilityEntry(entry) {
     dayLabel,
     hourLabel,
     dateKey,
+    durationMin,
   };
 }
 
@@ -1748,6 +1777,28 @@ function _toIsoOrNull(value) {
   const date = value instanceof Date ? value : new Date(value);
   if (Number.isNaN(date.getTime())) return null;
   return date.toISOString();
+}
+
+function _parseSlotDurationMin(value) {
+  const parsed = Number.parseInt(String(value ?? '').trim(), 10);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+}
+
+function _calcSlotDurationMin(startValue, endValue) {
+  if (!startValue || !endValue) return null;
+  const start = startValue instanceof Date ? startValue : new Date(startValue);
+  const end = endValue instanceof Date ? endValue : new Date(endValue);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return null;
+  const diff = end.getTime() - start.getTime();
+  if (diff <= 0) return null;
+  return Math.round(diff / 60000);
+}
+
+function _slotMatchesDuration(slot, requestedDurationMin) {
+  if (!requestedDurationMin) return true;
+  const durationMin = _calcSlotDurationMin(slot?.startTime, slot?.endTime);
+  if (!durationMin) return true;
+  return durationMin === requestedDurationMin;
 }
 
 async function _resolveAvailabilitySelectionWithLlm({ tenantId, llmService, cfg, userInput, entries, fallbackCalendarId = null }) {
