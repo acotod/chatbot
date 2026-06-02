@@ -1744,7 +1744,7 @@ router._sandbox = {
  * Body: { tenantId, to, text }
  * Auth: JWT required (handled by caller middleware)
  */
-router.post('/send', async (req, res, next) => {
+router.post('/send', requireJwt, async (req, res, next) => {
   try {
     const fromBodyTenantId = typeof req.body?.tenantId === 'string' ? req.body.tenantId.trim() : '';
     const tenantSlug = typeof req.body?.tenantSlug === 'string' ? req.body.tenantSlug.trim() : '';
