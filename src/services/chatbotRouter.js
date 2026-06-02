@@ -31,6 +31,7 @@ async function routeMessage({ tenantId, userId, input, phone, conversationMeta }
   // Check if chatbot is enabled for this tenant
   const motorCfg = await db.getConfig(tenantId, 'motor_config');
   const engine = motorCfg?.valor?.engine ?? 'flow_engine';
+  const initialFlowCfg = await db.getConfig(tenantId, 'initial_waba_flow');
 
   if (engine === 'off') {
     return { response: null, fallbackToHuman: false };
@@ -60,6 +61,28 @@ async function routeMessage({ tenantId, userId, input, phone, conversationMeta }
   }
 
   const currentNodeId = ctx?.currentNodeId ?? null;
+
+  const isFreshConversation = currentNodeId == null;
+  const launchFlowCfg = initialFlowCfg?.valor && typeof initialFlowCfg.valor === 'object'
+    ? initialFlowCfg.valor
+    : null;
+  const launchFlowId = String(launchFlowCfg?.meta_flow_id ?? launchFlowCfg?.flow_id ?? '').trim();
+
+  if (isFreshConversation && launchFlowId && String(input ?? '').trim()) {
+    return {
+      response: {
+        type: 'waba_flow',
+        flow_id: launchFlowId,
+        flow_cta: String(launchFlowCfg?.flow_cta ?? 'Abrir flujo').trim().slice(0, 20) || 'Abrir flujo',
+        body_text: String(launchFlowCfg?.body_text ?? launchFlowCfg?.text ?? ' ').trim() || ' ',
+        header_text: launchFlowCfg?.header_text ? String(launchFlowCfg.header_text).trim() : undefined,
+        footer_text: launchFlowCfg?.footer_text ? String(launchFlowCfg.footer_text).trim() : undefined,
+        initial_screen: launchFlowCfg?.initial_screen ? String(launchFlowCfg.initial_screen).trim() : undefined,
+      },
+      fallbackToHuman: false,
+      conversationId: null,
+    };
+  }
 
   let result;
   try {

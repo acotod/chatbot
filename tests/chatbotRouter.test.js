@@ -50,6 +50,42 @@ describe('routeMessage — no active flow', () => {
   });
 });
 
+describe('routeMessage — initial WABA flow launch', () => {
+  test('returns a waba_flow response on the first inbound message when configured', async () => {
+    db.getConfig.mockImplementation(async (_tenantId, key) => {
+      if (key === 'motor_config') return { valor: { engine: 'flow_engine' } };
+      if (key === 'initial_waba_flow') {
+        return {
+          valor: {
+            meta_flow_id: '977764588581125',
+            flow_cta: 'Abrir flujo',
+            body_text: 'Hola 👋',
+            initial_screen: 'NODE',
+          },
+        };
+      }
+      return null;
+    });
+
+    const result = await routeMessage({ tenantId: TENANT_ID, userId: USER_ID, input: 'hola' });
+
+    expect(result).toEqual({
+      response: {
+        type: 'waba_flow',
+        flow_id: '977764588581125',
+        flow_cta: 'Abrir flujo',
+        body_text: 'Hola 👋',
+        header_text: undefined,
+        footer_text: undefined,
+        initial_screen: 'NODE',
+      },
+      fallbackToHuman: false,
+      conversationId: null,
+    });
+    expect(executeStep).not.toHaveBeenCalled();
+  });
+});
+
 describe('routeMessage — text node', () => {
   test('returns text response and updates context', async () => {
     executeStep.mockResolvedValue({
