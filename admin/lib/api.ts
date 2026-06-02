@@ -469,8 +469,8 @@ export const whatsappApi = {
       responseType: "blob",
     }),
   /** Send an outbound text message */
-  send: (tenantId: string, to: string, text: string) =>
-    apiClient.post("/whatsapp/send", { tenantId, to, text }),
+  send: (payload: { tenantId?: string; tenantSlug?: string; to: string; text: string }) =>
+    apiClient.post("/whatsapp/send", payload),
 };
 
 // ── Config (per-tenant) ────────────────────────────────────────────────────────

@@ -1746,9 +1746,15 @@ router._sandbox = {
  */
 router.post('/send', async (req, res, next) => {
   try {
-    const { tenantId, to, text } = req.body;
-    if (!tenantId || !to || !text) {
-      return res.status(400).json({ error: 'tenantId, to and text are required' });
+    const fromBodyTenantId = typeof req.body?.tenantId === 'string' ? req.body.tenantId.trim() : '';
+    const tenantSlug = typeof req.body?.tenantSlug === 'string' ? req.body.tenantSlug.trim() : '';
+    const resolvedTenantId = await resolveTenantId(req, tenantSlug);
+    const tenantId = fromBodyTenantId || resolvedTenantId;
+    const to = typeof req.body?.to === 'string' ? req.body.to.trim() : '';
+    const text = typeof req.body?.text === 'string' ? req.body.text : '';
+
+    if (!tenantId || !to || !text.trim()) {
+      return res.status(400).json({ error: 'tenantId/tenantSlug, to and text are required' });
     }
 
     const creds = await db.getWaCredentials(tenantId);
@@ -1943,6 +1949,16 @@ router.get('/media/:messageId', requireJwt, async (req, res, next) => {
     return res.status(200).send(file.buffer);
   } catch (err) {
     const status = Number(err?.status) || 502;
+    const waMessage = String(err?.waError?.message ?? err?.message ?? '').toLowerCase();
+    const shouldMapToNotFound = status === 400
+      && (waMessage.includes('unsupported get request')
+        || waMessage.includes('does not exist')
+        || waMessage.includes('missing permissions'));
+
+    if (shouldMapToNotFound) {
+      return res.status(404).json({ error: 'Media unavailable or expired' });
+    }
+
     if (status >= 400 && status < 500) {
       return res.status(status).json({ error: err.message || 'Media unavailable' });
     }

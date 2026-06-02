@@ -892,7 +892,12 @@ export default function ConversacionesPage() {
   // Send outbound message
   const sendMutation = useMutation({
     mutationFn: (text: string) =>
-      whatsappApi.send(tenantId!, activeThread!.user!.phone!, text),
+      whatsappApi.send({
+        tenantId: tenantId ?? undefined,
+        tenantSlug: effectiveTenantSlug ?? undefined,
+        to: activeThread!.user!.phone!,
+        text,
+      }),
     onMutate: async (text) => {
       const optimistic: Mensaje = {
         id: Date.now(),
