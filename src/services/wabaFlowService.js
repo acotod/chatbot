@@ -422,15 +422,24 @@ function exportToWaba(definition) {
       });
     }
 
-    // Add footer with navigation
-    if (node.type !== 'end' && node.next) {
+    // Add footer action for every non-terminal screen.
+    // - If node.next exists, keep explicit navigate behavior.
+    // - If node.next is missing, use data_exchange so backend can resolve branch/next.
+    if (node.type !== 'end') {
+      const hasExplicitNext = Boolean(node.next);
+      const action = hasExplicitNext
+        ? {
+            name: 'navigate',
+            next: { type: 'screen', name: nodeIdToScreenId.get(node.next) ?? node.next },
+          }
+        : {
+            name: 'data_exchange',
+          };
+
       screen.layout.children.push({
         type: 'Footer',
         label: node.config?.button_label ?? 'Continuar',
-        'on-click-action': {
-          name: 'navigate',
-          next: { type: 'screen', name: nodeIdToScreenId.get(node.next) ?? node.next },
-        },
+        'on-click-action': action,
       });
     } else if (node.type === 'end') {
       screen.layout.children.push({
