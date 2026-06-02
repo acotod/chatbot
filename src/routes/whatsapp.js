@@ -802,8 +802,14 @@ async function _handleIncomingMessage({ msg, contacts, tenant, phoneNumberId, ac
 
   // --- BLOQUEO DE FLUJO SI HAY SOLICITUD ABIERTA ---
   if (userId !== null) {
+    const initialFlowCfg = await db.getConfig(tenant.id, 'initial_waba_flow');
+    const hasInitialWabaFlow = Boolean(
+      initialFlowCfg?.valor && typeof initialFlowCfg.valor === 'object' && (
+        initialFlowCfg.valor.meta_flow_id || initialFlowCfg.valor.flow_id
+      )
+    );
     const openSolicitud = await db.findOpenSolicitudForUser(userId, tenant.id);
-    if (openSolicitud) {
+    if (openSolicitud && !hasInitialWabaFlow) {
       // Opcional: puedes personalizar el mensaje
       await wa.sendText(phoneNumberId, phone, 'Ya tienes una solicitud activa. Por favor espera a que sea atendida antes de iniciar un nuevo trámite.', accessToken, tenant, userId, correlationId);
       logger.info('Intento de reinicio de flujo bloqueado por solicitud activa', { tenantId: tenant.id, userId, phone });

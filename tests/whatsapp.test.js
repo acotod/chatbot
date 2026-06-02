@@ -171,4 +171,54 @@ describe('POST /whatsapp dual-write UEG', () => {
     }));
     expect(eventGateway.ingestEvent).toHaveBeenCalled();
   });
+
+  test('open solicitud does not block inbound when initial WABA flow is configured', async () => {
+    const app = createApp();
+    db.findOpenSolicitudForUser.mockResolvedValueOnce({ id: 999, estado: 'open' });
+    db.getConfig.mockImplementation(async (_tenantId, key) => {
+      if (key === 'initial_waba_flow') {
+        return {
+          valor: {
+            meta_flow_id: '977764588581125',
+            flow_cta: 'Abrir flujo',
+            body_text: 'Hola 👋',
+            initial_screen: 'NODE',
+          },
+        };
+      }
+      return { valor: { accessToken: 'token-123' } };
+    });
+
+    const payload = {
+      object: 'whatsapp_business_account',
+      entry: [{
+        changes: [{
+          field: 'messages',
+          value: {
+            metadata: { phone_number_id: '1234567890' },
+            contacts: [{ wa_id: '573001112233', profile: { name: 'Ana' } }],
+            messages: [{
+              id: 'wamid.inbound.456',
+              from: '573001112233',
+              type: 'text',
+              timestamp: '1717171717',
+              text: { body: 'hola' },
+            }],
+          },
+        }],
+      }],
+    };
+
+    const res = await request(app).post('/whatsapp').send(payload);
+
+    expect(res.status).toBe(200);
+    await flushAsync();
+
+    expect(db.saveMensaje).toHaveBeenCalledWith(expect.objectContaining({
+      tenantId: 'tenant-1',
+      direccion: 'entrada',
+      waMsgId: 'wamid.inbound.456',
+    }));
+    expect(db.findOpenSolicitudForUser).toHaveBeenCalledWith(7, 'tenant-1');
+  });
 });
