@@ -578,9 +578,10 @@ function resolvePublishedFlowNextScreen(definition, screenId, action, data) {
     }
 
     // Some Meta Flow payloads omit the expected variable key for menu selections.
-    // If this is not INIT/BACK and the menu has exactly one option, auto-advance.
+    // If the menu has exactly one option, auto-advance to avoid getting stuck
+    // on single-option screens (except explicit BACK actions).
     const options = Array.isArray(node.config?.options) ? node.config.options : [];
-    if (normalizedAction !== 'INIT' && normalizedAction !== 'BACK' && options.length === 1) {
+    if (normalizedAction !== 'BACK' && options.length === 1) {
       const onlyOptionId = normalizeFlowText(options[0]?.id);
       if (onlyOptionId) {
         return node.branches?.[onlyOptionId] ?? node.next ?? screenId;
