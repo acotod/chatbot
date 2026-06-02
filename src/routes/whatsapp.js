@@ -2072,8 +2072,19 @@ async function handleMetaFlowsDataExchange(req, res, next) {
       return res.status(400).json({ error: 'screen is required' });
     }
 
-    // Persist event
-    await db.saveEvent(userId, resolvedScreen, data, tenant.id);
+    // Persist event with lightweight request meta for troubleshooting.
+    const eventData = (data && typeof data === 'object')
+      ? {
+          ...data,
+          __meta_action: normalizeFlowText(action) || null,
+          __meta_screen: normalizeFlowText(screen) || null,
+        }
+      : {
+          __meta_action: normalizeFlowText(action) || null,
+          __meta_screen: normalizeFlowText(screen) || null,
+          __meta_raw_data: data ?? null,
+        };
+    await db.saveEvent(userId, resolvedScreen, eventData, tenant.id);
 
     // Persist solicitud when applicable
     if (resolvedScreen === 'SOLICITUD_ESPACIO') {
@@ -2084,12 +2095,24 @@ async function handleMetaFlowsDataExchange(req, res, next) {
     const flowConfig = await db.getConfig(tenant.id, 'flow_navigation');
     const navigationOverride = flowConfig ? flowConfig.valor : null;
     const publishedDefinition = await getTenantPublishedFlowDefinition(tenant.id);
+    const incomingScreen = normalizeFlowText(screen) || normalizeFlowText(data?.screen);
 
     const normalizedAction = String(action || '').toUpperCase();
-    const fallbackScreen = publishedDefinition
+    const publishedNodes = Array.isArray(publishedDefinition?.nodes) ? publishedDefinition.nodes : [];
+    const publishedHasIncomingScreen = incomingScreen
+      ? publishedNodes.some((node) => normalizeFlowText(node?.id) === incomingScreen)
+      : false;
+
+    // Only use legacy published-definition navigation when screen namespaces match.
+    // If Meta sends NODE/NODE_A/... and our internal definition uses node_1/node_8,...,
+    // forcing fallback would trap users on node_1.
+    const canUsePublishedFallback = Boolean(publishedDefinition)
+      && (!incomingScreen || publishedHasIncomingScreen);
+
+    const fallbackScreen = canUsePublishedFallback
       ? resolvePublishedFlowNextScreen(
           publishedDefinition,
-          normalizeFlowText(screen) || normalizeFlowText(data?.screen),
+          incomingScreen,
           normalizedAction,
           data,
         )
@@ -2103,9 +2126,16 @@ async function handleMetaFlowsDataExchange(req, res, next) {
     } else if (resolvedScreen === 'SOLICITUD_ESPACIO' && normalizedAction !== 'INIT') {
       nextScreen = 'CIERRE';
     } else {
-      nextScreen = normalizedAction === 'INIT' || normalizedAction === 'BACK'
-        ? resolvedScreen
-        : getNextScreen(resolvedScreen, data, navigationOverride);
+      if (normalizedAction === 'INIT' || normalizedAction === 'BACK') {
+        nextScreen = resolvedScreen;
+      } else {
+        const legacyNext = getNextScreen(resolvedScreen, data, navigationOverride);
+        // Preserve the incoming screen namespace when no legacy mapping exists.
+        // This allows Meta-defined Flow transitions to proceed without being overridden.
+        nextScreen = legacyNext === null && incomingScreen
+          ? incomingScreen
+          : legacyNext;
+      }
     }
     if (nextScreen === null && resolvedScreen === 'SOLICITUD_ESPACIO') {
       // Defensive fallback: never block users after submitting request form.

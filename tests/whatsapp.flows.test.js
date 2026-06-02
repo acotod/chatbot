@@ -148,7 +148,16 @@ describe('POST /whatsapp/flows', () => {
 
     expect(res.status).toBe(200);
     expect(res.body).toEqual({ screen: 'ESTRES', data: { title: 'estres' } });
-    expect(db.saveEvent).toHaveBeenCalledWith(null, 'INICIO', { opcion_inicio: 'estres' }, TEST_TENANT.id);
+    expect(db.saveEvent).toHaveBeenCalledWith(
+      null,
+      'INICIO',
+      {
+        opcion_inicio: 'estres',
+        __meta_action: 'data_exchange',
+        __meta_screen: 'INICIO',
+      },
+      TEST_TENANT.id,
+    );
   });
 
   test('decrypts encrypted INIT requests and encrypts the response', async () => {
