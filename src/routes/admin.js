@@ -369,7 +369,7 @@ function buildDefaultInternalCalendarConfig() {
             thu: ['09:00', '17:00'],
             fri: ['09:00', '17:00'],
         },
-        slot_duration_min: 60,
+        slot_duration_min: 15,
         advance_days: 14,
         provider: 'internal',
         sync: false,
