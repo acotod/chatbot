@@ -369,7 +369,7 @@ describe('POST /whatsapp dual-write UEG', () => {
     expect(db.addSolicitudComment).toHaveBeenCalledWith(expect.objectContaining({
       solicitudId: 999,
       tenantId: 'tenant-1',
-      userId: 7,
+      userId: null,
       content: 'por favor llamame despues de las 4pm',
       visibility: 'customer',
     }));

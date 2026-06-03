@@ -1217,7 +1217,7 @@ async function _handleIncomingMessage({ msg, contacts, tenant, phoneNumberId, ac
         await db.addSolicitudComment({
           solicitudId: pendingSolicitudIntent?.solicitudId || openSolicitud.id,
           tenantId: tenant.id,
-          userId,
+          userId: null,
           content: incomingCommentText,
           visibility: 'customer',
           attachments: [],
@@ -1268,7 +1268,7 @@ async function _handleIncomingMessage({ msg, contacts, tenant, phoneNumberId, ac
         await db.addSolicitudComment({
           solicitudId: pendingSolicitudIntent?.solicitudId || openSolicitud.id,
           tenantId: tenant.id,
-          userId,
+          userId: null,
           content: incomingAgentText,
           visibility: 'customer',
           attachments: [],
