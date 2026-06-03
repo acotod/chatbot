@@ -1102,7 +1102,10 @@ async function executeCalendar({ node, input, variables, tenantId, llmService })
     const calendarCtx = await calSvc.getCalendarAssignmentContext(selectedCalendarId, tenantId);
     const agreedStartIso = appointment?.startTime?.toISOString?.() ?? null;
     const agreedEndIso = appointment?.endTime?.toISOString?.() ?? null;
-    const agreedStartLabel = agreedStartIso ? _formatSlotLabel(agreedStartIso) : '';
+    const agreedDurationMin = _calcSlotDurationMin(appointment?.startTime, appointment?.endTime);
+    const agreedTimeZone = String(calendarCtx?.timezone || '').trim() || null;
+    const agreedStartLabel = agreedStartIso ? _formatSlotLabel(agreedStartIso, agreedTimeZone) : '';
+    const agreedEndLabel = agreedEndIso ? _formatSlotHour(agreedEndIso, agreedTimeZone) : '';
 
     const customerName = String(
       variables.nombre
@@ -1160,8 +1163,12 @@ async function executeCalendar({ node, input, variables, tenantId, llmService })
         appointment_customer_name: customerName || null,
         appointment_customer_cedula: customerCedula || null,
         appointment_notes_summary: summaryParts.join(' | ') || null,
+        appointment_duration_min: agreedDurationMin,
+        appointment_timezone: agreedTimeZone,
         appointment_start: agreedStartIso,
+        appointment_start_label: agreedStartLabel || null,
         appointment_end: agreedEndIso,
+        appointment_end_label: agreedEndLabel || null,
       },
     };
   };
@@ -1471,6 +1478,7 @@ async function executeCalendar({ node, input, variables, tenantId, llmService })
     }
     const a = bookResult.appointment;
     const selectedCalendarId = resolvedSelection.calendarId || calendarId;
+    const bookedDurationMin = _calcSlotDurationMin(a?.startTime, a?.endTime);
     const taskPayload = await buildBookingTaskPayload({ appointment: a, selectedCalendarId });
     return {
       output: null, nextNodeId: node.next,
@@ -1480,7 +1488,9 @@ async function executeCalendar({ node, input, variables, tenantId, llmService })
         appointment_start: a.startTime.toISOString(),
         appointment_end: a.endTime.toISOString(),
         appointment_status: 'scheduled',
-        ...(resolvedSelection?.durationMin
+        ...(bookedDurationMin
+          ? { appointment_duration_min: bookedDurationMin }
+          : resolvedSelection?.durationMin
           ? { appointment_duration_min: resolvedSelection.durationMin }
           : requestedSlotDurationMin
             ? { appointment_duration_min: requestedSlotDurationMin }
@@ -1513,6 +1523,7 @@ async function executeCalendar({ node, input, variables, tenantId, llmService })
     });
     if (bookResult.error) return { output: null, nextNodeId: (node.branches && node.branches.error) || node.next, updatedVars: {}, terminal: false, fallback: false };
     const a = bookResult.appointment;
+    const bookedDurationMin = _calcSlotDurationMin(a?.startTime, a?.endTime);
     const taskPayload = await buildBookingTaskPayload({ appointment: a, selectedCalendarId: calendarId });
     return {
       output: null,
@@ -1522,6 +1533,7 @@ async function executeCalendar({ node, input, variables, tenantId, llmService })
         appointment_start: a.startTime.toISOString(),
         appointment_end: a.endTime.toISOString(),
         appointment_status: 'scheduled',
+        ...(bookedDurationMin ? { appointment_duration_min: bookedDurationMin } : {}),
         ...(taskPayload?.vars ?? {}),
       },
       ...(taskPayload?.control ? { control: taskPayload.control } : {}),

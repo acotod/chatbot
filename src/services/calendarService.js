@@ -607,6 +607,8 @@ async function getCalendarAssignmentContext(calendarId, tenantId) {
     select: {
       id: true,
       name: true,
+      timezone: true,
+      config: true,
       agenteId: true,
       agente: {
         select: { id: true, nombre: true, estado: true },
@@ -620,6 +622,7 @@ async function getCalendarAssignmentContext(calendarId, tenantId) {
   return {
     calendarId: calendar.id,
     calendarName: calendar.name ?? null,
+    timezone: String(calendar?.config?.timezone || calendar?.timezone || 'UTC'),
     agenteId: isAgentActive ? Number(calendar.agente?.id ?? calendar.agenteId ?? 0) || null : null,
     agenteNombre: isAgentActive ? (calendar.agente?.nombre ?? null) : null,
   };
