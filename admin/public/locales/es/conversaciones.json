@@ -52,6 +52,7 @@
   "historialTab": {
     "empty": "Sin conversaciones registradas",
     "emptySub": "Las conversaciones del flujo aparecen aquí",
+    "showOthers": "Ver otras conversaciones",
     "unknownFlow": "Flujo desconocido",
     "noEvents": "Sin eventos"
   },

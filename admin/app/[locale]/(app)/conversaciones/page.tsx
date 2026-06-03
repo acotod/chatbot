@@ -697,6 +697,7 @@ export default function ConversacionesPage() {
   const [showEscalarForm, setShowEscalarForm] = useState(false);
   const [escalarAgenteId, setEscalarAgenteId] = useState<number | "">("");
   const [escalandoId, setEscalandoId] = useState<number | null>(null);
+  const [showAllConversationHistory, setShowAllConversationHistory] = useState(false);
   const [traceConversationId, setTraceConversationId] = useState("");
 
   // Resolve tenantId (UUID) from slug
@@ -857,19 +858,31 @@ export default function ConversacionesPage() {
     staleTime: 30_000,
   });
   const convHistory: ConvRecord[] = (convHistoryData as { data?: ConvRecord[] })?.data ?? (Array.isArray(convHistoryData) ? convHistoryData : []);
-  const activeConversation = convHistory.find((conv) => conv.status === "active") ?? null;
+  const sortedConvHistory = useMemo(
+    () => [...convHistory].sort((a, b) => new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime()),
+    [convHistory],
+  );
+  const activeConversation = sortedConvHistory.find((conv) => conv.status === "active") ?? null;
+  const defaultConversation = activeConversation ?? sortedConvHistory[0] ?? null;
+  const visibleConvHistory = showAllConversationHistory
+    ? sortedConvHistory
+    : (defaultConversation ? [defaultConversation] : []);
 
   useEffect(() => {
     if (contextTab !== "historial") return;
-    if (convHistory.length === 0) {
+    if (sortedConvHistory.length === 0) {
       setTraceConversationId("");
       return;
     }
-    const stillExists = convHistory.some((conv) => conv.id === traceConversationId);
+    const stillExists = sortedConvHistory.some((conv) => conv.id === traceConversationId);
     if (!stillExists) {
-      setTraceConversationId(activeConversation?.id ?? convHistory[0].id);
+      setTraceConversationId(defaultConversation?.id ?? "");
     }
-  }, [contextTab, convHistory, traceConversationId, activeConversation?.id]);
+  }, [contextTab, sortedConvHistory, traceConversationId, defaultConversation?.id]);
+
+  useEffect(() => {
+    setShowAllConversationHistory(false);
+  }, [activeThread?.id]);
 
   const closeConversationMutation = useMutation({
     mutationFn: (conversationId: string) => conversationsApi.updateStatus(conversationId, "completed"),
@@ -1415,7 +1428,7 @@ export default function ConversacionesPage() {
             {/* Historial del flujo tab */}
             {contextTab === "historial" && (
               <div className="p-3 space-y-3">
-                {convHistory.length === 0 && (
+                {sortedConvHistory.length === 0 && (
                   <div className="flex flex-col items-center justify-center py-8 text-[#5B6670] text-xs text-center gap-2">
                     <GitBranch size={24} className="text-[#4D7686]" />
                     <p>{t("historialTab.empty")}</p>
@@ -1423,16 +1436,27 @@ export default function ConversacionesPage() {
                   </div>
                 )}
 
-                {convHistory.length > 0 && (
+                {sortedConvHistory.length > 0 && (
                   <div className="p-3 bg-white rounded-2xl border border-[#D9E5EB] shadow-sm space-y-2">
                     <p className="text-xs font-semibold text-[#5B6670] uppercase tracking-[0.12em]">Conversation Trace</p>
+                    {sortedConvHistory.length > 1 && (
+                      <label className="flex items-center gap-2 text-xs text-[#5B6670]">
+                        <input
+                          type="checkbox"
+                          checked={showAllConversationHistory}
+                          onChange={(e) => setShowAllConversationHistory(e.target.checked)}
+                          className="h-3.5 w-3.5 rounded border-[#B8CCD7] text-[#00BFAE] focus:ring-[#00BFAE]/30"
+                        />
+                        <span>{t("historialTab.showOthers")}</span>
+                      </label>
+                    )}
                     <div className="relative">
                       <select
-                        value={traceConversationId || (activeConversation?.id ?? convHistory[0].id)}
+                        value={traceConversationId || (defaultConversation?.id ?? "")}
                         onChange={(e) => setTraceConversationId(e.target.value)}
                         className="w-full text-xs bg-white text-[#0D2B3E] border border-[#D9E5EB] rounded-lg px-2 py-1.5 pr-6 appearance-none focus:outline-none focus:ring-2 focus:ring-[#00BFAE]/25"
                       >
-                        {convHistory.map((conv) => (
+                        {visibleConvHistory.map((conv) => (
                           <option key={conv.id} value={conv.id}>
                             {conv.status} · {new Date(conv.startedAt).toLocaleString("es", { dateStyle: "short", timeStyle: "short" })}
                           </option>
@@ -1442,13 +1466,13 @@ export default function ConversacionesPage() {
                     </div>
 
                     <ApiTracePanel
-                      conversationId={traceConversationId || activeConversation?.id || convHistory[0].id}
+                      conversationId={traceConversationId || defaultConversation?.id || ""}
                       tenantSlug={effectiveTenantSlug ?? null}
                     />
                   </div>
                 )}
 
-                {convHistory.map((conv) => (
+                {visibleConvHistory.map((conv) => (
                   <ConvHistoryCard key={conv.id} conv={conv} />
                 ))}
               </div>

@@ -52,6 +52,7 @@
   "historialTab": {
     "empty": "No recorded conversations",
     "emptySub": "Flow conversations appear here",
+    "showOthers": "Show older conversations",
     "unknownFlow": "Unknown flow",
     "noEvents": "No events"
   },
