@@ -1596,9 +1596,9 @@ function NodeEditModal({
   const [calendarAction, setCalendarAction] = useState(String(cfg.action ?? "show_availability"));
   const [calendarId, setCalendarId] = useState(String(cfg.calendar_id ?? ""));
   const [calendarRangeDays, setCalendarRangeDays] = useState(Number(cfg.range_days ?? 15));
-  const [calendarSlotDurationMin, setCalendarSlotDurationMin] = useState(Number(cfg.slot_duration_min ?? cfg.slotDurationMin ?? cfg.appointment_duration_min ?? 60));
+  const [calendarSlotDurationMin, setCalendarSlotDurationMin] = useState(Number(cfg.slot_duration_min ?? cfg.slotDurationMin ?? cfg.appointment_duration_min ?? 15));
   const [calendarPrompt, setCalendarPrompt] = useState(String(cfg.prompt ?? ""));
-  const [calendarNoSlotsText, setCalendarNoSlotsText] = useState(String(cfg.no_slots_text ?? ""));
+  const [calendarNoSlotsText, setCalendarNoSlotsText] = useState(String(cfg.no_slots_text ?? "No hay horarios disponibles de {{slot_duration_min}} minutos por el momento. Si quieres, podemos continuar sin agendar por ahora."));
   const [calendarErrorText, setCalendarErrorText] = useState(String(cfg.error_text ?? ""));
   const [calendarAvailabilityVar, setCalendarAvailabilityVar] = useState(String(cfg.availability_variable ?? "agenda_horarios_disponibles"));
   const [calendarAssignmentStrategy, setCalendarAssignmentStrategy] = useState(String(cfg.assignment_strategy ?? cfg.calendar_selection_strategy ?? "random"));
@@ -1933,7 +1933,7 @@ function NodeEditModal({
       case "llm":       return { prompts: llmPrompts, composeMode: llmComposeMode, ...(llmFallbackText.trim() ? { fallback_text: llmFallbackText.trim() } : {}), ...actionFragment };
       case "calendar": {
         const parsedRangeDays = Number.isFinite(calendarRangeDays) ? Math.max(1, Math.trunc(calendarRangeDays)) : 15;
-        const parsedSlotDurationMin = Number.isFinite(calendarSlotDurationMin) ? Math.max(1, Math.trunc(calendarSlotDurationMin)) : 60;
+        const parsedSlotDurationMin = Number.isFinite(calendarSlotDurationMin) ? Math.max(1, Math.trunc(calendarSlotDurationMin)) : 15;
         const parsedPuestoId = Number.parseInt(String(calendarPuestoId || "").trim(), 10);
         const normalizedAssignmentStrategy = String(calendarAssignmentStrategy || "random").trim().toLowerCase();
         return {
@@ -1945,7 +1945,7 @@ function NodeEditModal({
           ...(Number.isInteger(parsedPuestoId) && parsedPuestoId > 0 ? { agente_puesto_id: parsedPuestoId } : {}),
           ...(calendarPuestoNombre.trim() ? { agente_puesto_nombre: calendarPuestoNombre.trim() } : {}),
           ...(calendarPrompt.trim() ? { prompt: calendarPrompt.trim() } : {}),
-          ...(calendarNoSlotsText.trim() ? { no_slots_text: calendarNoSlotsText.trim() } : {}),
+          ...(calendarNoSlotsText.trim() ? { no_slots_text: calendarNoSlotsText.trim() } : { no_slots_text: 'No hay horarios disponibles de {{slot_duration_min}} minutos por el momento. Si quieres, podemos continuar sin agendar por ahora.' }),
           ...(calendarErrorText.trim() ? { error_text: calendarErrorText.trim() } : {}),
           ...(calendarAvailabilityVar.trim() ? { availability_variable: calendarAvailabilityVar.trim() } : {}),
         };

@@ -171,6 +171,20 @@ function resolveConfig(config, variables) {
   return config;
 }
 
+function _buildCalendarNoSlotsText(cfg = {}, slotDurationMin = null) {
+  const parsedSlotDurationMin = Number.isFinite(Number(slotDurationMin)) && Number(slotDurationMin) > 0
+    ? Math.trunc(Number(slotDurationMin))
+    : null;
+  const fallbackTemplate = parsedSlotDurationMin
+    ? 'No hay horarios disponibles de {{slot_duration_min}} minutos por el momento. Si quieres, podemos continuar sin agendar por ahora.'
+    : 'No hay horarios disponibles por el momento. Si quieres, podemos continuar sin agendar por ahora.';
+  const template = _pickFirstNonEmpty(cfg.no_slots_text, fallbackTemplate);
+  return resolveTemplate(template, {
+    slot_duration_min: parsedSlotDurationMin ?? '',
+    appointment_duration_min: parsedSlotDurationMin ?? '',
+  });
+}
+
 function _normalizeMenuInput(value) {
   return String(value ?? '').trim();
 }
@@ -1202,8 +1216,9 @@ async function executeCalendar({ node, input, variables, tenantId, llmService })
     });
 
     if (!availabilityEntries.length) {
+      const noSlotsText = _buildCalendarNoSlotsText(cfg, requestedSlotDurationMin);
       return {
-        output: { type: 'text', text: cfg.no_slots_text || 'No hay horarios disponibles. Un agente te contactara.' },
+        output: { type: 'text', text: noSlotsText },
         nextNodeId: (node.branches && node.branches.no_slots) || node.next,
         updatedVars: {
           [availabilityVarName]: [],
@@ -1454,8 +1469,11 @@ async function executeCalendar({ node, input, variables, tenantId, llmService })
         appointment_start: a.startTime.toISOString(),
         appointment_end: a.endTime.toISOString(),
         appointment_status: 'scheduled',
-        ...(resolvedSelection?.durationMin ? { appointment_duration_min: resolvedSelection.durationMin } : {}),
-        ...(requestedSlotDurationMin ? { appointment_duration_min: requestedSlotDurationMin } : {}),
+        ...(resolvedSelection?.durationMin
+          ? { appointment_duration_min: resolvedSelection.durationMin }
+          : requestedSlotDurationMin
+            ? { appointment_duration_min: requestedSlotDurationMin }
+            : {}),
         ...(taskPayload?.vars ?? {}),
       },
       ...(taskPayload?.control ? { control: taskPayload.control } : {}),
@@ -1574,7 +1592,10 @@ async function _collectAvailabilityEntries({ calendarService, calendarCandidates
       const filteredSlots = Array.isArray(slots)
         ? slots.filter((slot) => _slotMatchesDuration(slot, slotDurationMin))
         : [];
-      return filteredSlots.map((slot) => ({
+      const effectiveSlots = filteredSlots.length > 0 || !slotDurationMin
+        ? filteredSlots
+        : (Array.isArray(slots) ? slots : []);
+      return effectiveSlots.map((slot) => ({
         slotId: slot.id,
         calendarId: candidate.id,
         calendarName: candidate.name ?? null,
