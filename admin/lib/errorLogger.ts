@@ -101,6 +101,17 @@ export function initGlobalErrorLogger(): void {
 
   // Capture uncaught errors
   window.addEventListener("error", (event) => {
+    // ResizeObserver loop notifications are benign browser-level warnings
+    // emitted by ReactFlow's internal node-size observers; suppress them.
+    if (
+      event.message &&
+      (event.message.includes("ResizeObserver loop completed") ||
+        event.message.includes("ResizeObserver loop limit exceeded"))
+    ) {
+      event.stopImmediatePropagation();
+      return;
+    }
+
     addLog({
       level: "error",
       source: "console",
