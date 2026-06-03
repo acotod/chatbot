@@ -6,11 +6,13 @@ import {
   type AgentConversationMessage,
   type AgentConversationThread,
 } from "@/lib/agentApi";
+import { whatsappApi } from "@/lib/api";
 import { useCurrentLocale } from "@/lib/i18n/client";
 import { cn, formatDate } from "@/lib/utils";
 import { Search, Send } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useAuthStore } from "@/store/auth";
 
 function extractText(msg: Pick<AgentConversationMessage | AgentConversationThread, "tipo" | "contenido">): string {
   const c = (msg.contenido ?? {}) as Record<string, unknown>;
@@ -47,6 +49,7 @@ function extractText(msg: Pick<AgentConversationMessage | AgentConversationThrea
   if (transcript) return transcript;
   const mediaType = inferMediaType(msg);
   if (mediaType === "image") return "Imagen";
+  if (mediaType === "sticker") return "Sticker";
   if (mediaType === "audio") return "Audio";
   if (mediaType === "document") return "Documento";
   return `[${msg.tipo}]`;
@@ -62,10 +65,10 @@ function getAudioTranscript(contenido: unknown): string | null {
   return trimmed || null;
 }
 
-function inferMediaType(msg: Pick<AgentConversationMessage | AgentConversationThread, "tipo" | "contenido">): "image" | "audio" | "document" | null {
+function inferMediaType(msg: Pick<AgentConversationMessage | AgentConversationThread, "tipo" | "contenido">): "image" | "audio" | "document" | "sticker" | null {
   const normalizedTipo = String(msg.tipo ?? "").trim().toLowerCase();
-  if (normalizedTipo === "image" || normalizedTipo === "audio" || normalizedTipo === "document") {
-    return normalizedTipo;
+  if (normalizedTipo === "image" || normalizedTipo === "audio" || normalizedTipo === "document" || normalizedTipo === "sticker") {
+    return normalizedTipo as "image" | "audio" | "document" | "sticker";
   }
 
   const contenido = (msg.contenido && typeof msg.contenido === "object")
@@ -73,6 +76,7 @@ function inferMediaType(msg: Pick<AgentConversationMessage | AgentConversationTh
     : {};
 
   if (contenido.image && typeof contenido.image === "object") return "image";
+  if (contenido.sticker && typeof contenido.sticker === "object") return "sticker";
   if (contenido.audio && typeof contenido.audio === "object") return "audio";
   if (contenido.document && typeof contenido.document === "object") return "document";
 
@@ -80,6 +84,7 @@ function inferMediaType(msg: Pick<AgentConversationMessage | AgentConversationTh
     ? (contenido.raw as Record<string, unknown>)
     : null;
   if (raw?.image && typeof raw.image === "object") return "image";
+  if (raw?.sticker && typeof raw.sticker === "object") return "sticker";
   if (raw?.audio && typeof raw.audio === "object") return "audio";
   if (raw?.document && typeof raw.document === "object") return "document";
 
@@ -90,11 +95,85 @@ function getDisplayName(thread: AgentConversationThread, isEn: boolean): string 
   return thread._contactName ?? thread.user?.phone ?? `${isEn ? "User" : "Usuario"} ${thread.userId}`;
 }
 
+function MessageMediaContent({
+  msg,
+  tenantSlug,
+}: {
+  msg: Pick<AgentConversationMessage, "id" | "tipo" | "contenido">;
+  tenantSlug: string | null;
+}) {
+  const [blobUrl, setBlobUrl] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const mediaType = inferMediaType(msg);
+  const isMedia = mediaType !== null;
+  const transcript = mediaType === "audio" ? getAudioTranscript(msg.contenido) : null;
+
+  useEffect(() => {
+    if (!isMedia || !tenantSlug) return;
+
+    let cancelled = false;
+    let localUrl: string | null = null;
+
+    (async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const response = await whatsappApi.getMediaBlob(msg.id, { tenantSlug });
+        localUrl = URL.createObjectURL(response.data as Blob);
+        if (!cancelled) {
+          setBlobUrl(localUrl);
+        }
+      } catch {
+        if (!cancelled) setError("media_unavailable");
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      if (localUrl) URL.revokeObjectURL(localUrl);
+    };
+  }, [isMedia, msg.id, tenantSlug]);
+
+  if (mediaType === "image" || mediaType === "sticker") {
+    if (loading) return <p className="text-xs text-[#5B6670]">{mediaType === "sticker" ? "Cargando sticker..." : "Cargando imagen..."}</p>;
+    if (error || !blobUrl) return <p className="text-xs text-[#5B6670]">{mediaType === "sticker" ? "Sticker no disponible" : "Imagen no disponible"}</p>;
+    return <img src={blobUrl} alt={mediaType === "sticker" ? "WhatsApp sticker" : "WhatsApp media"} className="max-h-72 rounded-xl border border-[#00BFAE]/20 object-contain" />;
+  }
+
+  if (mediaType === "audio") {
+    return (
+      <div className="space-y-1.5">
+        {loading && <p className="text-xs text-[#5B6670]">Cargando audio...</p>}
+        {!loading && blobUrl && <audio controls src={blobUrl} className="max-w-full" preload="metadata" />}
+        {!loading && !blobUrl && <p className="text-xs text-[#5B6670]">Audio no disponible</p>}
+        {transcript?.text && <p className="text-xs text-[#0D2B3E] whitespace-pre-wrap">{transcript.text}</p>}
+      </div>
+    );
+  }
+
+  if (mediaType === "document") {
+    if (loading) return <p className="text-xs text-[#5B6670]">Cargando documento...</p>;
+    if (error || !blobUrl) return <p className="text-xs text-[#5B6670]">Documento no disponible</p>;
+    return (
+      <a href={blobUrl} target="_blank" rel="noreferrer" className="text-xs text-[#00BFAE] hover:underline">
+        Abrir documento
+      </a>
+    );
+  }
+
+  return <p className="whitespace-pre-wrap">{extractText(msg)}</p>;
+}
+
 export default function AgentConversacionesPage() {
   const qc = useQueryClient();
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const locale = useCurrentLocale();
   const isEn = locale === "en";
+  const { tenantSlug } = useAuthStore();
 
   const [activeThread, setActiveThread] = useState<AgentConversationThread | null>(null);
   const [input, setInput] = useState("");
@@ -328,7 +407,7 @@ export default function AgentConversacionesPage() {
                             : "rounded-tl-sm border border-slate-200 bg-white text-slate-800",
                         )}
                       >
-                        <p className="whitespace-pre-wrap">{extractText(msg)}</p>
+                        <MessageMediaContent msg={msg} tenantSlug={tenantSlug ?? null} />
                         <p className={cn("mt-1 text-xs", isOutbound ? "text-blue-200" : "text-slate-400")}>
                           {new Date(msg.createdAt).toLocaleTimeString(isEn ? "en-US" : "es-ES", { hour: "2-digit", minute: "2-digit" })}
                         </p>

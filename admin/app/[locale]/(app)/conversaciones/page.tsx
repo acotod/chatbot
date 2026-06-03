@@ -150,15 +150,16 @@ function extractText(msg: Pick<Mensaje, "tipo" | "contenido">): string {
   if (transcript?.text) return transcript.text;
   const mediaType = inferMediaType(msg);
   if (mediaType === "image") return "Imagen";
+  if (mediaType === "sticker") return "Sticker";
   if (mediaType === "audio") return "Audio";
   if (mediaType === "document") return "Documento";
   return `[${msg.tipo}]`;
 }
 
-function inferMediaType(msg: Pick<Mensaje, "tipo" | "contenido">): "image" | "audio" | "document" | null {
+function inferMediaType(msg: Pick<Mensaje, "tipo" | "contenido">): "image" | "audio" | "document" | "sticker" | null {
   const normalizedTipo = String(msg.tipo ?? "").trim().toLowerCase();
-  if (normalizedTipo === "image" || normalizedTipo === "audio" || normalizedTipo === "document") {
-    return normalizedTipo;
+  if (normalizedTipo === "image" || normalizedTipo === "audio" || normalizedTipo === "document" || normalizedTipo === "sticker") {
+    return normalizedTipo as "image" | "audio" | "document" | "sticker";
   }
 
   const contenido = (msg.contenido && typeof msg.contenido === "object")
@@ -166,6 +167,7 @@ function inferMediaType(msg: Pick<Mensaje, "tipo" | "contenido">): "image" | "au
     : {};
 
   if (contenido.image && typeof contenido.image === "object") return "image";
+  if (contenido.sticker && typeof contenido.sticker === "object") return "sticker";
   if (contenido.audio && typeof contenido.audio === "object") return "audio";
   if (contenido.document && typeof contenido.document === "object") return "document";
 
@@ -173,6 +175,7 @@ function inferMediaType(msg: Pick<Mensaje, "tipo" | "contenido">): "image" | "au
     ? (contenido.raw as Record<string, unknown>)
     : null;
   if (raw?.image && typeof raw.image === "object") return "image";
+  if (raw?.sticker && typeof raw.sticker === "object") return "sticker";
   if (raw?.audio && typeof raw.audio === "object") return "audio";
   if (raw?.document && typeof raw.document === "object") return "document";
 
@@ -221,12 +224,7 @@ function MessageMediaContent({
   const transcript = mediaType === "audio" ? getAudioTranscript(msg) : null;
 
   useEffect(() => {
-    if (!isMedia || (!tenantId && !tenantSlug)) {
-      setBlobUrl(null);
-      setLoading(false);
-      setError(null);
-      return;
-    }
+    if (!isMedia || (!tenantId && !tenantSlug)) return;
 
     let cancelled = false;
     let localUrl: string | null = null;
@@ -256,10 +254,10 @@ function MessageMediaContent({
     };
   }, [isMedia, msg.id, tenantId, tenantSlug]);
 
-  if (mediaType === "image") {
-    if (loading) return <p className="text-xs text-[#5B6670]">Cargando imagen...</p>;
-    if (error || !blobUrl) return <p className="text-xs text-[#5B6670]">Imagen no disponible</p>;
-    return <img src={blobUrl} alt="WhatsApp media" className="max-h-72 rounded-xl border border-[#00BFAE]/20 object-contain" />;
+  if (mediaType === "image" || mediaType === "sticker") {
+    if (loading) return <p className="text-xs text-[#5B6670]">{mediaType === "sticker" ? "Cargando sticker..." : "Cargando imagen..."}</p>;
+    if (error || !blobUrl) return <p className="text-xs text-[#5B6670]">{mediaType === "sticker" ? "Sticker no disponible" : "Imagen no disponible"}</p>;
+    return <img src={blobUrl} alt={mediaType === "sticker" ? "WhatsApp sticker" : "WhatsApp media"} className="max-h-72 rounded-xl border border-[#00BFAE]/20 object-contain" />;
   }
 
   if (mediaType === "audio") {

@@ -264,7 +264,7 @@ async function _ingestUegBestEffort({ tenantId, correlationId, idempotencyKey, r
 function _extractMediaFromContenido(tipo, contenido) {
   const payload = (contenido && typeof contenido === 'object') ? contenido : {};
   const normalizedTipo = String(tipo ?? '').trim().toLowerCase();
-  const candidates = ['image', 'audio', 'document'];
+  const candidates = ['image', 'audio', 'document', 'sticker'];
 
   if (candidates.includes(normalizedTipo)) {
     const media = payload[normalizedTipo];
@@ -1072,6 +1072,9 @@ async function _handleIncomingMessage({ msg, contacts, tenant, phoneNumberId, ac
       break;
     case 'document':
       contenido = { document: msg.document };
+      break;
+    case 'sticker':
+      contenido = { sticker: msg.sticker };
       break;
     default:
       contenido = { raw: msg };
@@ -2490,7 +2493,7 @@ router.get('/mensajes', requireJwt, async (req, res, next) => {
 
 /**
  * GET /whatsapp/media/:messageId?tenantId= | ?tenantSlug=
- * Streams message media (image/audio/document) to admin UI.
+ * Streams message media (image/audio/document/sticker) to admin UI.
  * Requires JWT.
  */
 router.get('/media/:messageId', requireJwt, async (req, res, next) => {
@@ -2559,6 +2562,7 @@ router.get('/media/:messageId', requireJwt, async (req, res, next) => {
       if (mediaType === 'image') contentType = 'image/jpeg';
       else if (mediaType === 'audio') contentType = 'audio/ogg';
       else if (mediaType === 'document') contentType = 'application/octet-stream';
+      else if (mediaType === 'sticker') contentType = 'image/webp';
     }
 
     res.setHeader('Content-Type', contentType || file.contentType || 'application/octet-stream');
