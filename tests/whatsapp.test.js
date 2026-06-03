@@ -39,6 +39,10 @@ jest.mock('../src/services/chatbotRouter', () => ({
   routeMessage: jest.fn().mockResolvedValue({ response: null, fallbackToHuman: false }),
 }));
 
+jest.mock('../src/services/emailService', () => ({
+  sendEmail: jest.fn().mockResolvedValue({ ok: true, messageId: 'mail_1', accepted: [], rejected: [] }),
+}));
+
 jest.mock('../src/services/flowNavigation', () => ({
   getNextScreen: jest.fn(),
 }));
@@ -56,6 +60,7 @@ const db = require('../src/services/database');
 const wa = require('../src/services/whatsapp');
 const socketService = require('../src/services/socketService');
 const eventGateway = require('../src/services/eventGateway');
+const emailService = require('../src/services/emailService');
 
 function createApp() {
   const app = express();
@@ -326,12 +331,12 @@ describe('POST /whatsapp dual-write UEG', () => {
     );
   });
 
-  test('open solicitud can forward customer message to assigned agent on WhatsApp', async () => {
+  test('open solicitud reroutes customer message via internal agent chat and email', async () => {
     const app = createApp();
     db.findOpenSolicitudForUser.mockResolvedValueOnce({ id: 999, estado: 'open', agenteId: 23 });
     db.getSolicitudById.mockResolvedValueOnce({
       id: 999,
-      agente: { id: 23, nombre: 'Pedro Perez', whatsapp: '+506 8888-7777' },
+      agente: { id: 23, nombre: 'Pedro Perez', whatsapp: '+506 8888-7777', email: 'andres.coto@pmc-dev.com' },
     });
     db.addSolicitudComment.mockResolvedValueOnce({ id: 1001 });
     db.getConfig.mockImplementation(async (_tenantId, key) => {
@@ -375,10 +380,21 @@ describe('POST /whatsapp dual-write UEG', () => {
     }));
     expect(wa.sendTextMessage).toHaveBeenCalledWith(
       '1234567890',
-      '50688887777',
-      expect.stringContaining('Comentario actual: por favor llamame despues de las 4pm'),
+      '573001112233',
+      expect.stringContaining('chat interno del agente'),
       'token-123',
     );
+    expect(wa.sendTextMessage).not.toHaveBeenCalledWith(
+      '1234567890',
+      '50688887777',
+      expect.any(String),
+      'token-123',
+    );
+    expect(emailService.sendEmail).toHaveBeenCalledWith(expect.objectContaining({
+      to: 'andres.coto@pmc-dev.com',
+      tenantId: 'tenant-1',
+      subject: expect.stringContaining('Nueva solicitud asignada #999'),
+    }));
     expect(socketService.emit).toHaveBeenCalledWith(
       'tenant-1',
       'SOLICITUD_MESSAGE_SENT',
@@ -387,7 +403,7 @@ describe('POST /whatsapp dual-write UEG', () => {
         tenantId: 'tenant-1',
         userId: 7,
         source: 'customer',
-        via: 'assigned_agent_whatsapp',
+        via: 'assigned_agent_internal',
       }),
     );
   });

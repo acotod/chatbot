@@ -1246,25 +1246,6 @@ async function _handleIncomingMessage({ msg, contacts, tenant, phoneNumberId, ac
         const fullSolicitud = typeof db.getSolicitudById === 'function'
           ? await db.getSolicitudById(openSolicitud.id, tenant.id)
           : null;
-        const assignedAgentWhatsapp = _normalizeAgentWhatsapp(fullSolicitud?.agente?.whatsapp);
-        if (!assignedAgentWhatsapp) {
-          await _sendText(
-            phoneNumberId,
-            phone,
-            'No pude enviar el mensaje porque el agente asignado no tiene WhatsApp configurado.',
-            accessToken,
-            tenant,
-            userId,
-            correlationId,
-          );
-          return {
-            userId,
-            messageId: null,
-            conversationId: null,
-            blockedByOpenSolicitud: true,
-            openSolicitudHandled: 'agent_unavailable',
-          };
-        }
 
         await db.addSolicitudComment({
           solicitudId: pendingSolicitudIntent?.solicitudId || openSolicitud.id,
@@ -1286,42 +1267,36 @@ async function _handleIncomingMessage({ msg, contacts, tenant, phoneNumberId, ac
           incomingAgentText,
         });
 
+        const fallbackConversationId = String(fullSolicitud?.conversationId ?? openSolicitud?.conversationId ?? '').trim() || null;
+        const fallbackAgenteId = Number(fullSolicitud?.agente?.id ?? openSolicitud?.agenteId ?? 0) || null;
+
         socketService.emit(tenant.id, 'SOLICITUD_MESSAGE_SENT', {
           solicitudId: pendingSolicitudIntent?.solicitudId || openSolicitud.id,
           tenantId: tenant.id,
           userId,
           agenteId: Number(fullSolicitud?.agente?.id ?? openSolicitud?.agenteId ?? 0) || null,
           source: 'customer',
-          via: 'assigned_agent_whatsapp',
+          via: 'assigned_agent_internal',
           comment: incomingAgentText,
           createdAt: new Date().toISOString(),
         });
 
         try {
-          await wa.sendTextMessage(
-            phoneNumberId,
-            assignedAgentWhatsapp,
-            _sanitizeWaText(outboundToAgent, { max: 3800 }),
-            accessToken,
-          );
-        } catch (forwardErr) {
-          const errMsg = String(forwardErr?.message ?? '');
-          const blockedByAllowList = errMsg.includes('131030') || errMsg.toLowerCase().includes('allowed list');
-
-          const fallbackConversationId = String(fullSolicitud?.conversationId ?? openSolicitud?.conversationId ?? '').trim() || null;
-          const fallbackAgenteId = Number(fullSolicitud?.agente?.id ?? openSolicitud?.agenteId ?? 0) || null;
-
-          // Fallback: keep the agent informed through internal channels even if Meta blocks delivery.
           await db.addSolicitudComment({
             solicitudId: pendingSolicitudIntent?.solicitudId || openSolicitud.id,
             tenantId: tenant.id,
             userId: null,
-            content: `[FALLBACK INTERNO] Mensaje de cliente no enviado por WhatsApp al agente (${blockedByAllowList ? 'Meta allowed list' : 'fallo de entrega'}): ${incomingAgentText}`,
+            content: `[CANAL INTERNO] Mensaje de cliente para agente asignado: ${incomingAgentText}`,
             visibility: 'internal',
             attachments: [],
-          }).catch(() => null);
+          });
+        } catch (_) {
+          // Best-effort internal note.
+        }
 
-          const fallbackMensaje = await db.saveMensaje({
+        let fallbackMensaje = null;
+        try {
+          fallbackMensaje = await db.saveMensaje({
             tenantId: tenant.id,
             userId,
             agenteId: fallbackAgenteId,
@@ -1329,29 +1304,33 @@ async function _handleIncomingMessage({ msg, contacts, tenant, phoneNumberId, ac
             direccion: 'entrada',
             tipo: 'text',
             contenido: {
-              text: `[Mensaje para agente - fallback interno] ${incomingAgentText}`,
-              source: 'agent_whatsapp_forward_fallback',
-              reason: blockedByAllowList ? 'meta_allowed_list' : 'delivery_error',
+              text: `[Mensaje para agente - canal interno] ${incomingAgentText}`,
+              source: 'agent_internal_forward',
+              originalPayload: _sanitizeWaText(outboundToAgent, { max: 3800 }),
             },
             conversationId: fallbackConversationId,
             status: 'read',
-          }).catch(() => null);
+          });
+        } catch (_) {
+          fallbackMensaje = null;
+        }
 
-          if (fallbackMensaje && userId !== null) {
-            socketService.emit(tenant.id, 'nuevo_mensaje', {
-              id: fallbackMensaje.id,
-              userId,
-              phone,
-              contactName: userName || null,
-              tipo: fallbackMensaje.tipo,
-              contenido: fallbackMensaje.contenido,
-              waMsgId: null,
-              createdAt: fallbackMensaje.createdAt,
-            });
-          }
+        if (fallbackMensaje && userId !== null) {
+          socketService.emit(tenant.id, 'nuevo_mensaje', {
+            id: fallbackMensaje.id,
+            userId,
+            phone,
+            contactName: userName || null,
+            tipo: fallbackMensaje.tipo,
+            contenido: fallbackMensaje.contenido,
+            waMsgId: null,
+            createdAt: fallbackMensaje.createdAt,
+          });
+        }
 
-          const agentEmail = String(fullSolicitud?.agente?.email ?? '').trim();
-          if (agentEmail) {
+        const agentEmail = String(fullSolicitud?.agente?.email ?? '').trim();
+        if (agentEmail) {
+          try {
             await sendEmail({
               to: agentEmail,
               subject: `Nueva solicitud asignada #${openSolicitud.id}`,
@@ -1361,53 +1340,31 @@ async function _handleIncomingMessage({ msg, contacts, tenant, phoneNumberId, ac
                 userName ? `Cliente: ${userName}` : '',
                 `Telefono cliente: ${phone}`,
                 `Mensaje cliente: ${incomingAgentText}`,
-                blockedByAllowList
-                  ? 'Nota: No se pudo reenviar por WhatsApp porque el numero del agente no esta en la lista permitida de Meta test.'
-                  : 'Nota: El reenvio por WhatsApp al agente fallo y se registro por canal interno.',
+                'Canal: chat interno de agente + notificacion por correo.',
               ].filter(Boolean).join('\n'),
               tenantId: tenant.id,
               metadata: {
                 route: '/whatsapp',
-                type: 'assigned_agent_forward_fallback',
+                type: 'assigned_agent_forward_internal',
                 solicitudId: openSolicitud.id,
                 userId,
               },
-            }).catch((mailErr) => {
-              logger.warn('No se pudo enviar correo al agente para fallback interno', {
-                tenantId: tenant.id,
-                solicitudId: openSolicitud.id,
-                agenteId: fallbackAgenteId,
-                message: mailErr?.message,
-              });
+            });
+          } catch (mailErr) {
+            logger.warn('No se pudo enviar correo al agente para canal interno', {
+              tenantId: tenant.id,
+              solicitudId: openSolicitud.id,
+              agenteId: fallbackAgenteId,
+              message: mailErr?.message,
             });
           }
-
-          await _clearPendingSolicitudComment({ tenantId: tenant.id, userId });
-          await _sendText(
-            phoneNumberId,
-            phone,
-            blockedByAllowList
-              ? 'No pude enviarlo por WhatsApp directo al agente porque su numero no esta autorizado en Meta test, pero ya lo reenvie al chat interno del agente y notifique por correo.'
-              : 'No pude enviarlo por WhatsApp directo al agente, pero ya lo reenvie al chat interno del agente y notifique por correo.',
-            accessToken,
-            tenant,
-            userId,
-            correlationId,
-          );
-          return {
-            userId,
-            messageId: null,
-            conversationId: null,
-            blockedByOpenSolicitud: true,
-            openSolicitudHandled: 'agent_forward_failed',
-          };
         }
 
         await _clearPendingSolicitudComment({ tenantId: tenant.id, userId });
         await _sendText(
           phoneNumberId,
           phone,
-          `Listo. Envie tu mensaje al agente asignado${agentName ? ` (${agentName})` : ''}.`,
+          `Listo. Ya reenvie tu mensaje por chat interno del agente${agentName ? ` (${agentName})` : ''} y tambien notifique por correo.`,
           accessToken,
           tenant,
           userId,
@@ -1418,7 +1375,7 @@ async function _handleIncomingMessage({ msg, contacts, tenant, phoneNumberId, ac
           messageId: null,
           conversationId: null,
           blockedByOpenSolicitud: true,
-          openSolicitudHandled: 'agent_message_sent',
+          openSolicitudHandled: 'agent_message_rerouted_internal',
         };
       }
 
