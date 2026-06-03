@@ -800,6 +800,19 @@ async function updateSolicitudEstado(id, tenantId, estado) {
     }).catch(() => {});
   }
 
+  if (
+    result.count > 0
+    && current
+    && current.estado !== normalized
+    && normalized === SOLICITUD_STATUS.REJECTED
+    && current.conversationId
+  ) {
+    await _cancelScheduledAppointmentsForConversation({
+      tenantId,
+      conversationId: current.conversationId,
+    });
+  }
+
   return result;
 }
 
@@ -1028,7 +1041,51 @@ async function updateSolicitudFields(id, tenantId, updates = {}, actorUserId = n
     }
   }
 
+  if (
+    current.estado !== updated.estado
+    && updated.estado === SOLICITUD_STATUS.REJECTED
+    && updated.conversationId
+  ) {
+    await _cancelScheduledAppointmentsForConversation({
+      tenantId,
+      conversationId: updated.conversationId,
+    });
+  }
+
   return updated;
+}
+
+async function _cancelScheduledAppointmentsForConversation({ tenantId, conversationId }) {
+  const client = getPrismaClient();
+  if (!client || !tenantId || !conversationId) return 0;
+
+  const scheduledAppointments = await client.appointment.findMany({
+    where: {
+      tenantId,
+      conversationId,
+      status: 'scheduled',
+    },
+    select: { id: true },
+  });
+
+  if (!scheduledAppointments.length) return 0;
+
+  let cancelledCount = 0;
+  const calendarService = require('./calendarService');
+
+  for (const appointment of scheduledAppointments) {
+    try {
+      const result = await calendarService.cancelAppointment(appointment.id, tenantId);
+      if (result?.ok) cancelledCount += 1;
+    } catch (err) {
+      logger.error(
+        { tenantId, conversationId, appointmentId: appointment.id, message: err.message },
+        'database: failed to cancel linked appointment after solicitud rejection'
+      );
+    }
+  }
+
+  return cancelledCount;
 }
 
 async function bulkUpdateSolicitudes({ tenantId, ids = [], updates = {}, actorUserId = null }) {
