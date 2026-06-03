@@ -114,6 +114,14 @@ interface ConversationMensajeItem {
   agente?: { id: number; nombre: string } | null;
 }
 
+interface SolicitudMessageRow {
+  id: number;
+  direccion: string;
+  contenido: unknown;
+  createdAt: string;
+  leido?: boolean;
+}
+
 interface ConversationDetail {
   id: string;
   userKey: string;
@@ -147,6 +155,15 @@ interface EscalationModalState {
   solicitud: Solicitud | null;
 }
 
+interface SolicitudDraft {
+  estado: string;
+  prioridad: string;
+  agenteId: string;
+  categoria: string;
+  subcategoria: string;
+  dueAt: string;
+}
+
 interface SolicitudesTenantConfig {
   enterpriseEnabled: boolean;
   advancedSearchEnabled: boolean;
@@ -177,6 +194,7 @@ export default function SolicitudesPage() {
   const t = useTranslations("solicitudes");
   const locale = useCurrentLocale();
   const dateLocale = locale === "en" ? "en-US" : "es-CR";
+  const qc = useQueryClient();
 
   const { tenantSlug, superAdmin } = useAuthStore();
 
@@ -236,38 +254,101 @@ export default function SolicitudesPage() {
   });
   const [escalationReason, setEscalationReason] = useState("");
   const [escalationTargetAdminUserId, setEscalationTargetAdminUserId] = useState<string>("");
+  const [actionFeedback, setActionFeedback] = useState<{
+    kind: "success" | "error";
+    message: string;
+  } | null>(null);
   const defaultDetailTab: "resumen" | "conversaciones" | "mensajes" = isAgentSession ? "mensajes" : "resumen";
   const detailModeLabel = isAgentSession ? t("agentMode") : t("adminMode");
   const detailModeDescription = isAgentSession
     ? t("agentModeDescription")
     : t("adminModeDescription");
 
+  useEffect(() => {
+    if (!actionFeedback) return;
+
+    const timeoutId = window.setTimeout(() => {
+      setActionFeedback(null);
+    }, 4500);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [actionFeedback]);
+
+  function pushActionFeedback(kind: "success" | "error", message: string): void {
+    setActionFeedback({ kind, message });
+  }
+
+  function renderActionFeedback() {
+    if (!actionFeedback) return null;
+
+    const isSuccess = actionFeedback.kind === "success";
+
+    return (
+      <div
+        className={cn(
+          "rounded-2xl border px-4 py-3 text-sm shadow-sm",
+          isSuccess
+            ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+            : "border-rose-200 bg-rose-50 text-rose-800"
+        )}
+        role="status"
+        aria-live="polite"
+      >
+        <div className="flex items-start justify-between gap-3">
+          <p className="min-w-0 flex-1">{actionFeedback.message}</p>
+          <button
+            type="button"
+            onClick={() => setActionFeedback(null)}
+            className={cn(
+              "shrink-0 rounded-lg px-2 py-1 text-xs font-medium transition",
+              isSuccess ? "text-emerald-700 hover:bg-emerald-100" : "text-rose-700 hover:bg-rose-100"
+            )}
+          >
+            {t("close")}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   const estadoLabel = (value?: string | null) => {
     if (!value) return "-";
     const key = ESTADO_LABEL_KEYS[value];
-    return key ? t(key as any) : value;
+    return key ? t(key as never) : value;
   };
 
   const prioridadLabel = (value?: string | null) => {
     if (!value) return "-";
     const key = PRIORIDAD_LABEL_KEYS[value];
-    return key ? t(key as any) : value;
+    return key ? t(key as never) : value;
   };
 
   const categoriaLabel = (value?: string | null) => {
     if (!value) return "-";
     const key = CATEGORIA_LABEL_KEYS[value];
-    return key ? t(key as any) : value;
+    return key ? t(key as never) : value;
   };
 
   const slaLabel = (value?: string | null) => {
     if (!value) return t("sla.no_sla");
     const key = SLA_LABEL_KEYS[value];
-    return key ? t(key as any) : value;
+    return key ? t(key as never) : value;
   };
+
+  function buildDetailDraftFromSolicitud(solicitud: Solicitud): SolicitudDraft {
+    return {
+      estado: solicitud.estado || "open",
+      prioridad: solicitud.prioridad || "",
+      agenteId: solicitud.agente?.id ? String(solicitud.agente.id) : "",
+      categoria: solicitud.categoria || "",
+      subcategoria: solicitud.subcategoria || "",
+      dueAt: solicitud.dueAt ? String(solicitud.dueAt).slice(0, 16) : "",
+    };
+  }
 
   function openSolicitudDetail(solicitud: Solicitud): void {
     setDetailModal({ open: true, solicitud });
+    setDetailDraft(buildDetailDraftFromSolicitud(solicitud));
     setDetailTab(defaultDetailTab);
   }
 
@@ -342,7 +423,7 @@ export default function SolicitudesPage() {
       ? (agentes.find((agente) => agente.id === agenteId) ?? { id: agenteId, nombre: "Asignado" })
       : null;
 
-    qc.setQueriesData({ queryKey: ["solicitudes"] }, (old: any) => {
+    qc.setQueriesData({ queryKey: ["solicitudes"] }, (old: unknown) => {
       if (!old) return old;
 
       const patchSolicitud = (solicitud: Solicitud) =>
@@ -358,12 +439,14 @@ export default function SolicitudesPage() {
         return old.map(patchSolicitud);
       }
 
-      if (Array.isArray(old.data)) {
-        return { ...old, data: old.data.map(patchSolicitud) };
+      const oldRecord = old as { data?: unknown; items?: unknown };
+
+      if (Array.isArray(oldRecord.data)) {
+        return { ...(old as Record<string, unknown>), data: oldRecord.data.map(patchSolicitud) };
       }
 
-      if (Array.isArray(old.items)) {
-        return { ...old, items: old.items.map(patchSolicitud) };
+      if (Array.isArray(oldRecord.items)) {
+        return { ...(old as Record<string, unknown>), items: oldRecord.items.map(patchSolicitud) };
       }
 
       return old;
@@ -390,7 +473,12 @@ export default function SolicitudesPage() {
       id: number;
       estado: string;
     }) => solicitudesApi.updateEstado(tenantSlug, id, estado),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["solicitudes"] }),
+    onSuccess: () => {
+      pushActionFeedback("success", t("actionFeedback.statusUpdated"));
+      qc.invalidateQueries({ queryKey: ["solicitudes"] });
+      qc.invalidateQueries({ queryKey: ["solicitudes-stats"] });
+    },
+    onError: () => pushActionFeedback("error", t("actionFeedback.error")),
   });
 
   const bulkUpdateSolicitudes = useMutation({
@@ -402,12 +490,14 @@ export default function SolicitudesPage() {
       updates: Record<string, unknown>;
     }) => solicitudesApi.bulkUpdate(tenantSlug, ids, updates),
     onSuccess: () => {
+      pushActionFeedback("success", t("actionFeedback.bulkUpdated"));
       setSelectedSolicitudIds([]);
       setBulkEstado("");
       setBulkAgenteId("");
       qc.invalidateQueries({ queryKey: ["solicitudes"] });
       qc.invalidateQueries({ queryKey: ["solicitudes-stats"] });
     },
+    onError: () => pushActionFeedback("error", t("actionFeedback.error")),
   });
 
   const assignAgente = useMutation({
@@ -419,10 +509,12 @@ export default function SolicitudesPage() {
       agenteId: number;
     }) => solicitudesApi.assignAgente(tenantSlug, id, agenteId),
     onSuccess: (_data, variables) => {
+      pushActionFeedback("success", t("actionFeedback.assigned"));
       patchSolicitudAgenteInCache(variables.id, variables.agenteId);
       qc.invalidateQueries({ queryKey: ["solicitudes"] });
       setAssignModal({ open: false, solicitudId: null });
     },
+    onError: () => pushActionFeedback("error", t("actionFeedback.error")),
   });
 
   const escalateSolicitud = useMutation({
@@ -440,12 +532,14 @@ export default function SolicitudesPage() {
         targetAdminUserId,
       }),
     onSuccess: () => {
+      pushActionFeedback("success", t("actionFeedback.escalated"));
       qc.invalidateQueries({ queryKey: ["solicitudes"] });
       qc.invalidateQueries({ queryKey: ["solicitudes-stats"] });
       setEscalationModal({ open: false, solicitud: null });
       setEscalationReason("");
       setEscalationTargetAdminUserId("");
     },
+    onError: () => pushActionFeedback("error", t("actionFeedback.error")),
   });
 
   const createPortalToken = useMutation({
@@ -456,6 +550,7 @@ export default function SolicitudesPage() {
     mutationFn: ({ id, data }: { id: number; data: Record<string, unknown> }) =>
       solicitudesApi.update(tenantSlug, id, data),
     onSuccess: async () => {
+      pushActionFeedback("success", t("actionFeedback.saved"));
       await qc.invalidateQueries({ queryKey: ["solicitudes"] });
       await qc.invalidateQueries({ queryKey: ["solicitudes-stats"] });
       setDetailModal((prev) => ({
@@ -478,35 +573,18 @@ export default function SolicitudesPage() {
           : prev.solicitud,
       }));
     },
+    onError: () => pushActionFeedback("error", t("actionFeedback.error")),
   });
 
   const updateAgentSolicitud = useMutation({
     mutationFn: ({ id, data }: { id: number; data: Record<string, unknown> }) =>
       agentAuthApi.updateSolicitud(id, data),
     onSuccess: () => {
+      pushActionFeedback("success", t("actionFeedback.saved"));
       qc.invalidateQueries({ queryKey: ["agent-solicitudes"] });
     },
+    onError: () => pushActionFeedback("error", t("actionFeedback.error")),
   });
-
-  useEffect(() => {
-    if (!detailModal.solicitud) return;
-    setDetailDraft({
-      estado: detailModal.solicitud.estado || "",
-      prioridad: detailModal.solicitud.prioridad || "",
-      agenteId: detailModal.solicitud.agente?.id ? String(detailModal.solicitud.agente.id) : "",
-      categoria: detailModal.solicitud.categoria || "",
-      subcategoria: detailModal.solicitud.subcategoria || "",
-      dueAt: detailModal.solicitud.dueAt ? String(detailModal.solicitud.dueAt).slice(0, 16) : "",
-    });
-  }, [
-    detailModal.solicitud?.id,
-    detailModal.solicitud?.estado,
-    detailModal.solicitud?.prioridad,
-    detailModal.solicitud?.agente?.id,
-    detailModal.solicitud?.categoria,
-    detailModal.solicitud?.subcategoria,
-    detailModal.solicitud?.dueAt,
-  ]);
 
   const detailClientKey = detailModal.solicitud?.user?.phone ?? detailModal.solicitud?.telefonoContacto ?? "";
   const { data: conversationData, isLoading: conversationsLoading } = useQuery({
@@ -583,13 +661,36 @@ export default function SolicitudesPage() {
     staleTime: 0,
   });
 
-  const messageRows: any[] = Array.isArray(messagesData)
-    ? messagesData
-    : Array.isArray((messagesData as any)?.data)
-      ? (messagesData as any).data
-      : Array.isArray((messagesData as any)?.items)
-        ? (messagesData as any).items
-        : [];
+  function getMessageRows(data: unknown): SolicitudMessageRow[] {
+    if (Array.isArray(data)) return data as SolicitudMessageRow[];
+    if (!data || typeof data !== "object") return [];
+
+    const record = data as { data?: unknown; items?: unknown };
+    if (Array.isArray(record.data)) return record.data as SolicitudMessageRow[];
+    if (Array.isArray(record.items)) return record.items as SolicitudMessageRow[];
+
+    return [];
+  }
+
+  function formatMessageContent(content: unknown): string {
+    if (typeof content === "string") return content;
+    if (content && typeof content === "object" && !Array.isArray(content)) {
+      const record = content as Record<string, unknown>;
+      const directText = record.text;
+      if (typeof directText === "string" && directText.trim()) return directText;
+
+      const directBody = record.body;
+      if (typeof directBody === "string" && directBody.trim()) return directBody;
+    }
+
+    try {
+      return JSON.stringify(content);
+    } catch {
+      return t("nonSerializablePayload");
+    }
+  }
+
+  const messageRows = getMessageRows(messagesData);
   const hasActiveMessageFilters = Boolean(
     messageSearch.trim() || messageDirection || messageReadStatus || messageStartDate || messageEndDate
   );
@@ -607,9 +708,11 @@ export default function SolicitudesPage() {
         ? agentAuthApi.sendSolicitudMessage(detailModal.solicitud?.id || 0, text)
         : solicitudesApi.sendMessage(tenantSlug || "", detailModal.solicitud?.id || 0, text),
     onSuccess: () => {
+      pushActionFeedback("success", t("actionFeedback.messageSent"));
       setMessageInput("");
       refetchMessages();
     },
+    onError: () => pushActionFeedback("error", t("messageSendError")),
   });
 
   function formatDateForInput(value: Date): string {
@@ -1039,7 +1142,7 @@ export default function SolicitudesPage() {
                       <div className="flex items-center justify-between gap-2">
                         <div className="flex items-center gap-2 min-w-0">
                           <span className={cn("text-[11px] font-semibold px-2 py-0.5 rounded-full border", badge.color)}>
-                            {badge.labelKey === "all" ? eventItem.eventType : t(badge.labelKey as any)}
+                            {badge.labelKey === "all" ? eventItem.eventType : t(badge.labelKey as never)}
                           </span>
                           {eventItem.nodeRef ? (
                             <span className="text-[11px] text-slate-400 truncate">{eventItem.nodeRef}</span>
@@ -1184,6 +1287,8 @@ export default function SolicitudesPage() {
           <p className="mt-3 text-sm text-slate-500">{t("resultsCount", { count: agentTotal })}</p>
         </div>
 
+        {renderActionFeedback()}
+
         <Card>
           {isAgentSolicitudesLoading ? (
             <div className="py-16 text-center text-slate-400 text-sm">{t("loading")}</div>
@@ -1222,6 +1327,7 @@ export default function SolicitudesPage() {
                             <button
                               type="button"
                               onClick={() => updateAgentSolicitud.mutate({ id: s.id, data: { estado: "in_progress" } })}
+                              disabled={updateAgentSolicitud.isPending}
                               className="rounded-lg border border-blue-200 bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700"
                             >
                               {t("take")}
@@ -1231,6 +1337,7 @@ export default function SolicitudesPage() {
                             <button
                               type="button"
                               onClick={() => updateAgentSolicitud.mutate({ id: s.id, data: { estado: "completed" } })}
+                              disabled={updateAgentSolicitud.isPending}
                               className="rounded-lg border border-emerald-200 bg-emerald-50 px-2 py-1 text-xs font-medium text-emerald-700"
                             >
                               {t("complete")}
@@ -1239,26 +1346,22 @@ export default function SolicitudesPage() {
                           <button
                             type="button"
                             onClick={() => {
-                              setDetailModal({
-                                open: true,
-                                solicitud: {
-                                  id: s.id,
-                                  titulo: s.titulo,
-                                  nombre: s.nombre ?? undefined,
-                                  telefonoContacto: s.telefonoContacto ?? undefined,
-                                  estado: s.estado ?? "open",
-                                  prioridad: s.prioridad ?? undefined,
-                                  categoria: s.categoria ?? undefined,
-                                  subcategoria: s.subcategoria ?? undefined,
-                                  dueAt: s.dueAt,
-                                  firstResponseAt: s.firstResponseAt,
-                                  createdAt: s.createdAt,
-                                  conversation: s.conversation ? { id: s.conversation.id } : null,
-                                  user: s.user ? { phone: s.user.phone } : null,
-                                  agente: null,
-                                },
+                              openSolicitudDetail({
+                                id: s.id,
+                                titulo: s.titulo,
+                                nombre: s.nombre ?? undefined,
+                                telefonoContacto: s.telefonoContacto ?? undefined,
+                                estado: s.estado ?? "open",
+                                prioridad: s.prioridad ?? undefined,
+                                categoria: s.categoria ?? undefined,
+                                subcategoria: s.subcategoria ?? undefined,
+                                dueAt: s.dueAt,
+                                firstResponseAt: s.firstResponseAt,
+                                createdAt: s.createdAt,
+                                conversation: s.conversation ? { id: s.conversation.id } : null,
+                                user: s.user ? { phone: s.user.phone } : null,
+                                agente: null,
                               });
-                                setDetailTab(defaultDetailTab);
                             }}
                             className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs font-medium text-slate-700"
                           >
@@ -1693,7 +1796,7 @@ export default function SolicitudesPage() {
                   </div>
                 ) : (
                   <div className="space-y-3 max-h-96 overflow-y-auto">
-                    {messageRows.map((msg: any) => (
+                    {messageRows.map((msg) => (
                       <div
                         key={msg.id}
                         className={cn(
@@ -1707,9 +1810,7 @@ export default function SolicitudesPage() {
                           {msg.direccion === "salida" ? `🔴 ${t("outgoing")}` : `🟢 ${t("incoming")}`}
                         </div>
                         <p className="text-sm break-words">
-                          {typeof msg.contenido === "string"
-                            ? msg.contenido
-                            : msg.contenido?.text || JSON.stringify(msg.contenido)}
+                          {formatMessageContent(msg.contenido)}
                         </p>
                         <div className="text-xs opacity-70 mt-1">
                           {formatDate(msg.createdAt)}
@@ -1775,6 +1876,8 @@ export default function SolicitudesPage() {
         <h1 className="text-xl font-semibold text-slate-900">{t("pageTitle")}</h1>
         <p className="mt-1 text-sm text-slate-600">{t("subtitle")}</p>
       </div>
+
+      {renderActionFeedback()}
 
       <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 xl:grid-cols-4">
         <Card className="p-4">
@@ -2144,6 +2247,7 @@ export default function SolicitudesPage() {
                             onClick={() =>
                               updateEstado.mutate({ id: s.id, estado: "in_progress" })
                             }
+                            disabled={updateEstado.isPending}
                             className="text-xs text-blue-600 hover:text-blue-700 font-medium border border-blue-200 rounded-lg px-2 py-1 bg-blue-50 hover:bg-blue-100 transition"
                           >
                             {t("take")}
@@ -2168,12 +2272,13 @@ export default function SolicitudesPage() {
                                 const target = url || (typeof window !== "undefined" ? `${window.location.origin}${path}` : path);
                                 if (target && typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
                                   await navigator.clipboard.writeText(String(target));
-                                  alert(t("portalCopied"));
+                                  pushActionFeedback("success", t("portalCopied"));
                                 }
                               } catch {
-                                alert(t("portalError"));
+                                pushActionFeedback("error", t("portalError"));
                               }
                             }}
+                            disabled={createPortalToken.isPending}
                             className="text-xs text-indigo-600 hover:text-indigo-700 font-medium border border-indigo-200 rounded-lg px-2 py-1 bg-indigo-50 hover:bg-indigo-100 transition"
                           >
                             {t("portalLink")}
@@ -2182,8 +2287,9 @@ export default function SolicitudesPage() {
                         <button
                           onClick={() => {
                             setAssignModal({ open: true, solicitudId: s.id });
-                            setSelectedAgente("");
+                            setSelectedAgente(String(s.agente?.id ?? ""));
                           }}
+                          disabled={assignAgente.isPending}
                           className="text-xs text-blue-600 hover:text-blue-700 font-medium border border-blue-200 rounded-lg px-2 py-1 bg-blue-50 hover:bg-blue-100 transition flex items-center gap-1"
                         >
                           <UserCheck size={12} />

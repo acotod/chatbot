@@ -220,5 +220,14 @@
     "updated": "Solicitud actualizada exitosamente",
     "deleted": "Solicitud eliminada exitosamente",
     "assigned": "Solicitud asignada exitosamente"
+  },
+  "actionFeedback": {
+    "saved": "Cambios guardados",
+    "statusUpdated": "Estado actualizado",
+    "assigned": "Agente asignado",
+    "escalated": "Solicitud escalada",
+    "bulkUpdated": "Actualización masiva aplicada",
+    "messageSent": "Mensaje enviado",
+    "error": "No se pudo completar la acción"
   }
 }
