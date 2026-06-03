@@ -75,10 +75,26 @@ export function clearLogs(): void {
  * Initialize global error listeners
  * Call this once at app startup (in layout.tsx or root client component)
  */
+function isResizeObserverNoise(message: string): boolean {
+  return (
+    message.includes("ResizeObserver loop completed") ||
+    message.includes("ResizeObserver loop limit exceeded")
+  );
+}
+
 export function initGlobalErrorLogger(): void {
     if ((window as Window & { __errorLoggerInit?: boolean }).__errorLoggerInit) return;
     (window as Window & { __errorLoggerInit?: boolean }).__errorLoggerInit = true;
   if (typeof window === "undefined") return;
+
+  // Suppress ResizeObserver noise at the console.error level (Chrome emits it
+  // both as a window error event AND as an internal console.error call).
+  const _origConsoleError = console.error.bind(console);
+  console.error = (...args: unknown[]) => {
+    const msg = args[0];
+    if (typeof msg === "string" && isResizeObserverNoise(msg)) return;
+    _origConsoleError(...args);
+  };
 
   // Capture unhandled promise rejections
   window.addEventListener("unhandledrejection", (event) => {
@@ -103,11 +119,7 @@ export function initGlobalErrorLogger(): void {
   window.addEventListener("error", (event) => {
     // ResizeObserver loop notifications are benign browser-level warnings
     // emitted by ReactFlow's internal node-size observers; suppress them.
-    if (
-      event.message &&
-      (event.message.includes("ResizeObserver loop completed") ||
-        event.message.includes("ResizeObserver loop limit exceeded"))
-    ) {
+    if (event.message && isResizeObserverNoise(event.message)) {
       event.stopImmediatePropagation();
       return;
     }
