@@ -149,6 +149,100 @@ async function _clearPendingSolicitudComment({ tenantId, userId }) {
   }
 }
 
+function _formatDateTimeForAgent(value) {
+  if (!value) return '';
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  return date.toISOString();
+}
+
+async function _buildAssignedAgentForwardPayload({
+  tenant,
+  openSolicitud,
+  fullSolicitud,
+  customerPhone,
+  customerName,
+  incomingAgentText,
+}) {
+  const prisma = getPrismaClient();
+  let latestAppointment = null;
+
+  if (prisma) {
+    const appointmentOr = [];
+    const solicitudConversationId = String(fullSolicitud?.conversationId ?? openSolicitud?.conversationId ?? '').trim();
+    if (solicitudConversationId) {
+      appointmentOr.push({ conversationId: solicitudConversationId });
+    }
+
+    const normalizedCustomerPhone = String(customerPhone ?? '').trim();
+    if (normalizedCustomerPhone) {
+      appointmentOr.push({ userKey: normalizedCustomerPhone });
+    }
+
+    if (appointmentOr.length > 0) {
+      latestAppointment = await prisma.appointment.findFirst({
+        where: {
+          tenantId: tenant.id,
+          OR: appointmentOr,
+        },
+        orderBy: { startTime: 'desc' },
+        select: {
+          id: true,
+          status: true,
+          startTime: true,
+          endTime: true,
+          metadata: true,
+          calendar: {
+            select: {
+              id: true,
+              name: true,
+              timezone: true,
+            },
+          },
+        },
+      }).catch(() => null);
+    }
+  }
+
+  const solicitudCreatedAt = _formatDateTimeForAgent(fullSolicitud?.createdAt ?? openSolicitud?.createdAt);
+  const appointmentStart = _formatDateTimeForAgent(latestAppointment?.startTime);
+  const appointmentEnd = _formatDateTimeForAgent(latestAppointment?.endTime);
+  const appointmentDurationMin = appointmentStart && appointmentEnd
+    ? Math.max(1, Math.round((new Date(appointmentEnd).getTime() - new Date(appointmentStart).getTime()) / 60000))
+    : null;
+
+  const lines = [
+    'Mensaje de cliente sobre solicitud activa',
+    `Tenant: ${String(tenant?.nombre ?? tenant?.id ?? '').trim() || String(tenant?.id ?? '').trim()}`,
+    `Solicitud ID: ${openSolicitud.id}`,
+    `Estado solicitud: ${String(fullSolicitud?.estado ?? openSolicitud?.estado ?? '').trim() || 'open'}`,
+    `Prioridad: ${String(fullSolicitud?.prioridad ?? openSolicitud?.prioridad ?? '').trim() || 'normal'}`,
+    solicitudCreatedAt ? `Solicitud creada: ${solicitudCreatedAt}` : '',
+    String(fullSolicitud?.flow?.nombre ?? '').trim() ? `Flujo: ${String(fullSolicitud.flow.nombre).trim()}` : '',
+    String(fullSolicitud?.categoria ?? openSolicitud?.categoria ?? '').trim() ? `Categoria: ${String(fullSolicitud?.categoria ?? openSolicitud?.categoria).trim()}` : '',
+    String(fullSolicitud?.subcategoria ?? openSolicitud?.subcategoria ?? '').trim() ? `Subcategoria: ${String(fullSolicitud?.subcategoria ?? openSolicitud?.subcategoria).trim()}` : '',
+    '',
+    `Cliente: ${String(customerName ?? '').trim() || 'Sin nombre registrado'}`,
+    `Telefono cliente: ${String(customerPhone ?? '').trim() || 'Sin telefono registrado'}`,
+    String(fullSolicitud?.telefonoContacto ?? openSolicitud?.telefonoContacto ?? '').trim()
+      ? `Telefono alterno: ${String(fullSolicitud?.telefonoContacto ?? openSolicitud?.telefonoContacto).trim()}`
+      : '',
+    '',
+    latestAppointment
+      ? `Cita: ${appointmentStart || 'sin fecha'}${appointmentEnd ? ` -> ${appointmentEnd}` : ''}${appointmentDurationMin ? ` (${appointmentDurationMin} min)` : ''}`
+      : 'Cita: sin cita encontrada',
+    latestAppointment?.status ? `Estado cita: ${String(latestAppointment.status).trim()}` : '',
+    String(latestAppointment?.calendar?.name ?? '').trim() ? `Agenda: ${String(latestAppointment.calendar.name).trim()}` : '',
+    String(latestAppointment?.calendar?.timezone ?? '').trim() ? `Zona horaria agenda: ${String(latestAppointment.calendar.timezone).trim()}` : '',
+    '',
+    `Comentario actual: ${incomingAgentText}`,
+    String(fullSolicitud?.customerNotes ?? '').trim() ? `Notas cliente previas: ${String(fullSolicitud.customerNotes).trim()}` : '',
+    String(fullSolicitud?.resolutionNotes ?? '').trim() ? `Notas de resolucion: ${String(fullSolicitud.resolutionNotes).trim()}` : '',
+  ].filter(Boolean);
+
+  return lines.join('\n');
+}
+
 async function _ingestUegBestEffort({ tenantId, correlationId, idempotencyKey, rawEvent, context }) {
   try {
     await ingestEvent({
@@ -1182,13 +1276,14 @@ async function _handleIncomingMessage({ msg, contacts, tenant, phoneNumberId, ac
 
         const agentName = String(fullSolicitud?.agente?.nombre ?? '').trim();
         const userName = String(user?.nombre ?? contacts?.find((c) => c.wa_id === phone)?.profile?.name ?? '').trim();
-        const outboundToAgent = [
-          'Mensaje de cliente sobre solicitud activa.',
-          `Solicitud ID: ${openSolicitud.id}`,
-          userName ? `Cliente: ${userName}` : '',
-          `Telefono cliente: ${phone}`,
-          `Comentario: ${incomingAgentText}`,
-        ].filter(Boolean).join('\n');
+        const outboundToAgent = await _buildAssignedAgentForwardPayload({
+          tenant,
+          openSolicitud,
+          fullSolicitud,
+          customerPhone: phone,
+          customerName: userName,
+          incomingAgentText,
+        });
 
         socketService.emit(tenant.id, 'SOLICITUD_MESSAGE_SENT', {
           solicitudId: pendingSolicitudIntent?.solicitudId || openSolicitud.id,
@@ -1201,7 +1296,12 @@ async function _handleIncomingMessage({ msg, contacts, tenant, phoneNumberId, ac
           createdAt: new Date().toISOString(),
         });
 
-        await wa.sendTextMessage(phoneNumberId, assignedAgentWhatsapp, outboundToAgent, accessToken);
+        await wa.sendTextMessage(
+          phoneNumberId,
+          assignedAgentWhatsapp,
+          _sanitizeWaText(outboundToAgent, { max: 3800 }),
+          accessToken,
+        );
 
         await _clearPendingSolicitudComment({ tenantId: tenant.id, userId });
         await _sendText(

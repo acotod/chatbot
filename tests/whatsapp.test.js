@@ -376,7 +376,7 @@ describe('POST /whatsapp dual-write UEG', () => {
     expect(wa.sendTextMessage).toHaveBeenCalledWith(
       '1234567890',
       '50688887777',
-      expect.stringContaining('Comentario: por favor llamame despues de las 4pm'),
+      expect.stringContaining('Comentario actual: por favor llamame despues de las 4pm'),
       'token-123',
     );
     expect(socketService.emit).toHaveBeenCalledWith(
