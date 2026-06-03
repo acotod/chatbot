@@ -1296,12 +1296,35 @@ async function _handleIncomingMessage({ msg, contacts, tenant, phoneNumberId, ac
           createdAt: new Date().toISOString(),
         });
 
-        await wa.sendTextMessage(
-          phoneNumberId,
-          assignedAgentWhatsapp,
-          _sanitizeWaText(outboundToAgent, { max: 3800 }),
-          accessToken,
-        );
+        try {
+          await wa.sendTextMessage(
+            phoneNumberId,
+            assignedAgentWhatsapp,
+            _sanitizeWaText(outboundToAgent, { max: 3800 }),
+            accessToken,
+          );
+        } catch (forwardErr) {
+          const errMsg = String(forwardErr?.message ?? '');
+          const blockedByAllowList = errMsg.includes('131030') || errMsg.toLowerCase().includes('allowed list');
+          await _sendText(
+            phoneNumberId,
+            phone,
+            blockedByAllowList
+              ? 'No pude enviar tu mensaje al agente porque su numero no esta autorizado en el entorno de pruebas de WhatsApp. Activalo en la lista de numeros permitidos de Meta e intenta de nuevo.'
+              : 'No pude enviar tu mensaje al agente en este momento. Intenta nuevamente en unos minutos.',
+            accessToken,
+            tenant,
+            userId,
+            correlationId,
+          );
+          return {
+            userId,
+            messageId: null,
+            conversationId: null,
+            blockedByOpenSolicitud: true,
+            openSolicitudHandled: 'agent_forward_failed',
+          };
+        }
 
         await _clearPendingSolicitudComment({ tenantId: tenant.id, userId });
         await _sendText(
