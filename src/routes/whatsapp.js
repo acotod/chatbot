@@ -15,6 +15,7 @@ const logger = require('../utils/logger');
 const db = require('../services/database');
 const socketService = require('../services/socketService');
 const wa = require('../services/whatsapp');
+const { sendEmail } = require('../services/emailService');
 const chatbotRouter = require('../services/chatbotRouter');
 const requireJwt = require('../middleware/requireJwt');
 const { getRedisClient } = require('../services/redis');
@@ -1306,12 +1307,88 @@ async function _handleIncomingMessage({ msg, contacts, tenant, phoneNumberId, ac
         } catch (forwardErr) {
           const errMsg = String(forwardErr?.message ?? '');
           const blockedByAllowList = errMsg.includes('131030') || errMsg.toLowerCase().includes('allowed list');
+
+          const fallbackConversationId = String(fullSolicitud?.conversationId ?? openSolicitud?.conversationId ?? '').trim() || null;
+          const fallbackAgenteId = Number(fullSolicitud?.agente?.id ?? openSolicitud?.agenteId ?? 0) || null;
+
+          // Fallback: keep the agent informed through internal channels even if Meta blocks delivery.
+          await db.addSolicitudComment({
+            solicitudId: pendingSolicitudIntent?.solicitudId || openSolicitud.id,
+            tenantId: tenant.id,
+            userId: null,
+            content: `[FALLBACK INTERNO] Mensaje de cliente no enviado por WhatsApp al agente (${blockedByAllowList ? 'Meta allowed list' : 'fallo de entrega'}): ${incomingAgentText}`,
+            visibility: 'internal',
+            attachments: [],
+          }).catch(() => null);
+
+          const fallbackMensaje = await db.saveMensaje({
+            tenantId: tenant.id,
+            userId,
+            agenteId: fallbackAgenteId,
+            waMsgId: null,
+            direccion: 'entrada',
+            tipo: 'text',
+            contenido: {
+              text: `[Mensaje para agente - fallback interno] ${incomingAgentText}`,
+              source: 'agent_whatsapp_forward_fallback',
+              reason: blockedByAllowList ? 'meta_allowed_list' : 'delivery_error',
+            },
+            conversationId: fallbackConversationId,
+            status: 'read',
+          }).catch(() => null);
+
+          if (fallbackMensaje && userId !== null) {
+            socketService.emit(tenant.id, 'nuevo_mensaje', {
+              id: fallbackMensaje.id,
+              userId,
+              phone,
+              contactName: userName || null,
+              tipo: fallbackMensaje.tipo,
+              contenido: fallbackMensaje.contenido,
+              waMsgId: null,
+              createdAt: fallbackMensaje.createdAt,
+            });
+          }
+
+          const agentEmail = String(fullSolicitud?.agente?.email ?? '').trim();
+          if (agentEmail) {
+            await sendEmail({
+              to: agentEmail,
+              subject: `Nueva solicitud asignada #${openSolicitud.id}`,
+              text: [
+                'Se registro un nuevo mensaje de cliente en tu solicitud asignada.',
+                `Solicitud ID: ${openSolicitud.id}`,
+                userName ? `Cliente: ${userName}` : '',
+                `Telefono cliente: ${phone}`,
+                `Mensaje cliente: ${incomingAgentText}`,
+                blockedByAllowList
+                  ? 'Nota: No se pudo reenviar por WhatsApp porque el numero del agente no esta en la lista permitida de Meta test.'
+                  : 'Nota: El reenvio por WhatsApp al agente fallo y se registro por canal interno.',
+              ].filter(Boolean).join('\n'),
+              tenantId: tenant.id,
+              metadata: {
+                route: '/whatsapp',
+                type: 'assigned_agent_forward_fallback',
+                solicitudId: openSolicitud.id,
+                userId,
+              },
+            }).catch((mailErr) => {
+              logger.warn('No se pudo enviar correo al agente para fallback interno', {
+                tenantId: tenant.id,
+                solicitudId: openSolicitud.id,
+                agenteId: fallbackAgenteId,
+                message: mailErr?.message,
+              });
+            });
+          }
+
+          await _clearPendingSolicitudComment({ tenantId: tenant.id, userId });
           await _sendText(
             phoneNumberId,
             phone,
             blockedByAllowList
-              ? 'No pude enviar tu mensaje al agente porque su numero no esta autorizado en el entorno de pruebas de WhatsApp. Activalo en la lista de numeros permitidos de Meta e intenta de nuevo.'
-              : 'No pude enviar tu mensaje al agente en este momento. Intenta nuevamente en unos minutos.',
+              ? 'No pude enviarlo por WhatsApp directo al agente porque su numero no esta autorizado en Meta test, pero ya lo reenvie al chat interno del agente y notifique por correo.'
+              : 'No pude enviarlo por WhatsApp directo al agente, pero ya lo reenvie al chat interno del agente y notifique por correo.',
             accessToken,
             tenant,
             userId,
