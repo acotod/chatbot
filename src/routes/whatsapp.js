@@ -1190,6 +1190,17 @@ async function _handleIncomingMessage({ msg, contacts, tenant, phoneNumberId, ac
           `Comentario: ${incomingAgentText}`,
         ].filter(Boolean).join('\n');
 
+        socketService.emit(tenant.id, 'SOLICITUD_MESSAGE_SENT', {
+          solicitudId: pendingSolicitudIntent?.solicitudId || openSolicitud.id,
+          tenantId: tenant.id,
+          userId,
+          agenteId: Number(fullSolicitud?.agente?.id ?? openSolicitud?.agenteId ?? 0) || null,
+          source: 'customer',
+          via: 'assigned_agent_whatsapp',
+          comment: incomingAgentText,
+          createdAt: new Date().toISOString(),
+        });
+
         await wa.sendTextMessage(phoneNumberId, assignedAgentWhatsapp, outboundToAgent, accessToken);
 
         await _clearPendingSolicitudComment({ tenantId: tenant.id, userId });

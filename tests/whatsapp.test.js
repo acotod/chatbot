@@ -54,6 +54,7 @@ jest.mock('../src/services/eventGateway', () => ({
 const whatsappRouter = require('../src/routes/whatsapp');
 const db = require('../src/services/database');
 const wa = require('../src/services/whatsapp');
+const socketService = require('../src/services/socketService');
 const eventGateway = require('../src/services/eventGateway');
 
 function createApp() {
@@ -377,6 +378,17 @@ describe('POST /whatsapp dual-write UEG', () => {
       '50688887777',
       expect.stringContaining('Comentario: por favor llamame despues de las 4pm'),
       'token-123',
+    );
+    expect(socketService.emit).toHaveBeenCalledWith(
+      'tenant-1',
+      'SOLICITUD_MESSAGE_SENT',
+      expect.objectContaining({
+        solicitudId: 999,
+        tenantId: 'tenant-1',
+        userId: 7,
+        source: 'customer',
+        via: 'assigned_agent_whatsapp',
+      }),
     );
   });
 });
