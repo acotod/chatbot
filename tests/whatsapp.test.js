@@ -19,6 +19,7 @@ jest.mock('../src/services/database', () => ({
   findOrCreateUser: jest.fn(),
   saveMensaje: jest.fn(),
   findOpenSolicitudForUser: jest.fn(),
+  getSolicitudById: jest.fn(),
   saveSolicitud: jest.fn(),
   updateSolicitudEstado: jest.fn(),
   addSolicitudComment: jest.fn(),
@@ -267,6 +268,7 @@ describe('POST /whatsapp dual-write UEG', () => {
       expect.arrayContaining([
         expect.objectContaining({ id: 'solicitud_activa_cancelar' }),
         expect.objectContaining({ id: 'solicitud_activa_comentar' }),
+        expect.objectContaining({ id: 'solicitud_activa_agente' }),
       ]),
       'token-123',
     );
@@ -319,6 +321,61 @@ describe('POST /whatsapp dual-write UEG', () => {
       '1234567890',
       '573001112233',
       expect.stringContaining('cancelamos tu solicitud activa'),
+      'token-123',
+    );
+  });
+
+  test('open solicitud can forward customer message to assigned agent on WhatsApp', async () => {
+    const app = createApp();
+    db.findOpenSolicitudForUser.mockResolvedValueOnce({ id: 999, estado: 'open', agenteId: 23 });
+    db.getSolicitudById.mockResolvedValueOnce({
+      id: 999,
+      agente: { id: 23, nombre: 'Pedro Perez', whatsapp: '+506 8888-7777' },
+    });
+    db.addSolicitudComment.mockResolvedValueOnce({ id: 1001 });
+    db.getConfig.mockImplementation(async (_tenantId, key) => {
+      if (key === 'initial_waba_flow') {
+        return { valor: null };
+      }
+      return { valor: { accessToken: 'token-123' } };
+    });
+
+    const payload = {
+      object: 'whatsapp_business_account',
+      entry: [{
+        changes: [{
+          field: 'messages',
+          value: {
+            metadata: { phone_number_id: '1234567890' },
+            contacts: [{ wa_id: '573001112233', profile: { name: 'Ana' } }],
+            messages: [{
+              id: 'wamid.inbound.791',
+              from: '573001112233',
+              type: 'text',
+              timestamp: '1717171717',
+              text: { body: 'agente: por favor llamame despues de las 4pm' },
+            }],
+          },
+        }],
+      }],
+    };
+
+    const res = await request(app).post('/whatsapp').send(payload);
+
+    expect(res.status).toBe(200);
+    await flushAsync();
+
+    expect(db.addSolicitudComment).toHaveBeenCalledWith(expect.objectContaining({
+      solicitudId: 999,
+      tenantId: 'tenant-1',
+      userId: 7,
+      content: 'por favor llamame despues de las 4pm',
+      visibility: 'customer',
+    }));
+    expect(wa.sendTextMessage).toHaveBeenCalledWith(
+      '1234567890',
+      '50688887777',
+      expect.stringContaining('Comentario: por favor llamame despues de las 4pm'),
       'token-123',
     );
   });

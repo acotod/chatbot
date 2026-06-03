@@ -32,6 +32,7 @@ const router = express.Router();
 
 const OPEN_SOLICITUD_ACTION_CANCEL = 'solicitud_activa_cancelar';
 const OPEN_SOLICITUD_ACTION_COMMENT = 'solicitud_activa_comentar';
+const OPEN_SOLICITUD_ACTION_AGENT = 'solicitud_activa_agente';
 const OPEN_SOLICITUD_COMMENT_TTL_SECONDS = 15 * 60;
 
 async function resolveTenantId(req, explicitTenantSlug) {
@@ -68,14 +69,39 @@ function _openSolicitudCommentRedisKey(tenantId, userId) {
   return `wa:solicitud:await_comment:${tenantId}:${userId}`;
 }
 
-async function _getPendingSolicitudComment({ tenantId, userId }) {
+function _normalizeAgentWhatsapp(value) {
+  const raw = String(value ?? '').trim();
+  if (!raw) return '';
+  return raw.replace(/\D+/g, '');
+}
+
+async function _getPendingSolicitudIntent({ tenantId, userId }) {
   const redis = getRedisClient();
   if (!redis) return null;
   try {
     const raw = await redis.get(_openSolicitudCommentRedisKey(tenantId, userId));
     if (!raw) return null;
-    const parsed = Number.parseInt(String(raw), 10);
-    return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+    let parsedJson = null;
+    try {
+      parsedJson = JSON.parse(String(raw));
+    } catch (_) {
+      parsedJson = null;
+    }
+
+    if (parsedJson && typeof parsedJson === 'object') {
+      const solicitudId = Number.parseInt(String(parsedJson.solicitudId ?? ''), 10);
+      const mode = String(parsedJson.mode ?? '').trim().toLowerCase();
+      if (Number.isInteger(solicitudId) && solicitudId > 0 && (mode === 'comment' || mode === 'agent')) {
+        return { solicitudId, mode };
+      }
+    }
+
+    const legacySolicitudId = Number.parseInt(String(raw), 10);
+    if (Number.isInteger(legacySolicitudId) && legacySolicitudId > 0) {
+      return { solicitudId: legacySolicitudId, mode: 'comment' };
+    }
+
+    return null;
   } catch (err) {
     logger.warn('Could not read pending solicitud comment intent', {
       tenantId,
@@ -86,13 +112,14 @@ async function _getPendingSolicitudComment({ tenantId, userId }) {
   }
 }
 
-async function _setPendingSolicitudComment({ tenantId, userId, solicitudId }) {
+async function _setPendingSolicitudIntent({ tenantId, userId, solicitudId, mode }) {
   const redis = getRedisClient();
   if (!redis) return false;
   try {
+    const normalizedMode = String(mode ?? '').trim().toLowerCase() === 'agent' ? 'agent' : 'comment';
     await redis.set(
       _openSolicitudCommentRedisKey(tenantId, userId),
-      String(solicitudId),
+      JSON.stringify({ solicitudId, mode: normalizedMode }),
       'EX',
       OPEN_SOLICITUD_COMMENT_TTL_SECONDS,
     );
@@ -974,7 +1001,7 @@ async function _handleIncomingMessage({ msg, contacts, tenant, phoneNumberId, ac
     const openSolicitud = await db.findOpenSolicitudForUser(userId, tenant.id);
     if (openSolicitud && !hasInitialWabaFlow) {
       const normalizedInput = String(userInput ?? '').trim().toLowerCase();
-      const pendingSolicitudCommentId = await _getPendingSolicitudComment({ tenantId: tenant.id, userId });
+      const pendingSolicitudIntent = await _getPendingSolicitudIntent({ tenantId: tenant.id, userId });
 
       if (normalizedInput === OPEN_SOLICITUD_ACTION_CANCEL) {
         await db.updateSolicitudEstado(openSolicitud.id, tenant.id, 'rejected');
@@ -998,10 +1025,11 @@ async function _handleIncomingMessage({ msg, contacts, tenant, phoneNumberId, ac
       }
 
       if (normalizedInput === OPEN_SOLICITUD_ACTION_COMMENT) {
-        const hasPendingFlag = await _setPendingSolicitudComment({
+        const hasPendingFlag = await _setPendingSolicitudIntent({
           tenantId: tenant.id,
           userId,
           solicitudId: openSolicitud.id,
+          mode: 'comment',
         });
         const commentInstruction = hasPendingFlag
           ? 'Escribe tu comentario y lo agrego a tu solicitud activa para que el equipo lo revise.'
@@ -1024,17 +1052,76 @@ async function _handleIncomingMessage({ msg, contacts, tenant, phoneNumberId, ac
         };
       }
 
-      const fallbackPrefix = 'comentario:';
-      const fallbackCommentText = normalizedInput.startsWith(fallbackPrefix)
-        ? String(userInput ?? '').slice(fallbackPrefix.length).trim()
+      if (normalizedInput === OPEN_SOLICITUD_ACTION_AGENT) {
+        const fullSolicitud = typeof db.getSolicitudById === 'function'
+          ? await db.getSolicitudById(openSolicitud.id, tenant.id)
+          : null;
+        const assignedAgentWhatsapp = _normalizeAgentWhatsapp(fullSolicitud?.agente?.whatsapp);
+        if (!assignedAgentWhatsapp) {
+          await _sendText(
+            phoneNumberId,
+            phone,
+            'Tu solicitud no tiene un agente con WhatsApp configurado. Puedes dejar un comentario y el equipo te contactara.',
+            accessToken,
+            tenant,
+            userId,
+            correlationId,
+          );
+          return {
+            userId,
+            messageId: null,
+            conversationId: null,
+            blockedByOpenSolicitud: true,
+            openSolicitudHandled: 'agent_unavailable',
+          };
+        }
+
+        const hasPendingFlag = await _setPendingSolicitudIntent({
+          tenantId: tenant.id,
+          userId,
+          solicitudId: openSolicitud.id,
+          mode: 'agent',
+        });
+        const instruction = hasPendingFlag
+          ? 'Escribe el mensaje que deseas enviarle al agente asignado y yo se lo envio por WhatsApp.'
+          : 'Escribe tu mensaje iniciando con "agente:" y yo se lo envio por WhatsApp al agente asignado.';
+        await _sendText(
+          phoneNumberId,
+          phone,
+          instruction,
+          accessToken,
+          tenant,
+          userId,
+          correlationId,
+        );
+        return {
+          userId,
+          messageId: null,
+          conversationId: null,
+          blockedByOpenSolicitud: true,
+          openSolicitudHandled: 'request_agent_message',
+        };
+      }
+
+      const fallbackCommentPrefix = 'comentario:';
+      const fallbackCommentText = normalizedInput.startsWith(fallbackCommentPrefix)
+        ? String(userInput ?? '').slice(fallbackCommentPrefix.length).trim()
         : '';
-      const incomingCommentText = pendingSolicitudCommentId
+      const fallbackAgentPrefix = 'agente:';
+      const fallbackAgentText = normalizedInput.startsWith(fallbackAgentPrefix)
+        ? String(userInput ?? '').slice(fallbackAgentPrefix.length).trim()
+        : '';
+      const incomingCommentText = pendingSolicitudIntent?.mode === 'comment'
         ? String(userInput ?? '').trim()
         : fallbackCommentText;
 
+      const incomingAgentText = pendingSolicitudIntent?.mode === 'agent'
+        ? String(userInput ?? '').trim()
+        : fallbackAgentText;
+
       if (incomingCommentText) {
         await db.addSolicitudComment({
-          solicitudId: pendingSolicitudCommentId || openSolicitud.id,
+          solicitudId: pendingSolicitudIntent?.solicitudId || openSolicitud.id,
           tenantId: tenant.id,
           userId,
           content: incomingCommentText,
@@ -1060,6 +1147,70 @@ async function _handleIncomingMessage({ msg, contacts, tenant, phoneNumberId, ac
         };
       }
 
+      if (incomingAgentText) {
+        const fullSolicitud = typeof db.getSolicitudById === 'function'
+          ? await db.getSolicitudById(openSolicitud.id, tenant.id)
+          : null;
+        const assignedAgentWhatsapp = _normalizeAgentWhatsapp(fullSolicitud?.agente?.whatsapp);
+        if (!assignedAgentWhatsapp) {
+          await _sendText(
+            phoneNumberId,
+            phone,
+            'No pude enviar el mensaje porque el agente asignado no tiene WhatsApp configurado.',
+            accessToken,
+            tenant,
+            userId,
+            correlationId,
+          );
+          return {
+            userId,
+            messageId: null,
+            conversationId: null,
+            blockedByOpenSolicitud: true,
+            openSolicitudHandled: 'agent_unavailable',
+          };
+        }
+
+        await db.addSolicitudComment({
+          solicitudId: pendingSolicitudIntent?.solicitudId || openSolicitud.id,
+          tenantId: tenant.id,
+          userId,
+          content: incomingAgentText,
+          visibility: 'customer',
+          attachments: [],
+        });
+
+        const agentName = String(fullSolicitud?.agente?.nombre ?? '').trim();
+        const userName = String(user?.nombre ?? contacts?.find((c) => c.wa_id === phone)?.profile?.name ?? '').trim();
+        const outboundToAgent = [
+          'Mensaje de cliente sobre solicitud activa.',
+          `Solicitud ID: ${openSolicitud.id}`,
+          userName ? `Cliente: ${userName}` : '',
+          `Telefono cliente: ${phone}`,
+          `Comentario: ${incomingAgentText}`,
+        ].filter(Boolean).join('\n');
+
+        await wa.sendTextMessage(phoneNumberId, assignedAgentWhatsapp, outboundToAgent, accessToken);
+
+        await _clearPendingSolicitudComment({ tenantId: tenant.id, userId });
+        await _sendText(
+          phoneNumberId,
+          phone,
+          `Listo. Envie tu mensaje al agente asignado${agentName ? ` (${agentName})` : ''}.`,
+          accessToken,
+          tenant,
+          userId,
+          correlationId,
+        );
+        return {
+          userId,
+          messageId: null,
+          conversationId: null,
+          blockedByOpenSolicitud: true,
+          openSolicitudHandled: 'agent_message_sent',
+        };
+      }
+
       await _sendChatbotResponse({
         tenant,
         userId,
@@ -1072,6 +1223,7 @@ async function _handleIncomingMessage({ msg, contacts, tenant, phoneNumberId, ac
           buttons: [
             { id: OPEN_SOLICITUD_ACTION_CANCEL, title: 'Cancelar solicitud' },
             { id: OPEN_SOLICITUD_ACTION_COMMENT, title: 'Dejar comentario' },
+            { id: OPEN_SOLICITUD_ACTION_AGENT, title: 'Hablar con agente' },
           ],
         },
         correlationId,
