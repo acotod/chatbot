@@ -185,6 +185,17 @@ function _buildCalendarNoSlotsText(cfg = {}, slotDurationMin = null) {
   });
 }
 
+function _buildCalendarAvailabilityPrompt(cfg = {}, slotDurationMin = null) {
+  const parsedSlotDurationMin = Number.isFinite(Number(slotDurationMin)) && Number(slotDurationMin) > 0
+    ? Math.trunc(Number(slotDurationMin))
+    : null;
+  const template = _pickFirstNonEmpty(cfg.prompt, 'Selecciona una fecha y hora:');
+  return resolveTemplate(template, {
+    slot_duration_min: parsedSlotDurationMin ?? '',
+    appointment_duration_min: parsedSlotDurationMin ?? '',
+  });
+}
+
 function _normalizeMenuInput(value) {
   return String(value ?? '').trim();
 }
@@ -1250,7 +1261,7 @@ async function executeCalendar({ node, input, variables, tenantId, llmService })
     return {
       output: {
         type    : buttons.length <= 3 ? 'buttons' : 'list',
-        text    : cfg.prompt || 'Selecciona una fecha y hora:',
+        text    : _buildCalendarAvailabilityPrompt(cfg, requestedSlotDurationMin),
         buttons,
         sections: buttons.length > 3 ? [{ title: 'Horarios disponibles', rows: buttons }] : [],
       },
