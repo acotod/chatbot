@@ -20,6 +20,8 @@ jest.mock('../src/services/database', () => ({
   saveMensaje: jest.fn(),
   findOpenSolicitudForUser: jest.fn(),
   saveSolicitud: jest.fn(),
+  updateSolicitudEstado: jest.fn(),
+  addSolicitudComment: jest.fn(),
 }));
 
 jest.mock('../src/services/socketService', () => ({
@@ -50,6 +52,7 @@ jest.mock('../src/services/eventGateway', () => ({
 
 const whatsappRouter = require('../src/routes/whatsapp');
 const db = require('../src/services/database');
+const wa = require('../src/services/whatsapp');
 const eventGateway = require('../src/services/eventGateway');
 
 function createApp() {
@@ -220,5 +223,103 @@ describe('POST /whatsapp dual-write UEG', () => {
       waMsgId: 'wamid.inbound.456',
     }));
     expect(db.findOpenSolicitudForUser).toHaveBeenCalledWith(7, 'tenant-1');
+  });
+
+  test('open solicitud offers actionable options when no initial WABA flow is configured', async () => {
+    const app = createApp();
+    db.findOpenSolicitudForUser.mockResolvedValueOnce({ id: 999, estado: 'open' });
+    db.getConfig.mockImplementation(async (_tenantId, key) => {
+      if (key === 'initial_waba_flow') {
+        return { valor: null };
+      }
+      return { valor: { accessToken: 'token-123' } };
+    });
+
+    const payload = {
+      object: 'whatsapp_business_account',
+      entry: [{
+        changes: [{
+          field: 'messages',
+          value: {
+            metadata: { phone_number_id: '1234567890' },
+            contacts: [{ wa_id: '573001112233', profile: { name: 'Ana' } }],
+            messages: [{
+              id: 'wamid.inbound.789',
+              from: '573001112233',
+              type: 'text',
+              timestamp: '1717171717',
+              text: { body: 'hola' },
+            }],
+          },
+        }],
+      }],
+    };
+
+    const res = await request(app).post('/whatsapp').send(payload);
+
+    expect(res.status).toBe(200);
+    await flushAsync();
+
+    expect(wa.sendButtonMessage).toHaveBeenCalledWith(
+      '1234567890',
+      '573001112233',
+      expect.stringContaining('Ya tienes una solicitud activa'),
+      expect.arrayContaining([
+        expect.objectContaining({ id: 'solicitud_activa_cancelar' }),
+        expect.objectContaining({ id: 'solicitud_activa_comentar' }),
+      ]),
+      'token-123',
+    );
+  });
+
+  test('open solicitud can be cancelled from WhatsApp action button', async () => {
+    const app = createApp();
+    db.findOpenSolicitudForUser.mockResolvedValueOnce({ id: 999, estado: 'open' });
+    db.getConfig.mockImplementation(async (_tenantId, key) => {
+      if (key === 'initial_waba_flow') {
+        return { valor: null };
+      }
+      return { valor: { accessToken: 'token-123' } };
+    });
+    db.updateSolicitudEstado.mockResolvedValueOnce({ id: 999, estado: 'rejected' });
+
+    const payload = {
+      object: 'whatsapp_business_account',
+      entry: [{
+        changes: [{
+          field: 'messages',
+          value: {
+            metadata: { phone_number_id: '1234567890' },
+            contacts: [{ wa_id: '573001112233', profile: { name: 'Ana' } }],
+            messages: [{
+              id: 'wamid.inbound.790',
+              from: '573001112233',
+              type: 'interactive',
+              timestamp: '1717171717',
+              interactive: {
+                type: 'button_reply',
+                button_reply: {
+                  id: 'solicitud_activa_cancelar',
+                  title: 'Cancelar solicitud',
+                },
+              },
+            }],
+          },
+        }],
+      }],
+    };
+
+    const res = await request(app).post('/whatsapp').send(payload);
+
+    expect(res.status).toBe(200);
+    await flushAsync();
+
+    expect(db.updateSolicitudEstado).toHaveBeenCalledWith(999, 'tenant-1', 'rejected');
+    expect(wa.sendTextMessage).toHaveBeenCalledWith(
+      '1234567890',
+      '573001112233',
+      expect.stringContaining('cancelamos tu solicitud activa'),
+      'token-123',
+    );
   });
 });

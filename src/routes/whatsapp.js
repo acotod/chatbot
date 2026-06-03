@@ -30,6 +30,10 @@ const {
 
 const router = express.Router();
 
+const OPEN_SOLICITUD_ACTION_CANCEL = 'solicitud_activa_cancelar';
+const OPEN_SOLICITUD_ACTION_COMMENT = 'solicitud_activa_comentar';
+const OPEN_SOLICITUD_COMMENT_TTL_SECONDS = 15 * 60;
+
 async function resolveTenantId(req, explicitTenantSlug) {
   const fromAuth =
     req.admin?.tenantId ??
@@ -58,6 +62,64 @@ function _toIsoFromUnixSeconds(seconds) {
   const ts = Number(seconds);
   if (!Number.isFinite(ts)) return new Date().toISOString();
   return new Date(ts * 1000).toISOString();
+}
+
+function _openSolicitudCommentRedisKey(tenantId, userId) {
+  return `wa:solicitud:await_comment:${tenantId}:${userId}`;
+}
+
+async function _getPendingSolicitudComment({ tenantId, userId }) {
+  const redis = getRedisClient();
+  if (!redis) return null;
+  try {
+    const raw = await redis.get(_openSolicitudCommentRedisKey(tenantId, userId));
+    if (!raw) return null;
+    const parsed = Number.parseInt(String(raw), 10);
+    return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+  } catch (err) {
+    logger.warn('Could not read pending solicitud comment intent', {
+      tenantId,
+      userId,
+      message: err.message,
+    });
+    return null;
+  }
+}
+
+async function _setPendingSolicitudComment({ tenantId, userId, solicitudId }) {
+  const redis = getRedisClient();
+  if (!redis) return false;
+  try {
+    await redis.set(
+      _openSolicitudCommentRedisKey(tenantId, userId),
+      String(solicitudId),
+      'EX',
+      OPEN_SOLICITUD_COMMENT_TTL_SECONDS,
+    );
+    return true;
+  } catch (err) {
+    logger.warn('Could not persist pending solicitud comment intent', {
+      tenantId,
+      userId,
+      solicitudId,
+      message: err.message,
+    });
+    return false;
+  }
+}
+
+async function _clearPendingSolicitudComment({ tenantId, userId }) {
+  const redis = getRedisClient();
+  if (!redis) return;
+  try {
+    await redis.del(_openSolicitudCommentRedisKey(tenantId, userId));
+  } catch (err) {
+    logger.warn('Could not clear pending solicitud comment intent', {
+      tenantId,
+      userId,
+      message: err.message,
+    });
+  }
 }
 
 async function _ingestUegBestEffort({ tenantId, correlationId, idempotencyKey, rawEvent, context }) {
@@ -911,16 +973,111 @@ async function _handleIncomingMessage({ msg, contacts, tenant, phoneNumberId, ac
     );
     const openSolicitud = await db.findOpenSolicitudForUser(userId, tenant.id);
     if (openSolicitud && !hasInitialWabaFlow) {
-      // Opcional: puedes personalizar el mensaje
-      await _sendText(
-        phoneNumberId,
-        phone,
-        'Ya tienes una solicitud activa. Por favor espera a que sea atendida antes de iniciar un nuevo trámite.',
-        accessToken,
+      const normalizedInput = String(userInput ?? '').trim().toLowerCase();
+      const pendingSolicitudCommentId = await _getPendingSolicitudComment({ tenantId: tenant.id, userId });
+
+      if (normalizedInput === OPEN_SOLICITUD_ACTION_CANCEL) {
+        await db.updateSolicitudEstado(openSolicitud.id, tenant.id, 'rejected');
+        await _clearPendingSolicitudComment({ tenantId: tenant.id, userId });
+        await _sendText(
+          phoneNumberId,
+          phone,
+          'Listo, cancelamos tu solicitud activa. Si deseas, ahora puedo ayudarte a iniciar un nuevo tramite.',
+          accessToken,
+          tenant,
+          userId,
+          correlationId,
+        );
+        return {
+          userId,
+          messageId: null,
+          conversationId: null,
+          blockedByOpenSolicitud: false,
+          openSolicitudHandled: 'cancelled',
+        };
+      }
+
+      if (normalizedInput === OPEN_SOLICITUD_ACTION_COMMENT) {
+        const hasPendingFlag = await _setPendingSolicitudComment({
+          tenantId: tenant.id,
+          userId,
+          solicitudId: openSolicitud.id,
+        });
+        const commentInstruction = hasPendingFlag
+          ? 'Escribe tu comentario y lo agrego a tu solicitud activa para que el equipo lo revise.'
+          : 'Escribe tu comentario iniciando con "comentario:" y lo agrego a tu solicitud activa.';
+        await _sendText(
+          phoneNumberId,
+          phone,
+          commentInstruction,
+          accessToken,
+          tenant,
+          userId,
+          correlationId,
+        );
+        return {
+          userId,
+          messageId: null,
+          conversationId: null,
+          blockedByOpenSolicitud: true,
+          openSolicitudHandled: 'request_comment',
+        };
+      }
+
+      const fallbackPrefix = 'comentario:';
+      const fallbackCommentText = normalizedInput.startsWith(fallbackPrefix)
+        ? String(userInput ?? '').slice(fallbackPrefix.length).trim()
+        : '';
+      const incomingCommentText = pendingSolicitudCommentId
+        ? String(userInput ?? '').trim()
+        : fallbackCommentText;
+
+      if (incomingCommentText) {
+        await db.addSolicitudComment({
+          solicitudId: pendingSolicitudCommentId || openSolicitud.id,
+          tenantId: tenant.id,
+          userId,
+          content: incomingCommentText,
+          visibility: 'customer',
+          attachments: [],
+        });
+        await _clearPendingSolicitudComment({ tenantId: tenant.id, userId });
+        await _sendText(
+          phoneNumberId,
+          phone,
+          'Gracias. Tu comentario fue agregado a la solicitud activa.',
+          accessToken,
+          tenant,
+          userId,
+          correlationId,
+        );
+        return {
+          userId,
+          messageId: null,
+          conversationId: null,
+          blockedByOpenSolicitud: true,
+          openSolicitudHandled: 'comment_added',
+        };
+      }
+
+      await _sendChatbotResponse({
         tenant,
         userId,
+        phone,
+        phoneNumberId,
+        accessToken,
+        response: {
+          type: 'buttons',
+          text: 'Ya tienes una solicitud activa. Que deseas hacer?',
+          buttons: [
+            { id: OPEN_SOLICITUD_ACTION_CANCEL, title: 'Cancelar solicitud' },
+            { id: OPEN_SOLICITUD_ACTION_COMMENT, title: 'Dejar comentario' },
+          ],
+        },
         correlationId,
-      );
+        conversationId: null,
+        conversationMeta,
+      });
       logger.info('Intento de reinicio de flujo bloqueado por solicitud activa', { tenantId: tenant.id, userId, phone });
       return {
         userId,
