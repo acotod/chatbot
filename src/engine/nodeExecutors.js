@@ -196,6 +196,29 @@ function _buildCalendarAvailabilityPrompt(cfg = {}, slotDurationMin = null) {
   });
 }
 
+const CALENDAR_INVALID_SLOT_TEXT = 'Elige una fecha y hora de la lista para tu cita';
+
+function _resolveCalendarInvalidSlotText(cfg = {}) {
+  const candidate = String(cfg.retry_text || cfg.error_text || '').trim();
+  if (!candidate) return CALENDAR_INVALID_SLOT_TEXT;
+
+  const normalized = candidate
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .replace(/[.!?]+$/g, '');
+
+  if (normalized === 'la opcion no es valida. selecciona una fecha y hora de la lista') {
+    return CALENDAR_INVALID_SLOT_TEXT;
+  }
+  if (normalized === 'la opcion no es valida. elige una fecha y hora de la lista o dime cual prefieres') {
+    return CALENDAR_INVALID_SLOT_TEXT;
+  }
+
+  return candidate;
+}
+
 function _normalizeMenuInput(value) {
   return String(value ?? '').trim();
 }
@@ -1430,13 +1453,14 @@ async function executeCalendar({ node, input, variables, tenantId, llmService })
 
     const resolvedSelection = await resolveSlotIdFromInput();
     if (!resolvedSelection?.slotId) {
+      const invalidSlotMessage = _resolveCalendarInvalidSlotText(cfg);
       const retryAvailability = await executeCalendar({
         node: Object.assign({}, node, {
           action: 'show_availability',
           config: Object.assign({}, node.config || {}, {
             action: 'show_availability',
             prompt: [
-              cfg.retry_text || cfg.error_text || 'No identifique un horario valido. Elige una de estas opciones.',
+              invalidSlotMessage,
               String(variables?.[availabilitySummaryVarName] || '').trim(),
             ].filter(Boolean).join('\n\n'),
           }),
@@ -1447,7 +1471,7 @@ async function executeCalendar({ node, input, variables, tenantId, llmService })
         llmService,
       });
       return {
-        output: retryAvailability.output || { type: 'text', text: cfg.error_text || 'La opcion no es valida. Selecciona un horario de la lista.' },
+        output: retryAvailability.output || { type: 'text', text: invalidSlotMessage },
         nextNodeId: retryAvailability.nextNodeId || node.id,
         updatedVars: retryAvailability.updatedVars || {},
         terminal: false,

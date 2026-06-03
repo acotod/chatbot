@@ -825,7 +825,7 @@ describe('nodeExecutors root-cause guards', () => {
     expect(bookSlotSpy).not.toHaveBeenCalled();
     expect(result.nextNodeId).toBe('node_calendar');
     expect(result.output).toEqual(expect.objectContaining({
-      text: expect.stringContaining('La opcion no es valida. Selecciona una fecha y hora de la lista.'),
+      text: expect.stringContaining('Elige una fecha y hora de la lista para tu cita'),
     }));
 
     getAvailableSlotsSpy.mockRestore();
