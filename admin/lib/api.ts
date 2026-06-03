@@ -391,6 +391,17 @@ export const calendarsApi = {
     apiClient.post(`/admin/tenants/${slug}/calendars/${calendarId}/google/disconnect`),
 };
 
+export const calendarAppointmentsApi = {
+  slots: (calendarId: string, params?: { days?: number }) =>
+    apiClient.get(`/calendar/${calendarId}/slots`, { params }),
+  detail: (appointmentId: string) =>
+    apiClient.get(`/calendar/appointments/${appointmentId}`),
+  cancel: (appointmentId: string) =>
+    apiClient.post(`/calendar/appointments/${appointmentId}/cancel`),
+  reschedule: (appointmentId: string, newSlotId: string) =>
+    apiClient.post(`/calendar/appointments/${appointmentId}/reschedule`, { newSlotId }),
+};
+
 export const agentePuestosApi = {
   list: (slug: string) => apiClient.get(`/admin/tenants/${slug}/agente-puestos`),
   create: (slug: string, data: { nombre: string }) =>

@@ -3,7 +3,7 @@
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Modal } from "@/components/ui/Modal";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 
 export type AgendaTipo = "reunion" | "tarea" | "automatizacion" | "webhook";
 export type AgendaEstado = "pendiente" | "en_progreso" | "completado";
@@ -38,6 +38,13 @@ interface AgenteOption {
   estado: string;
 }
 
+export interface AppointmentSlotOption {
+  id: string;
+  label: string;
+  startAt: string;
+  endAt: string;
+}
+
 interface AgendaEventModalProps {
   open: boolean;
   event: AgendaEventFormData | null;
@@ -45,10 +52,18 @@ interface AgendaEventModalProps {
   saving: boolean;
   readOnly?: boolean;
   hideTechnicalSections?: boolean;
+  appointmentMode?: boolean;
+  appointmentStatusLabel?: string;
+  appointmentSlots?: AppointmentSlotOption[];
+  appointmentSlotsLoading?: boolean;
+  appointmentRescheduling?: boolean;
+  appointmentCancelling?: boolean;
   onClose: () => void;
   onSave: (payload: AgendaEventFormData) => Promise<void>;
   onDelete?: (id: number) => Promise<void>;
   onTriggerStart?: (id: number) => Promise<void>;
+  onRescheduleAppointment?: (slotId: string) => Promise<void>;
+  onCancelAppointment?: () => Promise<void>;
 }
 
 const EMPTY_EVENT: AgendaEventFormData = {
@@ -76,18 +91,22 @@ export function AgendaEventModal({
   saving,
   readOnly = false,
   hideTechnicalSections = false,
+  appointmentMode = false,
+  appointmentStatusLabel,
+  appointmentSlots = [],
+  appointmentSlotsLoading = false,
+  appointmentRescheduling = false,
+  appointmentCancelling = false,
   onClose,
   onSave,
   onDelete,
   onTriggerStart,
+  onRescheduleAppointment,
+  onCancelAppointment,
 }: AgendaEventModalProps) {
-  const [form, setForm] = useState<AgendaEventFormData>(EMPTY_EVENT);
+  const [form, setForm] = useState<AgendaEventFormData>(event ?? EMPTY_EVENT);
   const [error, setError] = useState("");
-
-  useEffect(() => {
-    setForm(event ?? EMPTY_EVENT);
-    setError("");
-  }, [event, open]);
+  const [selectedAppointmentSlotId, setSelectedAppointmentSlotId] = useState("");
 
   const isEdit = useMemo(() => Boolean(form.id), [form.id]);
   const showWebhookSections = !hideTechnicalSections && form.tipo === "webhook";
@@ -133,8 +152,18 @@ export function AgendaEventModal({
     await onSave(form);
   }
 
+  async function handleAppointmentReschedule() {
+    if (!onRescheduleAppointment) return;
+    if (!selectedAppointmentSlotId) {
+      setError("Selecciona un horario disponible para reprogramar la cita");
+      return;
+    }
+    setError("");
+    await onRescheduleAppointment(selectedAppointmentSlotId);
+  }
+
   return (
-    <Modal open={open} onClose={onClose} title={readOnly ? "Detalle de cita" : isEdit ? "Editar evento" : "Nuevo evento"} className="max-w-3xl">
+    <Modal open={open} onClose={onClose} title={appointmentMode || readOnly ? "Detalle de cita" : isEdit ? "Editar evento" : "Nuevo evento"} className="max-w-3xl">
       <form onSubmit={handleSubmit} className="space-y-4">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <Input label="Titulo" value={form.titulo} onChange={(e) => set("titulo", e.target.value)} required disabled={readOnly} />
@@ -223,6 +252,58 @@ export function AgendaEventModal({
           />
         </div>
 
+        {appointmentMode && (
+          <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 space-y-3">
+            <div>
+              <h4 className="text-sm font-semibold text-slate-900">Editar cita</h4>
+              <p className="mt-1 text-xs text-slate-500">
+                {appointmentStatusLabel ? `Estado actual: ${appointmentStatusLabel}. ` : ""}
+                Puedes reprogramar la cita a un horario disponible o cancelarla.
+              </p>
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <label className="text-sm font-medium text-slate-700">Nuevo horario</label>
+              <select
+                value={selectedAppointmentSlotId}
+                onChange={(e) => setSelectedAppointmentSlotId(e.target.value)}
+                disabled={appointmentSlotsLoading || appointmentRescheduling || appointmentCancelling || appointmentSlots.length === 0}
+                className="h-11 rounded-xl border border-slate-200 px-3 text-sm bg-white"
+              >
+                <option value="">{appointmentSlotsLoading ? "Cargando horarios..." : "Selecciona un horario disponible"}</option>
+                {appointmentSlots.map((slot) => (
+                  <option key={slot.id} value={slot.id}>
+                    {slot.label}
+                  </option>
+                ))}
+              </select>
+              {!appointmentSlotsLoading && appointmentSlots.length === 0 && (
+                <p className="text-xs text-slate-500">No hay horarios disponibles para reprogramar esta cita.</p>
+              )}
+            </div>
+
+            <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+              <Button
+                type="button"
+                variant="danger"
+                size="sm"
+                onClick={() => onCancelAppointment?.()}
+                disabled={appointmentCancelling || appointmentRescheduling || !onCancelAppointment}
+              >
+                {appointmentCancelling ? "Cancelando..." : "Cancelar cita"}
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                onClick={handleAppointmentReschedule}
+                disabled={appointmentRescheduling || appointmentCancelling || !selectedAppointmentSlotId || !onRescheduleAppointment}
+              >
+                {appointmentRescheduling ? "Reprogramando..." : "Guardar cita"}
+              </Button>
+            </div>
+          </div>
+        )}
+
         {showWebhookSections && (
           <>
             <div className="rounded-xl border border-slate-200 px-3.5 py-2.5">
@@ -310,7 +391,7 @@ export function AgendaEventModal({
 
         <div className="flex items-center justify-between gap-2 pt-1">
           <div className="flex items-center gap-2">
-            {!readOnly && isEdit && onDelete && form.id && (
+            {!readOnly && !appointmentMode && isEdit && onDelete && form.id && (
               <Button
                 type="button"
                 variant="danger"
@@ -321,7 +402,7 @@ export function AgendaEventModal({
                 Eliminar
               </Button>
             )}
-            {!readOnly && isEdit && onTriggerStart && form.id && (
+            {!readOnly && !appointmentMode && isEdit && onTriggerStart && form.id && (
               <Button
                 type="button"
                 variant="secondary"
@@ -335,7 +416,7 @@ export function AgendaEventModal({
           </div>
           <div className="flex items-center gap-2">
             <Button type="button" variant="ghost" onClick={onClose} disabled={saving}>{readOnly ? "Cerrar" : "Cancelar"}</Button>
-            {!readOnly && (
+            {!readOnly && !appointmentMode && (
               <Button type="submit" disabled={saving}>{saving ? "Guardando..." : "Guardar"}</Button>
             )}
           </div>

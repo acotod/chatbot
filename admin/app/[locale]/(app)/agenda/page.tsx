@@ -1,10 +1,10 @@
 "use client";
 
-import { AgendaEventFormData, AgendaEventModal, AgendaTipo } from "@/components/agenda/AgendaEventModal";
+import { AgendaEventFormData, AgendaEventModal, AgendaTipo, type AppointmentSlotOption } from "@/components/agenda/AgendaEventModal";
 import { Button } from "@/components/ui/Button";
 import { Card, CardContent, CardHeader } from "@/components/ui/Card";
 import { agentAuthApi, type AgentAgendaEvent } from "@/lib/agentApi";
-import { agendaApi, agentesApi, configApi, tenantApi } from "@/lib/api";
+import { agendaApi, agentesApi, calendarAppointmentsApi, configApi, tenantApi } from "@/lib/api";
 import { getMe } from "@/lib/useMe";
 import { getStoredAgentAccessToken } from "@/store/agentAuth";
 import { useAuthStore } from "@/store/auth";
@@ -44,7 +44,19 @@ type AgendaApiEvent = {
   webhookHeaders: Record<string, unknown> | null;
   webhookPayload: Record<string, unknown> | null;
   source?: "agenda" | "appointment";
+  appointmentId?: string;
+  calendarId?: string | null;
+  calendarName?: string | null;
+  timezone?: string | null;
   assignments: AgendaApiAssignment[];
+};
+
+type AppointmentModalContext = {
+  appointmentId: string;
+  calendarId: string;
+  startAt: string;
+  endAt: string;
+  status: string;
 };
 
 type SlotMinutes = 15 | 30 | 60;
@@ -146,6 +158,7 @@ export default function AgendaPage() {
   const [selectedEvent, setSelectedEvent] = useState<AgendaEventFormData | null>(null);
   const [modalReadOnly, setModalReadOnly] = useState(false);
   const [modalHideTechnicalSections, setModalHideTechnicalSections] = useState(false);
+  const [selectedAppointment, setSelectedAppointment] = useState<AppointmentModalContext | null>(null);
 
   const { data: agentAgenda, isLoading: agentAgendaLoading } = useQuery({
     queryKey: ["agent-agenda", agentAgendaRange.start.toISOString(), agentAgendaRange.end.toISOString()],
@@ -209,7 +222,7 @@ export default function AgendaPage() {
       .filter((d) => Number.isInteger(d) && d >= 0 && d <= 6)
       .sort((a, b) => a - b);
     return normalized.length > 0 ? normalized : [1, 2, 3, 4, 5];
-  }, [horariosConfig?.dias]);
+  }, [horariosConfig]);
 
   const calendarHiddenDays = useMemo(
     () => [0, 1, 2, 3, 4, 5, 6].filter((d) => !calendarWorkingDays.includes(d)),
@@ -300,9 +313,72 @@ export default function AgendaPage() {
     },
   });
 
+  const appointmentSlotsQuery = useQuery({
+    queryKey: ["agenda-appointment-slots", selectedAppointment?.calendarId],
+    enabled: Boolean(modalOpen && selectedAppointment?.calendarId),
+    queryFn: async () => {
+      const res = await calendarAppointmentsApi.slots(selectedAppointment!.calendarId, { days: 14 });
+      const slots = Array.isArray(res.data?.slots) ? res.data.slots : [];
+      return slots as Array<{ id: string; startTime: string; endTime: string; timezone?: string }>;
+    },
+    staleTime: 30_000,
+  });
+
+  const rescheduleAppointmentMutation = useMutation({
+    mutationFn: async (slotId: string) => {
+      if (!selectedAppointment?.appointmentId) throw new Error("appointmentId requerido");
+      await calendarAppointmentsApi.reschedule(selectedAppointment.appointmentId, slotId);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["agenda-events"] });
+      setModalOpen(false);
+      setSelectedEvent(null);
+      setSelectedAppointment(null);
+    },
+  });
+
+  const cancelAppointmentMutation = useMutation({
+    mutationFn: async () => {
+      if (!selectedAppointment?.appointmentId) throw new Error("appointmentId requerido");
+      await calendarAppointmentsApi.cancel(selectedAppointment.appointmentId);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["agenda-events"] });
+      setModalOpen(false);
+      setSelectedEvent(null);
+      setSelectedAppointment(null);
+    },
+  });
+
   function refreshEvents() {
     queryClient.invalidateQueries({ queryKey: ["agenda-events"] });
   }
+
+  const appointmentSlotOptions: AppointmentSlotOption[] = useMemo(() => {
+    if (!selectedAppointment) return [];
+
+    const currentStartMs = new Date(selectedAppointment.startAt).getTime();
+    const currentEndMs = new Date(selectedAppointment.endAt).getTime();
+
+    return (appointmentSlotsQuery.data || [])
+      .filter((slot) => {
+        const slotStartMs = new Date(slot.startTime).getTime();
+        const slotEndMs = new Date(slot.endTime).getTime();
+        return slotStartMs !== currentStartMs || slotEndMs !== currentEndMs;
+      })
+      .map((slot) => ({
+        id: slot.id,
+        startAt: slot.startTime,
+        endAt: slot.endTime,
+        label: new Date(slot.startTime).toLocaleString(dateLocale, {
+          weekday: "short",
+          day: "2-digit",
+          month: "short",
+          hour: "2-digit",
+          minute: "2-digit",
+        }),
+      }));
+  }, [appointmentSlotsQuery.data, dateLocale, selectedAppointment]);
 
   useSocket(activeTenantId, "agenda:event_created", refreshEvents);
   useSocket(activeTenantId, "agenda:event_updated", refreshEvents);
@@ -312,6 +388,7 @@ export default function AgendaPage() {
   function openCreateFromRange(start: Date, end: Date) {
     setModalReadOnly(false);
     setModalHideTechnicalSections(false);
+    setSelectedAppointment(null);
     setSelectedEvent({
       titulo: "",
       descripcion: "",
@@ -349,12 +426,24 @@ export default function AgendaPage() {
       setModalReadOnly(true);
       setModalHideTechnicalSections(true);
       setSelectedEvent(toReadOnlyFormEvent(raw));
+      setSelectedAppointment(
+        raw.appointmentId && raw.calendarId
+          ? {
+              appointmentId: raw.appointmentId,
+              calendarId: raw.calendarId,
+              startAt: raw.startAt,
+              endAt: raw.endAt,
+              status: raw.estado,
+            }
+          : null
+      );
       setModalOpen(true);
       return;
     }
     if (typeof raw.id !== "number") return;
     setModalReadOnly(false);
     setModalHideTechnicalSections(false);
+    setSelectedAppointment(null);
     setSelectedEvent(toFormEvent(raw));
     setModalOpen(true);
   }
@@ -621,15 +710,23 @@ export default function AgendaPage() {
       </div>
 
       <AgendaEventModal
+        key={selectedAppointment?.appointmentId || String(selectedEvent?.id ?? selectedEvent?.startAt ?? "agenda-modal")}
         open={modalOpen}
         event={selectedEvent}
         agentes={agentes}
         readOnly={modalReadOnly}
         hideTechnicalSections={modalHideTechnicalSections}
+        appointmentMode={Boolean(selectedAppointment)}
+        appointmentStatusLabel={selectedAppointment?.status ? t(`status.${selectedAppointment.status}` as never) : undefined}
+        appointmentSlots={appointmentSlotOptions}
+        appointmentSlotsLoading={appointmentSlotsQuery.isLoading}
+        appointmentRescheduling={rescheduleAppointmentMutation.isPending}
+        appointmentCancelling={cancelAppointmentMutation.isPending}
         saving={saveMutation.isPending || deleteMutation.isPending || triggerMutation.isPending}
         onClose={() => {
           setModalOpen(false);
           setSelectedEvent(null);
+          setSelectedAppointment(null);
           setModalReadOnly(false);
           setModalHideTechnicalSections(false);
         }}
@@ -642,6 +739,12 @@ export default function AgendaPage() {
         onTriggerStart={async (id) => {
           await triggerMutation.mutateAsync(id);
         }}
+        onRescheduleAppointment={selectedAppointment ? async (slotId) => {
+          await rescheduleAppointmentMutation.mutateAsync(slotId);
+        } : undefined}
+        onCancelAppointment={selectedAppointment ? async () => {
+          await cancelAppointmentMutation.mutateAsync();
+        } : undefined}
       />
 
       <style jsx global>{`

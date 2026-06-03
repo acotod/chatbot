@@ -671,6 +671,9 @@ function serializeAppointmentAsAgendaEvent(appointment, appointmentColor = '#0EA
         updatedAt: appointment.updatedAt,
         source: 'appointment',
         appointmentId: appointment.id,
+        calendarId: appointment.calendarId,
+        calendarName: appointment?.calendar?.name ?? null,
+        timezone: appointment?.calendar?.timezone ?? null,
         assignments: appointment?.calendar?.agente
             ? [
                   {
