@@ -82,6 +82,29 @@ function isResizeObserverNoise(message: string): boolean {
   );
 }
 
+function isCanceledPromiseNoise(error: unknown): boolean {
+  const asRecord = typeof error === "object" && error !== null
+    ? (error as Record<string, unknown>)
+    : null;
+
+  const message =
+    typeof error === "string"
+      ? error
+      : typeof asRecord?.message === "string"
+        ? asRecord.message
+        : "";
+
+  const code = typeof asRecord?.code === "string" ? asRecord.code : "";
+  const name = typeof asRecord?.name === "string" ? asRecord.name : "";
+
+  return (
+    code === "ERR_CANCELED" ||
+    name === "CanceledError" ||
+    name === "AbortError" ||
+    message.toLowerCase() === "canceled"
+  );
+}
+
 export function initGlobalErrorLogger(): void {
     if ((window as Window & { __errorLoggerInit?: boolean }).__errorLoggerInit) return;
     (window as Window & { __errorLoggerInit?: boolean }).__errorLoggerInit = true;
@@ -99,6 +122,11 @@ export function initGlobalErrorLogger(): void {
   // Capture unhandled promise rejections
   window.addEventListener("unhandledrejection", (event) => {
     const error = event.reason;
+    if (isCanceledPromiseNoise(error)) {
+      event.preventDefault();
+      return;
+    }
+
     addLog({
       level: "error",
       source: "promise",

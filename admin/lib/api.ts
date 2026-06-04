@@ -76,6 +76,18 @@ const refreshClient = axios.create({
 // Module-level promise to coalesce concurrent 401s into a single refresh call
 let refreshPromise: Promise<string> | null = null;
 
+function isExpectedLogout401(status: number | undefined, url: string): boolean {
+  return status === 401 && url.includes("/auth/logout");
+}
+
+function isNotificationTimeout(url: string, networkCode: string | undefined): boolean {
+  return (
+    networkCode === "ECONNABORTED" &&
+    url.includes("/admin/tenants/") &&
+    url.includes("/notifications")
+  );
+}
+
 function clearAuthAndRedirect() {
   if (typeof window === "undefined") return;
   clearStoredAuth();
@@ -106,6 +118,8 @@ apiClient.interceptors.response.use(
     const isNetworkError = typeof status !== "number";
     const responseError =
       data?.error || data?.message || networkMessage || "Request failed";
+    const isExpectedLogoutError = isExpectedLogout401(status, normalizedPath);
+    const isExpectedNotificationTimeout = isNotificationTimeout(normalizedPath, networkCode);
 
     // Determine if this 401 can be silently recovered via refresh
     const isRecoverable401 =
@@ -120,7 +134,7 @@ apiClient.interceptors.response.use(
       !getStoredAccessToken() &&
       !getStoredRefreshToken();
 
-    if (!isRecoverable401 && !isPostLogout) {
+    if (!isRecoverable401 && !isPostLogout && !isExpectedLogoutError && !isExpectedNotificationTimeout) {
       addLog({
         level: "error",
         source: "network",
@@ -238,8 +252,8 @@ export const authApi = {
       credential,
     }),
   logout: (refreshToken?: string) =>
-    refreshToken || getStoredAccessToken()
-      ? apiClient.post("/auth/logout", refreshToken ? { refreshToken } : {})
+    refreshToken
+      ? apiClient.post("/auth/logout", { refreshToken })
       : Promise.resolve({ data: null }),
   refresh: (refreshToken: string) =>
     refreshClient.post<{ accessToken: string }>("/auth/refresh", { refreshToken }),

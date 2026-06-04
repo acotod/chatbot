@@ -1,5 +1,6 @@
 'use client';
 
+import axios from 'axios';
 import { notificationsApi } from '@/lib/api';
 import { useSocket } from '@/hooks/useSocket';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -46,11 +47,21 @@ export function useNotifications(tenantSlug: string | null, tenantId: string | n
     queryKey,
     queryFn: async () => {
       if (!tenantSlug) return EMPTY_RESULT;
-      const res = await notificationsApi.list(tenantSlug, { page: 1, limit: 10 });
-      return res.data as NotificationListResponse;
+      try {
+        const res = await notificationsApi.list(tenantSlug, { page: 1, limit: 10 });
+        return res.data as NotificationListResponse;
+      } catch (error) {
+        if (axios.isAxiosError(error)) {
+          if (error.code === 'ERR_CANCELED' || error.code === 'ECONNABORTED' || error.response?.status === 401) {
+            return EMPTY_RESULT;
+          }
+        }
+        throw error;
+      }
     },
     enabled: Boolean(tenantSlug),
     staleTime: 20_000,
+    retry: 0,
   });
 
   const onSocketNotification = useCallback((raw: unknown) => {
