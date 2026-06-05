@@ -916,4 +916,62 @@ describe('nodeExecutors root-cause guards', () => {
     bookSlotSpy.mockRestore();
     getCalendarAssignmentContextSpy.mockRestore();
   });
+
+  test('calendar cancel_appointment sets appointment_status cancelled when service succeeds', async () => {
+    const calendarService = require('../src/services/calendarService');
+    const cancelAppointmentSpy = jest
+      .spyOn(calendarService, 'cancelAppointment')
+      .mockResolvedValue({ ok: true });
+
+    const node = {
+      id: 'node_calendar_cancel',
+      type: 'calendar',
+      next: 'node_next',
+      config: {
+        action: 'cancel_appointment',
+      },
+    };
+
+    const result = await executeNode(node, {
+      input: null,
+      variables: { appointment_id: 'appt-123' },
+      tenantId: 'tenant-1',
+    });
+
+    expect(cancelAppointmentSpy).toHaveBeenCalledWith('appt-123', 'tenant-1');
+    expect(result.nextNodeId).toBe('node_next');
+    expect(result.updatedVars).toEqual(expect.objectContaining({
+      appointment_status: 'cancelled',
+    }));
+
+    cancelAppointmentSpy.mockRestore();
+  });
+
+  test('calendar cancel_appointment leaves updatedVars empty when service returns error', async () => {
+    const calendarService = require('../src/services/calendarService');
+    const cancelAppointmentSpy = jest
+      .spyOn(calendarService, 'cancelAppointment')
+      .mockResolvedValue({ error: 'NOT_FOUND' });
+
+    const node = {
+      id: 'node_calendar_cancel',
+      type: 'calendar',
+      next: 'node_next',
+      config: {
+        action: 'cancel_appointment',
+      },
+    };
+
+    const result = await executeNode(node, {
+      input: null,
+      variables: { appointment_id: 'appt-x' },
+      tenantId: 'tenant-1',
+    });
+
+    expect(cancelAppointmentSpy).toHaveBeenCalledWith('appt-x', 'tenant-1');
+    expect(result.nextNodeId).toBe('node_next');
+    expect(result.updatedVars).toEqual({});
+
+    cancelAppointmentSpy.mockRestore();
+  });
 });
