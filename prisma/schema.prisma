@@ -663,6 +663,7 @@ model Flow {
   nombre       String     @db.VarChar(100)
   version      Int        @default(1)
   activo       Boolean    @default(true)
+  deletionLocked Boolean  @default(false) @map("deletion_locked")
   /// Snapshot del JSON Meta exportado (version 7.1) guardado en cada save
   metaJson     Json?      @map("meta_json")
   createdAt    DateTime   @default(now()) @map("created_at")

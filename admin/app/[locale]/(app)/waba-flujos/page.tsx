@@ -27,6 +27,8 @@ import {
   ArrowUp,
   ArrowDown,
   Zap,
+  Lock,
+  Unlock,
 } from "lucide-react";
 import { wabaFlowsApi, integrationsApi, variablesApi, agentesApi, agentePuestosApi } from "@/lib/api";
 import { useAuthStore } from "@/store/auth";
@@ -56,6 +58,7 @@ interface WabaFlow {
   nombre: string;
   version: number;
   activo: boolean;
+  deletionLocked?: boolean;
   metaJson?: unknown;
   createdAt: string;
   updatedAt: string;
@@ -1109,6 +1112,7 @@ function ImportModal({ onClose, onImported, tenantSlug }: { onClose: () => void;
 function CreateFlowModal({ onClose, onCreated, tenantSlug }: { onClose: () => void; onCreated: () => void; tenantSlug: string }) {
   const t = useTranslations("wabaFlows");
   const [nombre, setNombre] = useState("");
+  const [deletionLocked, setDeletionLocked] = useState(true);
   const [error, setError]   = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -1118,7 +1122,7 @@ function CreateFlowModal({ onClose, onCreated, tenantSlug }: { onClose: () => vo
     setError("");
     setLoading(true);
     try {
-      await wabaFlowsApi.create({ nombre, tenantSlug });
+      await wabaFlowsApi.create({ nombre, tenantSlug, deletionLocked });
       onCreated();
       onClose();
     } catch (e: unknown) {
@@ -1151,6 +1155,18 @@ function CreateFlowModal({ onClose, onCreated, tenantSlug }: { onClose: () => vo
               autoFocus
             />
           </div>
+          <label className="flex items-start gap-3 rounded-xl border border-slate-200 px-3 py-2.5">
+            <input
+              type="checkbox"
+              checked={deletionLocked}
+              onChange={(e) => setDeletionLocked(e.target.checked)}
+              className="mt-0.5"
+            />
+            <span>
+              <span className="block text-sm font-medium text-slate-700">{t("createModal.protectFromDeletion")}</span>
+              <span className="block text-xs text-slate-500">{t("createModal.protectFromDeletionHint")}</span>
+            </span>
+          </label>
           {error && <p className="text-sm text-red-600">{error}</p>}
         </div>
         <div className="px-6 py-4 border-t border-slate-100 flex justify-end gap-3">
@@ -4143,9 +4159,18 @@ export default function WabaFlujos() {
     if (tab === "import-logs") loadImportLogs();
   }, [tab, loadImportLogs]);
 
-  async function handleDelete(id: number) {
+  async function handleDelete(flow: WabaFlow) {
+    if (flow.deletionLocked) {
+      alert(t("page.deleteLocked"));
+      return;
+    }
     if (!confirm(t("page.confirmDeactivate"))) return;
-    await wabaFlowsApi.remove(id);
+    await wabaFlowsApi.remove(flow.id);
+    loadFlows();
+  }
+
+  async function handleToggleDeletionLock(flow: WabaFlow) {
+    await wabaFlowsApi.update(flow.id, { deletionLocked: !flow.deletionLocked });
     loadFlows();
   }
 
@@ -4323,6 +4348,11 @@ export default function WabaFlujos() {
                                 <CheckCircle2 className="w-3 h-3" /> {t("page.live")}
                               </span>
                             )}
+                            {flow.deletionLocked && (
+                              <span className="text-xs font-medium text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full flex items-center gap-1">
+                                <Lock className="w-3 h-3" /> {t("page.protected")}
+                              </span>
+                            )}
                           </div>
                           <div className="flex items-center gap-3 mt-1.5 flex-wrap">
                             <span className={`text-xs px-2 py-0.5 rounded-full ${STATUS_BADGE[valStatus]}`}>
@@ -4370,6 +4400,13 @@ export default function WabaFlujos() {
                           <Play className="w-4 h-4" />
                         </button>
                         <button
+                          onClick={() => handleToggleDeletionLock(flow)}
+                          title={flow.deletionLocked ? t("page.actions.unlockDelete") : t("page.actions.lockDelete")}
+                          className="p-2 rounded-xl hover:bg-amber-50 text-slate-400 hover:text-amber-600"
+                        >
+                          {flow.deletionLocked ? <Unlock className="w-4 h-4" /> : <Lock className="w-4 h-4" />}
+                        </button>
+                        <button
                           onClick={async () => {
                             const { data } = await wabaFlowsApi.export(flow.id);
                             const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
@@ -4386,9 +4423,10 @@ export default function WabaFlujos() {
                           <Download className="w-4 h-4" />
                         </button>
                         <button
-                          onClick={() => handleDelete(flow.id)}
-                          title={t("page.actions.deactivate")}
-                          className="p-2 rounded-xl hover:bg-red-50 text-slate-400 hover:text-red-600"
+                          onClick={() => handleDelete(flow)}
+                          title={flow.deletionLocked ? t("page.actions.deactivateLocked") : t("page.actions.deactivate")}
+                          disabled={Boolean(flow.deletionLocked)}
+                          className="p-2 rounded-xl hover:bg-red-50 text-slate-400 hover:text-red-600 disabled:opacity-40 disabled:cursor-not-allowed"
                         >
                           <Trash2 className="w-4 h-4" />
                         </button>

@@ -18,6 +18,8 @@
       "subtitle": "Import a WABA JSON file or create one from scratch"
     },
     "live": "Live",
+    "protected": "Protected",
+    "deleteLocked": "This flow is protected and cannot be deactivated.",
     "counts": {
       "versions": "versions",
       "executions": "executions",
@@ -29,6 +31,9 @@
       "simulate": "Test emulator",
       "export": "Export WABA JSON",
       "deactivate": "Deactivate",
+      "deactivateLocked": "Protected flow (cannot deactivate)",
+      "lockDelete": "Protect from deletion",
+      "unlockDelete": "Remove deletion protection",
       "edit": "Edit",
       "test": "Test"
     },
@@ -63,6 +68,8 @@
     "title": "New WABA Flow",
     "flowName": "Flow name",
     "flowNamePlaceholder": "Welcome flow",
+    "protectFromDeletion": "Protect this flow from deletion",
+    "protectFromDeletionHint": "You will still be able to edit it, but not deactivate/delete it.",
     "cancel": "Cancel",
     "create": "Create",
     "nameRequired": "Name is required",

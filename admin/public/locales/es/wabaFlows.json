@@ -18,6 +18,8 @@
       "subtitle": "Importa un JSON de WABA o crea uno nuevo desde cero"
     },
     "live": "Publicado",
+    "protected": "Protegido",
+    "deleteLocked": "Este flujo está protegido y no se puede desactivar.",
     "counts": {
       "versions": "versiones",
       "executions": "ejecuciones",
@@ -29,6 +31,9 @@
       "simulate": "Emulador de pruebas",
       "export": "Exportar WABA JSON",
       "deactivate": "Desactivar",
+      "deactivateLocked": "Flujo protegido (no desactivable)",
+      "lockDelete": "Proteger contra borrado",
+      "unlockDelete": "Quitar protección de borrado",
       "edit": "Editar",
       "test": "Probar"
     },
@@ -63,6 +68,8 @@
     "title": "Nuevo WABA Flow",
     "flowName": "Nombre del flujo",
     "flowNamePlaceholder": "Flujo de bienvenida",
+    "protectFromDeletion": "Proteger este flujo contra borrado",
+    "protectFromDeletionHint": "Podrás editarlo normalmente, pero no desactivarlo/eliminarlo.",
     "cancel": "Cancelar",
     "create": "Crear",
     "nameRequired": "El nombre es obligatorio",

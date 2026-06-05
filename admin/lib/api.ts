@@ -583,9 +583,9 @@ export const wabaFlowsApi = {
   list: (params?: { activo?: boolean; page?: number; limit?: number; tenantSlug?: string }) =>
     apiClient.get("/waba-flows", { params }),
   get: (id: number) => apiClient.get(`/waba-flows/${id}`),
-  create: (data: { nombre: string; definition?: unknown; changelog?: string; tenantSlug?: string }) =>
+  create: (data: { nombre: string; definition?: unknown; changelog?: string; tenantSlug?: string; deletionLocked?: boolean }) =>
     apiClient.post("/waba-flows", data),
-  update: (id: number, data: { nombre?: string; activo?: boolean }) =>
+  update: (id: number, data: { nombre?: string; activo?: boolean; deletionLocked?: boolean }) =>
     apiClient.put(`/waba-flows/${id}`, data),
   remove: (id: number) => apiClient.delete(`/waba-flows/${id}`),
   import: (data: { wabaJson: unknown; nombre?: string; changelog?: string; tenantSlug?: string }) =>

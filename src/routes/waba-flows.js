@@ -362,7 +362,7 @@ router.post('/', async (req, res, next) => {
     const tenantId = await resolveTenantId(req, req.body?.tenantSlug);
     if (!tenantId) return res.status(400).json({ error: 'tenantSlug is required for WABA flows' });
     const adminUserId = uid(req);
-    const { nombre, definition, changelog } = req.body;
+    const { nombre, definition, changelog, deletionLocked = false } = req.body;
 
     if (!nombre?.trim()) return res.status(400).json({ error: 'nombre is required' });
 
@@ -387,6 +387,7 @@ router.post('/', async (req, res, next) => {
         nombre: nombre.trim(),
         version: 1,
         activo: true,
+        deletionLocked: Boolean(deletionLocked),
         metaJson: exportToWaba(parsedDef),
         flowVersions: {
           create: {
@@ -416,7 +417,7 @@ router.post('/import', async (req, res, next) => {
   try {
     const tenantId = await resolveTenantId(req, req.body?.tenantSlug);
     const adminUserId = uid(req);
-    const { wabaJson, nombre, changelog } = req.body;
+    const { wabaJson, nombre, changelog, deletionLocked = false } = req.body;
 
     if (!tenantId) {
       return res.status(400).json({ error: 'tenantSlug is required for WABA import' });
@@ -453,6 +454,7 @@ router.post('/import', async (req, res, next) => {
           nombre: flowName,
           version: 1,
           activo: true,
+          deletionLocked: Boolean(deletionLocked),
           metaJson: wabaJson,
         },
       });
@@ -555,7 +557,7 @@ router.put('/:id', async (req, res, next) => {
   try {
     const tenantId = tid(req);
     const id = Number(req.params.id);
-    const { nombre, activo } = req.body;
+    const { nombre, activo, deletionLocked } = req.body;
 
     const existing = await prisma.flow.findFirst({ where: { id, tenantId } });
     if (!existing) return notFound(res);
@@ -565,6 +567,7 @@ router.put('/:id', async (req, res, next) => {
       data: {
         ...(nombre !== undefined && { nombre: nombre.trim() }),
         ...(activo !== undefined && { activo: Boolean(activo) }),
+        ...(deletionLocked !== undefined && { deletionLocked: Boolean(deletionLocked) }),
       },
     });
     res.json(updated);
@@ -581,6 +584,9 @@ router.delete('/:id', async (req, res, next) => {
 
     const existing = await prisma.flow.findFirst({ where: { id, tenantId } });
     if (!existing) return notFound(res);
+    if (existing.deletionLocked) {
+      return res.status(403).json({ error: 'Flow is protected and cannot be deactivated' });
+    }
 
     await prisma.flow.update({ where: { id }, data: { activo: false } });
     res.json({ deleted: true, id });
