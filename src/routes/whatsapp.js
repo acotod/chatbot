@@ -1411,27 +1411,25 @@ async function _handleIncomingMessage({ msg, contacts, tenant, phoneNumberId, ac
       const openSolicitudCustomerName = String(
         user?.nombre ?? contacts?.find((c) => c.wa_id === phone)?.profile?.name ?? '',
       ).trim() || 'Sin nombre registrado';
+      const openSolicitudVariables = openSolicitud && typeof openSolicitud.variablesJson === 'object' && openSolicitud.variablesJson
+        ? openSolicitud.variablesJson
+        : {};
+      const openSolicitudScheduledStart = String(
+        openSolicitudVariables.appointment_start ?? openSolicitudVariables.appointmentStart ?? '',
+      ).trim();
+      const openSolicitudScheduledAppointmentId = String(
+        openSolicitudVariables.appointment_id ?? openSolicitudVariables.appointmentId ?? '',
+      ).trim();
       const openSolicitudPrisma = getPrismaClient();
       let openSolicitudAppointment = null;
       if (openSolicitudPrisma) {
         const appointmentOr = [];
-        const openSolicitudConversationId = String(openSolicitud?.conversationId ?? '').trim();
-        if (openSolicitudConversationId) {
-          appointmentOr.push({ conversationId: openSolicitudConversationId });
-        }
-
-        const normalizedPhone = String(phone ?? '').trim();
-        if (normalizedPhone) {
-          appointmentOr.push({ userKey: normalizedPhone });
-        }
-
-        if (appointmentOr.length > 0) {
+        if (openSolicitudScheduledAppointmentId) {
           openSolicitudAppointment = await openSolicitudPrisma.appointment.findFirst({
             where: {
               tenantId: tenant.id,
-              OR: appointmentOr,
+              id: openSolicitudScheduledAppointmentId,
             },
-            orderBy: { startTime: 'desc' },
             select: {
               id: true,
               startTime: true,
@@ -1444,10 +1442,42 @@ async function _handleIncomingMessage({ msg, contacts, tenant, phoneNumberId, ac
             },
           }).catch(() => null);
         }
+
+        if (!openSolicitudAppointment) {
+          const openSolicitudConversationId = String(openSolicitud?.conversationId ?? '').trim();
+          if (openSolicitudConversationId) {
+            appointmentOr.push({ conversationId: openSolicitudConversationId });
+          }
+
+          const normalizedPhone = String(phone ?? '').trim();
+          if (normalizedPhone) {
+            appointmentOr.push({ userKey: normalizedPhone });
+          }
+
+          if (appointmentOr.length > 0) {
+            openSolicitudAppointment = await openSolicitudPrisma.appointment.findFirst({
+              where: {
+                tenantId: tenant.id,
+                OR: appointmentOr,
+              },
+              orderBy: { startTime: 'desc' },
+              select: {
+                id: true,
+                startTime: true,
+                endTime: true,
+                calendar: {
+                  select: {
+                    timezone: true,
+                  },
+                },
+              },
+            }).catch(() => null);
+          }
+        }
       }
 
       const openSolicitudDateTime = _formatDateTimeForCostaRica(
-        openSolicitudAppointment?.startTime ?? openSolicitud?.createdAt ?? new Date(),
+        openSolicitudAppointment?.startTime ?? openSolicitudScheduledStart ?? openSolicitud?.createdAt ?? new Date(),
       );
       const openSolicitudInfoText = [
         `Hola ${openSolicitudCustomerName} ya tienes una solicitud activa para ${openSolicitudDateTime}. Que deseas hacer?`,

@@ -269,6 +269,10 @@ describe('POST /whatsapp dual-write UEG', () => {
       id: 999,
       estado: 'open',
       createdAt: new Date('2026-01-01T10:00:00.000Z'),
+      variablesJson: {
+        appointment_id: 'appt-1',
+        appointment_start: '2026-06-05T17:41:18.354Z',
+      },
     });
     db.getConfig.mockImplementation(async (_tenantId, key) => {
       if (key === 'initial_waba_flow') {
