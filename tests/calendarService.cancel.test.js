@@ -3,12 +3,18 @@
 const mockTx = {
   appointment: {
     update: jest.fn(),
+    create: jest.fn(),
   },
+  $queryRaw: jest.fn(),
   $executeRaw: jest.fn(),
 };
 
 const mockPrisma = {
   appointment: {
+    findFirst: jest.fn(),
+    update: jest.fn(),
+  },
+  calendar: {
     findFirst: jest.fn(),
   },
   $transaction: jest.fn(async (cb) => cb(mockTx)),
@@ -115,6 +121,85 @@ describe('calendarService.cancelAppointment', () => {
     expect(logger.error).toHaveBeenCalledWith(
       expect.objectContaining({
         appointmentId: 'appt-1',
+        calendarId: 'cal-1',
+      }),
+      'calendarService.cancelAppointment google sync failed'
+    );
+  });
+
+  test('reschedules appointment even when external cancel sync fails', async () => {
+    const slotStart = new Date('2026-06-10T10:00:00.000Z');
+    const slotEnd = new Date('2026-06-10T10:30:00.000Z');
+
+    mockPrisma.appointment.findFirst
+      .mockResolvedValueOnce({
+        id: 'appt-old',
+        calendarId: 'cal-1',
+        userKey: '50688889999',
+        conversationId: 'conv-1',
+        metadata: { reason: 'followup', external_event_id: 'evt-old' },
+        status: 'scheduled',
+      })
+      .mockResolvedValueOnce({
+        id: 'appt-old',
+        status: 'scheduled',
+        metadata: { reason: 'followup', external_event_id: 'evt-old' },
+        calendar: {
+          id: 'cal-1',
+          name: 'Agenda General',
+          timezone: 'UTC',
+          config: {
+            provider: 'google',
+            sync: true,
+            provider_credentials: {
+              access_token: 'token-123',
+              calendar_id: 'primary',
+            },
+          },
+        },
+      });
+
+    mockTx.$queryRaw.mockResolvedValue([
+      { id: 'slot-2', start_time: slotStart, end_time: slotEnd, status: 'available' },
+    ]);
+    mockTx.appointment.create.mockResolvedValue({
+      id: 'appt-new',
+      startTime: slotStart,
+      endTime: slotEnd,
+      metadata: { reason: 'followup', external_event_id: 'evt-old', rescheduled_from: 'appt-old' },
+      calendarId: 'cal-1',
+      conversationId: 'conv-1',
+      userKey: '50688889999',
+      status: 'scheduled',
+    });
+    mockPrisma.calendar.findFirst.mockResolvedValue({
+      id: 'cal-1',
+      name: 'Agenda General',
+      timezone: 'UTC',
+      config: { provider: 'internal' },
+    });
+
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: false,
+      status: 500,
+      text: async () => 'google delete failed',
+    });
+
+    const result = await calendarService.rescheduleAppointment('appt-old', 'slot-2', 'tenant-1');
+
+    expect(result).toEqual(expect.objectContaining({
+      appointment: expect.objectContaining({
+        id: 'appt-new',
+      }),
+    }));
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+    expect(mockPrisma.appointment.update).toHaveBeenCalledWith({
+      where: { id: 'appt-old' },
+      data: { status: 'rescheduled' },
+    });
+    expect(logger.error).toHaveBeenCalledWith(
+      expect.objectContaining({
+        appointmentId: 'appt-old',
         calendarId: 'cal-1',
       }),
       'calendarService.cancelAppointment google sync failed'
