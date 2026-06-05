@@ -805,11 +805,10 @@ async function updateSolicitudEstado(id, tenantId, estado) {
     && current
     && current.estado !== normalized
     && normalized === SOLICITUD_STATUS.REJECTED
-    && current.conversationId
   ) {
-    await _cancelScheduledAppointmentsForConversation({
+    await _cancelLinkedAppointmentsForSolicitud({
       tenantId,
-      conversationId: current.conversationId,
+      solicitud: current,
     });
   }
 
@@ -1041,14 +1040,10 @@ async function updateSolicitudFields(id, tenantId, updates = {}, actorUserId = n
     }
   }
 
-  if (
-    current.estado !== updated.estado
-    && updated.estado === SOLICITUD_STATUS.REJECTED
-    && updated.conversationId
-  ) {
-    await _cancelScheduledAppointmentsForConversation({
+  if (current.estado !== updated.estado && updated.estado === SOLICITUD_STATUS.REJECTED) {
+    await _cancelLinkedAppointmentsForSolicitud({
       tenantId,
-      conversationId: updated.conversationId,
+      solicitud: updated,
     });
   }
 
@@ -1083,6 +1078,51 @@ async function _cancelScheduledAppointmentsForConversation({ tenantId, conversat
         'database: failed to cancel linked appointment after solicitud rejection'
       );
     }
+  }
+
+  return cancelledCount;
+}
+
+function _extractSolicitudAppointmentIds(variablesJson) {
+  if (!variablesJson || typeof variablesJson !== 'object') return [];
+
+  const rawCandidates = [
+    variablesJson.appointment_id,
+    variablesJson.appointmentId,
+    variablesJson.agenda_cita_id,
+    variablesJson.agendaCitaId,
+  ];
+
+  return Array.from(new Set(rawCandidates
+    .map((value) => String(value ?? '').trim())
+    .filter(Boolean)));
+}
+
+async function _cancelLinkedAppointmentsForSolicitud({ tenantId, solicitud }) {
+  const client = getPrismaClient();
+  if (!client || !tenantId || !solicitud) return 0;
+
+  const appointmentIds = _extractSolicitudAppointmentIds(solicitud.variablesJson);
+  let cancelledCount = 0;
+  const calendarService = require('./calendarService');
+
+  for (const appointmentId of appointmentIds) {
+    try {
+      const result = await calendarService.cancelAppointment(appointmentId, tenantId);
+      if (result?.ok) cancelledCount += 1;
+    } catch (err) {
+      logger.error(
+        { tenantId, solicitudId: solicitud.id, appointmentId, message: err.message },
+        'database: failed to cancel linked appointment by solicitud variables'
+      );
+    }
+  }
+
+  if (solicitud.conversationId) {
+    cancelledCount += await _cancelScheduledAppointmentsForConversation({
+      tenantId,
+      conversationId: solicitud.conversationId,
+    });
   }
 
   return cancelledCount;
