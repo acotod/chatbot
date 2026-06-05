@@ -157,6 +157,32 @@ function _formatDateTimeForAgent(value) {
   return date.toISOString();
 }
 
+function _formatDateTimeForCostaRica(value) {
+  if (!value) return '';
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+
+  const parts = new Intl.DateTimeFormat('es-CR', {
+    timeZone: 'America/Costa_Rica',
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).formatToParts(date);
+
+  const getPart = (type) => parts.find((part) => part.type === type)?.value ?? '';
+  const day = getPart('day');
+  const month = getPart('month');
+  const year = getPart('year');
+  const hour = getPart('hour');
+  const minute = getPart('minute');
+
+  if (!day || !month || !year || !hour || !minute) return '';
+  return `${day} de ${month} de ${year}, ${hour}:${minute}`;
+}
+
 async function _buildAssignedAgentForwardPayload({
   tenant,
   openSolicitud,
@@ -1385,7 +1411,44 @@ async function _handleIncomingMessage({ msg, contacts, tenant, phoneNumberId, ac
       const openSolicitudCustomerName = String(
         user?.nombre ?? contacts?.find((c) => c.wa_id === phone)?.profile?.name ?? '',
       ).trim() || 'Sin nombre registrado';
-      const openSolicitudDateTime = _formatDateTimeForAgent(openSolicitud?.createdAt) || _formatDateTimeForAgent(new Date());
+      const openSolicitudPrisma = getPrismaClient();
+      let openSolicitudAppointment = null;
+      if (openSolicitudPrisma) {
+        const appointmentOr = [];
+        const openSolicitudConversationId = String(openSolicitud?.conversationId ?? '').trim();
+        if (openSolicitudConversationId) {
+          appointmentOr.push({ conversationId: openSolicitudConversationId });
+        }
+
+        const normalizedPhone = String(phone ?? '').trim();
+        if (normalizedPhone) {
+          appointmentOr.push({ userKey: normalizedPhone });
+        }
+
+        if (appointmentOr.length > 0) {
+          openSolicitudAppointment = await openSolicitudPrisma.appointment.findFirst({
+            where: {
+              tenantId: tenant.id,
+              OR: appointmentOr,
+            },
+            orderBy: { startTime: 'desc' },
+            select: {
+              id: true,
+              startTime: true,
+              endTime: true,
+              calendar: {
+                select: {
+                  timezone: true,
+                },
+              },
+            },
+          }).catch(() => null);
+        }
+      }
+
+      const openSolicitudDateTime = _formatDateTimeForCostaRica(
+        openSolicitudAppointment?.startTime ?? openSolicitud?.createdAt ?? new Date(),
+      );
       const openSolicitudInfoText = [
         `Hola ${openSolicitudCustomerName} ya tienes una solicitud activa para ${openSolicitudDateTime}. Que deseas hacer?`,
         'Opciones:',

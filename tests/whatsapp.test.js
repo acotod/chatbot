@@ -12,7 +12,11 @@ jest.mock('../src/services/database', () => ({
   findTenantByWaPhoneNumberId: jest.fn(),
   getConfig: jest.fn(),
   getWaCredentials: jest.fn(),
-  getPrismaClient: jest.fn(() => null),
+  getPrismaClient: jest.fn(() => ({
+    appointment: {
+      findFirst: jest.fn(),
+    },
+  })),
   getWaAppSecret: jest.fn(),
   updateMensajeDeliveryStatusByWaMsgId: jest.fn(),
   findMensajeByWaMsgId: jest.fn(),
@@ -55,6 +59,26 @@ jest.mock('../src/services/eventGateway', () => ({
   ingestEvent: jest.fn().mockResolvedValue({ duplicate: false, queued: false }),
 }));
 
+const sharedPrisma = {
+  appointment: {
+    findFirst: jest.fn().mockResolvedValue(null),
+  },
+  configuracion: {
+    findMany: jest.fn().mockResolvedValue([]),
+    findFirst: jest.fn().mockResolvedValue(null),
+  },
+  flowVersion: {
+    findFirst: jest.fn().mockResolvedValue(null),
+  },
+  solicitud: {
+    findFirst: jest.fn().mockResolvedValue(null),
+  },
+  mensaje: {
+    update: jest.fn().mockResolvedValue({}),
+    findMany: jest.fn().mockResolvedValue([]),
+  },
+};
+
 const whatsappRouter = require('../src/routes/whatsapp');
 const db = require('../src/services/database');
 const wa = require('../src/services/whatsapp');
@@ -82,6 +106,7 @@ async function flushAsync(times = 3) {
 describe('POST /whatsapp dual-write UEG', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    db.getPrismaClient.mockReturnValue(sharedPrisma);
     db.findTenantByWaPhoneNumberId.mockResolvedValue({ id: 'tenant-1', activo: true });
     db.getWaCredentials.mockResolvedValue({ accessToken: 'token-123', phoneNumberId: '1234567890' });
     db.getConfig.mockResolvedValue({ valor: { accessToken: 'token-123' } });
@@ -93,6 +118,12 @@ describe('POST /whatsapp dual-write UEG', () => {
       createdAt: new Date('2026-01-01T10:00:00.000Z'),
       waMsgId: 'wamid.inbound.123',
       tipo: 'text',
+    });
+    sharedPrisma.appointment.findFirst.mockResolvedValue({
+      id: 'appt-1',
+      startTime: new Date('2026-06-05T17:41:18.354Z'),
+      endTime: new Date('2026-06-05T18:11:18.354Z'),
+      calendar: { timezone: 'America/Costa_Rica' },
     });
     eventGateway.ingestEvent.mockResolvedValue({ duplicate: false, queued: false });
   });
@@ -274,7 +305,7 @@ describe('POST /whatsapp dual-write UEG', () => {
     expect(wa.sendTextMessage).toHaveBeenCalledWith(
       '1234567890',
       '573001112233',
-      'Hola Ana ya tienes una solicitud activa para 2026-01-01T10:00:00.000Z. Que deseas hacer?\nOpciones:\n1. Cancelar solicitud\n2. Dejar comentario\n3. Hablar con agente',
+      'Hola Ana ya tienes una solicitud activa para 5 de junio de 2026, 11:41. Que deseas hacer?\nOpciones:\n1. Cancelar solicitud\n2. Dejar comentario\n3. Hablar con agente',
       'token-123',
     );
 
