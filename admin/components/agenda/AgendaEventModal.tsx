@@ -116,6 +116,18 @@ export function AgendaEventModal({
   const showWebhookSections = !hideTechnicalSections && form.tipo === "webhook";
 
   function getErrorMessage(err: unknown, fallback: string) {
+    if (typeof err === "string" && err.trim()) return err;
+    if (err && typeof err === "object") {
+      const maybeAxios = err as {
+        response?: { data?: { message?: unknown; error?: unknown } };
+        message?: unknown;
+      };
+      const apiMessage = maybeAxios.response?.data?.message;
+      if (typeof apiMessage === "string" && apiMessage.trim()) return apiMessage;
+      const apiError = maybeAxios.response?.data?.error;
+      if (typeof apiError === "string" && apiError.trim()) return apiError;
+      if (typeof maybeAxios.message === "string" && maybeAxios.message.trim()) return maybeAxios.message;
+    }
     if (err instanceof Error && err.message.trim()) return err.message;
     return fallback;
   }
