@@ -56,6 +56,7 @@ interface AgendaEventModalProps {
   appointmentStatusLabel?: string;
   appointmentSlots?: AppointmentSlotOption[];
   appointmentSlotsLoading?: boolean;
+  appointmentSlotsError?: string | null;
   appointmentRescheduling?: boolean;
   appointmentCancelling?: boolean;
   onClose: () => void;
@@ -95,6 +96,7 @@ export function AgendaEventModal({
   appointmentStatusLabel,
   appointmentSlots = [],
   appointmentSlotsLoading = false,
+  appointmentSlotsError = null,
   appointmentRescheduling = false,
   appointmentCancelling = false,
   onClose,
@@ -110,6 +112,11 @@ export function AgendaEventModal({
 
   const isEdit = useMemo(() => Boolean(form.id), [form.id]);
   const showWebhookSections = !hideTechnicalSections && form.tipo === "webhook";
+
+  function getErrorMessage(err: unknown, fallback: string) {
+    if (err instanceof Error && err.message.trim()) return err.message;
+    return fallback;
+  }
 
   function set<K extends keyof AgendaEventFormData>(key: K, value: AgendaEventFormData[K]) {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -136,7 +143,11 @@ export function AgendaEventModal({
       setError("El titulo es obligatorio");
       return;
     }
-    if (!form.startAt || !form.endAt || new Date(form.startAt) >= new Date(form.endAt)) {
+    const startDate = form.startAt ? new Date(form.startAt) : null;
+    const endDate = form.endAt ? new Date(form.endAt) : null;
+    const startTs = startDate?.getTime() ?? Number.NaN;
+    const endTs = endDate?.getTime() ?? Number.NaN;
+    if (!form.startAt || !form.endAt || Number.isNaN(startTs) || Number.isNaN(endTs) || startTs >= endTs) {
       setError("El rango de tiempo es invalido");
       return;
     }
@@ -149,7 +160,11 @@ export function AgendaEventModal({
       return;
     }
 
-    await onSave(form);
+    try {
+      await onSave(form);
+    } catch (err) {
+      setError(getErrorMessage(err, "No se pudo guardar el evento. Intenta de nuevo."));
+    }
   }
 
   async function handleAppointmentReschedule() {
@@ -158,8 +173,42 @@ export function AgendaEventModal({
       setError("Selecciona un horario disponible para reprogramar la cita");
       return;
     }
-    setError("");
-    await onRescheduleAppointment(selectedAppointmentSlotId);
+    try {
+      setError("");
+      await onRescheduleAppointment(selectedAppointmentSlotId);
+    } catch (err) {
+      setError(getErrorMessage(err, "No se pudo reprogramar la cita. Intenta de nuevo."));
+    }
+  }
+
+  async function handleAppointmentCancel() {
+    if (!onCancelAppointment) return;
+    try {
+      setError("");
+      await onCancelAppointment();
+    } catch (err) {
+      setError(getErrorMessage(err, "No se pudo cancelar la cita. Intenta de nuevo."));
+    }
+  }
+
+  async function handleDelete() {
+    if (!onDelete || !form.id) return;
+    try {
+      setError("");
+      await onDelete(form.id);
+    } catch (err) {
+      setError(getErrorMessage(err, "No se pudo eliminar el evento. Intenta de nuevo."));
+    }
+  }
+
+  async function handleTriggerStart() {
+    if (!onTriggerStart || !form.id) return;
+    try {
+      setError("");
+      await onTriggerStart(form.id);
+    } catch (err) {
+      setError(getErrorMessage(err, "No se pudo disparar el webhook. Intenta de nuevo."));
+    }
   }
 
   return (
@@ -280,6 +329,9 @@ export function AgendaEventModal({
               {!appointmentSlotsLoading && appointmentSlots.length === 0 && (
                 <p className="text-xs text-slate-500">No hay horarios disponibles para reprogramar esta cita.</p>
               )}
+              {appointmentSlotsError && (
+                <p className="text-xs text-red-600">{appointmentSlotsError}</p>
+              )}
             </div>
 
             <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
@@ -287,7 +339,7 @@ export function AgendaEventModal({
                 type="button"
                 variant="danger"
                 size="sm"
-                onClick={() => onCancelAppointment?.()}
+                onClick={handleAppointmentCancel}
                 disabled={appointmentCancelling || appointmentRescheduling || !onCancelAppointment}
               >
                 {appointmentCancelling ? "Cancelando..." : "Cancelar cita"}
@@ -396,7 +448,7 @@ export function AgendaEventModal({
                 type="button"
                 variant="danger"
                 size="sm"
-                onClick={() => onDelete(form.id!)}
+                onClick={handleDelete}
                 disabled={saving}
               >
                 Eliminar
@@ -407,7 +459,7 @@ export function AgendaEventModal({
                 type="button"
                 variant="secondary"
                 size="sm"
-                onClick={() => onTriggerStart(form.id!)}
+                onClick={handleTriggerStart}
                 disabled={saving}
               >
                 Disparar webhook

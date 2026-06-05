@@ -81,6 +81,11 @@ function startOfWeekMonday(value: Date) {
   return date;
 }
 
+function isValidDateValue(value: string | null | undefined) {
+  if (!value) return false;
+  return !Number.isNaN(new Date(value).getTime());
+}
+
 function toFormEvent(event: AgendaApiEvent): AgendaEventFormData {
   if (typeof event.id !== "number") {
     throw new Error("Readonly events cannot be edited");
@@ -380,6 +385,13 @@ export default function AgendaPage() {
       }));
   }, [appointmentSlotsQuery.data, dateLocale, selectedAppointment]);
 
+  const appointmentSlotsErrorMessage = useMemo(() => {
+    if (!appointmentSlotsQuery.isError) return null;
+    const fallback = "No se pudieron cargar los horarios disponibles.";
+    const message = appointmentSlotsQuery.error instanceof Error ? appointmentSlotsQuery.error.message : "";
+    return message.trim() || fallback;
+  }, [appointmentSlotsQuery.error, appointmentSlotsQuery.isError]);
+
   useSocket(activeTenantId, "agenda:event_created", refreshEvents);
   useSocket(activeTenantId, "agenda:event_updated", refreshEvents);
   useSocket(activeTenantId, "agenda:event_deleted", refreshEvents);
@@ -426,11 +438,16 @@ export default function AgendaPage() {
       setModalReadOnly(true);
       setModalHideTechnicalSections(true);
       setSelectedEvent(toReadOnlyFormEvent(raw));
+      const hasValidAppointmentContext =
+        Boolean(raw.appointmentId) &&
+        Boolean(raw.calendarId) &&
+        isValidDateValue(raw.startAt) &&
+        isValidDateValue(raw.endAt);
       setSelectedAppointment(
-        raw.appointmentId && raw.calendarId
+        hasValidAppointmentContext
           ? {
-              appointmentId: raw.appointmentId,
-              calendarId: raw.calendarId,
+              appointmentId: raw.appointmentId!,
+              calendarId: raw.calendarId!,
               startAt: raw.startAt,
               endAt: raw.endAt,
               status: raw.estado,
@@ -717,9 +734,10 @@ export default function AgendaPage() {
         readOnly={modalReadOnly}
         hideTechnicalSections={modalHideTechnicalSections}
         appointmentMode={Boolean(selectedAppointment)}
-        appointmentStatusLabel={selectedAppointment?.status ? t(`status.${selectedAppointment.status}` as never) : undefined}
+        appointmentStatusLabel={selectedAppointment?.status ? t(`statuses.${selectedAppointment.status}` as never) : undefined}
         appointmentSlots={appointmentSlotOptions}
         appointmentSlotsLoading={appointmentSlotsQuery.isLoading}
+        appointmentSlotsError={appointmentSlotsErrorMessage}
         appointmentRescheduling={rescheduleAppointmentMutation.isPending}
         appointmentCancelling={cancelAppointmentMutation.isPending}
         saving={saveMutation.isPending || deleteMutation.isPending || triggerMutation.isPending}
