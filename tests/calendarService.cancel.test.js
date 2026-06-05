@@ -139,11 +139,6 @@ describe('calendarService.cancelAppointment', () => {
         conversationId: 'conv-1',
         metadata: { reason: 'followup', external_event_id: 'evt-old' },
         status: 'scheduled',
-      })
-      .mockResolvedValueOnce({
-        id: 'appt-old',
-        status: 'scheduled',
-        metadata: { reason: 'followup', external_event_id: 'evt-old' },
         calendar: {
           id: 'cal-1',
           name: 'Agenda General',
@@ -193,20 +188,20 @@ describe('calendarService.cancelAppointment', () => {
       }),
     }));
     expect(global.fetch).toHaveBeenCalledTimes(1);
-    expect(mockPrisma.appointment.update).toHaveBeenCalledWith({
+    expect(mockTx.appointment.update).toHaveBeenCalledWith({
       where: { id: 'appt-old' },
-      data: { status: 'rescheduled' },
+      data: { status: 'rescheduled', updatedAt: expect.any(Date) },
     });
     expect(logger.error).toHaveBeenCalledWith(
       expect.objectContaining({
         appointmentId: 'appt-old',
         calendarId: 'cal-1',
       }),
-      'calendarService.cancelAppointment google sync failed'
+      'calendarService.rescheduleAppointment google cancel sync failed'
     );
   });
 
-  test('returns booking error when new slot booking fails after cancellation', async () => {
+  test('returns booking error and keeps old appointment when new slot booking fails', async () => {
     mockPrisma.appointment.findFirst
       .mockResolvedValueOnce({
         id: 'appt-old',
@@ -215,11 +210,6 @@ describe('calendarService.cancelAppointment', () => {
         conversationId: 'conv-1',
         metadata: { reason: 'followup' },
         status: 'scheduled',
-      })
-      .mockResolvedValueOnce({
-        id: 'appt-old',
-        status: 'scheduled',
-        metadata: { reason: 'followup' },
         calendar: {
           id: 'cal-1',
           name: 'Agenda General',
@@ -235,9 +225,7 @@ describe('calendarService.cancelAppointment', () => {
 
     expect(result).toEqual({ error: 'SLOT_NOT_FOUND' });
     expect(mockPrisma.appointment.update).not.toHaveBeenCalled();
-    expect(mockTx.appointment.update).toHaveBeenCalledWith({
-      where: { id: 'appt-old' },
-      data: { status: 'cancelled', updatedAt: expect.any(Date) },
-    });
+    expect(mockTx.appointment.update).not.toHaveBeenCalled();
+    expect(mockTx.$executeRaw).not.toHaveBeenCalled();
   });
 });

@@ -927,15 +927,28 @@ async function rescheduleAppointment(appointmentId, newSlotId, tenantId) {
   // Load current appointment
   const existing = await prisma.appointment.findFirst({
     where : { id: appointmentId, tenantId },
-    select: { id: true, calendarId: true, userKey: true, conversationId: true, metadata: true, status: true },
+    select: {
+      id: true,
+      calendarId: true,
+      userKey: true,
+      conversationId: true,
+      metadata: true,
+      status: true,
+      calendar: {
+        select: {
+          id: true,
+          name: true,
+          timezone: true,
+          config: true,
+        },
+      },
+    },
   });
   if (!existing) return { error: 'NOT_FOUND' };
   if (existing.status === 'cancelled') return { error: 'ALREADY_CANCELLED' };
 
-  // Cancel old booking first
-  await cancelAppointment(appointmentId, tenantId);
-
-  // Book new slot
+  // Book the new slot first to avoid leaving the user without appointment
+  // when the target slot is no longer available.
   const bookResult = await bookSlot({
     calendarId     : existing.calendarId,
     slotId         : newSlotId,
@@ -947,11 +960,33 @@ async function rescheduleAppointment(appointmentId, newSlotId, tenantId) {
 
   if (bookResult.error) return bookResult;
 
-  // Mark old appointment as rescheduled
-  await prisma.appointment.update({
-    where: { id: appointmentId },
-    data : { status: 'rescheduled' },
+  // Once the new booking is secured, release the old slot and mark old
+  // appointment as rescheduled in one DB transaction.
+  await prisma.$transaction(async (tx) => {
+    await tx.appointment.update({
+      where: { id: appointmentId },
+      data : { status: 'rescheduled', updatedAt: new Date() },
+    });
+
+    await tx.$executeRaw`
+      UPDATE calendar_slots
+      SET status = 'available', appointment_id = NULL, updated_at = NOW()
+      WHERE appointment_id = ${appointmentId}::uuid
+    `;
   });
+
+  try {
+    await cancelGoogleCalendarEvent({ calendar: existing.calendar, metadata: existing.metadata });
+  } catch (syncErr) {
+    logger.error(
+      {
+        appointmentId,
+        calendarId: existing.calendar?.id,
+        message: syncErr.message,
+      },
+      'calendarService.rescheduleAppointment google cancel sync failed'
+    );
+  }
 
   return bookResult;
 }
