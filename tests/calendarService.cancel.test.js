@@ -205,4 +205,39 @@ describe('calendarService.cancelAppointment', () => {
       'calendarService.cancelAppointment google sync failed'
     );
   });
+
+  test('returns booking error when new slot booking fails after cancellation', async () => {
+    mockPrisma.appointment.findFirst
+      .mockResolvedValueOnce({
+        id: 'appt-old',
+        calendarId: 'cal-1',
+        userKey: '50688889999',
+        conversationId: 'conv-1',
+        metadata: { reason: 'followup' },
+        status: 'scheduled',
+      })
+      .mockResolvedValueOnce({
+        id: 'appt-old',
+        status: 'scheduled',
+        metadata: { reason: 'followup' },
+        calendar: {
+          id: 'cal-1',
+          name: 'Agenda General',
+          timezone: 'UTC',
+          config: { provider: 'internal' },
+        },
+      });
+
+    // No rows means slot unavailable during booking phase.
+    mockTx.$queryRaw.mockResolvedValue([]);
+
+    const result = await calendarService.rescheduleAppointment('appt-old', 'slot-missing', 'tenant-1');
+
+    expect(result).toEqual({ error: 'SLOT_NOT_FOUND' });
+    expect(mockPrisma.appointment.update).not.toHaveBeenCalled();
+    expect(mockTx.appointment.update).toHaveBeenCalledWith({
+      where: { id: 'appt-old' },
+      data: { status: 'cancelled', updatedAt: expect.any(Date) },
+    });
+  });
 });
