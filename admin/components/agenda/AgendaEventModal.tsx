@@ -3,6 +3,7 @@
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Modal } from "@/components/ui/Modal";
+import { useTranslations } from "@/lib/i18n/client";
 import { useMemo, useState } from "react";
 
 export type AgendaTipo = "reunion" | "tarea" | "automatizacion" | "webhook";
@@ -106,6 +107,7 @@ export function AgendaEventModal({
   onRescheduleAppointment,
   onCancelAppointment,
 }: AgendaEventModalProps) {
+  const t = useTranslations("agenda");
   const [form, setForm] = useState<AgendaEventFormData>(event ?? EMPTY_EVENT);
   const [error, setError] = useState("");
   const [selectedAppointmentSlotId, setSelectedAppointmentSlotId] = useState("");
@@ -140,7 +142,7 @@ export function AgendaEventModal({
     setError("");
 
     if (!form.titulo.trim()) {
-      setError("El titulo es obligatorio");
+      setError(t("messages.titleRequired"));
       return;
     }
     const startDate = form.startAt ? new Date(form.startAt) : null;
@@ -148,7 +150,7 @@ export function AgendaEventModal({
     const startTs = startDate?.getTime() ?? Number.NaN;
     const endTs = endDate?.getTime() ?? Number.NaN;
     if (!form.startAt || !form.endAt || Number.isNaN(startTs) || Number.isNaN(endTs) || startTs >= endTs) {
-      setError("El rango de tiempo es invalido");
+      setError(t("messages.invalidRange"));
       return;
     }
 
@@ -156,28 +158,28 @@ export function AgendaEventModal({
       JSON.parse(form.webhookHeadersJson || "{}");
       JSON.parse(form.webhookPayloadJson || "{}");
     } catch {
-      setError("Webhook headers/payload deben ser JSON valido");
+      setError(t("messages.webhookJsonInvalid"));
       return;
     }
 
     try {
       await onSave(form);
     } catch (err) {
-      setError(getErrorMessage(err, "No se pudo guardar el evento. Intenta de nuevo."));
+      setError(getErrorMessage(err, t("messages.saveFailed")));
     }
   }
 
   async function handleAppointmentReschedule() {
     if (!onRescheduleAppointment) return;
     if (!selectedAppointmentSlotId) {
-      setError("Selecciona un horario disponible para reprogramar la cita");
+      setError(t("messages.selectSlotRequired"));
       return;
     }
     try {
       setError("");
       await onRescheduleAppointment(selectedAppointmentSlotId);
     } catch (err) {
-      setError(getErrorMessage(err, "No se pudo reprogramar la cita. Intenta de nuevo."));
+      setError(getErrorMessage(err, t("messages.rescheduleFailed")));
     }
   }
 
@@ -187,7 +189,7 @@ export function AgendaEventModal({
       setError("");
       await onCancelAppointment();
     } catch (err) {
-      setError(getErrorMessage(err, "No se pudo cancelar la cita. Intenta de nuevo."));
+      setError(getErrorMessage(err, t("messages.cancelFailed")));
     }
   }
 
@@ -197,7 +199,7 @@ export function AgendaEventModal({
       setError("");
       await onDelete(form.id);
     } catch (err) {
-      setError(getErrorMessage(err, "No se pudo eliminar el evento. Intenta de nuevo."));
+      setError(getErrorMessage(err, t("messages.deleteFailed")));
     }
   }
 
@@ -207,17 +209,17 @@ export function AgendaEventModal({
       setError("");
       await onTriggerStart(form.id);
     } catch (err) {
-      setError(getErrorMessage(err, "No se pudo disparar el webhook. Intenta de nuevo."));
+      setError(getErrorMessage(err, t("messages.triggerFailed")));
     }
   }
 
   return (
-    <Modal open={open} onClose={onClose} title={appointmentMode || readOnly ? "Detalle de cita" : isEdit ? "Editar evento" : "Nuevo evento"} className="max-w-3xl">
+    <Modal open={open} onClose={onClose} title={appointmentMode || readOnly ? t("modal.appointmentDetail") : isEdit ? t("editEvent") : t("newEvent")} className="max-w-3xl">
       <form onSubmit={handleSubmit} className="space-y-4">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <Input label="Titulo" value={form.titulo} onChange={(e) => set("titulo", e.target.value)} required disabled={readOnly} />
+          <Input label={t("title")} value={form.titulo} onChange={(e) => set("titulo", e.target.value)} required disabled={readOnly} />
           <div className="flex flex-col gap-1.5">
-            <label className="text-sm font-medium text-slate-700">Color</label>
+            <label className="text-sm font-medium text-slate-700">{t("modal.color")}</label>
             <input
               type="color"
               className="h-11 w-full rounded-xl border border-slate-200 bg-white px-2"
@@ -229,7 +231,7 @@ export function AgendaEventModal({
         </div>
 
         <div className="flex flex-col gap-1.5">
-          <label className="text-sm font-medium text-slate-700">Descripcion</label>
+          <label className="text-sm font-medium text-slate-700">{t("description")}</label>
           <textarea
             className="min-h-20 rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
             value={form.descripcion}
@@ -240,34 +242,34 @@ export function AgendaEventModal({
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div className="flex flex-col gap-1.5">
-            <label className="text-sm font-medium text-slate-700">Tipo</label>
+            <label className="text-sm font-medium text-slate-700">{t("table.type")}</label>
             <select
               className="h-11 rounded-xl border border-slate-200 px-3 text-sm"
               value={form.tipo}
               onChange={(e) => set("tipo", e.target.value as AgendaTipo)}
               disabled={readOnly}
             >
-              <option value="reunion">Reunion</option>
-              <option value="tarea">Tarea</option>
-              <option value="automatizacion">Automatizacion</option>
-              <option value="webhook">Webhook</option>
+              <option value="reunion">{t("types.reunion")}</option>
+              <option value="tarea">{t("types.tarea")}</option>
+              <option value="automatizacion">{t("types.automatizacion")}</option>
+              <option value="webhook">{t("types.webhook")}</option>
             </select>
           </div>
           <div className="flex flex-col gap-1.5">
-            <label className="text-sm font-medium text-slate-700">Estado</label>
+            <label className="text-sm font-medium text-slate-700">{t("table.status")}</label>
             <select
               className="h-11 rounded-xl border border-slate-200 px-3 text-sm"
               value={form.estado}
               onChange={(e) => set("estado", e.target.value as AgendaEstado)}
               disabled={readOnly}
             >
-              <option value="pendiente">Pendiente</option>
-              <option value="en_progreso">En progreso</option>
-              <option value="completado">Completado</option>
+              <option value="pendiente">{t("statuses.pendiente")}</option>
+              <option value="en_progreso">{t("statuses.en_progreso")}</option>
+              <option value="completado">{t("statuses.completado")}</option>
             </select>
           </div>
           <div className="flex flex-col gap-1.5">
-            <label className="text-sm font-medium text-slate-700">Notificar antes (min)</label>
+            <label className="text-sm font-medium text-slate-700">{t("modal.reminderMinutes")}</label>
             <input
               type="number"
               min={0}
@@ -285,7 +287,7 @@ export function AgendaEventModal({
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <Input
             type="datetime-local"
-            label="Inicio"
+            label={t("table.start")}
             value={form.startAt}
             onChange={(e) => set("startAt", e.target.value)}
             required
@@ -293,7 +295,7 @@ export function AgendaEventModal({
           />
           <Input
             type="datetime-local"
-            label="Fin"
+            label={t("table.end")}
             value={form.endAt}
             onChange={(e) => set("endAt", e.target.value)}
             required
@@ -304,22 +306,23 @@ export function AgendaEventModal({
         {appointmentMode && (
           <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 space-y-3">
             <div>
-              <h4 className="text-sm font-semibold text-slate-900">Editar cita</h4>
+              <h4 className="text-sm font-semibold text-slate-900">{t("modal.editAppointment")}</h4>
               <p className="mt-1 text-xs text-slate-500">
-                {appointmentStatusLabel ? `Estado actual: ${appointmentStatusLabel}. ` : ""}
-                Puedes reprogramar la cita a un horario disponible o cancelarla.
+                {appointmentStatusLabel ? t("modal.currentStatus", { status: appointmentStatusLabel }) : ""}
+                {" "}
+                {t("modal.rescheduleHint")}
               </p>
             </div>
 
             <div className="flex flex-col gap-1.5">
-              <label className="text-sm font-medium text-slate-700">Nuevo horario</label>
+              <label className="text-sm font-medium text-slate-700">{t("modal.newSchedule")}</label>
               <select
                 value={selectedAppointmentSlotId}
                 onChange={(e) => setSelectedAppointmentSlotId(e.target.value)}
                 disabled={appointmentSlotsLoading || appointmentRescheduling || appointmentCancelling || appointmentSlots.length === 0}
                 className="h-11 rounded-xl border border-slate-200 px-3 text-sm bg-white"
               >
-                <option value="">{appointmentSlotsLoading ? "Cargando horarios..." : "Selecciona un horario disponible"}</option>
+                <option value="">{appointmentSlotsLoading ? t("modal.loadingSchedules") : t("modal.selectAvailableSchedule")}</option>
                 {appointmentSlots.map((slot) => (
                   <option key={slot.id} value={slot.id}>
                     {slot.label}
@@ -327,7 +330,7 @@ export function AgendaEventModal({
                 ))}
               </select>
               {!appointmentSlotsLoading && appointmentSlots.length === 0 && (
-                <p className="text-xs text-slate-500">No hay horarios disponibles para reprogramar esta cita.</p>
+                <p className="text-xs text-slate-500">{t("modal.noSchedules")}</p>
               )}
               {appointmentSlotsError && (
                 <p className="text-xs text-red-600">{appointmentSlotsError}</p>
@@ -342,7 +345,7 @@ export function AgendaEventModal({
                 onClick={handleAppointmentCancel}
                 disabled={appointmentCancelling || appointmentRescheduling || !onCancelAppointment}
               >
-                {appointmentCancelling ? "Cancelando..." : "Cancelar cita"}
+                {appointmentCancelling ? t("modal.cancelling") : t("modal.cancelAppointment")}
               </Button>
               <Button
                 type="button"
@@ -350,7 +353,7 @@ export function AgendaEventModal({
                 onClick={handleAppointmentReschedule}
                 disabled={appointmentRescheduling || appointmentCancelling || !selectedAppointmentSlotId || !onRescheduleAppointment}
               >
-                {appointmentRescheduling ? "Reprogramando..." : "Guardar cita"}
+                {appointmentRescheduling ? t("modal.rescheduling") : t("modal.saveAppointment")}
               </Button>
             </div>
           </div>
@@ -366,23 +369,23 @@ export function AgendaEventModal({
                     onChange={(e) => set("triggerWebhookOnStart", e.target.checked)}
                     disabled={readOnly}
                   />
-                  Disparar webhook al iniciar
+                  {t("modal.triggerWebhookOnStart")}
                 </label>
                 <p className="mt-1 text-xs text-slate-500">
-                  Se ejecuta cuando el estado cambia a En progreso o manualmente.
+                  {t("modal.triggerWebhookHint")}
                 </p>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <Input
-                label="Webhook URL"
+                label={t("modal.webhookUrl")}
                 value={form.webhookUrl}
                 onChange={(e) => set("webhookUrl", e.target.value)}
                 placeholder="https://api.tu-dominio.com/hook"
                 disabled={readOnly}
               />
               <div className="flex flex-col gap-1.5">
-                <label className="text-sm font-medium text-slate-700">Método del webhook</label>
+                <label className="text-sm font-medium text-slate-700">{t("modal.webhookMethod")}</label>
                 <select
                   className="h-11 rounded-xl border border-slate-200 px-3 text-sm"
                   value={form.webhookMethod}
@@ -398,7 +401,7 @@ export function AgendaEventModal({
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="flex flex-col gap-1.5">
-                <label className="text-sm font-medium text-slate-700">Cabeceras del webhook (JSON)</label>
+                <label className="text-sm font-medium text-slate-700">{t("modal.webhookHeaders")}</label>
                 <textarea
                   className="min-h-20 rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500/40 font-mono"
                   value={form.webhookHeadersJson}
@@ -407,7 +410,7 @@ export function AgendaEventModal({
                 />
               </div>
               <div className="flex flex-col gap-1.5">
-                <label className="text-sm font-medium text-slate-700">Carga útil del webhook (JSON)</label>
+                <label className="text-sm font-medium text-slate-700">{t("modal.webhookPayload")}</label>
                 <textarea
                   className="min-h-20 rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500/40 font-mono"
                   value={form.webhookPayloadJson}
@@ -420,10 +423,10 @@ export function AgendaEventModal({
         )}
 
         <div className="rounded-xl border border-slate-200 p-3.5">
-          <h4 className="text-sm font-semibold text-slate-900 mb-2">Responsables</h4>
+          <h4 className="text-sm font-semibold text-slate-900 mb-2">{t("modal.owners")}</h4>
           <div className="max-h-36 overflow-y-auto space-y-1.5">
             {agentes.length === 0 && (
-              <p className="text-xs text-slate-500">No hay agentes disponibles para asignar.</p>
+              <p className="text-xs text-slate-500">{t("modal.noOwners")}</p>
             )}
             {agentes.map((agente) => {
               const checked = form.assignments.some((a) => a.agenteId === agente.id);
@@ -451,7 +454,7 @@ export function AgendaEventModal({
                 onClick={handleDelete}
                 disabled={saving}
               >
-                Eliminar
+                {t("deleteEvent")}
               </Button>
             )}
             {!readOnly && !appointmentMode && isEdit && onTriggerStart && form.id && (
@@ -462,14 +465,14 @@ export function AgendaEventModal({
                 onClick={handleTriggerStart}
                 disabled={saving}
               >
-                Disparar webhook
+                {t("modal.triggerWebhook")}
               </Button>
             )}
           </div>
           <div className="flex items-center gap-2">
-            <Button type="button" variant="ghost" onClick={onClose} disabled={saving}>{readOnly ? "Cerrar" : "Cancelar"}</Button>
+            <Button type="button" variant="ghost" onClick={onClose} disabled={saving}>{readOnly ? t("modal.close") : t("modal.cancel")}</Button>
             {!readOnly && !appointmentMode && (
-              <Button type="submit" disabled={saving}>{saving ? "Guardando..." : "Guardar"}</Button>
+              <Button type="submit" disabled={saving}>{saving ? t("modal.saving") : t("modal.save")}</Button>
             )}
           </div>
         </div>

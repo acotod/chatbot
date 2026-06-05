@@ -53,6 +53,42 @@
   "messages": {
     "tenantRequired": "Tenant no seleccionado",
     "titleRequired": "El título es obligatorio",
-    "invalidRange": "Rango de tiempo inválido"
+    "invalidRange": "Rango de tiempo inválido",
+    "webhookJsonInvalid": "Cabeceras y carga útil del webhook deben ser JSON válido",
+    "saveFailed": "No se pudo guardar el evento. Intenta de nuevo.",
+    "selectSlotRequired": "Selecciona un horario disponible para reprogramar la cita",
+    "rescheduleFailed": "No se pudo reprogramar la cita. Intenta de nuevo.",
+    "cancelFailed": "No se pudo cancelar la cita. Intenta de nuevo.",
+    "deleteFailed": "No se pudo eliminar el evento. Intenta de nuevo.",
+    "triggerFailed": "No se pudo disparar el webhook. Intenta de nuevo."
+  },
+  "modal": {
+    "appointmentDetail": "Detalle de cita",
+    "color": "Color",
+    "reminderMinutes": "Notificar antes (min)",
+    "editAppointment": "Editar cita",
+    "currentStatus": "Estado actual: {status}.",
+    "rescheduleHint": "Puedes reprogramar la cita a un horario disponible o cancelarla.",
+    "newSchedule": "Nuevo horario",
+    "loadingSchedules": "Cargando horarios...",
+    "selectAvailableSchedule": "Selecciona un horario disponible",
+    "noSchedules": "No hay horarios disponibles para reprogramar esta cita.",
+    "cancelling": "Cancelando...",
+    "cancelAppointment": "Cancelar cita",
+    "rescheduling": "Reprogramando...",
+    "saveAppointment": "Guardar cita",
+    "triggerWebhookOnStart": "Disparar webhook al iniciar",
+    "triggerWebhookHint": "Se ejecuta cuando el estado cambia a En progreso o manualmente.",
+    "webhookUrl": "Webhook URL",
+    "webhookMethod": "Método del webhook",
+    "webhookHeaders": "Cabeceras del webhook (JSON)",
+    "webhookPayload": "Carga útil del webhook (JSON)",
+    "owners": "Responsables",
+    "noOwners": "No hay agentes disponibles para asignar.",
+    "triggerWebhook": "Disparar webhook",
+    "close": "Cerrar",
+    "cancel": "Cancelar",
+    "saving": "Guardando...",
+    "save": "Guardar"
   }
 }

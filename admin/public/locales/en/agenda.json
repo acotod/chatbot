@@ -53,6 +53,42 @@
   "messages": {
     "tenantRequired": "Tenant not selected",
     "titleRequired": "Title is required",
-    "invalidRange": "Invalid time range"
+    "invalidRange": "Invalid time range",
+    "webhookJsonInvalid": "Webhook headers and payload must be valid JSON",
+    "saveFailed": "Could not save the event. Please try again.",
+    "selectSlotRequired": "Select an available timeslot to reschedule the appointment",
+    "rescheduleFailed": "Could not reschedule the appointment. Please try again.",
+    "cancelFailed": "Could not cancel the appointment. Please try again.",
+    "deleteFailed": "Could not delete the event. Please try again.",
+    "triggerFailed": "Could not trigger the webhook. Please try again."
+  },
+  "modal": {
+    "appointmentDetail": "Appointment details",
+    "color": "Color",
+    "reminderMinutes": "Notify before (min)",
+    "editAppointment": "Edit appointment",
+    "currentStatus": "Current status: {status}.",
+    "rescheduleHint": "You can reschedule the appointment to an available slot or cancel it.",
+    "newSchedule": "New schedule",
+    "loadingSchedules": "Loading schedules...",
+    "selectAvailableSchedule": "Select an available schedule",
+    "noSchedules": "No schedules are available to reschedule this appointment.",
+    "cancelling": "Cancelling...",
+    "cancelAppointment": "Cancel appointment",
+    "rescheduling": "Rescheduling...",
+    "saveAppointment": "Save appointment",
+    "triggerWebhookOnStart": "Trigger webhook on start",
+    "triggerWebhookHint": "Runs when status changes to In progress or manually.",
+    "webhookUrl": "Webhook URL",
+    "webhookMethod": "Webhook method",
+    "webhookHeaders": "Webhook headers (JSON)",
+    "webhookPayload": "Webhook payload (JSON)",
+    "owners": "Owners",
+    "noOwners": "No agents available for assignment.",
+    "triggerWebhook": "Trigger webhook",
+    "close": "Close",
+    "cancel": "Cancel",
+    "saving": "Saving...",
+    "save": "Save"
   }
 }
