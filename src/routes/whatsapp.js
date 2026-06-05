@@ -1451,10 +1451,6 @@ async function _handleIncomingMessage({ msg, contacts, tenant, phoneNumberId, ac
       );
       const openSolicitudInfoText = [
         `Hola ${openSolicitudCustomerName} ya tienes una solicitud activa para ${openSolicitudDateTime}. Que deseas hacer?`,
-        'Opciones:',
-        '1. Cancelar solicitud',
-        '2. Dejar comentario',
-        '3. Hablar con agente',
       ].join('\n');
 
       try {

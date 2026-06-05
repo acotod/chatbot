@@ -305,7 +305,7 @@ describe('POST /whatsapp dual-write UEG', () => {
     expect(wa.sendTextMessage).toHaveBeenCalledWith(
       '1234567890',
       '573001112233',
-      'Hola Ana ya tienes una solicitud activa para 5 de junio de 2026, 11:41. Que deseas hacer?\nOpciones:\n1. Cancelar solicitud\n2. Dejar comentario\n3. Hablar con agente',
+      'Hola Ana ya tienes una solicitud activa para 5 de junio de 2026, 11:41. Que deseas hacer?',
       'token-123',
     );
 
