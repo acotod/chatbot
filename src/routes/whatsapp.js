@@ -1386,6 +1386,29 @@ async function _handleIncomingMessage({ msg, contacts, tenant, phoneNumberId, ac
         user?.nombre ?? contacts?.find((c) => c.wa_id === phone)?.profile?.name ?? '',
       ).trim() || 'Sin nombre registrado';
       const openSolicitudDateTime = _formatDateTimeForAgent(openSolicitud?.createdAt) || _formatDateTimeForAgent(new Date());
+      const openSolicitudInfoText = [
+        `Nombre: ${openSolicitudCustomerName}`,
+        `Fecha y hora: ${openSolicitudDateTime}`,
+      ].join('\n');
+
+      try {
+        await _sendText(
+          phoneNumberId,
+          phone,
+          openSolicitudInfoText,
+          accessToken,
+          tenant,
+          userId,
+          correlationId,
+        );
+      } catch (infoErr) {
+        logger.warn('No se pudo enviar el detalle de solicitud activa', {
+          tenantId: tenant.id,
+          userId,
+          phone,
+          message: infoErr?.message,
+        });
+      }
 
       await _sendChatbotResponse({
         tenant,
@@ -1395,11 +1418,7 @@ async function _handleIncomingMessage({ msg, contacts, tenant, phoneNumberId, ac
         accessToken,
         response: {
           type: 'buttons',
-          text: [
-            'Ya tienes una solicitud activa. Que deseas hacer?',
-            `Nombre: ${openSolicitudCustomerName}`,
-            `Fecha y hora: ${openSolicitudDateTime}`,
-          ].join('\n'),
+          text: 'Ya tienes una solicitud activa. Que deseas hacer?',
           buttons: [
             { id: OPEN_SOLICITUD_ACTION_CANCEL, title: 'Cancelar solicitud' },
             { id: OPEN_SOLICITUD_ACTION_COMMENT, title: 'Dejar comentario' },

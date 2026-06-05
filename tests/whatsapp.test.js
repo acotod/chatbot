@@ -234,7 +234,11 @@ describe('POST /whatsapp dual-write UEG', () => {
 
   test('open solicitud offers actionable options when no initial WABA flow is configured', async () => {
     const app = createApp();
-    db.findOpenSolicitudForUser.mockResolvedValueOnce({ id: 999, estado: 'open' });
+    db.findOpenSolicitudForUser.mockResolvedValueOnce({
+      id: 999,
+      estado: 'open',
+      createdAt: new Date('2026-01-01T10:00:00.000Z'),
+    });
     db.getConfig.mockImplementation(async (_tenantId, key) => {
       if (key === 'initial_waba_flow') {
         return { valor: null };
@@ -266,6 +270,13 @@ describe('POST /whatsapp dual-write UEG', () => {
 
     expect(res.status).toBe(200);
     await flushAsync();
+
+    expect(wa.sendTextMessage).toHaveBeenCalledWith(
+      '1234567890',
+      '573001112233',
+      'Nombre: Ana\nFecha y hora: 2026-01-01T10:00:00.000Z',
+      'token-123',
+    );
 
     expect(wa.sendButtonMessage).toHaveBeenCalledWith(
       '1234567890',
