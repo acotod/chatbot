@@ -1387,8 +1387,11 @@ async function _handleIncomingMessage({ msg, contacts, tenant, phoneNumberId, ac
       ).trim() || 'Sin nombre registrado';
       const openSolicitudDateTime = _formatDateTimeForAgent(openSolicitud?.createdAt) || _formatDateTimeForAgent(new Date());
       const openSolicitudInfoText = [
-        `Nombre: ${openSolicitudCustomerName}`,
-        `Fecha y hora: ${openSolicitudDateTime}`,
+        `Hola ${openSolicitudCustomerName} ya tienes una solicitud activa para ${openSolicitudDateTime}. Que deseas hacer?`,
+        'Opciones:',
+        '1. Cancelar solicitud',
+        '2. Dejar comentario',
+        '3. Hablar con agente',
       ].join('\n');
 
       try {

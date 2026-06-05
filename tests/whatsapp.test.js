@@ -274,7 +274,7 @@ describe('POST /whatsapp dual-write UEG', () => {
     expect(wa.sendTextMessage).toHaveBeenCalledWith(
       '1234567890',
       '573001112233',
-      'Nombre: Ana\nFecha y hora: 2026-01-01T10:00:00.000Z',
+      'Hola Ana ya tienes una solicitud activa para 2026-01-01T10:00:00.000Z. Que deseas hacer?\nOpciones:\n1. Cancelar solicitud\n2. Dejar comentario\n3. Hablar con agente',
       'token-123',
     );
 
