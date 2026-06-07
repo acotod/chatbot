@@ -56,11 +56,17 @@
     "invalidRange": "Invalid time range",
     "webhookJsonInvalid": "Webhook headers and payload must be valid JSON",
     "saveFailed": "Could not save the event. Please try again.",
+    "saveSuccess": "Event saved successfully.",
     "selectSlotRequired": "Select an available timeslot to reschedule the appointment",
+    "slotsLoadFailed": "Could not load available schedules.",
     "rescheduleFailed": "Could not reschedule the appointment. Please try again.",
+    "rescheduleSuccess": "Appointment rescheduled successfully.",
     "cancelFailed": "Could not cancel the appointment. Please try again.",
+    "cancelSuccess": "Appointment cancelled successfully.",
     "deleteFailed": "Could not delete the event. Please try again.",
-    "triggerFailed": "Could not trigger the webhook. Please try again."
+    "deleteSuccess": "Event deleted successfully.",
+    "triggerFailed": "Could not trigger the webhook. Please try again.",
+    "triggerSuccess": "Webhook triggered successfully."
   },
   "modal": {
     "appointmentDetail": "Appointment details",

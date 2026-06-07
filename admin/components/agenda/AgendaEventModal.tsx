@@ -110,6 +110,7 @@ export function AgendaEventModal({
   const t = useTranslations("agenda");
   const [form, setForm] = useState<AgendaEventFormData>(event ?? EMPTY_EVENT);
   const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
   const [selectedAppointmentSlotId, setSelectedAppointmentSlotId] = useState("");
 
   const isEdit = useMemo(() => Boolean(form.id), [form.id]);
@@ -152,6 +153,7 @@ export function AgendaEventModal({
     e.preventDefault();
     if (readOnly) return;
     setError("");
+    setSuccess("");
 
     if (!form.titulo.trim()) {
       setError(t("messages.titleRequired"));
@@ -176,6 +178,7 @@ export function AgendaEventModal({
 
     try {
       await onSave(form);
+      setSuccess(t("messages.saveSuccess"));
     } catch (err) {
       setError(getErrorMessage(err, t("messages.saveFailed")));
     }
@@ -189,7 +192,9 @@ export function AgendaEventModal({
     }
     try {
       setError("");
+      setSuccess("");
       await onRescheduleAppointment(selectedAppointmentSlotId);
+      setSuccess(t("messages.rescheduleSuccess"));
     } catch (err) {
       setError(getErrorMessage(err, t("messages.rescheduleFailed")));
     }
@@ -199,7 +204,9 @@ export function AgendaEventModal({
     if (!onCancelAppointment) return;
     try {
       setError("");
+      setSuccess("");
       await onCancelAppointment();
+      setSuccess(t("messages.cancelSuccess"));
     } catch (err) {
       setError(getErrorMessage(err, t("messages.cancelFailed")));
     }
@@ -209,7 +216,9 @@ export function AgendaEventModal({
     if (!onDelete || !form.id) return;
     try {
       setError("");
+      setSuccess("");
       await onDelete(form.id);
+      setSuccess(t("messages.deleteSuccess"));
     } catch (err) {
       setError(getErrorMessage(err, t("messages.deleteFailed")));
     }
@@ -219,7 +228,9 @@ export function AgendaEventModal({
     if (!onTriggerStart || !form.id) return;
     try {
       setError("");
+      setSuccess("");
       await onTriggerStart(form.id);
+      setSuccess(t("messages.triggerSuccess"));
     } catch (err) {
       setError(getErrorMessage(err, t("messages.triggerFailed")));
     }
@@ -454,6 +465,10 @@ export function AgendaEventModal({
 
         {error && (
           <p className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-600">{error}</p>
+        )}
+
+        {success && (
+          <p className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">{success}</p>
         )}
 
         <div className="flex items-center justify-between gap-2 pt-1">

@@ -164,6 +164,7 @@ export default function AgendaPage() {
   const [modalReadOnly, setModalReadOnly] = useState(false);
   const [modalHideTechnicalSections, setModalHideTechnicalSections] = useState(false);
   const [selectedAppointment, setSelectedAppointment] = useState<AppointmentModalContext | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   const { data: agentAgenda, isLoading: agentAgendaLoading } = useQuery({
     queryKey: ["agent-agenda", agentAgendaRange.start.toISOString(), agentAgendaRange.end.toISOString()],
@@ -296,6 +297,7 @@ export default function AgendaPage() {
       queryClient.invalidateQueries({ queryKey: ["agenda-events"] });
       setModalOpen(false);
       setSelectedEvent(null);
+      setSuccessMessage(t("messages.saveSuccess"));
     },
   });
 
@@ -308,6 +310,7 @@ export default function AgendaPage() {
       queryClient.invalidateQueries({ queryKey: ["agenda-events"] });
       setModalOpen(false);
       setSelectedEvent(null);
+      setSuccessMessage(t("messages.deleteSuccess"));
     },
   });
 
@@ -315,6 +318,10 @@ export default function AgendaPage() {
     mutationFn: async (id: number) => {
       if (!tenantSlug) throw new Error(t("messages.tenantRequired"));
       await agendaApi.triggerStart(tenantSlug, id);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["agenda-events"] });
+      setSuccessMessage(t("messages.triggerSuccess"));
     },
   });
 
@@ -339,6 +346,7 @@ export default function AgendaPage() {
       setModalOpen(false);
       setSelectedEvent(null);
       setSelectedAppointment(null);
+      setSuccessMessage(t("messages.rescheduleSuccess"));
     },
   });
 
@@ -352,6 +360,7 @@ export default function AgendaPage() {
       setModalOpen(false);
       setSelectedEvent(null);
       setSelectedAppointment(null);
+      setSuccessMessage(t("messages.cancelSuccess"));
     },
   });
 
@@ -387,10 +396,10 @@ export default function AgendaPage() {
 
   const appointmentSlotsErrorMessage = useMemo(() => {
     if (!appointmentSlotsQuery.isError) return null;
-    const fallback = "No se pudieron cargar los horarios disponibles.";
+    const fallback = t("messages.slotsLoadFailed");
     const message = appointmentSlotsQuery.error instanceof Error ? appointmentSlotsQuery.error.message : "";
     return message.trim() || fallback;
-  }, [appointmentSlotsQuery.error, appointmentSlotsQuery.isError]);
+  }, [appointmentSlotsQuery.error, appointmentSlotsQuery.isError, t]);
 
   useSocket(activeTenantId, "agenda:event_created", refreshEvents);
   useSocket(activeTenantId, "agenda:event_updated", refreshEvents);
@@ -398,6 +407,7 @@ export default function AgendaPage() {
   useSocket(activeTenantId, "agenda:event_assignment_changed", refreshEvents);
 
   function openCreateFromRange(start: Date, end: Date) {
+    setSuccessMessage(null);
     setModalReadOnly(false);
     setModalHideTechnicalSections(false);
     setSelectedAppointment(null);
@@ -432,6 +442,7 @@ export default function AgendaPage() {
   }
 
   function handleEventClick(arg: { event: { id: string; extendedProps: Record<string, unknown> } }) {
+    setSuccessMessage(null);
     const raw = arg.event.extendedProps.raw as AgendaApiEvent | undefined;
     if (!raw) return;
     if (raw.source === "appointment") {
@@ -586,6 +597,12 @@ export default function AgendaPage() {
 
   return (
     <div className="zentra-chat-shell rounded-3xl p-4 sm:p-5">
+      {successMessage && (
+        <div className="mb-4 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+          {successMessage}
+        </div>
+      )}
+
       <div className="mb-4 rounded-2xl border border-[#D9E5EB] bg-white/90 px-4 py-3 sm:px-5">
         <h1 className="text-lg sm:text-xl font-semibold text-[#0D2B3E]">{t("pageTitle")}</h1>
         <p className="mt-1 text-xs sm:text-sm text-[#5B6670]">{t("weeklyAgendaSubtitle")}</p>

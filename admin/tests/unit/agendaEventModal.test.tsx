@@ -8,11 +8,16 @@ vi.mock("@/lib/i18n/client", () => ({
     if (key === "messages.invalidRange") return "El rango de tiempo es invalido";
     if (key === "messages.webhookJsonInvalid") return "Webhook headers/payload deben ser JSON valido";
     if (key === "messages.saveFailed") return "No se pudo guardar el evento. Intenta de nuevo.";
+    if (key === "messages.saveSuccess") return "Evento guardado correctamente.";
     if (key === "messages.selectSlotRequired") return "Selecciona un horario disponible para reprogramar la cita";
     if (key === "messages.rescheduleFailed") return "No se pudo reprogramar la cita. Intenta de nuevo.";
+    if (key === "messages.rescheduleSuccess") return "Cita reprogramada correctamente.";
     if (key === "messages.cancelFailed") return "No se pudo cancelar la cita. Intenta de nuevo.";
+    if (key === "messages.cancelSuccess") return "Cita cancelada correctamente.";
     if (key === "messages.deleteFailed") return "No se pudo eliminar el evento. Intenta de nuevo.";
+    if (key === "messages.deleteSuccess") return "Evento eliminado correctamente.";
     if (key === "messages.triggerFailed") return "No se pudo disparar el webhook. Intenta de nuevo.";
+    if (key === "messages.triggerSuccess") return "Webhook disparado correctamente.";
     if (key === "modal.currentStatus") return `Estado actual: ${String(params?.status ?? "")}.`;
 
     const dictionary: Record<string, string> = {
@@ -146,5 +151,18 @@ describe("AgendaEventModal", () => {
     });
 
     expect(screen.getByText("No se pudieron cargar los horarios disponibles.")).toBeInTheDocument();
+  });
+
+  test("shows success message after trigger webhook action", async () => {
+    renderModal({
+      event: { ...defaultEvent, titulo: "Webhook demo", tipo: "webhook" },
+      onTriggerStart: vi.fn(async () => undefined),
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Disparar webhook" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("Webhook disparado correctamente.")).toBeInTheDocument();
+    });
   });
 });

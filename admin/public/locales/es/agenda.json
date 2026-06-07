@@ -56,11 +56,17 @@
     "invalidRange": "Rango de tiempo inválido",
     "webhookJsonInvalid": "Cabeceras y carga útil del webhook deben ser JSON válido",
     "saveFailed": "No se pudo guardar el evento. Intenta de nuevo.",
+    "saveSuccess": "Evento guardado correctamente.",
     "selectSlotRequired": "Selecciona un horario disponible para reprogramar la cita",
+    "slotsLoadFailed": "No se pudieron cargar los horarios disponibles.",
     "rescheduleFailed": "No se pudo reprogramar la cita. Intenta de nuevo.",
+    "rescheduleSuccess": "Cita reprogramada correctamente.",
     "cancelFailed": "No se pudo cancelar la cita. Intenta de nuevo.",
+    "cancelSuccess": "Cita cancelada correctamente.",
     "deleteFailed": "No se pudo eliminar el evento. Intenta de nuevo.",
-    "triggerFailed": "No se pudo disparar el webhook. Intenta de nuevo."
+    "deleteSuccess": "Evento eliminado correctamente.",
+    "triggerFailed": "No se pudo disparar el webhook. Intenta de nuevo.",
+    "triggerSuccess": "Webhook disparado correctamente."
   },
   "modal": {
     "appointmentDetail": "Detalle de cita",
