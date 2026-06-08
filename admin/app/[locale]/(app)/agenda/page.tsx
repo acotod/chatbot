@@ -86,6 +86,12 @@ function isValidDateValue(value: string | null | undefined) {
   return !Number.isNaN(new Date(value).getTime());
 }
 
+function isUnauthorizedError(error: unknown) {
+  if (!error || typeof error !== "object") return false;
+  const maybeAxios = error as { response?: { status?: unknown }; message?: unknown };
+  return maybeAxios.response?.status === 401 || maybeAxios.message === "Unauthorized";
+}
+
 function toFormEvent(event: AgendaApiEvent): AgendaEventFormData {
   if (typeof event.id !== "number") {
     throw new Error("Readonly events cannot be edited");
@@ -333,6 +339,8 @@ export default function AgendaPage() {
       const slots = Array.isArray(res.data?.slots) ? res.data.slots : [];
       return slots as Array<{ id: string; startTime: string; endTime: string; timezone?: string }>;
     },
+    retry: false,
+    refetchOnWindowFocus: false,
     staleTime: 30_000,
   });
 
@@ -398,6 +406,9 @@ export default function AgendaPage() {
     if (!appointmentSlotsQuery.isError) return null;
     const fallback = t("messages.slotsLoadFailed");
     const message = appointmentSlotsQuery.error instanceof Error ? appointmentSlotsQuery.error.message : "";
+    if (isUnauthorizedError(appointmentSlotsQuery.error)) {
+      return t("messages.sessionExpired");
+    }
     return message.trim() || fallback;
   }, [appointmentSlotsQuery.error, appointmentSlotsQuery.isError, t]);
 

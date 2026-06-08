@@ -57,6 +57,7 @@
     "webhookJsonInvalid": "Webhook headers and payload must be valid JSON",
     "saveFailed": "Could not save the event. Please try again.",
     "saveSuccess": "Event saved successfully.",
+    "sessionExpired": "Your session expired. Please sign in again.",
     "selectSlotRequired": "Select an available timeslot to reschedule the appointment",
     "slotsLoadFailed": "Could not load available schedules.",
     "rescheduleFailed": "Could not reschedule the appointment. Please try again.",

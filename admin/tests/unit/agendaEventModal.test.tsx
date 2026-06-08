@@ -9,6 +9,7 @@ vi.mock("@/lib/i18n/client", () => ({
     if (key === "messages.webhookJsonInvalid") return "Webhook headers/payload deben ser JSON valido";
     if (key === "messages.saveFailed") return "No se pudo guardar el evento. Intenta de nuevo.";
     if (key === "messages.saveSuccess") return "Evento guardado correctamente.";
+    if (key === "messages.sessionExpired") return "La sesion expiro. Vuelve a iniciar sesion.";
     if (key === "messages.selectSlotRequired") return "Selecciona un horario disponible para reprogramar la cita";
     if (key === "messages.rescheduleFailed") return "No se pudo reprogramar la cita. Intenta de nuevo.";
     if (key === "messages.rescheduleSuccess") return "Cita reprogramada correctamente.";
@@ -138,6 +139,27 @@ describe("AgendaEventModal", () => {
 
     await waitFor(() => {
       expect(screen.getByText("No hay disponibilidad para este horario")).toBeInTheDocument();
+    });
+  });
+
+  test("shows session expired message when api returns unauthorized", async () => {
+    const onSave = vi.fn(async () => {
+      throw {
+        response: {
+          status: 401,
+        },
+      };
+    });
+
+    renderModal({
+      event: { ...defaultEvent, titulo: "Cita demo" },
+      onSave,
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Guardar" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("La sesion expiro. Vuelve a iniciar sesion.")).toBeInTheDocument();
     });
   });
 

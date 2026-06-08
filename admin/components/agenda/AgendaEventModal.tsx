@@ -120,9 +120,12 @@ export function AgendaEventModal({
     if (typeof err === "string" && err.trim()) return err;
     if (err && typeof err === "object") {
       const maybeAxios = err as {
-        response?: { data?: { message?: unknown; error?: unknown } };
+        response?: { status?: unknown; data?: { message?: unknown; error?: unknown } };
         message?: unknown;
       };
+      if (maybeAxios.response?.status === 401) {
+        return t("messages.sessionExpired");
+      }
       const apiMessage = maybeAxios.response?.data?.message;
       if (typeof apiMessage === "string" && apiMessage.trim()) return apiMessage;
       const apiError = maybeAxios.response?.data?.error;
