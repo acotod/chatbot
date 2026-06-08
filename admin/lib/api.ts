@@ -129,6 +129,14 @@ apiClient.interceptors.response.use(
       !url.includes("/auth/refresh") &&
       !!getStoredRefreshToken();
 
+    const shouldRedirectForUnrecoverable401 =
+      status === 401 &&
+      !isRecoverable401 &&
+      typeof window !== "undefined" &&
+      !window.location.pathname.startsWith("/login") &&
+      !window.location.pathname.startsWith("/portal") &&
+      !url.includes("/auth/");
+
     const isPostLogout =
       (status === 401 || status === 403) &&
       !getStoredAccessToken() &&
@@ -211,6 +219,10 @@ apiClient.interceptors.response.use(
         clearAuthAndRedirect();
         return Promise.reject(err);
       }
+    }
+
+    if (shouldRedirectForUnrecoverable401) {
+      clearAuthAndRedirect();
     }
 
     return Promise.reject(err);
