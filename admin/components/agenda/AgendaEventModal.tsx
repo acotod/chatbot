@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Modal } from "@/components/ui/Modal";
 import { useTranslations } from "@/lib/i18n/client";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 export type AgendaTipo = "reunion" | "tarea" | "automatizacion" | "webhook";
 export type AgendaEstado = "pendiente" | "en_progreso" | "completado";
@@ -86,6 +86,23 @@ const EMPTY_EVENT: AgendaEventFormData = {
   assignments: [],
 };
 
+const APPOINTMENT_ACTION_TIMEOUT_MS = 15_000;
+
+async function withTimeout<T>(promise: Promise<T>, ms: number, timeoutMessage: string): Promise<T> {
+  let timeoutId: ReturnType<typeof setTimeout> | null = null;
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timeoutId = setTimeout(() => {
+      reject(new Error(timeoutMessage));
+    }, ms);
+  });
+
+  try {
+    return await Promise.race([promise, timeoutPromise]);
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId);
+  }
+}
+
 export function AgendaEventModal({
   open,
   event,
@@ -112,9 +129,19 @@ export function AgendaEventModal({
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [selectedAppointmentSlotId, setSelectedAppointmentSlotId] = useState("");
+  const [localAppointmentRescheduling, setLocalAppointmentRescheduling] = useState(false);
+  const [localAppointmentCancelling, setLocalAppointmentCancelling] = useState(false);
 
   const isEdit = useMemo(() => Boolean(form.id), [form.id]);
   const showWebhookSections = !hideTechnicalSections && form.tipo === "webhook";
+  const isAppointmentRescheduling = localAppointmentRescheduling;
+  const isAppointmentCancelling = localAppointmentCancelling;
+
+  useEffect(() => {
+    if (open) return;
+    setLocalAppointmentRescheduling(false);
+    setLocalAppointmentCancelling(false);
+  }, [open]);
 
   function getErrorMessage(err: unknown, fallback: string) {
     if (typeof err === "string" && err.trim()) return err;
@@ -194,24 +221,38 @@ export function AgendaEventModal({
       return;
     }
     try {
+      setLocalAppointmentRescheduling(true);
       setError("");
       setSuccess("");
-      await onRescheduleAppointment(selectedAppointmentSlotId);
+      await withTimeout(
+        onRescheduleAppointment(selectedAppointmentSlotId),
+        APPOINTMENT_ACTION_TIMEOUT_MS,
+        t("messages.requestTimeout")
+      );
       setSuccess(t("messages.rescheduleSuccess"));
     } catch (err) {
       setError(getErrorMessage(err, t("messages.rescheduleFailed")));
+    } finally {
+      setLocalAppointmentRescheduling(false);
     }
   }
 
   async function handleAppointmentCancel() {
     if (!onCancelAppointment) return;
     try {
+      setLocalAppointmentCancelling(true);
       setError("");
       setSuccess("");
-      await onCancelAppointment();
+      await withTimeout(
+        onCancelAppointment(),
+        APPOINTMENT_ACTION_TIMEOUT_MS,
+        t("messages.requestTimeout")
+      );
       setSuccess(t("messages.cancelSuccess"));
     } catch (err) {
       setError(getErrorMessage(err, t("messages.cancelFailed")));
+    } finally {
+      setLocalAppointmentCancelling(false);
     }
   }
 
@@ -345,7 +386,7 @@ export function AgendaEventModal({
               <select
                 value={selectedAppointmentSlotId}
                 onChange={(e) => setSelectedAppointmentSlotId(e.target.value)}
-                disabled={appointmentSlotsLoading || appointmentRescheduling || appointmentCancelling || appointmentSlots.length === 0}
+                disabled={appointmentSlotsLoading || isAppointmentRescheduling || isAppointmentCancelling || appointmentSlots.length === 0}
                 className="h-11 rounded-xl border border-slate-200 px-3 text-sm bg-white"
               >
                 <option value="">{appointmentSlotsLoading ? t("modal.loadingSchedules") : t("modal.selectAvailableSchedule")}</option>
@@ -369,17 +410,17 @@ export function AgendaEventModal({
                 variant="danger"
                 size="sm"
                 onClick={handleAppointmentCancel}
-                disabled={appointmentCancelling || appointmentRescheduling || !onCancelAppointment}
+                disabled={isAppointmentCancelling || isAppointmentRescheduling || !onCancelAppointment}
               >
-                {appointmentCancelling ? t("modal.cancelling") : t("modal.cancelAppointment")}
+                {isAppointmentCancelling ? t("modal.cancelling") : t("modal.cancelAppointment")}
               </Button>
               <Button
                 type="button"
                 size="sm"
                 onClick={handleAppointmentReschedule}
-                disabled={appointmentRescheduling || appointmentCancelling || !selectedAppointmentSlotId || !onRescheduleAppointment}
+                disabled={isAppointmentRescheduling || isAppointmentCancelling || !selectedAppointmentSlotId || !onRescheduleAppointment}
               >
-                {appointmentRescheduling ? t("modal.rescheduling") : t("modal.saveAppointment")}
+                {isAppointmentRescheduling ? t("modal.rescheduling") : t("modal.saveAppointment")}
               </Button>
             </div>
           </div>
