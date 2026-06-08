@@ -189,6 +189,7 @@ vi.mock("@/components/agenda/AgendaEventModal", () => ({
       webhookPayloadJson: string;
       assignments: Array<{ agenteId: number }>;
     }) => Promise<void>;
+    onDelete?: (id: number) => Promise<void>;
     onTriggerStart?: (id: number) => Promise<void>;
     onRescheduleAppointment?: (slotId: string) => Promise<void>;
     onCancelAppointment?: () => Promise<void>;
@@ -211,6 +212,7 @@ vi.mock("@/components/agenda/AgendaEventModal", () => ({
         webhookPayloadJson: "{}",
         assignments: [],
       })}>modal-save</button>
+      <button type="button" onClick={() => props.onDelete?.(7)}>modal-delete</button>
       <button type="button" onClick={() => props.onTriggerStart?.(9)}>modal-trigger</button>
       <button type="button" onClick={() => props.onRescheduleAppointment?.("slot-2")}>modal-reschedule</button>
       <button type="button" onClick={() => props.onCancelAppointment?.()}>modal-cancel</button>
@@ -249,6 +251,13 @@ describe("Agenda page success feedback", () => {
 
     await waitFor(() => {
       expect(screen.getByText("Webhook triggered successfully.")).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByText("modal-delete"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Event deleted successfully.")).toBeInTheDocument();
+      expect(mocks.agendaRemove).toHaveBeenCalledWith("tenant-a", 7);
     });
   });
 
