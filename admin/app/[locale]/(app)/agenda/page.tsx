@@ -92,6 +92,23 @@ function isUnauthorizedError(error: unknown) {
   return maybeAxios.response?.status === 401 || maybeAxios.message === "Unauthorized";
 }
 
+const APPOINTMENT_ACTION_TIMEOUT_MS = 15_000;
+
+async function withTimeout<T>(promise: Promise<T>, ms: number, timeoutMessage: string): Promise<T> {
+  let timeoutId: ReturnType<typeof setTimeout> | null = null;
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timeoutId = setTimeout(() => {
+      reject(new Error(timeoutMessage));
+    }, ms);
+  });
+
+  try {
+    return await Promise.race([promise, timeoutPromise]);
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId);
+  }
+}
+
 function toFormEvent(event: AgendaApiEvent): AgendaEventFormData {
   if (typeof event.id !== "number") {
     throw new Error("Readonly events cannot be edited");
@@ -347,7 +364,11 @@ export default function AgendaPage() {
   const rescheduleAppointmentMutation = useMutation({
     mutationFn: async (slotId: string) => {
       if (!selectedAppointment?.appointmentId) throw new Error("appointmentId requerido");
-      await calendarAppointmentsApi.reschedule(selectedAppointment.appointmentId, slotId);
+      await withTimeout(
+        calendarAppointmentsApi.reschedule(selectedAppointment.appointmentId, slotId),
+        APPOINTMENT_ACTION_TIMEOUT_MS,
+        t("messages.requestTimeout")
+      );
     },
     retry: false,
     onSuccess: () => {
@@ -362,7 +383,11 @@ export default function AgendaPage() {
   const cancelAppointmentMutation = useMutation({
     mutationFn: async () => {
       if (!selectedAppointment?.appointmentId) throw new Error("appointmentId requerido");
-      await calendarAppointmentsApi.cancel(selectedAppointment.appointmentId);
+      await withTimeout(
+        calendarAppointmentsApi.cancel(selectedAppointment.appointmentId),
+        APPOINTMENT_ACTION_TIMEOUT_MS,
+        t("messages.requestTimeout")
+      );
     },
     retry: false,
     onSuccess: () => {

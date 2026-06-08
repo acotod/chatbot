@@ -58,6 +58,7 @@
     "saveFailed": "No se pudo guardar el evento. Intenta de nuevo.",
     "saveSuccess": "Evento guardado correctamente.",
     "sessionExpired": "La sesión expiró. Vuelve a iniciar sesión.",
+    "requestTimeout": "El servidor tardó demasiado en responder. Intenta de nuevo.",
     "selectSlotRequired": "Selecciona un horario disponible para reprogramar la cita",
     "slotsLoadFailed": "No se pudieron cargar los horarios disponibles.",
     "rescheduleFailed": "No se pudo reprogramar la cita. Intenta de nuevo.",
