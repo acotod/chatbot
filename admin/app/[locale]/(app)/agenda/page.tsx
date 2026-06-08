@@ -18,7 +18,7 @@ import { EventInput } from "@fullcalendar/core";
 import { CalendarDays, Plus } from "lucide-react";
 import { useSocket } from "@/hooks/useSocket";
 import { useCurrentLocale, useTranslations } from "@/lib/i18n/client";
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 type AgendaApiAssignment = {
   agenteId: number;
@@ -349,6 +349,7 @@ export default function AgendaPage() {
       if (!selectedAppointment?.appointmentId) throw new Error("appointmentId requerido");
       await calendarAppointmentsApi.reschedule(selectedAppointment.appointmentId, slotId);
     },
+    retry: false,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["agenda-events"] });
       setModalOpen(false);
@@ -363,6 +364,7 @@ export default function AgendaPage() {
       if (!selectedAppointment?.appointmentId) throw new Error("appointmentId requerido");
       await calendarAppointmentsApi.cancel(selectedAppointment.appointmentId);
     },
+    retry: false,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["agenda-events"] });
       setModalOpen(false);
@@ -371,6 +373,19 @@ export default function AgendaPage() {
       setSuccessMessage(t("messages.cancelSuccess"));
     },
   });
+
+  useEffect(() => {
+    const hasUnauthorizedError =
+      isUnauthorizedError(appointmentSlotsQuery.error) ||
+      isUnauthorizedError(rescheduleAppointmentMutation.error) ||
+      isUnauthorizedError(cancelAppointmentMutation.error);
+
+    if (!hasUnauthorizedError) return;
+
+    if (typeof window !== "undefined") {
+      window.location.href = "/login?reason=expired";
+    }
+  }, [appointmentSlotsQuery.error, rescheduleAppointmentMutation.error, cancelAppointmentMutation.error]);
 
   function refreshEvents() {
     queryClient.invalidateQueries({ queryKey: ["agenda-events"] });
