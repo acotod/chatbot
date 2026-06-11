@@ -106,15 +106,6 @@ async function resolveTenantForFlow(req, flowId, explicitTenantSlug) {
   const resolvedTenantId = await resolveTenantId(req, explicitTenantSlug);
   if (resolvedTenantId) return resolvedTenantId;
 
-  // For super-admins without a pinned tenant, infer tenant from the flow.
-  if (req.admin?.superAdmin) {
-    const flow = await prisma.flow.findUnique({
-      where: { id: flowId },
-      select: { tenantId: true },
-    });
-    return flow?.tenantId ?? null;
-  }
-
   return null;
 }
 

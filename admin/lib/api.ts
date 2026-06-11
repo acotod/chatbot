@@ -129,14 +129,6 @@ apiClient.interceptors.response.use(
       !url.includes("/auth/refresh") &&
       !!getStoredRefreshToken();
 
-    const shouldRedirectForUnrecoverable401 =
-      status === 401 &&
-      !isRecoverable401 &&
-      typeof window !== "undefined" &&
-      !window.location.pathname.startsWith("/login") &&
-      !window.location.pathname.startsWith("/portal") &&
-      !url.includes("/auth/");
-
     const isPostLogout =
       (status === 401 || status === 403) &&
       !getStoredAccessToken() &&
@@ -219,10 +211,6 @@ apiClient.interceptors.response.use(
         clearAuthAndRedirect();
         return Promise.reject(err);
       }
-    }
-
-    if (shouldRedirectForUnrecoverable401) {
-      clearAuthAndRedirect();
     }
 
     return Promise.reject(err);
@@ -595,9 +583,9 @@ export const wabaFlowsApi = {
   list: (params?: { activo?: boolean; page?: number; limit?: number; tenantSlug?: string }) =>
     apiClient.get("/waba-flows", { params }),
   get: (id: number) => apiClient.get(`/waba-flows/${id}`),
-  create: (data: { nombre: string; definition?: unknown; changelog?: string; tenantSlug?: string; deletionLocked?: boolean }) =>
+  create: (data: { nombre: string; definition?: unknown; changelog?: string; tenantSlug?: string }) =>
     apiClient.post("/waba-flows", data),
-  update: (id: number, data: { nombre?: string; activo?: boolean; deletionLocked?: boolean }) =>
+  update: (id: number, data: { nombre?: string; activo?: boolean }) =>
     apiClient.put(`/waba-flows/${id}`, data),
   remove: (id: number) => apiClient.delete(`/waba-flows/${id}`),
   import: (data: { wabaJson: unknown; nombre?: string; changelog?: string; tenantSlug?: string }) =>
