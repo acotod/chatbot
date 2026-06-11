@@ -8,7 +8,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
 const INACTIVITY_TIMEOUT_MS = 60 * 60 * 1000;
-const INACTIVITY_CHECK_INTERVAL_MS = 5000;
+const INACTIVITY_CHECK_INTERVAL_MS = 15000;
 
 function stripLocalePrefix(pathname: string) {
   if (pathname === "/en" || pathname === "/es") return "/";
@@ -121,6 +121,10 @@ function SessionSecurityGuard() {
     };
 
     const checkSession = () => {
+      if (document.hidden) {
+        return;
+      }
+
       const now = Date.now();
 
       if (tokenExpiresAt && now >= tokenExpiresAt) {
