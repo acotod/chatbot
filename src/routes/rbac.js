@@ -315,7 +315,13 @@ router.delete('/users/:id', requirePermiso(['MANAGE_ROLES', 'MANAGE_USERS']), as
     await prisma.adminUser.delete({ where: { id: userId } });
     audit({ adminUserId: req.admin.adminUserId, accion: 'DELETE_ADMIN_USER', entidad: 'admin_user', entidadId: userId });
     res.status(204).end();
-  } catch (err) { next(err); }
+  } catch (err) {
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2003') {
+      return res.status(409).json({ error: 'Cannot delete user with related records' });
+    }
+    if (handlePrismaWriteError(err, res)) return;
+    next(err);
+  }
 });
 
 module.exports = router;
