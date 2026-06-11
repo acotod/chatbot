@@ -1932,6 +1932,18 @@ export default function ConfiguracionPage() {
                     <p className="mt-3 text-xs text-slate-500">{t("modules.agenda.scheduleHint")}</p>
                   </div>
 
+                  <div className="flex justify-end">
+                    <Button
+                      type="button"
+                      onClick={() => saveAgendaAppearanceMutation.mutate()}
+                      disabled={saveAgendaAppearanceMutation.isPending}
+                    >
+                      {agendaAppearanceSaved ? (
+                        <><Check size={16} /> {t("saved")}</>
+                      ) : saveAgendaAppearanceMutation.isPending ? t("saving") : t("modules.agenda.saveAppearance")}
+                    </Button>
+                  </div>
+
                   <div className="rounded-lg border border-slate-200 bg-white p-3 space-y-3">
                     <p className="text-sm font-medium text-slate-700">{t("modules.agenda.agentColorsTitle")}</p>
                     {agendaAgents.length === 0 ? (

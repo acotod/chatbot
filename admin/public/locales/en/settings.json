@@ -201,7 +201,7 @@
       "startLabel": "Start",
       "endLabel": "End",
       "scheduleHint": "Mark available hours per day. The system builds working ranges automatically.",
-      "saveAppearance": "Save color"
+      "saveAppearance": "Save configuration"
     }
   },
   "security": {

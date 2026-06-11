@@ -201,7 +201,7 @@
       "startLabel": "Inicio",
       "endLabel": "Fin",
       "scheduleHint": "Marca las horas disponibles por dia. El sistema arma los rangos automaticamente.",
-      "saveAppearance": "Guardar color"
+      "saveAppearance": "Guardar configuración"
     }
   },
   "security": {
