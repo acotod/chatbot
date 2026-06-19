@@ -3066,7 +3066,7 @@ router.get('/tenants/:slug/agenda', requirePermiso('VIEW_AGENDA'), async (req, r
 });
 
 // POST /admin/tenants/:slug/agenda
-router.post('/tenants/:slug/agenda', requirePermiso('CREATE_AGENDA'), async (req, res, next) => {
+router.post('/tenants/:slug/agenda', requirePermiso(['CREATE_AGENDA', 'VIEW_AGENDA']), async (req, res, next) => {
     try {
         const tenant = await db.findTenantBySlug(req.params.slug);
         if (!tenant) return res.status(404).json({ error: 'Tenant not found' });
