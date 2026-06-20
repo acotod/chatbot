@@ -171,3 +171,37 @@ describe('routeMessage — context continuity', () => {
     );
   });
 });
+
+describe('routeMessage — inactivity timeout parsing', () => {
+  test('restarts context when inactivity timeout is provided as numeric string', async () => {
+    db.getConfig.mockImplementation(async (_tenantId, key) => {
+      if (key === 'motor_config') return { valor: { engine: 'flow_engine', inactivity_timeout_minutes: '15' } };
+      return null;
+    });
+
+    const oldUpdatedAt = new Date(Date.now() - (16 * 60 * 1000)).toISOString();
+    db.getConversationContext.mockResolvedValueOnce({ currentNodeId: 7, updatedAt: oldUpdatedAt });
+    executeStep.mockResolvedValue({ nodeId: 1, content: { type: 'text', text: 'Inicio' } });
+
+    await routeMessage({ tenantId: TENANT_ID, userId: USER_ID, input: 'hola' });
+
+    expect(db.clearConversationContext).toHaveBeenCalledWith(TENANT_ID, USER_ID);
+    expect(executeStep).toHaveBeenCalledWith(expect.objectContaining({ currentNodeId: null }));
+  });
+
+  test('falls back to default timeout when config value is invalid', async () => {
+    db.getConfig.mockImplementation(async (_tenantId, key) => {
+      if (key === 'motor_config') return { valor: { engine: 'flow_engine', inactivity_timeout_minutes: 'abc' } };
+      return null;
+    });
+
+    const oldUpdatedAt = new Date(Date.now() - (16 * 60 * 1000)).toISOString();
+    db.getConversationContext.mockResolvedValueOnce({ currentNodeId: 9, updatedAt: oldUpdatedAt });
+    executeStep.mockResolvedValue({ nodeId: 10, content: { type: 'text', text: 'Sigue' } });
+
+    await routeMessage({ tenantId: TENANT_ID, userId: USER_ID, input: 'hola' });
+
+    expect(db.clearConversationContext).not.toHaveBeenCalled();
+    expect(executeStep).toHaveBeenCalledWith(expect.objectContaining({ currentNodeId: 9 }));
+  });
+});

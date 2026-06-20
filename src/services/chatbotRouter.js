@@ -21,6 +21,15 @@ const logger = require('../utils/logger');
 // Can be overridden per tenant via motor_config.inactivity_timeout_minutes.
 const DEFAULT_INACTIVITY_TIMEOUT_MINUTES = 30;
 
+function resolveInactivityTimeoutMinutes(motorCfgValue) {
+  const raw = motorCfgValue?.inactivity_timeout_minutes;
+  const parsed = Number(raw);
+  if (Number.isFinite(parsed) && parsed > 0) {
+    return Math.min(24 * 60, Math.max(1, parsed));
+  }
+  return DEFAULT_INACTIVITY_TIMEOUT_MINUTES;
+}
+
 /**
  * Route a WhatsApp user input through the active chatbot engine.
  *
@@ -41,10 +50,7 @@ async function routeMessage({ tenantId, userId, input, phone, conversationMeta }
   let ctx = await db.getConversationContext(tenantId, userId);
 
   // ── Inactivity timeout: restart flow if context is too old ───────────────
-  const timeoutMinutes =
-    typeof motorCfg?.valor?.inactivity_timeout_minutes === 'number'
-      ? motorCfg.valor.inactivity_timeout_minutes
-      : DEFAULT_INACTIVITY_TIMEOUT_MINUTES;
+  const timeoutMinutes = resolveInactivityTimeoutMinutes(motorCfg?.valor);
 
   if (ctx?.updatedAt) {
     const ageMinutes = (Date.now() - new Date(ctx.updatedAt).getTime()) / 60000;
