@@ -11,11 +11,8 @@ export const metadata: Metadata = {
   title: "Zentra Bot — Panel Admin",
   description: "Panel administrativo de conversaciones inteligentes por WhatsApp",
   icons: {
-    icon: [
-      { url: "/icon.svg", type: "image/svg+xml" },
-      { url: "/favicon.ico", sizes: "any" },
-    ],
-    shortcut: "/favicon.ico",
+    icon: "/icon.svg",
+    shortcut: "/icon.svg",
     apple: "/icon.svg",
   },
 };

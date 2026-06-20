@@ -1,20 +1,15 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Zentra Bot icon">
   <defs>
-    <linearGradient id="bg" x1="8" y1="6" x2="56" y2="58" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#00BFAE" />
-      <stop offset="1" stop-color="#0D2B3E" />
-    </linearGradient>
-    <linearGradient id="z" x1="17" y1="16" x2="48" y2="48" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#EFFFFD" />
-      <stop offset="1" stop-color="#B9FFF3" />
+    <linearGradient id="accent" x1="17" y1="14" x2="47" y2="48" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#39E6D2" />
+      <stop offset="1" stop-color="#00BFAE" />
     </linearGradient>
   </defs>
 
-  <rect x="4" y="4" width="56" height="56" rx="15" fill="url(#bg)" />
-  <rect x="7" y="7" width="50" height="50" rx="13" fill="none" stroke="#D7FFF8" stroke-opacity="0.5" />
-
-  <path d="M18 17H46L25 32H45L19 47H45" fill="none" stroke="url(#z)" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" />
-
-  <circle cx="14" cy="14" r="2" fill="#FFFFFF" opacity="0.88" />
-  <circle cx="50" cy="50" r="2" fill="#FFFFFF" opacity="0.72" />
+  <rect width="64" height="64" rx="18" fill="#FFFFFF" />
+  <rect x="5" y="5" width="54" height="54" rx="14" fill="#FFFFFF" stroke="#D7E2E8" stroke-width="2" />
+  <path d="M18 19H46L25 31.5H45L18 45" fill="none" stroke="#0D2B3E" stroke-width="7" stroke-linecap="round" stroke-linejoin="round" />
+  <path d="M23 18.5L46 18.5" fill="none" stroke="url(#accent)" stroke-width="4" stroke-linecap="round" />
+  <path d="M18.5 45.5L41 45.5" fill="none" stroke="url(#accent)" stroke-width="4" stroke-linecap="round" />
+  <circle cx="48" cy="16" r="3" fill="#39E6D2" />
 </svg>
