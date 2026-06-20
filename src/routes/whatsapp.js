@@ -1036,18 +1036,58 @@ router.post('/', verifyMetaSignature, async (req, res, next) => {
 
 // ── Private ──────────────────────────────────────────────────────────────────
 
+// Global deduplication lock: Map<waMsgId, Promise>
+const _msgProcessingLocks = new Map();
+
+// Cleanup old locks every 5 minutes to prevent memory leak
+setInterval(() => {
+  const now = Date.now();
+  const expiredBefore = now - 5 * 60 * 1000; // locks older than 5 min
+  for (const [key, lockObj] of _msgProcessingLocks.entries()) {
+    if (lockObj.createdAt < expiredBefore) {
+      _msgProcessingLocks.delete(key);
+    }
+  }
+}, 5 * 60 * 1000);
+
 async function _handleIncomingMessage({ msg, contacts, tenant, phoneNumberId, accessToken, correlationId, conversationMeta }) {
   const phone   = msg.from;
   const waMsgId = msg.id;
   const tipo    = msg.type;
 
   // ── Idempotency: skip if already processed (Meta may redeliver) ──────────
+  // Use a processing lock to avoid race conditions when Meta sends duplicate events
   if (waMsgId) {
+    // If another handler is currently processing this message, wait for it
+    if (_msgProcessingLocks.has(waMsgId)) {
+      try {
+        await _msgProcessingLocks.get(waMsgId).promise;
+        logger.info('Message was processed by concurrent handler, skipping', { waMsgId });
+        return;
+      } catch (err) {
+        logger.warn('Previous processing of message failed, will retry', { waMsgId, error: err.message });
+      }
+    }
+
+    // Check if already persisted
     const existing = await db.findMensajeByWaMsgId(waMsgId);
     if (existing) {
-      logger.info('Duplicate WhatsApp message ignored', { waMsgId });
+      logger.info('Duplicate WhatsApp message ignored (already persisted)', { waMsgId, tenantId: tenant.id });
       return;
     }
+
+    // Set up processing lock for concurrent requests
+    let lockResolve, lockReject;
+    const lockPromise = new Promise((res, rej) => {
+      lockResolve = res;
+      lockReject = rej;
+    });
+    _msgProcessingLocks.set(waMsgId, {
+      promise: lockPromise,
+      createdAt: Date.now(),
+      resolve: lockResolve,
+      reject: lockReject,
+    });
   }
 
   // Resolve / create user
@@ -1061,10 +1101,15 @@ async function _handleIncomingMessage({ msg, contacts, tenant, phoneNumberId, ac
       phone,
       waMsgId,
     });
+    // Resolve lock before returning
+    if (waMsgId && _msgProcessingLocks.has(waMsgId)) {
+      _msgProcessingLocks.get(waMsgId).reject(new Error('Failed to create user'));
+      _msgProcessingLocks.delete(waMsgId);
+    }
     return;
   }
 
-
+  try {
   // ── Build contenido + extract chatbot input ──────────────────────────────
   let contenido;
   let userInput = null;
@@ -1717,6 +1762,14 @@ async function _runChatbot({ tenant, userId, phone, userInput, phoneNumberId, ac
   }
 
   return conversationId ?? null;
+  } finally {
+    // Resolve processing lock so concurrent handlers can proceed or detect completion
+    if (waMsgId && _msgProcessingLocks.has(waMsgId)) {
+      const lock = _msgProcessingLocks.get(waMsgId);
+      lock.resolve();
+      _msgProcessingLocks.delete(waMsgId);
+    }
+  }
 }
 
 async function _handleFallbackToHuman({ tenant, userId, phone, response, phoneNumberId, accessToken, correlationId, conversationId, conversationMeta }) {

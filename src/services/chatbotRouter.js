@@ -22,12 +22,27 @@ const logger = require('../utils/logger');
 const DEFAULT_INACTIVITY_TIMEOUT_MINUTES = 30;
 
 function resolveInactivityTimeoutMinutes(motorCfgValue) {
-  const raw = motorCfgValue?.inactivity_timeout_minutes;
-  const parsed = Number(raw);
-  if (Number.isFinite(parsed) && parsed > 0) {
-    return Math.min(24 * 60, Math.max(1, parsed));
+  // Handle null, undefined, or non-object values
+  if (!motorCfgValue || typeof motorCfgValue !== 'object') {
+    logger.debug('motorCfgValue invalid for timeout resolution', { motorCfgValue });
+    return DEFAULT_INACTIVITY_TIMEOUT_MINUTES;
   }
-  return DEFAULT_INACTIVITY_TIMEOUT_MINUTES;
+
+  const raw = motorCfgValue.inactivity_timeout_minutes;
+  const parsed = Number(raw);
+  
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    logger.debug('inactivity_timeout_minutes not set or invalid, using default', {
+      raw,
+      parsed,
+      default: DEFAULT_INACTIVITY_TIMEOUT_MINUTES,
+    });
+    return DEFAULT_INACTIVITY_TIMEOUT_MINUTES;
+  }
+
+  const clamped = Math.min(24 * 60, Math.max(1, parsed));
+  logger.debug('inactivity_timeout resolved', { raw, parsed, clamped });
+  return clamped;
 }
 
 /**
