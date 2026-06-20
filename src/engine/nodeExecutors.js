@@ -1659,9 +1659,19 @@ async function _collectAvailabilityEntries({ calendarService, calendarCandidates
     }),
   );
 
-  return availabilityByCalendar
+  const allEntries = availabilityByCalendar
     .flat()
     .sort((left, right) => new Date(left.startTime).getTime() - new Date(right.startTime).getTime());
+
+  // Deduplicate by startTime: when multiple calendars share the same time slot,
+  // keep only the first occurrence so users don't see duplicate options.
+  const seenStartTimes = new Set();
+  return allEntries.filter((entry) => {
+    const key = entry.startTime;
+    if (!key || seenStartTimes.has(key)) return false;
+    seenStartTimes.add(key);
+    return true;
+  });
 }
 
 function _groupAvailabilityEntries(entries) {
