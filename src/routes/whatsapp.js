@@ -1714,6 +1714,14 @@ async function _handleIncomingMessage({ msg, contacts, tenant, phoneNumberId, ac
     messageId: mensajeId,
     conversationId: chatbotConversationId,
   };
+  } finally {
+    // Resolve processing lock so concurrent handlers can proceed or detect completion
+    if (waMsgId && _msgProcessingLocks.has(waMsgId)) {
+      const lock = _msgProcessingLocks.get(waMsgId);
+      lock.resolve();
+      _msgProcessingLocks.delete(waMsgId);
+    }
+  }
 }
 
 // ── Chatbot dispatcher ────────────────────────────────────────────────────────
@@ -1762,14 +1770,6 @@ async function _runChatbot({ tenant, userId, phone, userInput, phoneNumberId, ac
   }
 
   return conversationId ?? null;
-  } finally {
-    // Resolve processing lock so concurrent handlers can proceed or detect completion
-    if (waMsgId && _msgProcessingLocks.has(waMsgId)) {
-      const lock = _msgProcessingLocks.get(waMsgId);
-      lock.resolve();
-      _msgProcessingLocks.delete(waMsgId);
-    }
-  }
 }
 
 async function _handleFallbackToHuman({ tenant, userId, phone, response, phoneNumberId, accessToken, correlationId, conversationId, conversationMeta }) {
