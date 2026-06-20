@@ -3830,157 +3830,205 @@ function FlowBuilder({
 
           {flowMode === "outbound" && (
             <div className="bg-slate-50 rounded-2xl p-4 border border-slate-100 space-y-3">
+              {/* Header */}
               <div className="flex items-center justify-between gap-2">
-                <p className="text-xs font-medium text-slate-700">Filtros outbound</p>
+                <div>
+                  <p className="text-xs font-semibold text-slate-700">Filtros outbound</p>
+                  <p className="text-[10px] text-slate-400 mt-0.5">Condiciones que activan el disparo automático</p>
+                </div>
                 <button
                   type="button"
                   onClick={handleAddOutboundRule}
-                  className="text-xs px-2 py-1 rounded-lg border border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100"
+                  className="text-xs px-2.5 py-1 rounded-full border border-[#00BFAE] bg-[#00BFAE]/10 text-[#00BFAE] font-medium hover:bg-[#00BFAE]/20 transition-colors"
                 >
-                  + Agregar filtro
+                  + Nuevo filtro
                 </button>
               </div>
 
-              <p className="text-[11px] text-slate-500">
-                Configura filtros de disparo para decidir cuándo el worker envía mensajes outbound.
-              </p>
-
-              <div className="space-y-3 max-h-96 overflow-y-auto pr-1">
+              <div className="space-y-3 max-h-[480px] overflow-y-auto pr-1">
                 {outboundRules.map((rule, index) => (
-                  <div key={rule.id} className="rounded-xl border border-slate-200 bg-white p-3 space-y-3">
-                    <div className="flex items-center justify-between gap-2">
+                  <div key={rule.id} className="rounded-xl border border-slate-200 bg-white p-3 space-y-3 shadow-sm">
+
+                    {/* Nombre del filtro + quitar */}
+                    <div className="flex items-center gap-2">
                       <input
                         value={rule.label}
                         onChange={(e) => updateOutboundRule(index, (current) => ({ ...current, label: e.target.value }))}
-                        className="flex-1 rounded-lg border border-slate-200 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        placeholder="Filtro 1"
+                        className="flex-1 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-[#00BFAE]/40"
+                        placeholder={`Filtro ${index + 1}`}
                       />
                       <button
                         type="button"
                         onClick={() => handleRemoveOutboundRule(index)}
-                        className="text-xs px-2 py-1 rounded-lg border border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100"
+                        className="text-[10px] px-2 py-1 rounded-full border border-rose-200 bg-rose-50 text-rose-600 hover:bg-rose-100 transition-colors"
                       >
-                        Quitar
+                        ✕
                       </button>
                     </div>
 
-                    <div className="grid grid-cols-2 gap-2">
-                      <div>
-                        <label className="block text-[11px] font-medium text-slate-500 mb-1">Filtro: minutos antes</label>
-                        <input
-                          type="number"
-                          min={1}
-                          value={rule.minutesBefore}
-                          onChange={(e) => updateOutboundRule(index, (current) => ({ ...current, minutesBefore: Math.max(1, Number(e.target.value || 1)) }))}
-                          className="w-full rounded-lg border border-slate-200 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-[11px] font-medium text-slate-500 mb-1">Filtro: timezone</label>
-                        <input
-                          value={rule.timezone}
-                          onChange={(e) => updateOutboundRule(index, (current) => ({ ...current, timezone: e.target.value }))}
-                          placeholder="America/Mexico_City"
-                          className="w-full rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        />
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-2">
-                      <div>
-                        <label className="block text-[11px] font-medium text-slate-500 mb-1">Filtro: días (0-6, coma)</label>
-                        <input
-                          value={rule.daysOfWeek.join(",")}
-                          onChange={(e) => updateOutboundRule(index, (current) => ({
-                            ...current,
-                            daysOfWeek: e.target.value
-                              .split(",")
-                              .map((item) => Number(item.trim()))
-                              .filter((item) => Number.isInteger(item) && item >= 0 && item <= 6),
-                          }))}
-                          placeholder="1,2,3,4,5"
-                          className="w-full rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-[11px] font-medium text-slate-500 mb-1">Filtro: estados válidos</label>
-                        <input
-                          value={rule.allowedStatuses.join(",")}
-                          onChange={(e) => updateOutboundRule(index, (current) => ({
-                            ...current,
-                            allowedStatuses: e.target.value
-                              .split(",")
-                              .map((item) => item.trim())
-                              .filter(Boolean),
-                          }))}
-                          placeholder="scheduled,rescheduled"
-                          className="w-full rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        />
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-2">
-                      <div>
-                        <label className="block text-[11px] font-medium text-slate-500 mb-1">Filtro: desde</label>
-                        <input
-                          value={rule.timeWindowStart}
-                          onChange={(e) => updateOutboundRule(index, (current) => ({ ...current, timeWindowStart: e.target.value }))}
-                          placeholder="08:00"
-                          className="w-full rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-[11px] font-medium text-slate-500 mb-1">Filtro: hasta</label>
-                        <input
-                          value={rule.timeWindowEnd}
-                          onChange={(e) => updateOutboundRule(index, (current) => ({ ...current, timeWindowEnd: e.target.value }))}
-                          placeholder="18:00"
-                          className="w-full rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        />
-                      </div>
-                    </div>
-
-                    <div className="space-y-2">
-                      <p className="text-[11px] font-medium text-slate-500">Filtro: destinatarios</p>
-                      <div className="flex items-center gap-3 text-xs text-slate-600">
-                        <label className="flex items-center gap-2">
+                    {/* Minutos antes + Timezone */}
+                    <div className="space-y-1.5">
+                      <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide">Ventana de tiempo</p>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <div className="flex items-center gap-1.5 bg-slate-100 rounded-full px-3 py-1">
+                          <span className="text-[10px] text-slate-500 whitespace-nowrap">Avisar</span>
                           <input
-                            type="checkbox"
-                            checked={rule.recipients.includes("customer")}
-                            onChange={(e) => updateOutboundRule(index, (current) => ({
-                              ...current,
-                              recipients: e.target.checked
-                                ? Array.from(new Set([...current.recipients, "customer"]))
-                                : current.recipients.filter((recipient) => recipient !== "customer"),
-                            }))}
+                            type="number"
+                            min={1}
+                            value={rule.minutesBefore}
+                            onChange={(e) => updateOutboundRule(index, (current) => ({ ...current, minutesBefore: Math.max(1, Number(e.target.value || 1)) }))}
+                            className="w-12 bg-transparent text-xs font-semibold text-slate-700 text-center focus:outline-none"
                           />
-                          Cliente
-                        </label>
-                        <label className="flex items-center gap-2">
+                          <span className="text-[10px] text-slate-500">min antes</span>
+                        </div>
+                        <div className="flex items-center gap-1.5 bg-slate-100 rounded-full px-3 py-1">
+                          <span className="text-[10px] text-slate-500">De</span>
                           <input
-                            type="checkbox"
-                            checked={rule.recipients.includes("agent")}
-                            onChange={(e) => updateOutboundRule(index, (current) => ({
-                              ...current,
-                              recipients: e.target.checked
-                                ? Array.from(new Set([...current.recipients, "agent"]))
-                                : current.recipients.filter((recipient) => recipient !== "agent"),
-                            }))}
+                            value={rule.timeWindowStart}
+                            onChange={(e) => updateOutboundRule(index, (current) => ({ ...current, timeWindowStart: e.target.value }))}
+                            placeholder="08:00"
+                            className="w-12 bg-transparent text-xs font-mono font-semibold text-slate-700 text-center focus:outline-none"
                           />
-                          Agente
-                        </label>
+                          <span className="text-[10px] text-slate-500">a</span>
+                          <input
+                            value={rule.timeWindowEnd}
+                            onChange={(e) => updateOutboundRule(index, (current) => ({ ...current, timeWindowEnd: e.target.value }))}
+                            placeholder="18:00"
+                            className="w-12 bg-transparent text-xs font-mono font-semibold text-slate-700 text-center focus:outline-none"
+                          />
+                        </div>
                       </div>
+                    </div>
 
+                    {/* Timezone */}
+                    <div className="space-y-1.5">
+                      <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide">Timezone</p>
+                      <select
+                        value={rule.timezone}
+                        onChange={(e) => updateOutboundRule(index, (current) => ({ ...current, timezone: e.target.value }))}
+                        className="w-full rounded-lg border border-slate-200 px-3 py-1.5 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-[#00BFAE]/40"
+                      >
+                        <option value="America/Mexico_City">America/Mexico_City</option>
+                        <option value="America/Bogota">America/Bogota</option>
+                        <option value="America/Lima">America/Lima</option>
+                        <option value="America/Santiago">America/Santiago</option>
+                        <option value="America/Argentina/Buenos_Aires">America/Argentina/Buenos_Aires</option>
+                        <option value="America/Caracas">America/Caracas</option>
+                        <option value="America/New_York">America/New_York</option>
+                        <option value="America/Chicago">America/Chicago</option>
+                        <option value="America/Los_Angeles">America/Los_Angeles</option>
+                        <option value="Europe/Madrid">Europe/Madrid</option>
+                        <option value="UTC">UTC</option>
+                      </select>
+                    </div>
+
+                    {/* Días de la semana — chips */}
+                    <div className="space-y-1.5">
+                      <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide">Días</p>
+                      <div className="flex gap-1 flex-wrap">
+                        {([["Lu",1],["Ma",2],["Mi",3],["Ju",4],["Vi",5],["Sa",6],["Do",0]] as [string,number][]).map(([label, day]) => {
+                          const active = rule.daysOfWeek.includes(day);
+                          return (
+                            <button
+                              key={day}
+                              type="button"
+                              onClick={() => updateOutboundRule(index, (current) => ({
+                                ...current,
+                                daysOfWeek: active
+                                  ? current.daysOfWeek.filter((d) => d !== day)
+                                  : [...current.daysOfWeek, day].sort(),
+                              }))}
+                              className={`text-[10px] font-semibold w-7 h-7 rounded-full border transition-colors ${
+                                active
+                                  ? "bg-[#0D2B3E] text-white border-[#0D2B3E]"
+                                  : "bg-white text-slate-400 border-slate-200 hover:border-slate-400"
+                              }`}
+                            >
+                              {label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    {/* Estados válidos — chips */}
+                    <div className="space-y-1.5">
+                      <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide">Estado de la cita</p>
+                      <div className="flex gap-1 flex-wrap">
+                        {(["scheduled","rescheduled","confirmed","pending","cancelled"] as string[]).map((status) => {
+                          const active = rule.allowedStatuses.includes(status);
+                          return (
+                            <button
+                              key={status}
+                              type="button"
+                              onClick={() => updateOutboundRule(index, (current) => ({
+                                ...current,
+                                allowedStatuses: active
+                                  ? current.allowedStatuses.filter((s) => s !== status)
+                                  : [...current.allowedStatuses, status],
+                              }))}
+                              className={`text-[10px] font-medium px-2.5 py-0.5 rounded-full border transition-colors ${
+                                active
+                                  ? "bg-[#00BFAE] text-white border-[#00BFAE]"
+                                  : "bg-white text-slate-400 border-slate-200 hover:border-slate-400"
+                              }`}
+                            >
+                              {status}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    {/* Destinatarios — pill toggles */}
+                    <div className="space-y-1.5">
+                      <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide">Destinatarios</p>
+                      <div className="flex gap-2">
+                        {([["customer","Cliente"],["agent","Agente"]] as [string,string][]).map(([val, label]) => {
+                          const active = rule.recipients.includes(val);
+                          return (
+                            <button
+                              key={val}
+                              type="button"
+                              onClick={() => updateOutboundRule(index, (current) => ({
+                                ...current,
+                                recipients: active
+                                  ? current.recipients.filter((r) => r !== val)
+                                  : Array.from(new Set([...current.recipients, val])),
+                              }))}
+                              className={`text-[10px] font-semibold px-3 py-1 rounded-full border transition-colors ${
+                                active
+                                  ? "bg-[#0D2B3E] text-white border-[#0D2B3E]"
+                                  : "bg-white text-slate-400 border-slate-200 hover:border-slate-400"
+                              }`}
+                            >
+                              {label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    {/* Mensaje */}
+                    <div className="space-y-1.5">
+                      <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide">Mensaje</p>
                       <textarea
                         value={rule.messageTemplate}
                         onChange={(e) => updateOutboundRule(index, (current) => ({ ...current, messageTemplate: e.target.value }))}
                         rows={3}
                         placeholder="Recordatorio: tu cita es el {{appointment_start_label}}."
-                        className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="w-full rounded-lg border border-slate-200 px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-[#00BFAE]/40"
                       />
                     </div>
+
                   </div>
                 ))}
+
+                {outboundRules.length === 0 && (
+                  <p className="text-center text-[11px] text-slate-400 py-4">
+                    Sin filtros aún. Agrega uno para activar el worker.
+                  </p>
+                )}
               </div>
             </div>
           )}
