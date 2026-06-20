@@ -1253,6 +1253,7 @@ async function executeCalendar({ node, input, variables, tenantId, llmService })
       calendarService: calSvc,
       calendarCandidates,
       rangeDays,
+      tenantId,
       slotDurationMin: requestedSlotDurationMin,
     });
 
@@ -1360,7 +1361,10 @@ async function executeCalendar({ node, input, variables, tenantId, llmService })
         const rangeDays = Number.isFinite(Number(cfg.range_days)) ? Number(cfg.range_days) : 5;
         let slots = [];
         try {
-          slots = await calSvc.getAvailableSlots(calendarId, rangeDays);
+          slots = await calSvc.getAvailableSlots(calendarId, rangeDays, {
+            slotDurationMin: requestedSlotDurationMin,
+            tenantId,
+          });
         } catch (_) {
           slots = [];
         }
@@ -1632,10 +1636,13 @@ async function _resolveCalendarAvailabilityCandidates({
   }];
 }
 
-async function _collectAvailabilityEntries({ calendarService, calendarCandidates, rangeDays, slotDurationMin = null }) {
+async function _collectAvailabilityEntries({ calendarService, calendarCandidates, rangeDays, tenantId, slotDurationMin = null }) {
   const availabilityByCalendar = await Promise.all(
     calendarCandidates.map(async (candidate) => {
-      const slots = await calendarService.getAvailableSlots(candidate.id, rangeDays);
+      const slots = await calendarService.getAvailableSlots(candidate.id, rangeDays, {
+        slotDurationMin,
+        tenantId,
+      });
       const filteredSlots = Array.isArray(slots)
         ? slots.filter((slot) => _slotMatchesDuration(slot, slotDurationMin))
         : [];

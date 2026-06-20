@@ -67,6 +67,123 @@ async function cacheDel(key) {
   } catch (_) { /* best-effort */ }
 }
 
+function parsePositiveInteger(value) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) return null;
+  return Math.trunc(parsed);
+}
+
+function normalizeAgendaWorkingHours(raw) {
+  if (!raw || typeof raw !== 'object') return {};
+
+  const dayAliases = {
+    mon: ['mon', 'monday', 'lun', 'lunes'],
+    tue: ['tue', 'tuesday', 'mar', 'martes'],
+    wed: ['wed', 'wednesday', 'mie', 'miercoles', 'miércoles'],
+    thu: ['thu', 'thursday', 'jue', 'jueves'],
+    fri: ['fri', 'friday', 'vie', 'viernes'],
+    sat: ['sat', 'saturday', 'sab', 'sabado', 'sábado'],
+    sun: ['sun', 'sunday', 'dom', 'domingo'],
+  };
+
+  const normalized = {};
+  for (const [targetDay, aliases] of Object.entries(dayAliases)) {
+    const sourceKey = Object.keys(raw).find((candidate) => aliases.includes(String(candidate || '').toLowerCase()));
+    if (!sourceKey) continue;
+
+    const value = raw[sourceKey];
+    if (Array.isArray(value) && value.length >= 2 && typeof value[0] === 'string' && typeof value[1] === 'string') {
+      normalized[targetDay] = [[String(value[0]), String(value[1])]];
+      continue;
+    }
+
+    if (Array.isArray(value) && value.every((range) => Array.isArray(range) && range.length >= 2)) {
+      normalized[targetDay] = value.map((range) => [String(range[0]), String(range[1])]);
+    }
+  }
+
+  return normalized;
+}
+
+function hasWorkingHours(workingHours) {
+  if (!workingHours || typeof workingHours !== 'object') return false;
+  return Object.values(workingHours).some((ranges) => Array.isArray(ranges) && ranges.length > 0);
+}
+
+async function ensureCalendarConfigForSlotDuration({ calendarId, tenantId, slotDurationMin, rangeDays = null }) {
+  const requestedDuration = parsePositiveInteger(slotDurationMin);
+  if (!calendarId || !requestedDuration) return;
+
+  const calendar = await prisma.calendar.findUnique({
+    where: { id: calendarId },
+    select: { id: true, tenantId: true, timezone: true, config: true },
+  });
+  if (!calendar) return;
+
+  const config = {
+    ...(calendar.config ?? {}),
+    timezone: String(calendar?.config?.timezone || calendar?.timezone || 'UTC'),
+  };
+
+  let changed = false;
+
+  if (parsePositiveInteger(config.slot_duration_min) !== requestedDuration) {
+    config.slot_duration_min = requestedDuration;
+    changed = true;
+  }
+
+  if (!hasWorkingHours(config.working_hours)) {
+    const agendaSettings = await prisma.configuracion.findUnique({
+      where: {
+        tenantId_clave: {
+          tenantId: tenantId || calendar.tenantId,
+          clave: 'agenda_settings',
+        },
+      },
+      select: { valor: true },
+    });
+
+    const rawWorkingHours = agendaSettings?.valor?.workingHours ?? agendaSettings?.valor?.working_hours ?? null;
+    const normalizedWorkingHours = normalizeAgendaWorkingHours(rawWorkingHours);
+    if (hasWorkingHours(normalizedWorkingHours)) {
+      config.working_hours = normalizedWorkingHours;
+      changed = true;
+    }
+
+    const agendaTimeZone = String(agendaSettings?.valor?.timeZone || agendaSettings?.valor?.timezone || '').trim();
+    if (agendaTimeZone && config.timezone !== agendaTimeZone) {
+      config.timezone = agendaTimeZone;
+      changed = true;
+    }
+  }
+
+  if (!changed) return;
+
+  await prisma.calendar.update({
+    where: { id: calendarId },
+    data: {
+      timezone: String(config.timezone || calendar.timezone || 'UTC'),
+      config,
+      updatedAt: new Date(),
+    },
+  });
+
+  await prisma.calendarSlot.deleteMany({
+    where: {
+      calendarId,
+      status: 'available',
+      startTime: { gte: new Date() },
+    },
+  });
+
+  await cacheDel(`slots:${calendarId}:default`);
+  if (rangeDays !== null && rangeDays !== undefined) {
+    await cacheDel(`slots:${calendarId}:${rangeDays}`);
+  }
+
+  await generateSlots(calendarId, rangeDays);
+}
+
 function asObject(value) {
   return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
 }
@@ -534,8 +651,18 @@ async function generateSlots(calendarId, days = null) {
  * @param {number} rangeDays  (default from calendar config)
  * @returns {Promise<{ id, startTime, endTime }[]>}
  */
-async function getAvailableSlots(calendarId, rangeDays = null) {
-  const cacheKey = `slots:${calendarId}:${rangeDays ?? 'default'}`;
+async function getAvailableSlots(calendarId, rangeDays = null, options = {}) {
+  const requestedDuration = parsePositiveInteger(options?.slotDurationMin);
+  if (requestedDuration) {
+    await ensureCalendarConfigForSlotDuration({
+      calendarId,
+      tenantId: options?.tenantId,
+      slotDurationMin: requestedDuration,
+      rangeDays,
+    });
+  }
+
+  const cacheKey = `slots:${calendarId}:${rangeDays ?? 'default'}:${requestedDuration ?? 'default'}`;
   const cached   = await cacheGet(cacheKey);
   if (cached) return cached;
 
