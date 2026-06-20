@@ -3793,158 +3793,6 @@ function FlowBuilder({
             <p className="text-xs text-slate-500">
               Inbound atiende conversaciones entrantes. Outbound dispara reglas automáticas desde el worker.
             </p>
-
-            {flowMode === "outbound" && (
-              <div className="space-y-3 pt-2 border-t border-slate-200">
-                <div className="flex items-center justify-between gap-2">
-                  <p className="text-xs font-medium text-slate-600">Reglas outbound</p>
-                  <button
-                    type="button"
-                    onClick={handleAddOutboundRule}
-                    className="text-xs px-2 py-1 rounded-lg border border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100"
-                  >
-                    + Agregar regla
-                  </button>
-                </div>
-
-                <div className="space-y-3 max-h-96 overflow-y-auto pr-1">
-                  {outboundRules.map((rule, index) => (
-                    <div key={rule.id} className="rounded-xl border border-slate-200 bg-white p-3 space-y-3">
-                      <div className="flex items-center justify-between gap-2">
-                        <input
-                          value={rule.label}
-                          onChange={(e) => updateOutboundRule(index, (current) => ({ ...current, label: e.target.value }))}
-                          className="flex-1 rounded-lg border border-slate-200 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                          placeholder="Recordatorio principal"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => handleRemoveOutboundRule(index)}
-                          className="text-xs px-2 py-1 rounded-lg border border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100"
-                        >
-                          Quitar
-                        </button>
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-2">
-                        <div>
-                          <label className="block text-[11px] font-medium text-slate-500 mb-1">Minutos antes</label>
-                          <input
-                            type="number"
-                            min={1}
-                            value={rule.minutesBefore}
-                            onChange={(e) => updateOutboundRule(index, (current) => ({ ...current, minutesBefore: Math.max(1, Number(e.target.value || 1)) }))}
-                            className="w-full rounded-lg border border-slate-200 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-[11px] font-medium text-slate-500 mb-1">Timezone</label>
-                          <input
-                            value={rule.timezone}
-                            onChange={(e) => updateOutboundRule(index, (current) => ({ ...current, timezone: e.target.value }))}
-                            placeholder="America/Mexico_City"
-                            className="w-full rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500"
-                          />
-                        </div>
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-2">
-                        <div>
-                          <label className="block text-[11px] font-medium text-slate-500 mb-1">Días (0-6, coma)</label>
-                          <input
-                            value={rule.daysOfWeek.join(",")}
-                            onChange={(e) => updateOutboundRule(index, (current) => ({
-                              ...current,
-                              daysOfWeek: e.target.value
-                                .split(",")
-                                .map((item) => Number(item.trim()))
-                                .filter((item) => Number.isInteger(item) && item >= 0 && item <= 6),
-                            }))}
-                            placeholder="1,2,3,4,5"
-                            className="w-full rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-[11px] font-medium text-slate-500 mb-1">Estados válidos</label>
-                          <input
-                            value={rule.allowedStatuses.join(",")}
-                            onChange={(e) => updateOutboundRule(index, (current) => ({
-                              ...current,
-                              allowedStatuses: e.target.value
-                                .split(",")
-                                .map((item) => item.trim())
-                                .filter(Boolean),
-                            }))}
-                            placeholder="scheduled,rescheduled"
-                            className="w-full rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500"
-                          />
-                        </div>
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-2">
-                        <div>
-                          <label className="block text-[11px] font-medium text-slate-500 mb-1">Desde</label>
-                          <input
-                            value={rule.timeWindowStart}
-                            onChange={(e) => updateOutboundRule(index, (current) => ({ ...current, timeWindowStart: e.target.value }))}
-                            placeholder="08:00"
-                            className="w-full rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-[11px] font-medium text-slate-500 mb-1">Hasta</label>
-                          <input
-                            value={rule.timeWindowEnd}
-                            onChange={(e) => updateOutboundRule(index, (current) => ({ ...current, timeWindowEnd: e.target.value }))}
-                            placeholder="18:00"
-                            className="w-full rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500"
-                          />
-                        </div>
-                      </div>
-
-                      <div className="space-y-2">
-                        <div className="flex items-center gap-3 text-xs text-slate-600">
-                          <label className="flex items-center gap-2">
-                            <input
-                              type="checkbox"
-                              checked={rule.recipients.includes("customer")}
-                              onChange={(e) => updateOutboundRule(index, (current) => ({
-                                ...current,
-                                recipients: e.target.checked
-                                  ? Array.from(new Set([...current.recipients, "customer"]))
-                                  : current.recipients.filter((recipient) => recipient !== "customer"),
-                              }))}
-                            />
-                            Cliente
-                          </label>
-                          <label className="flex items-center gap-2">
-                            <input
-                              type="checkbox"
-                              checked={rule.recipients.includes("agent")}
-                              onChange={(e) => updateOutboundRule(index, (current) => ({
-                                ...current,
-                                recipients: e.target.checked
-                                  ? Array.from(new Set([...current.recipients, "agent"]))
-                                  : current.recipients.filter((recipient) => recipient !== "agent"),
-                              }))}
-                            />
-                            Agente
-                          </label>
-                        </div>
-
-                        <textarea
-                          value={rule.messageTemplate}
-                          onChange={(e) => updateOutboundRule(index, (current) => ({ ...current, messageTemplate: e.target.value }))}
-                          rows={3}
-                          placeholder="Recordatorio: tu cita es el {{appointment_start_label}}."
-                          className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        />
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
           </div>
 
           {/* Save new version */}
@@ -3976,6 +3824,163 @@ function FlowBuilder({
                 <div className="flex justify-between"><span>{t("builder.menu")}</span><span className="font-medium text-slate-700">{flatNodesList.filter((n) => n.type === "menu").length}</span></div>
                 <div className="flex justify-between"><span>{t("builder.action")}</span><span className="font-medium text-slate-700">{flatNodesList.filter((n) => n.type === "action").length}</span></div>
                 <div className="flex justify-between"><span>{t("builder.end")}</span><span className="font-medium text-slate-700">{flatNodesList.filter((n) => n.type === "end").length}</span></div>
+              </div>
+            </div>
+          )}
+
+          {flowMode === "outbound" && (
+            <div className="bg-slate-50 rounded-2xl p-4 border border-slate-100 space-y-3">
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-xs font-medium text-slate-700">Filtros outbound</p>
+                <button
+                  type="button"
+                  onClick={handleAddOutboundRule}
+                  className="text-xs px-2 py-1 rounded-lg border border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100"
+                >
+                  + Agregar filtro
+                </button>
+              </div>
+
+              <p className="text-[11px] text-slate-500">
+                Configura filtros de disparo para decidir cuándo el worker envía mensajes outbound.
+              </p>
+
+              <div className="space-y-3 max-h-96 overflow-y-auto pr-1">
+                {outboundRules.map((rule, index) => (
+                  <div key={rule.id} className="rounded-xl border border-slate-200 bg-white p-3 space-y-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <input
+                        value={rule.label}
+                        onChange={(e) => updateOutboundRule(index, (current) => ({ ...current, label: e.target.value }))}
+                        className="flex-1 rounded-lg border border-slate-200 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        placeholder="Filtro 1"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveOutboundRule(index)}
+                        className="text-xs px-2 py-1 rounded-lg border border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100"
+                      >
+                        Quitar
+                      </button>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="block text-[11px] font-medium text-slate-500 mb-1">Filtro: minutos antes</label>
+                        <input
+                          type="number"
+                          min={1}
+                          value={rule.minutesBefore}
+                          onChange={(e) => updateOutboundRule(index, (current) => ({ ...current, minutesBefore: Math.max(1, Number(e.target.value || 1)) }))}
+                          className="w-full rounded-lg border border-slate-200 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[11px] font-medium text-slate-500 mb-1">Filtro: timezone</label>
+                        <input
+                          value={rule.timezone}
+                          onChange={(e) => updateOutboundRule(index, (current) => ({ ...current, timezone: e.target.value }))}
+                          placeholder="America/Mexico_City"
+                          className="w-full rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="block text-[11px] font-medium text-slate-500 mb-1">Filtro: días (0-6, coma)</label>
+                        <input
+                          value={rule.daysOfWeek.join(",")}
+                          onChange={(e) => updateOutboundRule(index, (current) => ({
+                            ...current,
+                            daysOfWeek: e.target.value
+                              .split(",")
+                              .map((item) => Number(item.trim()))
+                              .filter((item) => Number.isInteger(item) && item >= 0 && item <= 6),
+                          }))}
+                          placeholder="1,2,3,4,5"
+                          className="w-full rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[11px] font-medium text-slate-500 mb-1">Filtro: estados válidos</label>
+                        <input
+                          value={rule.allowedStatuses.join(",")}
+                          onChange={(e) => updateOutboundRule(index, (current) => ({
+                            ...current,
+                            allowedStatuses: e.target.value
+                              .split(",")
+                              .map((item) => item.trim())
+                              .filter(Boolean),
+                          }))}
+                          placeholder="scheduled,rescheduled"
+                          className="w-full rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="block text-[11px] font-medium text-slate-500 mb-1">Filtro: desde</label>
+                        <input
+                          value={rule.timeWindowStart}
+                          onChange={(e) => updateOutboundRule(index, (current) => ({ ...current, timeWindowStart: e.target.value }))}
+                          placeholder="08:00"
+                          className="w-full rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[11px] font-medium text-slate-500 mb-1">Filtro: hasta</label>
+                        <input
+                          value={rule.timeWindowEnd}
+                          onChange={(e) => updateOutboundRule(index, (current) => ({ ...current, timeWindowEnd: e.target.value }))}
+                          placeholder="18:00"
+                          className="w-full rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <p className="text-[11px] font-medium text-slate-500">Filtro: destinatarios</p>
+                      <div className="flex items-center gap-3 text-xs text-slate-600">
+                        <label className="flex items-center gap-2">
+                          <input
+                            type="checkbox"
+                            checked={rule.recipients.includes("customer")}
+                            onChange={(e) => updateOutboundRule(index, (current) => ({
+                              ...current,
+                              recipients: e.target.checked
+                                ? Array.from(new Set([...current.recipients, "customer"]))
+                                : current.recipients.filter((recipient) => recipient !== "customer"),
+                            }))}
+                          />
+                          Cliente
+                        </label>
+                        <label className="flex items-center gap-2">
+                          <input
+                            type="checkbox"
+                            checked={rule.recipients.includes("agent")}
+                            onChange={(e) => updateOutboundRule(index, (current) => ({
+                              ...current,
+                              recipients: e.target.checked
+                                ? Array.from(new Set([...current.recipients, "agent"]))
+                                : current.recipients.filter((recipient) => recipient !== "agent"),
+                            }))}
+                          />
+                          Agente
+                        </label>
+                      </div>
+
+                      <textarea
+                        value={rule.messageTemplate}
+                        onChange={(e) => updateOutboundRule(index, (current) => ({ ...current, messageTemplate: e.target.value }))}
+                        rows={3}
+                        placeholder="Recordatorio: tu cita es el {{appointment_start_label}}."
+                        className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
           )}
