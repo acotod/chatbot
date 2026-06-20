@@ -90,6 +90,29 @@ interface FlowDefinition {
   metadata?: Record<string, unknown>;
 }
 
+type FlowMode = "inbound" | "outbound";
+type OutboundRecipient = "customer" | "agent";
+
+interface OutboundTriggerRule {
+  id: string;
+  label: string;
+  enabled: boolean;
+  minutesBefore: number;
+  recipients: OutboundRecipient[];
+  allowedStatuses: string[];
+  daysOfWeek: number[];
+  timeWindowStart: string;
+  timeWindowEnd: string;
+  timezone: string;
+  messageTemplate: string;
+}
+
+interface FlowAutomationMetadata {
+  flow_mode: FlowMode;
+  outbound_rules: OutboundTriggerRule[];
+  reminder_timezone: string;
+}
+
 function flattenNodes(nodes: NodeDef[]): NodeDef[] {
   return nodes.flatMap((node) => [node, ...flattenNodes(node.children || [])]);
 }
@@ -150,6 +173,88 @@ function asObjectRecord(value: unknown): Record<string, unknown> | null {
 
 function asArray(value: unknown): unknown[] {
   return Array.isArray(value) ? value : [];
+}
+
+function normalizeFlowMode(value: unknown): FlowMode {
+  return String(value ?? "").trim().toLowerCase() === "outbound" ? "outbound" : "inbound";
+}
+
+function normalizeTimeString(value: unknown): string {
+  const raw = String(value ?? "").trim();
+  return /^([01]\d|2[0-3]):([0-5]\d)$/.test(raw) ? raw : "";
+}
+
+function normalizeWeekdayList(value: unknown): number[] {
+  return asArray(value)
+    .map((item) => Number(item))
+    .filter((item) => Number.isInteger(item) && item >= 0 && item <= 6);
+}
+
+function normalizeRecipientList(value: unknown): OutboundRecipient[] {
+  const recipients = asArray(value)
+    .map((item) => String(item ?? "").trim().toLowerCase())
+    .filter((item): item is OutboundRecipient => item === "customer" || item === "agent");
+
+  return Array.from(new Set(recipients));
+}
+
+function normalizeStatusList(value: unknown): string[] {
+  const statuses = asArray(value)
+    .map((item) => String(item ?? "").trim())
+    .filter(Boolean);
+
+  return Array.from(new Set(statuses.length > 0 ? statuses : ["scheduled", "rescheduled"]));
+}
+
+function normalizeOutboundRule(raw: unknown, index: number): OutboundTriggerRule {
+  const record = asObjectRecord(raw);
+  const ruleId = String(record?.id ?? record?.rule_id ?? `rule_${index + 1}`).trim() || `rule_${index + 1}`;
+  const minutesBefore = Math.max(1, Math.trunc(Number(record?.minutesBefore ?? record?.minutes_before ?? 60) || 60));
+
+  return {
+    id: ruleId,
+    label: String(record?.label ?? `Recordatorio ${index + 1}`).trim() || `Recordatorio ${index + 1}`,
+    enabled: record?.enabled === undefined ? true : Boolean(record?.enabled),
+    minutesBefore,
+    recipients: normalizeRecipientList(record?.recipients),
+    allowedStatuses: normalizeStatusList(record?.allowedStatuses ?? record?.allowed_statuses),
+    daysOfWeek: normalizeWeekdayList(record?.daysOfWeek ?? record?.days_of_week),
+    timeWindowStart: normalizeTimeString(record?.timeWindowStart ?? record?.time_window_start),
+    timeWindowEnd: normalizeTimeString(record?.timeWindowEnd ?? record?.time_window_end),
+    timezone: String(record?.timezone ?? "").trim(),
+    messageTemplate: String(record?.messageTemplate ?? record?.message_template ?? "").trim()
+      || "Recordatorio: tu cita es el {{appointment_start_label}}.",
+  };
+}
+
+function normalizeOutboundRules(value: unknown): OutboundTriggerRule[] {
+  return asArray(value)
+    .map((rule, index) => normalizeOutboundRule(rule, index))
+    .filter((rule) => Boolean(rule.id));
+}
+
+function normalizeFlowAutomationMetadata(value: unknown): FlowAutomationMetadata {
+  const record = asObjectRecord(value) ?? {};
+  return {
+    flow_mode: normalizeFlowMode(record.flow_mode ?? record.direction),
+    outbound_rules: normalizeOutboundRules(record.outbound_rules),
+    reminder_timezone: String(record.reminder_timezone ?? "").trim(),
+  };
+}
+
+function createOutboundRule(): OutboundTriggerRule {
+  return normalizeOutboundRule({}, 0);
+}
+
+function updateDefinitionMetadata(definition: FlowDefinition, patch: Partial<FlowAutomationMetadata>): FlowDefinition {
+  const currentMetadata = asObjectRecord(definition.metadata) ?? {};
+  return {
+    ...definition,
+    metadata: {
+      ...currentMetadata,
+      ...patch,
+    },
+  };
 }
 
 function extractValidationErrorMessages(rawErrors: unknown): string[] {
@@ -607,6 +712,7 @@ function detectClosedCycles(adjacency: Map<string, string[]>, entryPoint: string
 function validateFlowGraph(definition: FlowDefinition): { errors: string[]; warnings: string[] } {
   const errors: string[] = [];
   const warnings: string[] = [];
+  const automation = normalizeFlowAutomationMetadata(definition.metadata);
 
   const flatNodes = flattenNodes(definition.nodes);
   const nodesById = new Map(flatNodes.map((node) => [node.id, node]));
@@ -640,6 +746,25 @@ function validateFlowGraph(definition: FlowDefinition): { errors: string[]; warn
       level.push(`El nodo ${node.id} no tiene salida (next/branches).`);
     }
   });
+
+  if (automation.flow_mode === "outbound") {
+    if (!automation.outbound_rules.length) {
+      errors.push("El flujo outbound debe definir al menos una regla de disparo.");
+    }
+
+    automation.outbound_rules.forEach((rule) => {
+      if (!rule.enabled) return;
+      if (!rule.minutesBefore || rule.minutesBefore < 1) {
+        errors.push(`La regla outbound ${rule.id} debe tener minutesBefore mayor a 0.`);
+      }
+      if (!rule.recipients.length) {
+        warnings.push(`La regla outbound ${rule.id} no tiene destinatarios configurados.`);
+      }
+      if (!rule.messageTemplate.trim()) {
+        warnings.push(`La regla outbound ${rule.id} no tiene plantilla de mensaje.`);
+      }
+    });
+  }
 
   const reachable = findReachableNodeIds(entryPoint, adjacency);
   flatNodes.forEach((node) => {
@@ -842,6 +967,8 @@ function convertWabaJsonToFlowDefinition(value: unknown): FlowDefinition {
     metadata: {
       source: "waba_json",
       routing_model: waba?.routing_model,
+      flow_mode: "inbound",
+      outbound_rules: [],
     },
   };
 }
@@ -3145,6 +3272,8 @@ function FlowBuilder({
   const [jsonView, setJsonView] = useState(false);
   const [jsonText, setJsonText] = useState("");
   const [jsonError, setJsonError] = useState("");
+  const [flowMode, setFlowMode] = useState<FlowMode>("inbound");
+  const [outboundRules, setOutboundRules] = useState<OutboundTriggerRule[]>([createOutboundRule()]);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
   const [validating, setValidating] = useState(false);
@@ -3181,6 +3310,13 @@ function FlowBuilder({
       setJsonText(JSON.stringify(normalizedDefinition, null, 2));
     } catch { /* ignore */ }
   }, [flow.id, tenantSlug]);
+
+  useEffect(() => {
+    if (!definition) return;
+    const automation = normalizeFlowAutomationMetadata(definition.metadata);
+    setFlowMode(automation.flow_mode);
+    setOutboundRules(automation.outbound_rules.length > 0 ? automation.outbound_rules : [createOutboundRule()]);
+  }, [definition]);
 
   useEffect(() => {
     loadLatestVersion();
@@ -3326,6 +3462,45 @@ function FlowBuilder({
       const newDef = normalizeFlowDefinition({ ...prev, entry_point: id });
       setJsonText(JSON.stringify(newDef, null, 2));
       return newDef;
+    });
+  }
+
+  function commitAutomationPatch(patch: Partial<FlowAutomationMetadata>) {
+    setDefinition((prev) => {
+      if (!prev) return prev;
+      const nextDefinition = normalizeFlowDefinition(updateDefinitionMetadata(prev, patch));
+      setJsonText(JSON.stringify(nextDefinition, null, 2));
+      return nextDefinition;
+    });
+  }
+
+  function handleFlowModeChange(nextMode: FlowMode) {
+    setFlowMode(nextMode);
+    commitAutomationPatch({ flow_mode: nextMode });
+  }
+
+  function updateOutboundRule(index: number, updater: (rule: OutboundTriggerRule) => OutboundTriggerRule) {
+    setOutboundRules((prev) => {
+      const nextRules = prev.map((rule, ruleIndex) => (ruleIndex === index ? updater(rule) : rule));
+      commitAutomationPatch({ outbound_rules: nextRules });
+      return nextRules;
+    });
+  }
+
+  function handleAddOutboundRule() {
+    setOutboundRules((prev) => {
+      const nextRules = [...prev, createOutboundRule()];
+      commitAutomationPatch({ outbound_rules: nextRules });
+      return nextRules;
+    });
+  }
+
+  function handleRemoveOutboundRule(index: number) {
+    setOutboundRules((prev) => {
+      const nextRules = prev.filter((_, ruleIndex) => ruleIndex !== index);
+      const fallbackRules = nextRules.length > 0 ? nextRules : [createOutboundRule()];
+      commitAutomationPatch({ outbound_rules: fallbackRules });
+      return fallbackRules;
     });
   }
 
@@ -3600,6 +3775,176 @@ function FlowBuilder({
                 <option key={n.id} value={n.id}>{n.id} ({n.type})</option>
               ))}
             </select>
+          </div>
+
+          <div className="bg-slate-50 rounded-2xl p-4 border border-slate-100 space-y-3">
+            <div>
+              <label className="block text-xs font-medium text-slate-600 mb-2">Modo del flujo</label>
+              <select
+                value={flowMode}
+                onChange={(e) => handleFlowModeChange(e.target.value === "outbound" ? "outbound" : "inbound")}
+                className="w-full rounded-xl border border-slate-200 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+              >
+                <option value="inbound">Inbound</option>
+                <option value="outbound">Outbound</option>
+              </select>
+            </div>
+
+            <p className="text-xs text-slate-500">
+              Inbound atiende conversaciones entrantes. Outbound dispara reglas automáticas desde el worker.
+            </p>
+
+            {flowMode === "outbound" && (
+              <div className="space-y-3 pt-2 border-t border-slate-200">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-xs font-medium text-slate-600">Reglas outbound</p>
+                  <button
+                    type="button"
+                    onClick={handleAddOutboundRule}
+                    className="text-xs px-2 py-1 rounded-lg border border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100"
+                  >
+                    + Agregar regla
+                  </button>
+                </div>
+
+                <div className="space-y-3 max-h-96 overflow-y-auto pr-1">
+                  {outboundRules.map((rule, index) => (
+                    <div key={rule.id} className="rounded-xl border border-slate-200 bg-white p-3 space-y-3">
+                      <div className="flex items-center justify-between gap-2">
+                        <input
+                          value={rule.label}
+                          onChange={(e) => updateOutboundRule(index, (current) => ({ ...current, label: e.target.value }))}
+                          className="flex-1 rounded-lg border border-slate-200 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          placeholder="Recordatorio principal"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveOutboundRule(index)}
+                          className="text-xs px-2 py-1 rounded-lg border border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100"
+                        >
+                          Quitar
+                        </button>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <label className="block text-[11px] font-medium text-slate-500 mb-1">Minutos antes</label>
+                          <input
+                            type="number"
+                            min={1}
+                            value={rule.minutesBefore}
+                            onChange={(e) => updateOutboundRule(index, (current) => ({ ...current, minutesBefore: Math.max(1, Number(e.target.value || 1)) }))}
+                            className="w-full rounded-lg border border-slate-200 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[11px] font-medium text-slate-500 mb-1">Timezone</label>
+                          <input
+                            value={rule.timezone}
+                            onChange={(e) => updateOutboundRule(index, (current) => ({ ...current, timezone: e.target.value }))}
+                            placeholder="America/Mexico_City"
+                            className="w-full rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <label className="block text-[11px] font-medium text-slate-500 mb-1">Días (0-6, coma)</label>
+                          <input
+                            value={rule.daysOfWeek.join(",")}
+                            onChange={(e) => updateOutboundRule(index, (current) => ({
+                              ...current,
+                              daysOfWeek: e.target.value
+                                .split(",")
+                                .map((item) => Number(item.trim()))
+                                .filter((item) => Number.isInteger(item) && item >= 0 && item <= 6),
+                            }))}
+                            placeholder="1,2,3,4,5"
+                            className="w-full rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[11px] font-medium text-slate-500 mb-1">Estados válidos</label>
+                          <input
+                            value={rule.allowedStatuses.join(",")}
+                            onChange={(e) => updateOutboundRule(index, (current) => ({
+                              ...current,
+                              allowedStatuses: e.target.value
+                                .split(",")
+                                .map((item) => item.trim())
+                                .filter(Boolean),
+                            }))}
+                            placeholder="scheduled,rescheduled"
+                            className="w-full rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <label className="block text-[11px] font-medium text-slate-500 mb-1">Desde</label>
+                          <input
+                            value={rule.timeWindowStart}
+                            onChange={(e) => updateOutboundRule(index, (current) => ({ ...current, timeWindowStart: e.target.value }))}
+                            placeholder="08:00"
+                            className="w-full rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[11px] font-medium text-slate-500 mb-1">Hasta</label>
+                          <input
+                            value={rule.timeWindowEnd}
+                            onChange={(e) => updateOutboundRule(index, (current) => ({ ...current, timeWindowEnd: e.target.value }))}
+                            placeholder="18:00"
+                            className="w-full rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-3 text-xs text-slate-600">
+                          <label className="flex items-center gap-2">
+                            <input
+                              type="checkbox"
+                              checked={rule.recipients.includes("customer")}
+                              onChange={(e) => updateOutboundRule(index, (current) => ({
+                                ...current,
+                                recipients: e.target.checked
+                                  ? Array.from(new Set([...current.recipients, "customer"]))
+                                  : current.recipients.filter((recipient) => recipient !== "customer"),
+                              }))}
+                            />
+                            Cliente
+                          </label>
+                          <label className="flex items-center gap-2">
+                            <input
+                              type="checkbox"
+                              checked={rule.recipients.includes("agent")}
+                              onChange={(e) => updateOutboundRule(index, (current) => ({
+                                ...current,
+                                recipients: e.target.checked
+                                  ? Array.from(new Set([...current.recipients, "agent"]))
+                                  : current.recipients.filter((recipient) => recipient !== "agent"),
+                              }))}
+                            />
+                            Agente
+                          </label>
+                        </div>
+
+                        <textarea
+                          value={rule.messageTemplate}
+                          onChange={(e) => updateOutboundRule(index, (current) => ({ ...current, messageTemplate: e.target.value }))}
+                          rows={3}
+                          placeholder="Recordatorio: tu cita es el {{appointment_start_label}}."
+                          className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Save new version */}

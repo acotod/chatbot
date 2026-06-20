@@ -264,6 +264,30 @@ export interface FlowDefinition {
   metadata?: Record<string, unknown>;
 }
 
+export type FlowMode = 'inbound' | 'outbound';
+
+export type OutboundRecipient = 'customer' | 'agent';
+
+export interface OutboundTriggerRule {
+  id: string;
+  label: string;
+  enabled: boolean;
+  minutesBefore: number;
+  recipients: OutboundRecipient[];
+  allowedStatuses: string[];
+  daysOfWeek: number[];
+  timeWindowStart?: string | null;
+  timeWindowEnd?: string | null;
+  timezone?: string | null;
+  messageTemplate: string;
+}
+
+export interface FlowAutomationMetadata {
+  flow_mode?: FlowMode;
+  outbound_rules?: OutboundTriggerRule[];
+  reminder_timezone?: string | null;
+}
+
 // ─── ReactFlow node & edge types ──────────────────────────────────────────────
 
 export interface NodeData {
