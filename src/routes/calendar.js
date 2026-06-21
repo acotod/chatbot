@@ -5,6 +5,7 @@ const { PrismaClient } = require('@prisma/client');
 const requireJwt    = require('../middleware/requireJwt');
 const resolveTenant = require('../middleware/resolveTenant');
 const calendarSvc   = require('../services/calendarService');
+const db            = require('../services/database');
 
 const prisma  = new PrismaClient();
 const router  = express.Router();
@@ -241,8 +242,19 @@ router.get('/appointments/:id', async (req, res, next) => {
 router.post('/appointments/:id/cancel', async (req, res, next) => {
   try {
     const { tenantId } = req;
+    const appointment = await calendarSvc.getAppointment(req.params.id, tenantId);
     const result = await calendarSvc.cancelAppointment(req.params.id, tenantId);
     if (result.error) return res.status(400).json({ error: result.error });
+
+    if (appointment?.conversationId) {
+      const linkedSolicitudes = await db.listSolicitudesByConversationId(tenantId, appointment.conversationId);
+      for (const solicitud of linkedSolicitudes) {
+        const estado = String(solicitud?.estado || '').toLowerCase();
+        if (estado === db.SOLICITUD_STATUS.COMPLETED || estado === db.SOLICITUD_STATUS.REJECTED) continue;
+        await db.updateSolicitudEstado(solicitud.id, tenantId, db.SOLICITUD_STATUS.REJECTED);
+      }
+    }
+
     res.json({ ok: true });
   } catch (err) {
     next(err);
