@@ -92,12 +92,15 @@ interface FlowDefinition {
 
 type FlowMode = "inbound" | "outbound";
 type OutboundRecipient = "customer" | "agent";
+type OutboundTriggerType = "appointment_reminder" | "daily_agent_summary";
 
 interface OutboundTriggerRule {
   id: string;
   label: string;
   enabled: boolean;
+  triggerType: OutboundTriggerType;
   minutesBefore: number;
+  summaryTime: string;
   recipients: OutboundRecipient[];
   allowedStatuses: string[];
   daysOfWeek: number[];
@@ -179,6 +182,12 @@ function normalizeFlowMode(value: unknown): FlowMode {
   return String(value ?? "").trim().toLowerCase() === "outbound" ? "outbound" : "inbound";
 }
 
+function normalizeTriggerType(value: unknown): OutboundTriggerType {
+  return String(value ?? "").trim().toLowerCase() === "daily_agent_summary"
+    ? "daily_agent_summary"
+    : "appointment_reminder";
+}
+
 function normalizeTimeString(value: unknown): string {
   const raw = String(value ?? "").trim();
   return /^([01]\d|2[0-3]):([0-5]\d)$/.test(raw) ? raw : "";
@@ -210,20 +219,28 @@ function normalizeOutboundRule(raw: unknown, index: number): OutboundTriggerRule
   const record = asObjectRecord(raw);
   const ruleId = String(record?.id ?? record?.rule_id ?? `rule_${index + 1}`).trim() || `rule_${index + 1}`;
   const minutesBefore = Math.max(1, Math.trunc(Number(record?.minutesBefore ?? record?.minutes_before ?? 60) || 60));
+  const triggerType = normalizeTriggerType(record?.triggerType ?? record?.trigger_type);
+  const recipients = triggerType === "daily_agent_summary"
+    ? ["agent"]
+    : normalizeRecipientList(record?.recipients);
 
   return {
     id: ruleId,
     label: String(record?.label ?? `Recordatorio ${index + 1}`).trim() || `Recordatorio ${index + 1}`,
     enabled: record?.enabled === undefined ? true : Boolean(record?.enabled),
+    triggerType,
     minutesBefore,
-    recipients: normalizeRecipientList(record?.recipients),
+    summaryTime: normalizeTimeString(record?.summaryTime ?? record?.summary_time) || "07:00",
+    recipients,
     allowedStatuses: normalizeStatusList(record?.allowedStatuses ?? record?.allowed_statuses),
     daysOfWeek: normalizeWeekdayList(record?.daysOfWeek ?? record?.days_of_week),
     timeWindowStart: normalizeTimeString(record?.timeWindowStart ?? record?.time_window_start),
     timeWindowEnd: normalizeTimeString(record?.timeWindowEnd ?? record?.time_window_end),
     timezone: String(record?.timezone ?? "").trim(),
     messageTemplate: String(record?.messageTemplate ?? record?.message_template ?? "").trim()
-      || "Recordatorio: tu cita es el {{appointment_start_label}}.",
+      || (triggerType === "daily_agent_summary"
+        ? "Resumen de citas de hoy ({{summary_date}})\nTotal: {{appointments_count}}\n{{appointments_list}}"
+        : "Recordatorio: tu cita es el {{appointment_start_label}}."),
   };
 }
 
@@ -754,8 +771,11 @@ function validateFlowGraph(definition: FlowDefinition): { errors: string[]; warn
 
     automation.outbound_rules.forEach((rule) => {
       if (!rule.enabled) return;
-      if (!rule.minutesBefore || rule.minutesBefore < 1) {
+      if (rule.triggerType !== "daily_agent_summary" && (!rule.minutesBefore || rule.minutesBefore < 1)) {
         errors.push(`La regla outbound ${rule.id} debe tener minutesBefore mayor a 0.`);
+      }
+      if (rule.triggerType === "daily_agent_summary" && !/^([01]\d|2[0-3]):([0-5]\d)$/.test(rule.summaryTime || "")) {
+        errors.push(`La regla outbound ${rule.id} debe tener summaryTime válido (HH:mm).`);
       }
       if (!rule.recipients.length) {
         warnings.push(`La regla outbound ${rule.id} no tiene destinatarios configurados.`);
@@ -3857,6 +3877,28 @@ function FlowBuilder({
                         className="flex-1 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-[#00BFAE]/40"
                         placeholder={`Filtro ${index + 1}`}
                       />
+                      <select
+                        value={rule.triggerType}
+                        onChange={(e) => {
+                          const nextType = e.target.value === "daily_agent_summary"
+                            ? "daily_agent_summary"
+                            : "appointment_reminder";
+                          updateOutboundRule(index, (current) => ({
+                            ...current,
+                            triggerType: nextType,
+                            recipients: nextType === "daily_agent_summary" ? ["agent"] : current.recipients,
+                            messageTemplate: current.messageTemplate.trim()
+                              ? current.messageTemplate
+                              : (nextType === "daily_agent_summary"
+                                ? "Resumen de citas de hoy ({{summary_date}})\nTotal: {{appointments_count}}\n{{appointments_list}}"
+                                : "Recordatorio: tu cita es el {{appointment_start_label}}."),
+                          }));
+                        }}
+                        className="rounded-lg border border-slate-200 px-2 py-1 text-[10px] font-medium bg-white focus:outline-none focus:ring-2 focus:ring-[#00BFAE]/40"
+                      >
+                        <option value="appointment_reminder">Recordatorio</option>
+                        <option value="daily_agent_summary">Resumen diario agente</option>
+                      </select>
                       <button
                         type="button"
                         onClick={() => handleRemoveOutboundRule(index)}
@@ -3866,39 +3908,57 @@ function FlowBuilder({
                       </button>
                     </div>
 
-                    {/* Minutos antes + Timezone */}
-                    <div className="space-y-1.5">
-                      <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide">Ventana de tiempo</p>
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <div className="flex items-center gap-1.5 bg-slate-100 rounded-full px-3 py-1">
-                          <span className="text-[10px] text-slate-500 whitespace-nowrap">Avisar</span>
-                          <input
-                            type="number"
-                            min={1}
-                            value={rule.minutesBefore}
-                            onChange={(e) => updateOutboundRule(index, (current) => ({ ...current, minutesBefore: Math.max(1, Number(e.target.value || 1)) }))}
-                            className="w-12 bg-transparent text-xs font-semibold text-slate-700 text-center focus:outline-none"
-                          />
-                          <span className="text-[10px] text-slate-500">min antes</span>
-                        </div>
-                        <div className="flex items-center gap-1.5 bg-slate-100 rounded-full px-3 py-1">
-                          <span className="text-[10px] text-slate-500">De</span>
-                          <input
-                            value={rule.timeWindowStart}
-                            onChange={(e) => updateOutboundRule(index, (current) => ({ ...current, timeWindowStart: e.target.value }))}
-                            placeholder="08:00"
-                            className="w-12 bg-transparent text-xs font-mono font-semibold text-slate-700 text-center focus:outline-none"
-                          />
-                          <span className="text-[10px] text-slate-500">a</span>
-                          <input
-                            value={rule.timeWindowEnd}
-                            onChange={(e) => updateOutboundRule(index, (current) => ({ ...current, timeWindowEnd: e.target.value }))}
-                            placeholder="18:00"
-                            className="w-12 bg-transparent text-xs font-mono font-semibold text-slate-700 text-center focus:outline-none"
-                          />
+                    {/* Minutos antes / hora resumen */}
+                    {rule.triggerType === "daily_agent_summary" ? (
+                      <div className="space-y-1.5">
+                        <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide">Hora de envío diario</p>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <div className="flex items-center gap-1.5 bg-slate-100 rounded-full px-3 py-1">
+                            <span className="text-[10px] text-slate-500 whitespace-nowrap">Enviar a las</span>
+                            <input
+                              value={rule.summaryTime}
+                              onChange={(e) => updateOutboundRule(index, (current) => ({ ...current, summaryTime: e.target.value }))}
+                              placeholder="07:00"
+                              className="w-14 bg-transparent text-xs font-mono font-semibold text-slate-700 text-center focus:outline-none"
+                            />
+                            <span className="text-[10px] text-slate-500">(HH:mm)</span>
+                          </div>
                         </div>
                       </div>
-                    </div>
+                    ) : (
+                      <div className="space-y-1.5">
+                        <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide">Ventana de tiempo</p>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <div className="flex items-center gap-1.5 bg-slate-100 rounded-full px-3 py-1">
+                            <span className="text-[10px] text-slate-500 whitespace-nowrap">Avisar</span>
+                            <input
+                              type="number"
+                              min={1}
+                              value={rule.minutesBefore}
+                              onChange={(e) => updateOutboundRule(index, (current) => ({ ...current, minutesBefore: Math.max(1, Number(e.target.value || 1)) }))}
+                              className="w-12 bg-transparent text-xs font-semibold text-slate-700 text-center focus:outline-none"
+                            />
+                            <span className="text-[10px] text-slate-500">min antes</span>
+                          </div>
+                          <div className="flex items-center gap-1.5 bg-slate-100 rounded-full px-3 py-1">
+                            <span className="text-[10px] text-slate-500">De</span>
+                            <input
+                              value={rule.timeWindowStart}
+                              onChange={(e) => updateOutboundRule(index, (current) => ({ ...current, timeWindowStart: e.target.value }))}
+                              placeholder="08:00"
+                              className="w-12 bg-transparent text-xs font-mono font-semibold text-slate-700 text-center focus:outline-none"
+                            />
+                            <span className="text-[10px] text-slate-500">a</span>
+                            <input
+                              value={rule.timeWindowEnd}
+                              onChange={(e) => updateOutboundRule(index, (current) => ({ ...current, timeWindowEnd: e.target.value }))}
+                              placeholder="18:00"
+                              className="w-12 bg-transparent text-xs font-mono font-semibold text-slate-700 text-center focus:outline-none"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    )}
 
                     {/* Timezone */}
                     <div className="space-y-1.5">
@@ -3986,10 +4046,12 @@ function FlowBuilder({
                       <div className="flex gap-2">
                         {([["customer","Cliente"],["agent","Agente"]] as [string,string][]).map(([val, label]) => {
                           const active = rule.recipients.includes(val);
+                          const blocked = rule.triggerType === "daily_agent_summary" && val === "customer";
                           return (
                             <button
                               key={val}
                               type="button"
+                              disabled={blocked}
                               onClick={() => updateOutboundRule(index, (current) => ({
                                 ...current,
                                 recipients: active
@@ -3999,7 +4061,9 @@ function FlowBuilder({
                               className={`text-[10px] font-semibold px-3 py-1 rounded-full border transition-colors ${
                                 active
                                   ? "bg-[#0D2B3E] text-white border-[#0D2B3E]"
-                                  : "bg-white text-slate-400 border-slate-200 hover:border-slate-400"
+                                  : blocked
+                                    ? "bg-slate-50 text-slate-300 border-slate-200 cursor-not-allowed"
+                                    : "bg-white text-slate-400 border-slate-200 hover:border-slate-400"
                               }`}
                             >
                               {label}
@@ -4012,6 +4076,11 @@ function FlowBuilder({
                     {/* Mensaje */}
                     <div className="space-y-1.5">
                       <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide">Mensaje</p>
+                      {rule.triggerType === "daily_agent_summary" && (
+                        <p className="text-[10px] text-slate-500">
+                          Variables: {"{{summary_date}}"}, {"{{appointments_count}}"}, {"{{appointments_list}}"}
+                        </p>
+                      )}
                       <textarea
                         value={rule.messageTemplate}
                         onChange={(e) => updateOutboundRule(index, (current) => ({ ...current, messageTemplate: e.target.value }))}

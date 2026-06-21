@@ -267,12 +267,15 @@ export interface FlowDefinition {
 export type FlowMode = 'inbound' | 'outbound';
 
 export type OutboundRecipient = 'customer' | 'agent';
+export type OutboundTriggerType = 'appointment_reminder' | 'daily_agent_summary';
 
 export interface OutboundTriggerRule {
   id: string;
   label: string;
   enabled: boolean;
+  triggerType: OutboundTriggerType;
   minutesBefore: number;
+  summaryTime?: string | null;
   recipients: OutboundRecipient[];
   allowedStatuses: string[];
   daysOfWeek: number[];

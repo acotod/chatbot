@@ -2,6 +2,8 @@ const {
   normalizeFlowAutomationMetadata,
   renderTemplate,
   isRuleDue,
+  isDailySummaryDue,
+  getDateKeyInTimeZone,
   hasReminderBeenSent,
   markReminderSent,
   getRecipientTargets,
@@ -91,5 +93,40 @@ describe('outboundFlowService', () => {
 
     expect(recipients.customer.phone).toBe('521234567890');
     expect(recipients.agent.phone).toBe('522223334444');
+  });
+
+  test('normalizes daily summary trigger and forces agent recipient', () => {
+    const metadata = normalizeFlowAutomationMetadata({
+      flow_mode: 'outbound',
+      outbound_rules: [
+        {
+          id: 'daily_1',
+          trigger_type: 'daily_agent_summary',
+          recipients: ['customer', 'agent'],
+          summary_time: '07:15',
+        },
+      ],
+    });
+
+    expect(metadata.outbound_rules[0].triggerType).toBe('daily_agent_summary');
+    expect(metadata.outbound_rules[0].recipients).toEqual(['agent']);
+    expect(metadata.outbound_rules[0].summaryTime).toBe('07:15');
+  });
+
+  test('detects due daily summary inside scan window', () => {
+    const rule = {
+      enabled: true,
+      triggerType: 'daily_agent_summary',
+      summaryTime: '07:00',
+      daysOfWeek: [],
+      timezone: 'America/Mexico_City',
+    };
+
+    expect(isDailySummaryDue(rule, new Date('2026-06-21T13:02:00Z'), 5)).toBe(true);
+    expect(isDailySummaryDue(rule, new Date('2026-06-21T12:50:00Z'), 5)).toBe(false);
+  });
+
+  test('builds timezone date key', () => {
+    expect(getDateKeyInTimeZone(new Date('2026-06-21T13:02:00Z'), 'America/Mexico_City')).toBe('2026-06-21');
   });
 });
