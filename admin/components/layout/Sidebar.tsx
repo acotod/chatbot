@@ -120,6 +120,8 @@ export function Sidebar() {
 
   const [tenants, setTenants] = useState<{ slug: string; nombre: string }[]>([]);
   const [dropdownOpen, setDropdownOpen] = useState(false);
+  const [seenSolicitudes, setSeenSolicitudes] = useState(0);
+  const [seenConversaciones, setSeenConversaciones] = useState(0);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   const withLocale = (path: string): string => {
@@ -296,6 +298,76 @@ export function Sidebar() {
       (Array.isArray(conversacionesData?.data) ? conversacionesData.data.length : 0)
   );
 
+  const seenSolicitudesKey = tenantSlug ? `sidebar-seen-solicitudes:${tenantSlug}` : null;
+  const seenConversacionesKey = tenantSlug ? `sidebar-seen-conversaciones:${tenantSlug}` : null;
+
+  useEffect(() => {
+    if (isAgentSession || !tenantSlug) {
+      setSeenSolicitudes(0);
+      setSeenConversaciones(0);
+      return;
+    }
+
+    let nextSeenSolicitudes = 0;
+    let nextSeenConversaciones = 0;
+
+    try {
+      const savedSolicitudes = seenSolicitudesKey ? localStorage.getItem(seenSolicitudesKey) : null;
+      const parsedSolicitudes = Number(savedSolicitudes ?? 0);
+      nextSeenSolicitudes = Number.isFinite(parsedSolicitudes) ? parsedSolicitudes : 0;
+    } catch {
+      nextSeenSolicitudes = 0;
+    }
+
+    try {
+      const savedConversaciones = seenConversacionesKey ? localStorage.getItem(seenConversacionesKey) : null;
+      const parsedConversaciones = Number(savedConversaciones ?? 0);
+      nextSeenConversaciones = Number.isFinite(parsedConversaciones) ? parsedConversaciones : 0;
+    } catch {
+      nextSeenConversaciones = 0;
+    }
+
+    setSeenSolicitudes(nextSeenSolicitudes);
+    setSeenConversaciones(nextSeenConversaciones);
+  }, [isAgentSession, tenantSlug, seenSolicitudesKey, seenConversacionesKey]);
+
+  useEffect(() => {
+    if (isAgentSession || !tenantSlug) return;
+
+    if (normalizedPathname.startsWith("/solicitudes")) {
+      setSeenSolicitudes(solicitudesPendientes);
+      if (seenSolicitudesKey) {
+        try {
+          localStorage.setItem(seenSolicitudesKey, String(solicitudesPendientes));
+        } catch {
+          // Best effort.
+        }
+      }
+    }
+
+    if (normalizedPathname.startsWith("/conversaciones")) {
+      setSeenConversaciones(conversacionesTotal);
+      if (seenConversacionesKey) {
+        try {
+          localStorage.setItem(seenConversacionesKey, String(conversacionesTotal));
+        } catch {
+          // Best effort.
+        }
+      }
+    }
+  }, [
+    conversacionesTotal,
+    isAgentSession,
+    normalizedPathname,
+    solicitudesPendientes,
+    tenantSlug,
+    seenSolicitudesKey,
+    seenConversacionesKey,
+  ]);
+
+  const solicitudesNoVistas = Math.max(solicitudesPendientes - seenSolicitudes, 0);
+  const conversacionesNoVistas = Math.max(conversacionesTotal - seenConversaciones, 0);
+
   if (!isClient) {
     return (
       <aside className="w-64 flex flex-col h-screen sticky top-0 border-r border-[#D9E5EB] bg-[#FFFFFF] shadow-[8px_0_28px_rgba(13,43,62,0.04)]" />
@@ -369,21 +441,21 @@ export function Sidebar() {
                 size={18}
               />
               {t(item.labelKey)}
-              {item.href === "/solicitudes" && !isAgentSession && solicitudesPendientes > 0 && (
+              {item.href === "/solicitudes" && !isAgentSession && !active && solicitudesNoVistas > 0 && (
                 <span className="ml-auto bg-red-100 text-red-600 text-xs font-semibold px-2 py-0.5 rounded-full">
-                  {solicitudesPendientes > 99 ? "99+" : solicitudesPendientes}
+                  {solicitudesNoVistas > 99 ? "99+" : solicitudesNoVistas}
                 </span>
               )}
-              {item.href === "/conversaciones" && !isAgentSession && canViewConversaciones && !!tenantSlug && (
+              {item.href === "/conversaciones" && !isAgentSession && !active && canViewConversaciones && !!tenantSlug && conversacionesNoVistas > 0 && (
                 <span
                   className={cn(
                     "ml-auto text-xs font-semibold px-2 py-0.5 rounded-full",
-                    conversacionesTotal > 0
+                    conversacionesNoVistas > 0
                       ? "bg-emerald-100 text-emerald-700"
                       : "bg-slate-100 text-slate-500"
                   )}
                 >
-                  {conversacionesTotal > 99 ? "99+" : conversacionesTotal}
+                  {conversacionesNoVistas > 99 ? "99+" : conversacionesNoVistas}
                 </span>
               )}
             </Link>
