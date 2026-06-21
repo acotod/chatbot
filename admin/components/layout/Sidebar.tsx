@@ -14,7 +14,7 @@ import { useTranslations } from "@/lib/i18n/client";
 import { useCurrentLocale } from "@/lib/i18n/client";
 import { getStoredAccessToken, getStoredRefreshToken, useAuthStore } from "@/store/auth";
 import { getStoredAgentAccessToken, useAgentAuthStore } from "@/store/agentAuth";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   BarChart3,
   Building2,
@@ -120,8 +120,6 @@ export function Sidebar() {
 
   const [tenants, setTenants] = useState<{ slug: string; nombre: string }[]>([]);
   const [dropdownOpen, setDropdownOpen] = useState(false);
-  const [seenSolicitudes, setSeenSolicitudes] = useState(0);
-  const [seenConversaciones, setSeenConversaciones] = useState(0);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   const withLocale = (path: string): string => {
@@ -282,6 +280,28 @@ export function Sidebar() {
 
   const solicitudesPendientes = Number(solicitudesPendientesData?.total ?? 0);
 
+  const { data: sidebarSeenData } = useQuery({
+    queryKey: ["sidebar-seen", tenantSlug],
+    queryFn: () => authApi.getSidebarSeen(tenantSlug!).then((r) => r.data),
+    enabled: hasAccessToken && !isAgentSession && !!tenantSlug,
+    staleTime: 60_000,
+  });
+
+  const seenSolicitudes = Number(sidebarSeenData?.solicitudes ?? 0);
+  const seenConversaciones = Number(sidebarSeenData?.conversaciones ?? 0);
+
+  const updateSeenMutation = useMutation({
+    mutationFn: ({ section, count }: { section: "solicitudes" | "conversaciones"; count: number }) =>
+      authApi.setSidebarSeen(tenantSlug!, section, count),
+    onSuccess: (_data, variables) => {
+      queryClient.setQueryData(["sidebar-seen", tenantSlug], (old: { solicitudes: number; conversaciones: number } | undefined) => ({
+        solicitudes: old?.solicitudes ?? 0,
+        conversaciones: old?.conversaciones ?? 0,
+        [variables.section]: variables.count,
+      }));
+    },
+  });
+
   const { data: conversacionesData } = useQuery({
     queryKey: ["sidebar-conversaciones-total", tenantSlug],
     queryFn: () =>
@@ -298,72 +318,19 @@ export function Sidebar() {
       (Array.isArray(conversacionesData?.data) ? conversacionesData.data.length : 0)
   );
 
-  const seenSolicitudesKey = tenantSlug ? `sidebar-seen-solicitudes:${tenantSlug}` : null;
-  const seenConversacionesKey = tenantSlug ? `sidebar-seen-conversaciones:${tenantSlug}` : null;
-
-  useEffect(() => {
-    if (isAgentSession || !tenantSlug) {
-      setSeenSolicitudes(0);
-      setSeenConversaciones(0);
-      return;
-    }
-
-    let nextSeenSolicitudes = 0;
-    let nextSeenConversaciones = 0;
-
-    try {
-      const savedSolicitudes = seenSolicitudesKey ? localStorage.getItem(seenSolicitudesKey) : null;
-      const parsedSolicitudes = Number(savedSolicitudes ?? 0);
-      nextSeenSolicitudes = Number.isFinite(parsedSolicitudes) ? parsedSolicitudes : 0;
-    } catch {
-      nextSeenSolicitudes = 0;
-    }
-
-    try {
-      const savedConversaciones = seenConversacionesKey ? localStorage.getItem(seenConversacionesKey) : null;
-      const parsedConversaciones = Number(savedConversaciones ?? 0);
-      nextSeenConversaciones = Number.isFinite(parsedConversaciones) ? parsedConversaciones : 0;
-    } catch {
-      nextSeenConversaciones = 0;
-    }
-
-    setSeenSolicitudes(nextSeenSolicitudes);
-    setSeenConversaciones(nextSeenConversaciones);
-  }, [isAgentSession, tenantSlug, seenSolicitudesKey, seenConversacionesKey]);
-
+  // Mark section as seen when the user navigates into it
   useEffect(() => {
     if (isAgentSession || !tenantSlug) return;
 
-    if (normalizedPathname.startsWith("/solicitudes")) {
-      setSeenSolicitudes(solicitudesPendientes);
-      if (seenSolicitudesKey) {
-        try {
-          localStorage.setItem(seenSolicitudesKey, String(solicitudesPendientes));
-        } catch {
-          // Best effort.
-        }
-      }
+    if (normalizedPathname.startsWith("/solicitudes") && solicitudesPendientes > seenSolicitudes) {
+      updateSeenMutation.mutate({ section: "solicitudes", count: solicitudesPendientes });
     }
 
-    if (normalizedPathname.startsWith("/conversaciones")) {
-      setSeenConversaciones(conversacionesTotal);
-      if (seenConversacionesKey) {
-        try {
-          localStorage.setItem(seenConversacionesKey, String(conversacionesTotal));
-        } catch {
-          // Best effort.
-        }
-      }
+    if (normalizedPathname.startsWith("/conversaciones") && conversacionesTotal > seenConversaciones) {
+      updateSeenMutation.mutate({ section: "conversaciones", count: conversacionesTotal });
     }
-  }, [
-    conversacionesTotal,
-    isAgentSession,
-    normalizedPathname,
-    solicitudesPendientes,
-    tenantSlug,
-    seenSolicitudesKey,
-    seenConversacionesKey,
-  ]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [normalizedPathname, solicitudesPendientes, conversacionesTotal, isAgentSession, tenantSlug]);
 
   const solicitudesNoVistas = Math.max(solicitudesPendientes - seenSolicitudes, 0);
   const conversacionesNoVistas = Math.max(conversacionesTotal - seenConversaciones, 0);

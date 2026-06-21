@@ -257,6 +257,12 @@ export const authApi = {
       : Promise.resolve({ data: null }),
   refresh: (refreshToken: string) =>
     refreshClient.post<{ accessToken: string }>("/auth/refresh", { refreshToken }),
+  getSidebarSeen: (tenantSlug: string) =>
+    apiClient.get<{ solicitudes: number; conversaciones: number }>("/auth/me/sidebar-seen", {
+      params: { tenantSlug },
+    }),
+  setSidebarSeen: (tenantSlug: string, section: "solicitudes" | "conversaciones", count: number) =>
+    apiClient.patch("/auth/me/sidebar-seen", { tenantSlug, section, count }),
 };
 
 // ── Tenant-scoped helpers ────────────────────────────────────────────────────

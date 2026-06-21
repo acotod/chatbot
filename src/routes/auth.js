@@ -1274,6 +1274,54 @@ router.get('/me', requireJwt, async (req, res) => {
   });
 });
 
+// ── GET /auth/me/sidebar-seen ─────────────────────────────────────────────────
+// Returns the last "seen" counts for sidebar badges per tenant, stored in Redis.
+router.get('/me/sidebar-seen', requireJwt, async (req, res) => {
+  try {
+    const adminUserId = req.admin?.adminUserId;
+    const tenantSlug = req.query.tenantSlug;
+    if (!adminUserId || !tenantSlug) {
+      return res.json({ solicitudes: 0, conversaciones: 0 });
+    }
+    const redis = getRedisClient();
+    if (!redis) return res.json({ solicitudes: 0, conversaciones: 0 });
+
+    const raw = await redis.get(`sidebar:seen:${adminUserId}:${tenantSlug}`);
+    if (!raw) return res.json({ solicitudes: 0, conversaciones: 0 });
+    const parsed = JSON.parse(raw);
+    return res.json({
+      solicitudes: Number(parsed.solicitudes ?? 0),
+      conversaciones: Number(parsed.conversaciones ?? 0),
+    });
+  } catch {
+    return res.json({ solicitudes: 0, conversaciones: 0 });
+  }
+});
+
+// ── PATCH /auth/me/sidebar-seen ───────────────────────────────────────────────
+// Persists the "seen" count for a sidebar section. TTL = 90 days.
+router.patch('/me/sidebar-seen', requireJwt, async (req, res) => {
+  try {
+    const adminUserId = req.admin?.adminUserId;
+    const { tenantSlug, section, count } = req.body;
+    if (!adminUserId || !tenantSlug || !['solicitudes', 'conversaciones'].includes(section)) {
+      return res.status(400).json({ error: 'Invalid parameters' });
+    }
+    const safeCount = Math.max(0, Number(count) || 0);
+    const redis = getRedisClient();
+    if (!redis) return res.json({ ok: true });
+
+    const key = `sidebar:seen:${adminUserId}:${tenantSlug}`;
+    const existing = await redis.get(key);
+    const current = existing ? JSON.parse(existing) : {};
+    current[section] = safeCount;
+    await redis.set(key, JSON.stringify(current), 'EX', 7776000); // 90 days
+    return res.json({ ok: true });
+  } catch {
+    return res.status(500).json({ error: 'Failed to save sidebar seen state' });
+  }
+});
+
 // ── GET /auth/agent/me ───────────────────────────────────────────────────────
 router.get('/agent/me', requireAgentJwt, async (req, res) => {
   const agent = req.agent || {};
