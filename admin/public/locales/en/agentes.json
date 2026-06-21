@@ -45,6 +45,24 @@
     "title": "Edit agent",
     "profileHint": "This profile uses a single access without extra modules: only agent login and profile."
   },
+  "dayOff": {
+    "title": "Out of office (full day)",
+    "subtitle": "Block full days so no bookable slots are shown for that date.",
+    "loading": "Loading blocked days...",
+    "empty": "No blocked days yet.",
+    "listTitle": "Blocked days",
+    "actions": {
+      "block": "Block day",
+      "unblock": "Unblock",
+      "saving": "Saving..."
+    },
+    "messages": {
+      "dateRequired": "Select a date to block.",
+      "saveFailed": "Could not update the out-of-office day.",
+      "blockedSuccess": "Day {date} blocked successfully.",
+      "unblockedSuccess": "Day {date} unblocked successfully."
+    }
+  },
   "actions": {
     "activate": "Activate",
     "deactivate": "Deactivate",

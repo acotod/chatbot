@@ -393,6 +393,13 @@ export const adminUsersApi = {
 
 export const calendarsApi = {
   list: (slug: string) => apiClient.get(`/admin/tenants/${slug}/calendars`),
+  dayOffList: (calendarId: string) =>
+    apiClient.get<{ blockedDates: string[] }>(`/calendar/${calendarId}/day-off`),
+  setDayOff: (calendarId: string, date: string, blocked: boolean) =>
+    apiClient.put<{ ok: true; date: string; blocked: boolean; blockedDates: string[] }>(`/calendar/${calendarId}/day-off`, {
+      date,
+      blocked,
+    }),
   googleOauthStart: (slug: string, calendarId: string) =>
     apiClient.get<{ authorizationUrl: string }>(`/admin/tenants/${slug}/calendars/${calendarId}/google/oauth/start`),
   googleListCalendars: (slug: string, calendarId: string) =>

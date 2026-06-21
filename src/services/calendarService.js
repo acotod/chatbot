@@ -73,6 +73,53 @@ function parsePositiveInteger(value) {
   return Math.trunc(parsed);
 }
 
+function toDateOnlyKey(value) {
+  const raw = String(value || '').trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) return null;
+  return raw;
+}
+
+function normalizeBlockedDates(rawDates) {
+  if (!Array.isArray(rawDates)) return [];
+  const uniq = new Set();
+  for (const item of rawDates) {
+    const key = toDateOnlyKey(item);
+    if (key) uniq.add(key);
+  }
+  return Array.from(uniq).sort();
+}
+
+function getCalendarBlockedDates(config) {
+  return normalizeBlockedDates(config?.blocked_dates || config?.blockedDates || []);
+}
+
+function formatDateKeyInTimeZone(date, timeZone) {
+  const dtf = new Intl.DateTimeFormat('en-CA', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  });
+  return dtf.format(date);
+}
+
+async function clearSlotCachesForCalendar(calendarId) {
+  await cacheDel(`slots:${calendarId}:default`);
+  await cacheDel(`slots:${calendarId}:5`);
+
+  const redis = getRedis();
+  if (!redis || typeof redis.keys !== 'function') return;
+
+  try {
+    const keys = await redis.keys(`slots:${calendarId}:*`);
+    if (Array.isArray(keys) && keys.length > 0) {
+      await redis.del(...keys);
+    }
+  } catch (_) {
+    // best-effort cache cleanup
+  }
+}
+
 function normalizeAgendaWorkingHours(raw) {
   if (!raw || typeof raw !== 'object') return {};
 
@@ -182,6 +229,110 @@ async function ensureCalendarConfigForSlotDuration({ calendarId, tenantId, slotD
   }
 
   await generateSlots(calendarId, rangeDays);
+}
+
+function getUtcRangeForDateKey(dateKey, timeZone) {
+  const [yearStr, monthStr, dayStr] = String(dateKey).split('-');
+  const year = Number(yearStr);
+  const month = Number(monthStr);
+  const day = Number(dayStr);
+
+  const startUtc = zonedDateTimeToUtc({ year, month, day, hour: 0, minute: 0 }, timeZone);
+  const endDate = new Date(Date.UTC(year, month - 1, day, 0, 0, 0, 0));
+  endDate.setUTCDate(endDate.getUTCDate() + 1);
+  const endUtc = zonedDateTimeToUtc(
+    {
+      year: endDate.getUTCFullYear(),
+      month: endDate.getUTCMonth() + 1,
+      day: endDate.getUTCDate(),
+      hour: 0,
+      minute: 0,
+    },
+    timeZone
+  );
+
+  return { startUtc, endUtc };
+}
+
+async function setCalendarDayOff({ calendarId, tenantId, date, blocked }) {
+  const dateKey = toDateOnlyKey(date);
+  if (!dateKey) return { error: 'INVALID_DATE' };
+
+  const calendar = await prisma.calendar.findFirst({
+    where: { id: calendarId, tenantId },
+    select: { id: true, config: true, timezone: true },
+  });
+  if (!calendar) return { error: 'NOT_FOUND' };
+
+  const config = asObject(calendar.config);
+  const blockedDates = new Set(getCalendarBlockedDates(config));
+  const shouldBlock = Boolean(blocked);
+  let changed = false;
+
+  if (shouldBlock && !blockedDates.has(dateKey)) {
+    blockedDates.add(dateKey);
+    changed = true;
+  }
+  if (!shouldBlock && blockedDates.has(dateKey)) {
+    blockedDates.delete(dateKey);
+    changed = true;
+  }
+
+  const nextBlockedDates = Array.from(blockedDates).sort();
+  if (changed) {
+    await prisma.calendar.update({
+      where: { id: calendarId },
+      data: {
+        config: {
+          ...config,
+          blocked_dates: nextBlockedDates,
+        },
+        updatedAt: new Date(),
+      },
+    });
+  }
+
+  const calendarTimeZone = String(config.timezone || calendar.timezone || 'UTC');
+  const { startUtc, endUtc } = getUtcRangeForDateKey(dateKey, calendarTimeZone);
+
+  if (shouldBlock) {
+    await prisma.calendarSlot.deleteMany({
+      where: {
+        calendarId,
+        status: 'available',
+        startTime: { gte: startUtc, lt: endUtc },
+      },
+    });
+  } else {
+    const now = new Date();
+    const daysAhead = Math.ceil((startUtc.getTime() - now.getTime()) / (24 * 60 * 60 * 1000));
+    if (daysAhead >= 0) {
+      await generateSlots(calendarId, Math.max(daysAhead + 1, 1));
+    }
+  }
+
+  await clearSlotCachesForCalendar(calendarId);
+
+  return {
+    ok: true,
+    date: dateKey,
+    blocked: shouldBlock,
+    blockedDates: nextBlockedDates,
+  };
+}
+
+async function getCalendarDayOffDates({ calendarId, tenantId }) {
+  const calendar = await prisma.calendar.findFirst({
+    where: { id: calendarId, tenantId },
+    select: { id: true, config: true },
+  });
+  if (!calendar) return { error: 'NOT_FOUND' };
+
+  const config = asObject(calendar.config);
+  return {
+    calendarId,
+    blockedDates: getCalendarBlockedDates(config),
+  };
 }
 
 function asObject(value) {
@@ -551,6 +702,9 @@ function generateSlotsForDay(date, config) {
   const ranges = normalizeWorkingHourRanges(hours);
   if (ranges.length === 0) return [];
   const timeZone = String(config.timezone || 'UTC');
+  const blockedDates = new Set(getCalendarBlockedDates(config));
+  const dayKey = formatDateKeyInTimeZone(date, timeZone);
+  if (blockedDates.has(dayKey)) return [];
   const year = date.getUTCFullYear();
   const month = date.getUTCMonth() + 1;
   const day = date.getUTCDate();
@@ -671,6 +825,7 @@ async function getAvailableSlots(calendarId, rangeDays = null, options = {}) {
     select: { config: true, timezone: true },
   });
   const calendarTimeZone = String(calendar?.config?.timezone || calendar?.timezone || 'UTC');
+  const blockedDates = new Set(getCalendarBlockedDates(calendar?.config || {}));
   const days = rangeDays ?? calendar?.config?.range_days ?? calendar?.config?.advance_days ?? 5;
 
   const from = new Date();
@@ -694,7 +849,7 @@ async function getAvailableSlots(calendarId, rangeDays = null, options = {}) {
   const slotsWithTimeZone = slots.map((slot) => ({
     ...slot,
     timezone: calendarTimeZone,
-  }));
+  })).filter((slot) => !blockedDates.has(formatDateKeyInTimeZone(new Date(slot.startTime), calendarTimeZone)));
 
   await cacheSet(cacheKey, slotsWithTimeZone);
   return slotsWithTimeZone;
@@ -1134,6 +1289,8 @@ async function getAppointment(appointmentId, tenantId) {
 module.exports = {
   generateSlots,
   getAvailableSlots,
+  getCalendarDayOffDates,
+  setCalendarDayOff,
   getCalendarIdForAgente,
   getCalendarAssignmentContext,
   getCalendarsForPuesto,

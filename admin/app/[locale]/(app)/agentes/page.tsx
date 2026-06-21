@@ -3,7 +3,7 @@
 import { agentePuestosApi, agentesApi, adminUsersApi, calendarsApi } from "@/lib/api";
 import { useAuthStore } from "@/store/auth";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useTranslations } from "next-intl";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
@@ -90,6 +90,10 @@ export default function AgentesPage() {
   const [selectedGoogleCalendarId, setSelectedGoogleCalendarId] = useState("");
   const [googleCalendarError, setGoogleCalendarError] = useState("");
   const [googleCalendarInfo, setGoogleCalendarInfo] = useState("");
+  const [dayOffDate, setDayOffDate] = useState("");
+  const [dayOffError, setDayOffError] = useState("");
+  const [dayOffInfo, setDayOffInfo] = useState("");
+  const [dayOffDates, setDayOffDates] = useState<string[]>([]);
 
   const { data, isLoading } = useQuery({
     queryKey: ["agentes", tenantSlug],
@@ -230,6 +234,44 @@ export default function AgentesPage() {
     onError: (error) => setGoogleCalendarError(getApiErrorMessage(error, "No se pudo desconectar Google Calendar.")),
   });
 
+  const dayOffQuery = useQuery({
+    queryKey: ["calendar-day-off", editForm.calendarId],
+    queryFn: async () => {
+      if (!editForm.calendarId) return { blockedDates: [] as string[] };
+      const response = await calendarsApi.dayOffList(editForm.calendarId);
+      return response.data;
+    },
+    enabled: editModal && !!editForm.calendarId,
+    staleTime: 10_000,
+  });
+
+  useEffect(() => {
+    setDayOffDates(Array.isArray(dayOffQuery.data?.blockedDates) ? dayOffQuery.data.blockedDates : []);
+  }, [dayOffQuery.data]);
+
+  const setDayOffMutation = useMutation({
+    mutationFn: async ({ date, blocked }: { date: string; blocked: boolean }) => {
+      if (!editForm.calendarId) throw new Error("Select an internal calendar first");
+      return calendarsApi.setDayOff(editForm.calendarId, date, blocked);
+    },
+    onSuccess: (response, variables) => {
+      const blockedDates = Array.isArray(response.data?.blockedDates) ? response.data.blockedDates : [];
+      setDayOffDates(blockedDates);
+      setDayOffError("");
+      setDayOffInfo(
+        variables.blocked
+          ? t("dayOff.messages.blockedSuccess", { date: variables.date })
+          : t("dayOff.messages.unblockedSuccess", { date: variables.date })
+      );
+      qc.invalidateQueries({ queryKey: ["calendar-day-off", editForm.calendarId] });
+      if (variables.blocked) setDayOffDate("");
+    },
+    onError: (error) => {
+      setDayOffError(getApiErrorMessage(error, t("dayOff.messages.saveFailed")));
+      setDayOffInfo("");
+    },
+  });
+
   const agentes: Agente[] = data?.data ?? data ?? [];
   const puestos: AgentePuesto[] = puestosData?.data ?? puestosData ?? [];
   const calendars: Calendar[] = calendarsData?.data ?? calendarsData ?? [];
@@ -286,7 +328,27 @@ export default function AgentesPage() {
     setSelectedGoogleCalendarId("");
     setGoogleCalendarError("");
     setGoogleCalendarInfo("");
+    setDayOffDate("");
+    setDayOffError("");
+    setDayOffInfo("");
+    setDayOffDates([]);
     setEditModal(true);
+  }
+
+  function handleBlockFullDay() {
+    setDayOffError("");
+    setDayOffInfo("");
+    if (!dayOffDate) {
+      setDayOffError(t("dayOff.messages.dateRequired"));
+      return;
+    }
+    setDayOffMutation.mutate({ date: dayOffDate, blocked: true });
+  }
+
+  function handleUnblockFullDay(date: string) {
+    setDayOffError("");
+    setDayOffInfo("");
+    setDayOffMutation.mutate({ date, blocked: false });
   }
 
   function handleUpdate(e: React.FormEvent) {
@@ -596,6 +658,53 @@ export default function AgentesPage() {
               })}
             </select>
           </div>
+          {editForm.calendarId && (
+            <div className="rounded-md border border-slate-200 bg-slate-50 p-3 space-y-3">
+              <p className="text-sm font-medium text-slate-800">{t("dayOff.title")}</p>
+              <p className="text-xs text-slate-600">{t("dayOff.subtitle")}</p>
+              <div className="flex flex-wrap items-center gap-2">
+                <input
+                  type="date"
+                  value={dayOffDate}
+                  onChange={(e) => setDayOffDate(e.target.value)}
+                  className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-blue-500"
+                />
+                <Button type="button" variant="secondary" onClick={handleBlockFullDay} disabled={setDayOffMutation.isPending || !dayOffDate}>
+                  {setDayOffMutation.isPending ? t("dayOff.actions.saving") : t("dayOff.actions.block")}
+                </Button>
+              </div>
+
+              {dayOffQuery.isLoading ? (
+                <p className="text-xs text-slate-500">{t("dayOff.loading")}</p>
+              ) : dayOffDates.length === 0 ? (
+                <p className="text-xs text-slate-500">{t("dayOff.empty")}</p>
+              ) : (
+                <div className="space-y-2">
+                  <p className="text-xs font-medium text-slate-700">{t("dayOff.listTitle")}</p>
+                  <div className="max-h-28 overflow-y-auto space-y-1.5 pr-1">
+                    {dayOffDates.map((date) => (
+                      <div key={date} className="flex items-center justify-between rounded-md border border-slate-200 bg-white px-2.5 py-1.5">
+                        <span className="text-xs text-slate-700">{date}</span>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleUnblockFullDay(date)}
+                          disabled={setDayOffMutation.isPending}
+                        >
+                          {t("dayOff.actions.unblock")}
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {dayOffInfo && <p className="text-xs text-emerald-700">{dayOffInfo}</p>}
+              {dayOffError && <p className="text-xs text-rose-600">{dayOffError}</p>}
+            </div>
+          )}
+
           {editForm.calendarId && (
             <div className="rounded-md border border-slate-200 bg-slate-50 p-3 space-y-3">
               <p className="text-sm font-medium text-slate-800">Google Calendar OAuth</p>

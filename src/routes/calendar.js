@@ -161,6 +161,68 @@ router.get(`/${UUID_ROUTE}/slots`, async (req, res, next) => {
 });
 
 /**
+ * GET /calendar/:id/day-off
+ * List full-day blocked dates (YYYY-MM-DD) for this calendar.
+ */
+router.get(`/${UUID_ROUTE}/day-off`, async (req, res, next) => {
+  try {
+    const { tenantId } = req;
+    const result = await calendarSvc.getCalendarDayOffDates({
+      calendarId: req.params.id,
+      tenantId,
+    });
+
+    if (result?.error === 'NOT_FOUND') {
+      return res.status(404).json({ error: 'Calendar not found' });
+    }
+
+    return res.json({ blockedDates: result?.blockedDates || [] });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * PUT /calendar/:id/day-off
+ * Toggle a full-day block for a date (YYYY-MM-DD).
+ * Body: { date, blocked }
+ */
+router.put(`/${UUID_ROUTE}/day-off`, async (req, res, next) => {
+  try {
+    const { tenantId } = req;
+    const date = String(req.body?.date || '').trim();
+    const blocked = req.body?.blocked;
+
+    if (typeof blocked !== 'boolean') {
+      return res.status(400).json({ error: 'blocked must be boolean' });
+    }
+
+    const result = await calendarSvc.setCalendarDayOff({
+      calendarId: req.params.id,
+      tenantId,
+      date,
+      blocked,
+    });
+
+    if (result?.error === 'NOT_FOUND') {
+      return res.status(404).json({ error: 'Calendar not found' });
+    }
+    if (result?.error === 'INVALID_DATE') {
+      return res.status(400).json({ error: 'date must use YYYY-MM-DD format' });
+    }
+
+    return res.json({
+      ok: true,
+      date: result.date,
+      blocked: result.blocked,
+      blockedDates: result.blockedDates,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
  * POST /calendar/:id/generate-slots
  * Manually trigger slot generation.
  * Body: { days? }

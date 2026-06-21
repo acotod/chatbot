@@ -45,6 +45,24 @@
     "title": "Editar agente",
     "profileHint": "Este perfil usa un acceso unico sin modulos adicionales: solo login y perfil de agente."
   },
+  "dayOff": {
+    "title": "Fuera de oficina (dia completo)",
+    "subtitle": "Bloquea dias completos para que no aparezcan horarios disponibles en la agenda de reservas.",
+    "loading": "Cargando dias bloqueados...",
+    "empty": "No hay dias bloqueados.",
+    "listTitle": "Dias bloqueados",
+    "actions": {
+      "block": "Bloquear dia",
+      "unblock": "Desbloquear",
+      "saving": "Guardando..."
+    },
+    "messages": {
+      "dateRequired": "Selecciona una fecha para bloquear.",
+      "saveFailed": "No se pudo actualizar el dia fuera de oficina.",
+      "blockedSuccess": "Dia {date} bloqueado correctamente.",
+      "unblockedSuccess": "Dia {date} desbloqueado correctamente."
+    }
+  },
   "actions": {
     "activate": "Activar",
     "deactivate": "Desactivar",
