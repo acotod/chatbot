@@ -116,6 +116,20 @@ function normalizeEmail(value) {
   return value.trim().toLowerCase();
 }
 
+function getSidebarSeenPrincipal(req) {
+  const adminUserId = req.admin?.adminUserId;
+  if (Number.isInteger(adminUserId) && adminUserId > 0) {
+    return `id:${adminUserId}`;
+  }
+
+  const normalizedEmail = normalizeEmail(req.admin?.email);
+  if (normalizedEmail) {
+    return `email:${normalizedEmail}`;
+  }
+
+  return null;
+}
+
 function normalizeHexColor(value, fallback = '#0EA5E9') {
   if (typeof value !== 'string') return fallback;
   const normalized = value.trim();
@@ -1278,15 +1292,15 @@ router.get('/me', requireJwt, async (req, res) => {
 // Returns the last "seen" counts for sidebar badges per tenant, stored in Redis.
 router.get('/me/sidebar-seen', requireJwt, async (req, res) => {
   try {
-    const adminUserId = req.admin?.adminUserId;
+    const principal = getSidebarSeenPrincipal(req);
     const tenantSlug = req.query.tenantSlug;
-    if (!adminUserId || !tenantSlug) {
+    if (!principal || !tenantSlug) {
       return res.json({ solicitudes: 0, conversaciones: 0 });
     }
     const redis = getRedisClient();
     if (!redis) return res.json({ solicitudes: 0, conversaciones: 0 });
 
-    const raw = await redis.get(`sidebar:seen:${adminUserId}:${tenantSlug}`);
+    const raw = await redis.get(`sidebar:seen:${principal}:${tenantSlug}`);
     if (!raw) return res.json({ solicitudes: 0, conversaciones: 0 });
     const parsed = JSON.parse(raw);
     return res.json({
@@ -1302,16 +1316,16 @@ router.get('/me/sidebar-seen', requireJwt, async (req, res) => {
 // Persists the "seen" count for a sidebar section. TTL = 90 days.
 router.patch('/me/sidebar-seen', requireJwt, async (req, res) => {
   try {
-    const adminUserId = req.admin?.adminUserId;
+    const principal = getSidebarSeenPrincipal(req);
     const { tenantSlug, section, count } = req.body;
-    if (!adminUserId || !tenantSlug || !['solicitudes', 'conversaciones'].includes(section)) {
+    if (!principal || !tenantSlug || !['solicitudes', 'conversaciones'].includes(section)) {
       return res.status(400).json({ error: 'Invalid parameters' });
     }
     const safeCount = Math.max(0, Number(count) || 0);
     const redis = getRedisClient();
     if (!redis) return res.json({ ok: true });
 
-    const key = `sidebar:seen:${adminUserId}:${tenantSlug}`;
+    const key = `sidebar:seen:${principal}:${tenantSlug}`;
     const existing = await redis.get(key);
     const current = existing ? JSON.parse(existing) : {};
     current[section] = safeCount;
