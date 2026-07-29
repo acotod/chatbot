@@ -5,7 +5,7 @@ import { solicitudesApi } from "@/lib/api";
 import { formatDate } from "@/lib/utils";
 import { useAuthStore } from "@/store/auth";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { BellRing, Plus, Send, Trash2 } from "lucide-react";
+import { BellRing, Mail, Plus, Send, Trash2 } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { useMemo, useState } from "react";
 
@@ -109,6 +109,25 @@ export default function WebhooksPage() {
 
   return (
     <div className="space-y-6">
+      {/* Auto-notifications banner */}
+      <Card className="border-cyan-200 bg-cyan-50">
+        <CardContent className="py-4">
+          <div className="flex items-start gap-3">
+            <Mail size={20} className="text-cyan-600 mt-0.5 shrink-0" />
+            <div>
+              <p className="text-sm font-semibold text-cyan-900">{t("autoNotifications.title")}</p>
+              <p className="text-sm text-cyan-700 mt-0.5">{t("autoNotifications.description")}</p>
+              <ul className="mt-2 space-y-1">
+                <li className="inline-flex items-center gap-1.5 rounded-full bg-cyan-100 px-3 py-1 text-xs font-medium text-cyan-800">
+                  <span className="h-1.5 w-1.5 rounded-full bg-cyan-500" />
+                  solicitud.assigned → {t("autoNotifications.assignedEmail")}
+                </li>
+              </ul>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
       <Card>
         <CardHeader>
           <h1 className="text-lg font-semibold text-slate-900">{t("title")}</h1>

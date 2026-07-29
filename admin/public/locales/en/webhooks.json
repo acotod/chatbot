@@ -1,6 +1,11 @@
 {
   "title": "Request webhooks",
   "description": "Outbound integrations with HMAC signature and compliance logging",
+  "autoNotifications": {
+    "title": "Active automatic notifications",
+    "description": "These notifications are sent automatically by the server — no external webhook configuration needed.",
+    "assignedEmail": "Email to assigned agent"
+  },
   "form": {
     "event": "Event",
     "url": "URL",

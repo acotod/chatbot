@@ -1,6 +1,11 @@
 {
   "title": "Webhooks de Solicitudes",
   "description": "Integraciones salientes con firma HMAC y bitácora de cumplimiento",
+  "autoNotifications": {
+    "title": "Notificaciones automáticas activas",
+    "description": "Estas notificaciones se envían automáticamente desde el servidor, sin necesidad de configurar un webhook externo.",
+    "assignedEmail": "Correo al agente asignado"
+  },
   "form": {
     "event": "Evento",
     "url": "URL",
