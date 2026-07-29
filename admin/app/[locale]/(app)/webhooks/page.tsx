@@ -287,10 +287,21 @@ export default function WebhooksPage() {
               <tbody className="divide-y divide-slate-100">
                 {deliveries.map((row) => {
                   const ok = row.accion === "SOLICITUD_WEBHOOK_DELIVERED";
+                  const isEmail = row.metadata?.type === "EMAIL";
                   return (
                     <tr key={row.id}>
                       <td className="px-6 py-3 text-slate-700">{formatDate(row.createdAt)}</td>
-                      <td className="px-6 py-3 text-slate-700">{row.metadata?.event || "-"}</td>
+                      <td className="px-6 py-3 text-slate-700">
+                        <div className="flex items-center gap-2">
+                          {row.metadata?.event || "-"}
+                          {isEmail && (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-cyan-100 px-2 py-0.5 text-xs font-medium text-cyan-700">
+                              <Mail size={11} />
+                              EMAIL
+                            </span>
+                          )}
+                        </div>
+                      </td>
                       <td className="px-6 py-3">
                         <span
                           className={`inline-flex rounded-full px-2 py-1 text-xs font-medium ${
@@ -301,7 +312,9 @@ export default function WebhooksPage() {
                         </span>
                       </td>
                       <td className="px-6 py-3 text-xs text-slate-500">
-                          {t("deliveries.detailStatus")}{row.metadata?.status ?? "-"} · {row.metadata?.durationMs ?? "-"}{t("deliveries.detailDuration")}
+                        {isEmail
+                          ? (row.metadata?.url || "-")
+                          : <>{t("deliveries.detailStatus")}{row.metadata?.status ?? "-"} · {row.metadata?.durationMs ?? "-"}{t("deliveries.detailDuration")}</>}
                         {row.metadata?.error ? ` · ${row.metadata.error}` : ""}
                       </td>
                     </tr>

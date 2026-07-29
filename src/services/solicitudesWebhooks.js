@@ -109,6 +109,27 @@ async function notifyAssignedAgentEmail({
       },
     });
 
+    audit({
+      adminUserId,
+      tenantId: tenant?.id || null,
+      accion: 'SOLICITUD_WEBHOOK_DELIVERED',
+      entidad: 'email_notification',
+      entidadId: String(solicitudId),
+      ip,
+      userAgent,
+      metadata: {
+        type: 'EMAIL',
+        event: 'solicitud.assigned',
+        solicitudId,
+        agenteId: assignedAgente?.id ?? null,
+        email,
+        status: 200,
+        durationMs: 0,
+        url: `mailto:${email}`,
+        error: null,
+      },
+    });
+
     return { ok: true, skipped: false, result };
   } catch (err) {
     audit({
@@ -124,6 +145,27 @@ async function notifyAssignedAgentEmail({
         solicitudId,
         agenteId: assignedAgente?.id ?? null,
         email,
+        error: err?.message || 'email_send_failed',
+      },
+    });
+
+    audit({
+      adminUserId,
+      tenantId: tenant?.id || null,
+      accion: 'SOLICITUD_WEBHOOK_FAILED',
+      entidad: 'email_notification',
+      entidadId: String(solicitudId),
+      ip,
+      userAgent,
+      metadata: {
+        type: 'EMAIL',
+        event: 'solicitud.assigned',
+        solicitudId,
+        agenteId: assignedAgente?.id ?? null,
+        email,
+        status: null,
+        durationMs: 0,
+        url: `mailto:${email}`,
         error: err?.message || 'email_send_failed',
       },
     });
