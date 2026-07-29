@@ -3,6 +3,7 @@
 const crypto = require('crypto');
 const db = require('./database');
 const { audit } = require('./audit');
+const { sendEmail } = require('./emailService');
 
 const WEBHOOK_EVENTS = new Set([
   'solicitud.created',
@@ -41,6 +42,93 @@ function sanitizeHeaders(inputHeaders = {}) {
     out[rawKey] = String(value ?? '');
   }
   return out;
+}
+
+function buildAssignmentEmailText({ solicitudId, agenteNombre, tenantNombre, loginUrl }) {
+  const safeAgentName = String(agenteNombre || 'agente').trim();
+  const safeTenantName = String(tenantNombre || 'tu empresa').trim();
+  return [
+    `Hola ${safeAgentName}, se te asignó la solicitud #${solicitudId} en ${safeTenantName}.`,
+    'Ingresa al portal para revisar la solicitud y responder:',
+    loginUrl,
+  ].join('\n');
+}
+
+async function notifyAssignedAgentEmail({
+  tenant,
+  solicitudId,
+  assignedAgente,
+  adminUserId = null,
+  ip = null,
+  userAgent = null,
+  loginUrl = '',
+}) {
+  const email = String(assignedAgente?.email || '').trim();
+  if (!email) {
+    return { ok: false, skipped: true, reason: 'missing-email' };
+  }
+
+  const subject = `Se te asignó la solicitud #${solicitudId}`;
+  const text = buildAssignmentEmailText({
+    solicitudId,
+    agenteNombre: assignedAgente?.nombre,
+    tenantNombre: tenant?.nombre,
+    loginUrl,
+  });
+
+  try {
+    const result = await sendEmail({
+      to: email,
+      subject,
+      text,
+      tenantId: tenant?.id || null,
+      metadata: {
+        event: 'solicitud.assigned',
+        solicitudId,
+        agenteId: assignedAgente?.id ?? null,
+        adminUserId,
+        ip,
+        userAgent,
+      },
+    });
+
+    audit({
+      adminUserId,
+      tenantId: tenant?.id || null,
+      accion: 'AGENT_ASSIGNMENT_EMAIL_SENT',
+      entidad: 'solicitud',
+      entidadId: String(solicitudId),
+      ip,
+      userAgent,
+      metadata: {
+        event: 'solicitud.assigned',
+        solicitudId,
+        agenteId: assignedAgente?.id ?? null,
+        email,
+        messageId: result?.messageId || null,
+      },
+    });
+
+    return { ok: true, skipped: false, result };
+  } catch (err) {
+    audit({
+      adminUserId,
+      tenantId: tenant?.id || null,
+      accion: 'AGENT_ASSIGNMENT_EMAIL_FAILED',
+      entidad: 'solicitud',
+      entidadId: String(solicitudId),
+      ip,
+      userAgent,
+      metadata: {
+        event: 'solicitud.assigned',
+        solicitudId,
+        agenteId: assignedAgente?.id ?? null,
+        email,
+        error: err?.message || 'email_send_failed',
+      },
+    });
+    return { ok: false, skipped: false, error: err?.message || 'email_send_failed' };
+  }
 }
 
 async function getTenantWebhookSecret(tenantId) {
@@ -148,4 +236,5 @@ async function dispatchSolicitudesWebhookEvent({
 module.exports = {
   WEBHOOK_EVENTS,
   dispatchSolicitudesWebhookEvent,
+  notifyAssignedAgentEmail,
 };

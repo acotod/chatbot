@@ -13,7 +13,7 @@ const socketService = require('../services/socketService');
 const wa = require('../services/whatsapp');
 const convLogger = require('../engine/conversationLogger');
 const { generatePortalToken } = require('../services/portalAccess');
-const { WEBHOOK_EVENTS, dispatchSolicitudesWebhookEvent } = require('../services/solicitudesWebhooks');
+const { WEBHOOK_EVENTS, dispatchSolicitudesWebhookEvent, notifyAssignedAgentEmail } = require('../services/solicitudesWebhooks');
 const lockoutPolicy = require('../services/lockoutPolicy');
 const { createAdminNotification, serializeNotification } = require('../services/adminNotifications');
 const calendarService = require('../services/calendarService');
@@ -2144,6 +2144,37 @@ router.patch('/tenants/:slug/solicitudes/:id/agente', requirePermiso('EDIT_SOLIC
                 agenteId: Number(agenteId),
             },
         });
+
+        try {
+            const assignedAgente = await prisma.agente.findFirst({
+                where: { id: Number(agenteId), tenantId: tenant.id },
+                select: { id: true, nombre: true, email: true },
+            });
+            const loginUrl = await buildAgentSolicitudesUrl(tenant.id);
+            await notifyAssignedAgentEmail({
+                tenant,
+                solicitudId: Number(req.params.id),
+                assignedAgente,
+                adminUserId: req.admin?.adminUserId,
+                ip: req.ip,
+                userAgent: req.headers['user-agent'],
+                loginUrl,
+            });
+        } catch (mailErr) {
+            audit({
+                adminUserId: req.admin?.adminUserId,
+                tenantId: tenant.id,
+                accion: 'AGENT_ASSIGNMENT_EMAIL_NOTIFY_ERROR',
+                entidad: 'solicitud',
+                entidadId: req.params.id,
+                ip: req.ip,
+                userAgent: req.headers['user-agent'],
+                metadata: {
+                    agenteId: Number(agenteId),
+                    error: mailErr?.message || 'mail_notification_failed',
+                },
+            });
+        }
 
         await createAdminNotification({
             tenantId: tenant.id,
