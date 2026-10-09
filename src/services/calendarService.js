@@ -31,7 +31,10 @@ const prisma = new PrismaClient();
 let _redis = null;
 function getRedis() {
   if (!_redis) {
-    try { _redis = require('./redis'); } catch (_) { /* redis optional */ }
+    // NOTE: must call getRedisClient() — requiring the module alone returns
+    // { getRedisClient }, which has no .get/.setex/.del/.keys methods and made
+    // every cache helper below silently no-op (always cache miss, never cached).
+    try { _redis = require('./redis').getRedisClient(); } catch (_) { /* redis optional */ }
   }
   return _redis;
 }
@@ -223,10 +226,9 @@ async function ensureCalendarConfigForSlotDuration({ calendarId, tenantId, slotD
     },
   });
 
-  await cacheDel(`slots:${calendarId}:default`);
-  if (rangeDays !== null && rangeDays !== undefined) {
-    await cacheDel(`slots:${calendarId}:${rangeDays}`);
-  }
+  // Cache keys include rangeDays + slot duration, so a narrow cacheDel here would
+  // miss the actual key; clear every "slots:<calendarId>:*" entry instead.
+  await clearSlotCachesForCalendar(calendarId);
 
   await generateSlots(calendarId, rangeDays);
 }
@@ -865,11 +867,19 @@ async function getAvailableSlots(calendarId, rangeDays = null, options = {}) {
   const to   = new Date();
   to.setDate(to.getDate() + days);
 
-  // Auto-generate if no slots exist yet for this range
-  const existingCount = await prisma.calendarSlot.count({
-    where: { calendarId, status: 'available', startTime: { gte: from, lte: to } },
+  // Auto-generate up to the requested range. Checking for ANY existing slot
+  // (old gate) meant that once a calendar had slots from an earlier, narrower
+  // request, a later request for a larger `range_days` never extended
+  // generation into the new tail days — the same early, quickly-booked slots
+  // kept being the only ones offered. Instead, check how far generation
+  // already reaches (regardless of slot status) and extend only if needed;
+  // generateSlots() is idempotent per-slot so this never duplicates.
+  const latestGenerated = await prisma.calendarSlot.aggregate({
+    where: { calendarId },
+    _max : { startTime: true },
   });
-  if (existingCount === 0) {
+  const generatedThrough = latestGenerated._max.startTime;
+  if (!generatedThrough || generatedThrough < to) {
     await generateSlots(calendarId, days);
   }
 
@@ -1300,9 +1310,9 @@ async function bookSlot({ calendarId, slotId, tenantId, userKey, conversationId,
       }
     }
 
-    // Invalidate availability cache for this calendar
-    await cacheDel(`slots:${calendarId}:default`);
-    await cacheDel(`slots:${calendarId}:5`);
+    // Invalidate availability cache for this calendar (key includes rangeDays +
+    // duration, so a narrow cacheDel would leave the just-booked slot cached as available).
+    await clearSlotCachesForCalendar(calendarId);
 
     return { appointment: result };
   } catch (err) {
@@ -1360,6 +1370,10 @@ async function cancelAppointment(appointmentId, tenantId) {
         WHERE appointment_id = ${appointmentId}::uuid
       `;
     });
+
+    if (existing.calendar?.id) {
+      await clearSlotCachesForCalendar(existing.calendar.id);
+    }
 
     try {
       await cancelGoogleCalendarEvent({ calendar: existing.calendar, metadata: existing.metadata });
@@ -1441,6 +1455,12 @@ async function rescheduleAppointment(appointmentId, newSlotId, tenantId) {
       WHERE appointment_id = ${appointmentId}::uuid
     `;
   });
+
+  // The old slot was freed after bookSlot() already cleared the cache for the
+  // new booking; clear again so the just-freed slot isn't missing from availability.
+  if (existing.calendarId) {
+    await clearSlotCachesForCalendar(existing.calendarId);
+  }
 
   try {
     await cancelGoogleCalendarEvent({ calendar: existing.calendar, metadata: existing.metadata });
