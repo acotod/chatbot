@@ -37,6 +37,7 @@ function createApp() {
 
 describe('POST /auth/facebook', () => {
   const OLD_ENV = process.env;
+  const OLD_FETCH = global.fetch;
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -49,6 +50,12 @@ describe('POST /auth/facebook', () => {
     };
 
     global.fetch = jest.fn();
+  });
+
+  afterEach(() => {
+    // Restore the real/original fetch so other test files sharing this Jest
+    // worker never inherit a mock with no queued responses.
+    global.fetch = OLD_FETCH;
   });
 
   afterAll(() => {

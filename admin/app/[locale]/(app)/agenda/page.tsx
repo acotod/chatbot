@@ -825,6 +825,7 @@ export default function AgendaPage() {
         hideTechnicalSections={modalHideTechnicalSections}
         appointmentMode={Boolean(selectedAppointment)}
         appointmentStatusLabel={selectedAppointment?.status ? t(`statuses.${selectedAppointment.status}` as never) : undefined}
+        appointmentRawStatus={selectedAppointment?.status}
         appointmentSlots={appointmentSlotOptions}
         appointmentSlotsLoading={appointmentSlotsQuery.isLoading}
         appointmentSlotsError={appointmentSlotsErrorMessage}

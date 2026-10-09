@@ -55,6 +55,7 @@ interface AgendaEventModalProps {
   hideTechnicalSections?: boolean;
   appointmentMode?: boolean;
   appointmentStatusLabel?: string;
+  appointmentRawStatus?: string;
   appointmentSlots?: AppointmentSlotOption[];
   appointmentSlotsLoading?: boolean;
   appointmentSlotsError?: string | null;
@@ -114,6 +115,7 @@ export function AgendaEventModal({
   hideTechnicalSections = false,
   appointmentMode = false,
   appointmentStatusLabel,
+  appointmentRawStatus,
   appointmentSlots = [],
   appointmentSlotsLoading = false,
   appointmentSlotsError = null,
@@ -450,7 +452,7 @@ export function AgendaEventModal({
               </Button>
             </div>
 
-            {onMarkAppointmentStatus && (
+            {onMarkAppointmentStatus && (appointmentRawStatus === "scheduled" || appointmentRawStatus === "rescheduled") && (
               <div className="flex flex-wrap items-center gap-2 pt-1">
                 <Button
                   type="button"
