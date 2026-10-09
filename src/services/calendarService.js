@@ -31,7 +31,10 @@ const prisma = new PrismaClient();
 let _redis = null;
 function getRedis() {
   if (!_redis) {
-    try { _redis = require('./redis'); } catch (_) { /* redis optional */ }
+    // NOTE: must call getRedisClient() — requiring the module alone returns
+    // { getRedisClient }, which has no .get/.setex/.del/.keys methods and made
+    // every cache helper below silently no-op (always cache miss, never cached).
+    try { _redis = require('./redis').getRedisClient(); } catch (_) { /* redis optional */ }
   }
   return _redis;
 }
@@ -864,11 +867,19 @@ async function getAvailableSlots(calendarId, rangeDays = null, options = {}) {
   const to   = new Date();
   to.setDate(to.getDate() + days);
 
-  // Auto-generate if no slots exist yet for this range
-  const existingCount = await prisma.calendarSlot.count({
-    where: { calendarId, status: 'available', startTime: { gte: from, lte: to } },
+  // Auto-generate up to the requested range. Checking for ANY existing slot
+  // (old gate) meant that once a calendar had slots from an earlier, narrower
+  // request, a later request for a larger `range_days` never extended
+  // generation into the new tail days — the same early, quickly-booked slots
+  // kept being the only ones offered. Instead, check how far generation
+  // already reaches (regardless of slot status) and extend only if needed;
+  // generateSlots() is idempotent per-slot so this never duplicates.
+  const latestGenerated = await prisma.calendarSlot.aggregate({
+    where: { calendarId },
+    _max : { startTime: true },
   });
-  if (existingCount === 0) {
+  const generatedThrough = latestGenerated._max.startTime;
+  if (!generatedThrough || generatedThrough < to) {
     await generateSlots(calendarId, days);
   }
 
