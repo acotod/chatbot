@@ -983,7 +983,8 @@ async function getCalendarAssignmentContext(calendarId, tenantId) {
 
 function buildPuestoToken({ puestoId = null, puestoNombre = null }) {
   const safePuestoId = Number.isInteger(puestoId) && puestoId > 0 ? String(puestoId) : '';
-  const safePuestoNombre = String(puestoNombre || '').trim().toLowerCase();
+  // Capped so `calendar_rr_last_<token>` always fits Configuracion.clave (VarChar(100)).
+  const safePuestoNombre = String(puestoNombre || '').trim().toLowerCase().slice(0, 60);
   return safePuestoId || safePuestoNombre || 'unknown';
 }
 
@@ -1215,11 +1216,14 @@ async function bookSlot({ calendarId, slotId, tenantId, userKey, conversationId,
       });
       if (slot) {
         const { checkAgenteScheduleConflict } = require('./scheduleConflictService');
+        // Excludes the appointment being replaced so a reschedule never self-conflicts.
+        const excludeAppointmentId = typeof metadata?.rescheduled_from === 'string' ? metadata.rescheduled_from : null;
         const { hasConflict } = await checkAgenteScheduleConflict({
           tenantId,
           agenteId: targetCalendar.agenteId,
           startAt: slot.startTime,
           endAt: slot.endTime,
+          excludeAppointmentId,
         });
         if (hasConflict) {
           return { error: 'AGENT_BUSY' };

@@ -365,4 +365,3 @@ router.patch('/appointments/:id/status', async (req, res, next) => {
 });
 
 module.exports = router;
-

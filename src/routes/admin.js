@@ -3230,7 +3230,7 @@ router.post('/tenants/:slug/agenda', requirePermiso(['CREATE_AGENDA', 'VIEW_AGEN
                 return res.status(400).json({ error: 'One or more agenteIds are invalid for this tenant' });
             }
 
-            const force = Boolean(req.body.force);
+            const force = req.body.force === true;
             const conflictsByAgente = await findAgendaAssignmentConflicts({
                 tenantId: tenant.id,
                 agenteIds: assignmentIds,
@@ -3350,7 +3350,7 @@ router.patch('/tenants/:slug/agenda/:id', requirePermiso('EDIT_AGENDA'), async (
 
         const timeChanged = existing.startAt.getTime() !== nextStartAt.getTime() || existing.endAt.getTime() !== nextEndAt.getTime();
         if (timeChanged && existing.assignments.length > 0) {
-            const force = Boolean(req.body.force);
+            const force = req.body.force === true;
             const conflictsByAgente = await findAgendaAssignmentConflicts({
                 tenantId: tenant.id,
                 agenteIds: existing.assignments.map((a) => a.agenteId),
@@ -3478,7 +3478,7 @@ router.post('/tenants/:slug/agenda/:id/assignments', requirePermiso('EDIT_AGENDA
                 return res.status(400).json({ error: 'One or more agenteIds are invalid for this tenant' });
             }
 
-            const force = Boolean(req.body.force);
+            const force = req.body.force === true;
             const conflictsByAgente = await findAgendaAssignmentConflicts({
                 tenantId: tenant.id,
                 agenteIds,
