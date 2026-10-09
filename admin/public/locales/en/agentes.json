@@ -15,7 +15,10 @@
     "agentAccess": "Agent access: {status}",
     "accessEnabled": "enabled",
     "accessMissing": "no credentials",
-    "viewCalendar": "View calendar"
+    "viewCalendar": "View calendar",
+    "disponibleParaCitas": "Available for bookings",
+    "noDisponibleParaCitas": "Not available for bookings",
+    "toggleDisponibilidadHint": "Temporarily exclude this agent from new bookings without deactivating the account"
   },
   "fields": {
     "fullName": "Full name",

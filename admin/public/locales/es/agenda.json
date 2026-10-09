@@ -68,7 +68,12 @@
     "deleteFailed": "No se pudo eliminar el evento. Intenta de nuevo.",
     "deleteSuccess": "Evento eliminado correctamente.",
     "triggerFailed": "No se pudo disparar el webhook. Intenta de nuevo.",
-    "triggerSuccess": "Webhook disparado correctamente."
+    "triggerSuccess": "Webhook disparado correctamente.",
+    "scheduleConflict": "Uno o más agentes ya tienen una cita o evento en ese horario:",
+    "scheduleConflictConfirm": "¿Deseas guardar de todos modos?",
+    "markStatusFailed": "No se pudo actualizar el estado de la cita. Intenta de nuevo.",
+    "markCompletedSuccess": "Cita marcada como completada.",
+    "markNoShowSuccess": "Cita marcada como no asistió."
   },
   "modal": {
     "appointmentDetail": "Detalle de cita",
@@ -85,6 +90,8 @@
     "cancelAppointment": "Cancelar cita",
     "rescheduling": "Reprogramando...",
     "saveAppointment": "Guardar cita",
+    "markCompleted": "Marcar completada",
+    "markNoShow": "No asistió",
     "triggerWebhookOnStart": "Disparar webhook al iniciar",
     "triggerWebhookHint": "Se ejecuta cuando el estado cambia a En progreso o manualmente.",
     "webhookUrl": "Webhook URL",

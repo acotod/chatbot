@@ -17,6 +17,7 @@ const { WEBHOOK_EVENTS, dispatchSolicitudesWebhookEvent, notifyAssignedAgentEmai
 const lockoutPolicy = require('../services/lockoutPolicy');
 const { createAdminNotification, serializeNotification } = require('../services/adminNotifications');
 const calendarService = require('../services/calendarService');
+const { checkAgenteScheduleConflict } = require('../services/scheduleConflictService');
 
 // Multer: store logos under /app/uploads/logos (persisted volume in prod)
 const UPLOADS_DIR = path.join(process.cwd(), 'uploads', 'logos');
@@ -105,6 +106,29 @@ function denyIfWrongTenant(req, res, tenantId) {
 const AGENDA_TYPES = new Set(['reunion', 'tarea', 'automatizacion', 'webhook']);
 const AGENDA_STATES = new Set(['pendiente', 'en_progreso', 'completado']);
 const SOLICITUD_STATES = new Set(db.SOLICITUD_STATUS_VALUES);
+
+/**
+ * Check a batch of agentes for schedule conflicts over [startAt, endAt).
+ * Used so manual AgendaEvent creation/assignment never silently double-books
+ * an agente already holding a bot-booked Appointment (or another AgendaEvent).
+ *
+ * @returns {Promise<Array<{ agenteId: number, conflicts: Array }>>} only entries with conflicts
+ */
+async function findAgendaAssignmentConflicts({ tenantId, agenteIds, startAt, endAt, excludeEventId = null }) {
+  const results = await Promise.all(
+    agenteIds.map(async (agenteId) => {
+      const { hasConflict, conflicts } = await checkAgenteScheduleConflict({
+        tenantId,
+        agenteId,
+        startAt,
+        endAt,
+        excludeEventId,
+      });
+      return hasConflict ? { agenteId, conflicts } : null;
+    })
+  );
+  return results.filter(Boolean);
+}
 
 function queueSolicitudWebhook({ tenant, req, event, solicitudId, payload }) {
     dispatchSolicitudesWebhookEvent({ tenant, req, event, solicitudId, payload }).catch(() => {});
@@ -1488,6 +1512,56 @@ router.patch('/tenants/:slug/agentes/:id/estado', requirePermiso('EDIT_AGENTES')
         if (!estado) return res.status(400).json({ error: 'estado is required' });
         const result = await db.setAgenteEstado(Number(req.params.id), tenant.id, estado);
         res.json(result);
+    } catch (err) {
+        next(err);
+    }
+});
+
+// PATCH /admin/tenants/:slug/agentes/:id/disponibilidad
+// Body: { disponibleParaCitas: boolean, ausenteHasta?: ISO date | null }
+// Decoupled from /estado: lets an agente stay "activo" account-wide (solicitudes, CRM, login)
+// while temporarily excluded from new calendar/citas assignment (vacations, leave).
+router.patch('/tenants/:slug/agentes/:id/disponibilidad', requirePermiso('EDIT_AGENTES'), async (req, res, next) => {
+    try {
+        const tenant = await db.findTenantBySlug(req.params.slug);
+        if (!tenant) return res.status(404).json({ error: 'Tenant not found' });
+        if (denyIfWrongTenant(req, res, tenant.id)) return;
+
+        const agenteId = Number(req.params.id);
+        if (!Number.isInteger(agenteId) || agenteId <= 0) {
+            return res.status(400).json({ error: 'invalid agente id' });
+        }
+        if (typeof req.body?.disponibleParaCitas !== 'boolean') {
+            return res.status(400).json({ error: 'disponibleParaCitas (boolean) is required' });
+        }
+        const rawAusenteHasta = req.body?.ausenteHasta;
+        let ausenteHasta = null;
+        if (rawAusenteHasta) {
+            const parsed = parseIsoDate(rawAusenteHasta);
+            if (!parsed) return res.status(400).json({ error: 'ausenteHasta must be a valid ISO date' });
+            ausenteHasta = parsed;
+        }
+
+        const result = await db.setAgenteDisponibilidad(agenteId, tenant.id, {
+            disponibleParaCitas: req.body.disponibleParaCitas,
+            ausenteHasta,
+        });
+        if (!result || result.count === 0) {
+            return res.status(404).json({ error: 'Agente not found' });
+        }
+
+        audit({
+            adminUserId: req.admin?.adminUserId,
+            tenantId: tenant.id,
+            accion: 'UPDATE_AGENTE_DISPONIBILIDAD',
+            entidad: 'agente',
+            entidadId: String(agenteId),
+            ip: req.ip,
+            userAgent: req.headers['user-agent'],
+            metadata: { disponibleParaCitas: req.body.disponibleParaCitas, ausenteHasta },
+        });
+
+        res.json({ ok: true, agenteId, disponibleParaCitas: req.body.disponibleParaCitas, ausenteHasta });
     } catch (err) {
         next(err);
     }
@@ -3155,6 +3229,31 @@ router.post('/tenants/:slug/agenda', requirePermiso(['CREATE_AGENDA', 'VIEW_AGEN
             if (agentes.length !== assignmentIds.length) {
                 return res.status(400).json({ error: 'One or more agenteIds are invalid for this tenant' });
             }
+
+            const force = req.body.force === true;
+            const conflictsByAgente = await findAgendaAssignmentConflicts({
+                tenantId: tenant.id,
+                agenteIds: assignmentIds,
+                startAt: parsedStartAt,
+                endAt: parsedEndAt,
+            });
+            if (conflictsByAgente.length > 0 && !force) {
+                return res.status(409).json({
+                    error: 'One or more agentes already have a conflicting appointment or agenda event in this time range',
+                    conflicts: conflictsByAgente,
+                });
+            }
+            if (conflictsByAgente.length > 0 && force) {
+                audit({
+                    adminUserId: req.admin?.adminUserId,
+                    tenantId: tenant.id,
+                    accion: 'FORCE_AGENDA_EVENT_CONFLICT',
+                    entidad: 'agenda_event',
+                    ip: req.ip,
+                    userAgent: req.headers['user-agent'],
+                    metadata: { conflicts: conflictsByAgente },
+                });
+            }
         }
 
         const created = await prisma.$transaction(async (tx) => {
@@ -3222,7 +3321,10 @@ router.patch('/tenants/:slug/agenda/:id', requirePermiso('EDIT_AGENDA'), async (
         if (denyIfWrongTenant(req, res, tenant.id)) return;
 
         const eventId = Number(req.params.id);
-        const existing = await prisma.agendaEvent.findFirst({ where: { id: eventId, tenantId: tenant.id } });
+        const existing = await prisma.agendaEvent.findFirst({
+            where: { id: eventId, tenantId: tenant.id },
+            include: { assignments: true },
+        });
         if (!existing) return res.status(404).json({ error: 'Agenda event not found' });
 
         const patch = {};
@@ -3245,6 +3347,37 @@ router.patch('/tenants/:slug/agenda/:id', requirePermiso('EDIT_AGENDA'), async (
         if (!nextStartAt || !nextEndAt || nextStartAt >= nextEndAt) {
             return res.status(400).json({ error: 'Invalid startAt/endAt interval' });
         }
+
+        const timeChanged = existing.startAt.getTime() !== nextStartAt.getTime() || existing.endAt.getTime() !== nextEndAt.getTime();
+        if (timeChanged && existing.assignments.length > 0) {
+            const force = req.body.force === true;
+            const conflictsByAgente = await findAgendaAssignmentConflicts({
+                tenantId: tenant.id,
+                agenteIds: existing.assignments.map((a) => a.agenteId),
+                startAt: nextStartAt,
+                endAt: nextEndAt,
+                excludeEventId: eventId,
+            });
+            if (conflictsByAgente.length > 0 && !force) {
+                return res.status(409).json({
+                    error: 'One or more agentes already have a conflicting appointment or agenda event in this time range',
+                    conflicts: conflictsByAgente,
+                });
+            }
+            if (conflictsByAgente.length > 0 && force) {
+                audit({
+                    adminUserId: req.admin?.adminUserId,
+                    tenantId: tenant.id,
+                    accion: 'FORCE_AGENDA_EVENT_CONFLICT',
+                    entidad: 'agenda_event',
+                    entidadId: String(eventId),
+                    ip: req.ip,
+                    userAgent: req.headers['user-agent'],
+                    metadata: { conflicts: conflictsByAgente },
+                });
+            }
+        }
+
         patch.startAt = nextStartAt;
         patch.endAt = nextEndAt;
 
@@ -3343,6 +3476,33 @@ router.post('/tenants/:slug/agenda/:id/assignments', requirePermiso('EDIT_AGENDA
             });
             if (agentes.length !== agenteIds.length) {
                 return res.status(400).json({ error: 'One or more agenteIds are invalid for this tenant' });
+            }
+
+            const force = req.body.force === true;
+            const conflictsByAgente = await findAgendaAssignmentConflicts({
+                tenantId: tenant.id,
+                agenteIds,
+                startAt: event.startAt,
+                endAt: event.endAt,
+                excludeEventId: eventId,
+            });
+            if (conflictsByAgente.length > 0 && !force) {
+                return res.status(409).json({
+                    error: 'One or more agentes already have a conflicting appointment or agenda event in this time range',
+                    conflicts: conflictsByAgente,
+                });
+            }
+            if (conflictsByAgente.length > 0 && force) {
+                audit({
+                    adminUserId: req.admin?.adminUserId,
+                    tenantId: tenant.id,
+                    accion: 'FORCE_AGENDA_EVENT_CONFLICT',
+                    entidad: 'agenda_event',
+                    entidadId: String(eventId),
+                    ip: req.ip,
+                    userAgent: req.headers['user-agent'],
+                    metadata: { conflicts: conflictsByAgente },
+                });
             }
         }
 

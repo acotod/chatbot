@@ -214,7 +214,7 @@ export type AgentConversationsResponse = {
 };
 
 export type AgentAgendaEvent = {
-  id: number;
+  id: number | string;
   titulo: string;
   descripcion: string | null;
   tipo: string;
@@ -222,6 +222,8 @@ export type AgentAgendaEvent = {
   estado: string;
   startAt: string;
   endAt: string;
+  source?: "agenda" | "appointment";
+  assignments?: Array<{ agenteId: number; nombre: string | null; email: string | null; estado: string | null }>;
 };
 
 export type AgentAgendaResponse = {

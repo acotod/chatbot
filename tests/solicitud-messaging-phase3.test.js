@@ -236,14 +236,16 @@ describe('WhatsApp webhook – inbound message → solicitud socket fan-out', ()
 
   it('lookup is scoped to same tenant', () => {
     const src = readSrc('src', 'routes', 'whatsapp.js');
-    const idx = src.indexOf("'SOLICITUD_MESSAGE_SENT'");
+    const anchor = src.indexOf('Notify open solicitudes for this contact');
+    const idx = src.indexOf("'SOLICITUD_MESSAGE_SENT'", anchor);
     const ctx = src.slice(Math.max(0, idx - 400), idx + 200);
     expect(ctx).toContain('tenant.id');
   });
 
   it('lookup excludes completed and rejected solicitudes', () => {
     const src = readSrc('src', 'routes', 'whatsapp.js');
-    const idx = src.indexOf("'SOLICITUD_MESSAGE_SENT'");
+    const anchor = src.indexOf('Notify open solicitudes for this contact');
+    const idx = src.indexOf("'SOLICITUD_MESSAGE_SENT'", anchor);
     const ctx = src.slice(Math.max(0, idx - 400), idx + 50);
     expect(ctx).toContain('notIn');
     expect(ctx).toMatch(/completed|rejected/);
@@ -251,7 +253,8 @@ describe('WhatsApp webhook – inbound message → solicitud socket fan-out', ()
 
   it('is non-blocking (best-effort with catch)', () => {
     const src = readSrc('src', 'routes', 'whatsapp.js');
-    const idx = src.indexOf("'SOLICITUD_MESSAGE_SENT'");
+    const anchor = src.indexOf('Notify open solicitudes for this contact');
+    const idx = src.indexOf("'SOLICITUD_MESSAGE_SENT'", anchor);
     const ctx = src.slice(Math.max(0, idx - 100), idx + 200);
     expect(ctx).toContain('.catch(');
   });

@@ -24,6 +24,8 @@ interface Agente {
   jefeAdminId?: number | null;
   jefeAdmin?: { id: number; nombre: string } | null;
   estado: string;
+  disponibleParaCitas?: boolean;
+  ausenteHasta?: string | null;
 }
 
 interface AdminUserItem {
@@ -141,6 +143,12 @@ export default function AgentesPage() {
   const toggle = useMutation({
     mutationFn: ({ id, estado }: { id: number; estado: string }) =>
       agentesApi.updateEstado(tenantSlug, id, estado),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["agentes"] }),
+  });
+
+  const toggleDisponibilidad = useMutation({
+    mutationFn: ({ id, disponibleParaCitas }: { id: number; disponibleParaCitas: boolean }) =>
+      agentesApi.updateDisponibilidad(tenantSlug, id, { disponibleParaCitas, ausenteHasta: null }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["agentes"] }),
   });
 
@@ -441,6 +449,24 @@ export default function AgentesPage() {
                       </a>
                     )}
                     <StatusBadge status={a.estado} className="mt-2" />
+                    <button
+                      type="button"
+                      onClick={() =>
+                        toggleDisponibilidad.mutate({
+                          id: a.id,
+                          disponibleParaCitas: !(a.disponibleParaCitas ?? true),
+                        })
+                      }
+                      className="mt-1.5 flex items-center gap-1 text-xs text-slate-500 hover:text-blue-600"
+                      title={t("card.toggleDisponibilidadHint")}
+                    >
+                      {(a.disponibleParaCitas ?? true) ? (
+                        <ToggleRight size={16} className="text-blue-600" />
+                      ) : (
+                        <ToggleLeft size={16} />
+                      )}
+                      {(a.disponibleParaCitas ?? true) ? t("card.disponibleParaCitas") : t("card.noDisponibleParaCitas")}
+                    </button>
                   </div>
                 </div>
                 <button

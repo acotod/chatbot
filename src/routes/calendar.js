@@ -342,4 +342,26 @@ router.post('/appointments/:id/reschedule', async (req, res, next) => {
   }
 });
 
+/**
+ * PATCH /calendar/appointments/:id/status
+ * Mark attendance outcome for an appointment (completed | no_show).
+ * Body: { status: 'completed' | 'no_show' }
+ */
+router.patch('/appointments/:id/status', async (req, res, next) => {
+    try {
+        const { tenantId } = req;
+        const status = String(req.body?.status || '').trim();
+        if (!['completed', 'no_show'].includes(status)) {
+            return res.status(400).json({ error: 'status must be completed or no_show' });
+        }
+
+        const result = await calendarSvc.updateAppointmentStatus(req.params.id, tenantId, status);
+        if (result.error === 'NOT_FOUND') return res.status(404).json({ error: 'Appointment not found' });
+        if (result.error) return res.status(400).json({ error: result.error });
+        res.json({ appointment: result.appointment });
+    } catch (err) {
+        next(err);
+    }
+});
+
 module.exports = router;

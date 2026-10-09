@@ -393,6 +393,10 @@ model Agente {
   calendarLink String?    @map("calendar_link") @db.VarChar(500)
   jefeAdminId Int?        @map("jefe_admin_id")
   estado      String      @default("activo") @db.VarChar(20)
+  /// Independent of `estado`: toggled off for temporary leave (vacations, sick leave) without deactivating the account.
+  disponibleParaCitas Boolean @default(true) @map("disponible_para_citas")
+  /// Optional end date for a temporary leave; once passed, treated as available again.
+  ausenteHasta DateTime? @map("ausente_hasta")
   lastSeenAt  DateTime?   @map("last_seen_at")
   createdAt   DateTime    @default(now()) @map("created_at")
   tenant      Tenant      @relation(fields: [tenantId], references: [id])

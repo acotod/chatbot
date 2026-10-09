@@ -16,6 +16,12 @@ const mockPrisma = {
   },
   calendar: {
     findFirst: jest.fn(),
+    // bookSlot() looks up the calendar's agenteId for the schedule-conflict check;
+    // default to "no agente" so these reschedule tests keep their original behavior.
+    findUnique: jest.fn().mockResolvedValue(null),
+  },
+  calendarSlot: {
+    findUnique: jest.fn(),
   },
   $transaction: jest.fn(async (cb) => cb(mockTx)),
 };
