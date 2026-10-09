@@ -6,6 +6,7 @@ const { PrismaClient } = require('@prisma/client');
 const logger = require('../utils/logger');
 const db = require('../services/database');
 const wa = require('../services/whatsapp');
+const calendarService = require('../services/calendarService');
 const { getRedisClient } = require('../services/redis');
 const { loadFlowDefinition } = require('../engine/flowLoader');
 const {
@@ -352,6 +353,15 @@ async function processTenant(tenant) {
 }
 
 async function runOnce() {
+  try {
+    const { scanned, reconciled } = await calendarService.reconcileOrphanedGoogleEvents();
+    if (reconciled > 0) {
+      logger.info({ scanned, reconciled }, 'outboundReminderWorker: reconciled orphaned Google Calendar events');
+    }
+  } catch (error) {
+    logger.error({ message: error.message }, 'outboundReminderWorker: google reconciliation failed');
+  }
+
   const tenants = await prisma.tenant.findMany({
     select: { id: true, nombre: true },
   });

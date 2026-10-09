@@ -60,12 +60,14 @@ interface AgendaEventModalProps {
   appointmentSlotsError?: string | null;
   appointmentRescheduling?: boolean;
   appointmentCancelling?: boolean;
+  appointmentMarkingStatus?: boolean;
   onClose: () => void;
   onSave: (payload: AgendaEventFormData) => Promise<void>;
   onDelete?: (id: number) => Promise<void>;
   onTriggerStart?: (id: number) => Promise<void>;
   onRescheduleAppointment?: (slotId: string) => Promise<void>;
   onCancelAppointment?: () => Promise<void>;
+  onMarkAppointmentStatus?: (status: "completed" | "no_show") => Promise<void>;
 }
 
 const EMPTY_EVENT: AgendaEventFormData = {
@@ -117,12 +119,14 @@ export function AgendaEventModal({
   appointmentSlotsError = null,
   appointmentRescheduling = false,
   appointmentCancelling = false,
+  appointmentMarkingStatus = false,
   onClose,
   onSave,
   onDelete,
   onTriggerStart,
   onRescheduleAppointment,
   onCancelAppointment,
+  onMarkAppointmentStatus,
 }: AgendaEventModalProps) {
   const t = useTranslations("agenda");
   const [form, setForm] = useState<AgendaEventFormData>(event ?? EMPTY_EVENT);
@@ -131,16 +135,19 @@ export function AgendaEventModal({
   const [selectedAppointmentSlotId, setSelectedAppointmentSlotId] = useState("");
   const [localAppointmentRescheduling, setLocalAppointmentRescheduling] = useState(false);
   const [localAppointmentCancelling, setLocalAppointmentCancelling] = useState(false);
+  const [localAppointmentMarkingStatus, setLocalAppointmentMarkingStatus] = useState(false);
 
   const isEdit = useMemo(() => Boolean(form.id), [form.id]);
   const showWebhookSections = !hideTechnicalSections && form.tipo === "webhook";
   const isAppointmentRescheduling = localAppointmentRescheduling;
   const isAppointmentCancelling = localAppointmentCancelling;
+  const isAppointmentMarkingStatus = localAppointmentMarkingStatus || appointmentMarkingStatus;
 
   useEffect(() => {
     if (open) return;
     setLocalAppointmentRescheduling(false);
     setLocalAppointmentCancelling(false);
+    setLocalAppointmentMarkingStatus(false);
   }, [open]);
 
   function getErrorMessage(err: unknown, fallback: string) {
@@ -253,6 +260,25 @@ export function AgendaEventModal({
       setError(getErrorMessage(err, t("messages.cancelFailed")));
     } finally {
       setLocalAppointmentCancelling(false);
+    }
+  }
+
+  async function handleMarkAppointmentStatus(status: "completed" | "no_show") {
+    if (!onMarkAppointmentStatus) return;
+    try {
+      setLocalAppointmentMarkingStatus(true);
+      setError("");
+      setSuccess("");
+      await withTimeout(
+        onMarkAppointmentStatus(status),
+        APPOINTMENT_ACTION_TIMEOUT_MS,
+        t("messages.requestTimeout")
+      );
+      setSuccess(status === "completed" ? t("messages.markCompletedSuccess") : t("messages.markNoShowSuccess"));
+    } catch (err) {
+      setError(getErrorMessage(err, t("messages.markStatusFailed")));
+    } finally {
+      setLocalAppointmentMarkingStatus(false);
     }
   }
 
@@ -423,6 +449,29 @@ export function AgendaEventModal({
                 {isAppointmentRescheduling ? t("modal.rescheduling") : t("modal.saveAppointment")}
               </Button>
             </div>
+
+            {onMarkAppointmentStatus && (
+              <div className="flex flex-wrap items-center gap-2 pt-1">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => handleMarkAppointmentStatus("completed")}
+                  disabled={isAppointmentMarkingStatus || isAppointmentCancelling || isAppointmentRescheduling}
+                >
+                  {t("modal.markCompleted")}
+                </Button>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => handleMarkAppointmentStatus("no_show")}
+                  disabled={isAppointmentMarkingStatus || isAppointmentCancelling || isAppointmentRescheduling}
+                >
+                  {t("modal.markNoShow")}
+                </Button>
+              </div>
+            )}
           </div>
         )}
 

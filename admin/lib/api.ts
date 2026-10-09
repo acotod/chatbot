@@ -387,6 +387,12 @@ export const agentesApi = {
     apiClient.patch(`/admin/tenants/${slug}/agentes/${id}`, data),
   updateEstado: (slug: string, id: number, estado: string) =>
     apiClient.patch(`/admin/tenants/${slug}/agentes/${id}/estado`, { estado }),
+  /** Toggle calendar-booking availability independently of estado (temporary leave). */
+  updateDisponibilidad: (
+    slug: string,
+    id: number,
+    data: { disponibleParaCitas: boolean; ausenteHasta?: string | null }
+  ) => apiClient.patch(`/admin/tenants/${slug}/agentes/${id}/disponibilidad`, data),
 };
 
 export const adminUsersApi = {
@@ -427,6 +433,9 @@ export const calendarAppointmentsApi = {
     apiClient.post(`/calendar/appointments/${appointmentId}/cancel`),
   reschedule: (appointmentId: string, newSlotId: string) =>
     apiClient.post(`/calendar/appointments/${appointmentId}/reschedule`, { newSlotId }),
+  /** Post-hoc attendance tracking: 'completed' | 'no_show'. */
+  markStatus: (appointmentId: string, status: "completed" | "no_show") =>
+    apiClient.patch(`/calendar/appointments/${appointmentId}/status`, { status }),
 };
 
 export const agentePuestosApi = {
@@ -453,14 +462,14 @@ export const agendaApi = {
   },
   list: (slug: string, params: { start: string; end: string; tipo?: string; estado?: string; agenteId?: number }) =>
     apiClient.get(`/admin/tenants/${slug}/agenda`, { params }),
-  create: (slug: string, data: Record<string, unknown>) =>
-    apiClient.post(`/admin/tenants/${slug}/agenda`, data),
-  update: (slug: string, id: number, data: Record<string, unknown>) =>
-    apiClient.patch(`/admin/tenants/${slug}/agenda/${id}`, data),
+  create: (slug: string, data: Record<string, unknown>, force = false) =>
+    apiClient.post(`/admin/tenants/${slug}/agenda`, { ...data, force }),
+  update: (slug: string, id: number, data: Record<string, unknown>, force = false) =>
+    apiClient.patch(`/admin/tenants/${slug}/agenda/${id}`, { ...data, force }),
   remove: (slug: string, id: number) =>
     apiClient.delete(`/admin/tenants/${slug}/agenda/${id}`),
-  setAssignments: (slug: string, id: number, agenteIds: number[]) =>
-    apiClient.post(`/admin/tenants/${slug}/agenda/${id}/assignments`, { agenteIds }),
+  setAssignments: (slug: string, id: number, agenteIds: number[], force = false) =>
+    apiClient.post(`/admin/tenants/${slug}/agenda/${id}/assignments`, { agenteIds, force }),
   logs: (slug: string, id: number) =>
     apiClient.get(`/admin/tenants/${slug}/agenda/${id}/logs`),
   triggerStart: (slug: string, id: number) =>

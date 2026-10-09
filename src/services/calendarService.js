@@ -547,9 +547,42 @@ function withExternalEventId(metadata, eventId) {
   };
 }
 
+/**
+ * Look up an already-created Google Calendar event for this appointment before
+ * creating a new one. Guards against duplicate/orphan events when a previous
+ * attempt succeeded on Google's side but crashed before persisting
+ * `external_event_id` locally (e.g. process restart between the two steps).
+ */
+async function findExistingGoogleCalendarEvent({ calendar, appointment, providerCfg }) {
+  const timeMin = new Date(appointment.startTime.getTime() - 24 * 60 * 60 * 1000).toISOString();
+  const timeMax = new Date(appointment.endTime.getTime() + 24 * 60 * 60 * 1000).toISOString();
+  const marker = `Appointment ID: ${appointment.id}`;
+  const query = new URLSearchParams({ q: marker, timeMin, timeMax, singleEvents: 'true' });
+
+  const response = await googleRequestWithRefresh({
+    calendar,
+    method: 'GET',
+    path: `/calendars/${encodeURIComponent(providerCfg.calendarExternalId)}/events?${query.toString()}`,
+    metadata: { appointmentId: appointment.id, operation: 'find_existing_event' },
+  });
+  if (!response || response.skipped || !response.ok) return null;
+
+  try {
+    const json = JSON.parse(response.bodyText || '{}');
+    const items = Array.isArray(json.items) ? json.items : [];
+    const match = items.find((item) => String(item?.description || '').includes(marker));
+    return match?.id || null;
+  } catch (_) {
+    return null;
+  }
+}
+
 async function createGoogleCalendarEvent({ calendar, appointment }) {
   const providerCfg = getCalendarProviderConfig(calendar);
   if (providerCfg.provider !== 'google' || !providerCfg.syncEnabled) return null;
+
+  const existingEventId = await findExistingGoogleCalendarEvent({ calendar, appointment, providerCfg }).catch(() => null);
+  if (existingEventId) return existingEventId;
 
   const eventPayload = {
     summary: `Cita ${appointment?.metadata?.user_name ? `- ${appointment.metadata.user_name}` : ''}`.trim(),
@@ -856,6 +889,39 @@ async function getAvailableSlots(calendarId, rangeDays = null, options = {}) {
 }
 
 /**
+ * Prisma `where` fragment for an Agente that may currently receive new bookings.
+ * Kept separate from `estado` (employment status) so a temporary leave does not
+ * require deactivating the agente account everywhere else (solicitudes, CRM, etc).
+ */
+function agenteBookableWhereFragment(now = new Date()) {
+  return {
+    estado: 'activo',
+    disponibleParaCitas: true,
+    OR: [{ ausenteHasta: null }, { ausenteHasta: { lt: now } }],
+  };
+}
+
+/**
+ * Single source of truth for "can this agente be booked right now?" — used by
+ * both the direct agente_id path and the puesto-based resolution path, which
+ * previously disagreed (only the latter checked agente state).
+ *
+ * @param {string} tenantId
+ * @param {number} agenteId
+ * @returns {Promise<boolean>}
+ */
+async function isAgenteBookable(tenantId, agenteId) {
+  if (!tenantId || !Number.isInteger(agenteId) || agenteId <= 0) return false;
+
+  const agente = await prisma.agente.findFirst({
+    where : { id: agenteId, tenantId, ...agenteBookableWhereFragment() },
+    select: { id: true },
+  });
+
+  return Boolean(agente);
+}
+
+/**
  * Resolve an active calendar id assigned to an agente within a tenant.
  *
  * @param {string} tenantId
@@ -866,7 +932,12 @@ async function getCalendarIdForAgente(tenantId, agenteId) {
   if (!tenantId || !Number.isInteger(agenteId) || agenteId <= 0) return null;
 
   const calendar = await prisma.calendar.findFirst({
-    where  : { tenantId, agenteId, activo: true },
+    where  : {
+      tenantId,
+      agenteId,
+      activo: true,
+      agente: { is: agenteBookableWhereFragment() },
+    },
     orderBy: { createdAt: 'desc' },
     select : { id: true },
   });
@@ -910,35 +981,119 @@ async function getCalendarAssignmentContext(calendarId, tenantId) {
   };
 }
 
-function buildPuestoCursorKey({ tenantId, puestoId = null, puestoNombre = null }) {
-  const safeTenant = String(tenantId || '').trim();
+function buildPuestoToken({ puestoId = null, puestoNombre = null }) {
   const safePuestoId = Number.isInteger(puestoId) && puestoId > 0 ? String(puestoId) : '';
   const safePuestoNombre = String(puestoNombre || '').trim().toLowerCase();
-  const puestoToken = safePuestoId || safePuestoNombre || 'unknown';
-  return `calendar:rr:${safeTenant}:${puestoToken}`;
+  return safePuestoId || safePuestoNombre || 'unknown';
+}
+
+function buildPuestoCursorKey({ tenantId, puestoId = null, puestoNombre = null }) {
+  const safeTenant = String(tenantId || '').trim();
+  return `calendar:rr:${safeTenant}:${buildPuestoToken({ puestoId, puestoNombre })}`;
+}
+
+// Durable fallback for the round-robin cursor so a Redis outage degrades to
+// "keep rotating from the last known pointer", not to random selection.
+async function getPersistedRoundRobinCursor(tenantId, puestoToken) {
+  try {
+    const row = await prisma.configuracion.findUnique({
+      where: { tenantId_clave: { tenantId, clave: `calendar_rr_last_${puestoToken}` } },
+      select: { valor: true },
+    });
+    return row?.valor?.lastCalendarId ?? null;
+  } catch (_) {
+    return null;
+  }
+}
+
+async function setPersistedRoundRobinCursor(tenantId, puestoToken, calendarId) {
+  try {
+    await prisma.configuracion.upsert({
+      where: { tenantId_clave: { tenantId, clave: `calendar_rr_last_${puestoToken}` } },
+      update: { valor: { lastCalendarId: calendarId } },
+      create: { tenantId, clave: `calendar_rr_last_${puestoToken}`, valor: { lastCalendarId: calendarId } },
+    });
+  } catch (_) {
+    // best-effort; Redis pointer still covers the common case
+  }
+}
+
+/**
+ * Pick the calendar immediately after `lastCalendarId` in a stable, sorted list.
+ * Unlike an INCR-based index, this survives additions/removals in the roster:
+ * if the last-assigned calendar is gone, rotation simply restarts at index 0
+ * instead of skipping or repeating entries.
+ */
+function pickNextInRotation(calendars, lastCalendarId) {
+  if (!Array.isArray(calendars) || calendars.length === 0) return null;
+  if (!lastCalendarId) return calendars[0]?.id ?? null;
+  const lastIndex = calendars.findIndex((c) => c.id === lastCalendarId);
+  const nextIndex = lastIndex === -1 ? 0 : (lastIndex + 1) % calendars.length;
+  return calendars[nextIndex]?.id ?? null;
 }
 
 async function chooseCalendarByRoundRobin(calendars, { tenantId, puestoId = null, puestoNombre = null }) {
   if (!Array.isArray(calendars) || calendars.length === 0) return null;
+
+  const puestoToken = buildPuestoToken({ puestoId, puestoNombre });
+  const redisKey = buildPuestoCursorKey({ tenantId, puestoId, puestoNombre });
   const redis = getRedis();
 
-  // Fallback to local random choice if Redis is unavailable.
-  if (!redis) {
-    const idx = Math.floor(Math.random() * calendars.length);
-    return calendars[idx]?.id ?? null;
+  let lastCalendarId = null;
+  if (redis) {
+    try {
+      lastCalendarId = await redis.get(redisKey);
+    } catch (_) {
+      lastCalendarId = null;
+    }
+  }
+  if (!lastCalendarId) {
+    lastCalendarId = await getPersistedRoundRobinCursor(tenantId, puestoToken);
   }
 
-  try {
-    const cursorKey = buildPuestoCursorKey({ tenantId, puestoId, puestoNombre });
-    const nextIdxRaw = await redis.incr(cursorKey);
-    // Keep a bounded TTL so stale puesto keys disappear automatically.
-    await redis.expire(cursorKey, 60 * 60 * 24 * 30);
-    const index = (Number(nextIdxRaw) - 1) % calendars.length;
-    return calendars[index]?.id ?? null;
-  } catch (_) {
-    const idx = Math.floor(Math.random() * calendars.length);
-    return calendars[idx]?.id ?? null;
+  const nextCalendarId = pickNextInRotation(calendars, lastCalendarId);
+  if (!nextCalendarId) return null;
+
+  if (redis) {
+    try {
+      // Keep a bounded TTL so stale puesto keys disappear automatically.
+      await redis.set(redisKey, nextCalendarId, 'EX', 60 * 60 * 24 * 30);
+    } catch (_) {
+      // falls through to the persisted fallback below
+    }
   }
+  await setPersistedRoundRobinCursor(tenantId, puestoToken, nextCalendarId);
+
+  return nextCalendarId;
+}
+
+/**
+ * Pick the calendar whose agente currently has the fewest active appointments
+ * in the given window — a workload-aware alternative to random/round-robin.
+ */
+async function chooseCalendarByLeastBusy(calendars, { windowDays = 7 } = {}) {
+  if (!Array.isArray(calendars) || calendars.length === 0) return null;
+
+  const now = new Date();
+  const windowEnd = new Date(now.getTime() + windowDays * 24 * 60 * 60 * 1000);
+
+  const counts = await Promise.all(
+    calendars.map((calendar) =>
+      prisma.appointment.count({
+        where: {
+          calendarId: calendar.id,
+          status: { in: ['scheduled', 'rescheduled'] },
+          startTime: { gte: now, lte: windowEnd },
+        },
+      })
+    )
+  );
+
+  let bestIndex = 0;
+  for (let i = 1; i < calendars.length; i += 1) {
+    if (counts[i] < counts[bestIndex]) bestIndex = i;
+  }
+  return calendars[bestIndex]?.id ?? null;
 }
 
 async function getCalendarsForPuesto(tenantId, { puestoId = null, puestoNombre = null } = {}) {
@@ -956,7 +1111,7 @@ async function getCalendarsForPuesto(tenantId, { puestoId = null, puestoNombre =
       agente: {
         is: {
           tenantId,
-          estado: 'activo',
+          ...agenteBookableWhereFragment(),
           ...(hasPuestoId
             ? { puestoId }
             : {
@@ -999,7 +1154,7 @@ async function getCalendarsForPuesto(tenantId, { puestoId = null, puestoNombre =
  * @param {{ puestoId?: number|null, puestoNombre?: string|null, strategy?: string|null }} opts
  * @returns {Promise<string|null>}
  */
-async function getCalendarIdForPuesto(tenantId, { puestoId = null, puestoNombre = null, strategy = 'random' } = {}) {
+async function getCalendarIdForPuesto(tenantId, { puestoId = null, puestoNombre = null, strategy = 'random', workloadWindowDays = 7 } = {}) {
   if (!tenantId) return null;
 
   const normalizedPuestoNombre = String(puestoNombre || '').trim();
@@ -1013,6 +1168,9 @@ async function getCalendarIdForPuesto(tenantId, { puestoId = null, puestoNombre 
   const normalizedStrategy = String(strategy || 'random').trim().toLowerCase();
   if (normalizedStrategy === 'round_robin' || normalizedStrategy === 'roundrobin') {
     return chooseCalendarByRoundRobin(calendars, { tenantId, puestoId, puestoNombre: normalizedPuestoNombre });
+  }
+  if (normalizedStrategy === 'least_busy' || normalizedStrategy === 'leastbusy') {
+    return chooseCalendarByLeastBusy(calendars, { windowDays: workloadWindowDays });
   }
 
   const randomIndex = Math.floor(Math.random() * calendars.length);
@@ -1046,6 +1204,29 @@ async function getRandomCalendarIdForPuesto(tenantId, { puestoId = null, puestoN
  */
 async function bookSlot({ calendarId, slotId, tenantId, userKey, conversationId, metadata = {} }) {
   try {
+    const targetCalendar = await prisma.calendar.findUnique({
+      where: { id: calendarId },
+      select: { agenteId: true },
+    });
+    if (targetCalendar?.agenteId) {
+      const slot = await prisma.calendarSlot.findUnique({
+        where: { id: slotId },
+        select: { startTime: true, endTime: true },
+      });
+      if (slot) {
+        const { checkAgenteScheduleConflict } = require('./scheduleConflictService');
+        const { hasConflict } = await checkAgenteScheduleConflict({
+          tenantId,
+          agenteId: targetCalendar.agenteId,
+          startAt: slot.startTime,
+          endAt: slot.endTime,
+        });
+        if (hasConflict) {
+          return { error: 'AGENT_BUSY' };
+        }
+      }
+    }
+
     const result = await prisma.$transaction(async (tx) => {
       // Lock the slot row — NOWAIT raises immediately if locked by another transaction
       const rows = await tx.$queryRaw`
@@ -1273,6 +1454,99 @@ async function rescheduleAppointment(appointmentId, newSlotId, tenantId) {
   return bookResult;
 }
 
+const APPOINTMENT_STATUS_TRANSITIONS = {
+  scheduled: ['completed', 'no_show', 'cancelled'],
+  rescheduled: ['completed', 'no_show', 'cancelled'],
+};
+
+/**
+ * Mark an appointment as completed or no-show (post-hoc attendance tracking).
+ * Cancellation keeps going through cancelAppointment (restores the slot).
+ *
+ * @param {string} appointmentId
+ * @param {string} tenantId
+ * @param {'completed'|'no_show'} status
+ * @returns {Promise<{ appointment: object } | { error: string }>}
+ */
+async function updateAppointmentStatus(appointmentId, tenantId, status) {
+  if (!['completed', 'no_show'].includes(status)) {
+    return { error: 'INVALID_STATUS' };
+  }
+
+  const existing = await prisma.appointment.findFirst({
+    where: { id: appointmentId, tenantId },
+    select: { id: true, status: true },
+  });
+  if (!existing) return { error: 'NOT_FOUND' };
+
+  const allowedNext = APPOINTMENT_STATUS_TRANSITIONS[existing.status] || [];
+  if (!allowedNext.includes(status)) {
+    return { error: 'INVALID_TRANSITION' };
+  }
+
+  const appointment = await prisma.appointment.update({
+    where: { id: appointmentId },
+    data: { status, updatedAt: new Date() },
+  });
+
+  return { appointment };
+}
+
+/**
+ * Retry Google Calendar event creation for appointments that got booked
+ * locally but never received an `external_event_id` (process crash/timeout
+ * between the Google API call and persisting the reference). Safe to call
+ * repeatedly: createGoogleCalendarEvent looks up an existing event first.
+ *
+ * @param {{ olderThanMinutes?: number }} opts
+ * @returns {Promise<{ scanned: number, reconciled: number }>}
+ */
+async function reconcileOrphanedGoogleEvents({ olderThanMinutes = 5 } = {}) {
+  const activeCalendars = await prisma.calendar.findMany({
+    where: { activo: true },
+    select: { id: true, name: true, timezone: true, config: true },
+  });
+  const googleCalendarById = new Map(
+    activeCalendars
+      .filter((c) => String(c?.config?.provider || '').toLowerCase() === 'google')
+      .map((c) => [c.id, c])
+  );
+  if (googleCalendarById.size === 0) return { scanned: 0, reconciled: 0 };
+
+  const cutoff = new Date(Date.now() - olderThanMinutes * 60 * 1000);
+  const candidates = await prisma.appointment.findMany({
+    where: {
+      status: { in: ['scheduled', 'rescheduled'] },
+      createdAt: { lte: cutoff },
+      calendarId: { in: [...googleCalendarById.keys()] },
+    },
+    take: 200,
+  });
+
+  let reconciled = 0;
+  for (const appointment of candidates) {
+    if (getExternalEventId(appointment.metadata)) continue;
+    const calendar = googleCalendarById.get(appointment.calendarId);
+    if (!calendar) continue;
+
+    try {
+      const externalEventId = await createGoogleCalendarEvent({ calendar, appointment });
+      if (externalEventId) {
+        const updatedMetadata = withExternalEventId(appointment.metadata, externalEventId);
+        await prisma.appointment.update({ where: { id: appointment.id }, data: { metadata: updatedMetadata } });
+        reconciled += 1;
+      }
+    } catch (err) {
+      logger.error(
+        { appointmentId: appointment.id, message: err.message },
+        'calendarService.reconcileOrphanedGoogleEvents failed'
+      );
+    }
+  }
+
+  return { scanned: candidates.length, reconciled };
+}
+
 /**
  * Get a single appointment with its calendar.
  */
@@ -1296,8 +1570,11 @@ module.exports = {
   getCalendarsForPuesto,
   getCalendarIdForPuesto,
   getRandomCalendarIdForPuesto,
+  isAgenteBookable,
   bookSlot,
   cancelAppointment,
   rescheduleAppointment,
   getAppointment,
+  updateAppointmentStatus,
+  reconcileOrphanedGoogleEvents,
 };

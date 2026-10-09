@@ -540,6 +540,8 @@ const AGENTE_PUBLIC_SELECT = {
   calendarLink: true,
   jefeAdminId: true,
   estado: true,
+  disponibleParaCitas: true,
+  ausenteHasta: true,
   lastSeenAt: true,
   createdAt: true,
   puesto: { select: { id: true, nombre: true } },
@@ -731,6 +733,19 @@ async function setAgenteEstado(id, tenantId, estado) {
   const client = getPrismaClient();
   if (!client) return null;
   return client.agente.updateMany({ where: { id, tenantId }, data: { estado } });
+}
+
+/** Toggle calendar-booking availability independently of `estado` (temporary leave). */
+async function setAgenteDisponibilidad(id, tenantId, { disponibleParaCitas, ausenteHasta = null }) {
+  const client = getPrismaClient();
+  if (!client) return null;
+  return client.agente.updateMany({
+    where: { id, tenantId },
+    data: {
+      disponibleParaCitas: Boolean(disponibleParaCitas),
+      ausenteHasta: ausenteHasta ? new Date(ausenteHasta) : null,
+    },
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -2440,6 +2455,7 @@ module.exports = {
   setAdminUserJefe,
   getAdminUserEscalationChain,
   setAgenteEstado,
+  setAgenteDisponibilidad,
   setAgenteLastSeen,
   // solicitudes
   SOLICITUD_STATUS,

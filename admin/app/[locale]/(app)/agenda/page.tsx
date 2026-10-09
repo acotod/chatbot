@@ -286,7 +286,7 @@ export default function AgendaPage() {
   });
 
   const saveMutation = useMutation({
-    mutationFn: async (form: AgendaEventFormData) => {
+    mutationFn: async ({ form, force = false }: { form: AgendaEventFormData; force?: boolean }) => {
       if (!tenantSlug) throw new Error(t("messages.tenantRequired"));
       const payload = {
         titulo: form.titulo,
@@ -307,13 +307,17 @@ export default function AgendaPage() {
       const assignmentIds = form.assignments.map((a) => a.agenteId);
 
       if (form.id) {
-        await agendaApi.update(tenantSlug, form.id, payload);
-        await agendaApi.setAssignments(tenantSlug, form.id, assignmentIds);
+        await agendaApi.update(tenantSlug, form.id, payload, force);
+        await agendaApi.setAssignments(tenantSlug, form.id, assignmentIds, force);
       } else {
-        await agendaApi.create(tenantSlug, {
-          ...payload,
-          agenteIds: assignmentIds,
-        });
+        await agendaApi.create(
+          tenantSlug,
+          {
+            ...payload,
+            agenteIds: assignmentIds,
+          },
+          force
+        );
       }
     },
     onSuccess: () => {
@@ -396,6 +400,24 @@ export default function AgendaPage() {
       setSelectedEvent(null);
       setSelectedAppointment(null);
       setSuccessMessage(t("messages.cancelSuccess"));
+    },
+  });
+
+  const markStatusMutation = useMutation({
+    mutationFn: async (status: "completed" | "no_show") => {
+      if (!selectedAppointment?.appointmentId) throw new Error("appointmentId requerido");
+      await withTimeout(
+        calendarAppointmentsApi.markStatus(selectedAppointment.appointmentId, status),
+        APPOINTMENT_ACTION_TIMEOUT_MS,
+        t("messages.requestTimeout")
+      );
+    },
+    retry: false,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["agenda-events"] });
+      setModalOpen(false);
+      setSelectedEvent(null);
+      setSelectedAppointment(null);
     },
   });
 
@@ -808,6 +830,7 @@ export default function AgendaPage() {
         appointmentSlotsError={appointmentSlotsErrorMessage}
         appointmentRescheduling={rescheduleAppointmentMutation.isPending}
         appointmentCancelling={cancelAppointmentMutation.isPending}
+        appointmentMarkingStatus={markStatusMutation.isPending}
         saving={saveMutation.isPending || deleteMutation.isPending || triggerMutation.isPending}
         onClose={() => {
           setModalOpen(false);
@@ -817,7 +840,25 @@ export default function AgendaPage() {
           setModalHideTechnicalSections(false);
         }}
         onSave={async (payload) => {
-          await saveMutation.mutateAsync(payload);
+          try {
+            await saveMutation.mutateAsync({ form: payload });
+          } catch (error) {
+            const status = (error as { response?: { status?: number } })?.response?.status;
+            const conflicts = (
+              error as { response?: { data?: { conflicts?: Array<{ agenteId: number; conflicts: Array<{ titulo: string }> }> } } }
+            )?.response?.data?.conflicts;
+            if (status === 409 && Array.isArray(conflicts) && conflicts.length > 0) {
+              const summary = conflicts
+                .map((c) => `#${c.agenteId}: ${c.conflicts.map((x) => x.titulo).join(", ")}`)
+                .join("\n");
+              const confirmed = window.confirm(`${t("messages.scheduleConflict")}\n${summary}\n\n${t("messages.scheduleConflictConfirm")}`);
+              if (confirmed) {
+                await saveMutation.mutateAsync({ form: payload, force: true });
+                return;
+              }
+            }
+            throw error;
+          }
         }}
         onDelete={async (id) => {
           await deleteMutation.mutateAsync(id);
@@ -830,6 +871,9 @@ export default function AgendaPage() {
         } : undefined}
         onCancelAppointment={selectedAppointment ? async () => {
           await cancelAppointmentMutation.mutateAsync();
+        } : undefined}
+        onMarkAppointmentStatus={selectedAppointment ? async (status) => {
+          await markStatusMutation.mutateAsync(status);
         } : undefined}
       />
 

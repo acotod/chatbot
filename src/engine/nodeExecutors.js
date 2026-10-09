@@ -1066,6 +1066,12 @@ async function executeCalendar({ node, input, variables, tenantId, llmService })
     ?? cfg.strategy
     ?? 'random'
   ).trim().toLowerCase();
+  // 'merge_all' (default): show combined availability across every agente in the puesto.
+  // 'single_calendar': resolve exactly ONE calendar up-front via assignment_strategy
+  // (random|round_robin|least_busy) before listing its slots — required for the
+  // strategy to actually influence who gets assigned.
+  const resolutionMode = String(cfg.resolution_mode ?? 'merge_all').trim().toLowerCase();
+  const workloadWindowDays = Number.isFinite(Number(cfg.workload_window_days)) ? Number(cfg.workload_window_days) : 7;
   const selectedCalendarFromVars = String(variables?.[calendarVarName] ?? '').trim();
   const rawAgenteId = cfg.agente_id
     ?? cfg.agenteId
@@ -1208,6 +1214,7 @@ async function executeCalendar({ node, input, variables, tenantId, llmService })
         puestoId: Number.isInteger(puestoId) && puestoId > 0 ? puestoId : null,
         puestoNombre: puestoNombre || null,
         strategy: selectionStrategy,
+        workloadWindowDays,
       });
     }
 
@@ -1217,7 +1224,7 @@ async function executeCalendar({ node, input, variables, tenantId, llmService })
   };
 
   if (action === 'show_availability') {
-    const calendarId = usePuestoResolution && !selectedCalendarFromVars
+    const calendarId = usePuestoResolution && resolutionMode !== 'single_calendar' && !selectedCalendarFromVars
       ? null
       : await resolveCalendarId();
     const rangeDays = Number.isFinite(Number(cfg.range_days)) ? Number(cfg.range_days) : 5;
@@ -1230,6 +1237,7 @@ async function executeCalendar({ node, input, variables, tenantId, llmService })
       puestoId,
       puestoNombre,
       usePuestoResolution,
+      resolutionMode,
     });
 
     if (!calendarCandidates.length) {
@@ -1600,6 +1608,7 @@ async function _resolveCalendarAvailabilityCandidates({
   puestoId,
   puestoNombre,
   usePuestoResolution,
+  resolutionMode = 'merge_all',
 }) {
   if (selectedCalendarFromVars) {
     const ctx = await calendarService.getCalendarAssignmentContext(selectedCalendarFromVars, tenantId);
@@ -1621,7 +1630,7 @@ async function _resolveCalendarAvailabilityCandidates({
     }];
   }
 
-  if (usePuestoResolution) {
+  if (usePuestoResolution && resolutionMode !== 'single_calendar') {
     return calendarService.getCalendarsForPuesto(tenantId, { puestoId, puestoNombre });
   }
 

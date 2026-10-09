@@ -15,7 +15,10 @@
     "agentAccess": "Acceso agente: {status}",
     "accessEnabled": "habilitado",
     "accessMissing": "sin credenciales",
-    "viewCalendar": "Ver calendario"
+    "viewCalendar": "Ver calendario",
+    "disponibleParaCitas": "Disponible para citas",
+    "noDisponibleParaCitas": "No disponible para citas",
+    "toggleDisponibilidadHint": "Permite excluir temporalmente al agente de nuevas citas sin desactivar su cuenta"
   },
   "fields": {
     "fullName": "Nombre completo",
