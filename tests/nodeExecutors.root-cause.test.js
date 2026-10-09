@@ -324,7 +324,10 @@ describe('nodeExecutors root-cause guards', () => {
       puestoId: 7,
       puestoNombre: '',
     });
-    expect(getAvailableSlotsSpy).toHaveBeenCalledWith('cal-rr-1', 5);
+    expect(getAvailableSlotsSpy).toHaveBeenCalledWith('cal-rr-1', 5, {
+      slotDurationMin: null,
+      tenantId: 'tenant-1',
+    });
     expect(result.nextNodeId).toBe('node_no_slots');
 
     getCalendarsForPuestoSpy.mockRestore();
