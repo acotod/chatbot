@@ -223,10 +223,9 @@ async function ensureCalendarConfigForSlotDuration({ calendarId, tenantId, slotD
     },
   });
 
-  await cacheDel(`slots:${calendarId}:default`);
-  if (rangeDays !== null && rangeDays !== undefined) {
-    await cacheDel(`slots:${calendarId}:${rangeDays}`);
-  }
+  // Cache keys include rangeDays + slot duration, so a narrow cacheDel here would
+  // miss the actual key; clear every "slots:<calendarId>:*" entry instead.
+  await clearSlotCachesForCalendar(calendarId);
 
   await generateSlots(calendarId, rangeDays);
 }
@@ -1300,9 +1299,9 @@ async function bookSlot({ calendarId, slotId, tenantId, userKey, conversationId,
       }
     }
 
-    // Invalidate availability cache for this calendar
-    await cacheDel(`slots:${calendarId}:default`);
-    await cacheDel(`slots:${calendarId}:5`);
+    // Invalidate availability cache for this calendar (key includes rangeDays +
+    // duration, so a narrow cacheDel would leave the just-booked slot cached as available).
+    await clearSlotCachesForCalendar(calendarId);
 
     return { appointment: result };
   } catch (err) {
@@ -1360,6 +1359,10 @@ async function cancelAppointment(appointmentId, tenantId) {
         WHERE appointment_id = ${appointmentId}::uuid
       `;
     });
+
+    if (existing.calendar?.id) {
+      await clearSlotCachesForCalendar(existing.calendar.id);
+    }
 
     try {
       await cancelGoogleCalendarEvent({ calendar: existing.calendar, metadata: existing.metadata });
@@ -1441,6 +1444,12 @@ async function rescheduleAppointment(appointmentId, newSlotId, tenantId) {
       WHERE appointment_id = ${appointmentId}::uuid
     `;
   });
+
+  // The old slot was freed after bookSlot() already cleared the cache for the
+  // new booking; clear again so the just-freed slot isn't missing from availability.
+  if (existing.calendarId) {
+    await clearSlotCachesForCalendar(existing.calendarId);
+  }
 
   try {
     await cancelGoogleCalendarEvent({ calendar: existing.calendar, metadata: existing.metadata });
