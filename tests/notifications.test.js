@@ -46,6 +46,7 @@ describe('POST /api/notifications/send', () => {
         to: 'destinatario@example.com',
         subject: 'Prueba de envio',
         message: 'Hola desde el flujo',
+        from: 'ceo@dominio-arbitrario.com',
       });
 
     expect(res.status).toBe(200);
@@ -61,5 +62,6 @@ describe('POST /api/notifications/send', () => {
       text: 'Hola desde el flujo',
       tenantId: 'tenant-1',
     }));
+    expect(sendEmail.mock.calls[0][0]).not.toHaveProperty('from');
   });
 });

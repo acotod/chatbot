@@ -11,6 +11,7 @@ const db = require('../services/database');
 const { getRedisClient } = require('../services/redis');
 const logger = require('../utils/logger');
 const { sendEmail, EmailServiceError } = require('../services/emailService');
+const { createPasswordResetEmail } = require('../services/emailTemplates');
 const wa = require('../services/whatsapp');
 const socketService = require('../services/socketService');
 const requireJwt = require('../middleware/requireJwt');
@@ -1090,25 +1091,15 @@ router.post('/agent/forgot-password', loginRateLimiter, async (req, res) => {
     const deliveryChannels = [];
 
     try {
+      const emailContent = createPasswordResetEmail({
+        agenteNombre: agent.nombre,
+        tenantNombre: agent.tenant?.nombre || agent.tenant?.slug || tenantSlug,
+        resetUrl,
+        expiresAt,
+      });
       await sendEmail({
         to: agent.email,
-        subject: `Recuperacion de acceso para ${agent.tenant?.nombre || agent.tenant?.slug || tenantSlug}`,
-        text: [
-          `Hola ${agent.nombre || 'agente'},`,
-          '',
-          'Recibimos una solicitud para restablecer tu contrasena de acceso.',
-          `Usa este enlace: ${resetUrl}`,
-          `Este enlace vence el ${expiresAt.toISOString()}.`,
-          '',
-          'Si no solicitaste este cambio, ignora este mensaje.',
-        ].join('\n'),
-        html: [
-          `<p>Hola ${agent.nombre || 'agente'},</p>`,
-          '<p>Recibimos una solicitud para restablecer tu contrasena de acceso.</p>',
-          `<p><a href="${resetUrl}">Abrir enlace de recuperacion</a></p>`,
-          `<p>Este enlace vence el <strong>${expiresAt.toISOString()}</strong>.</p>`,
-          '<p>Si no solicitaste este cambio, ignora este mensaje.</p>',
-        ].join(''),
+        ...emailContent,
         tenantId: agent.tenantId,
         metadata: {
           route: 'auth/agent/forgot-password',

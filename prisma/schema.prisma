@@ -587,6 +587,26 @@ model AuditLog {
   @@map("audit_logs")
 }
 
+model EmailLog {
+  id         Int      @id @default(autoincrement())
+  tenantId   String?  @map("tenant_id") @db.Uuid
+  to         String   @db.Text
+  subject    String   @db.VarChar(500)
+  status     String   @default("pending") @db.VarChar(20)
+  attempts   Int      @default(0)
+  messageId  String?  @map("message_id") @db.VarChar(255)
+  lastError  String?  @map("last_error")
+  metadata   Json?
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  @@index([tenantId])
+  @@index([tenantId, createdAt])
+  @@index([status])
+  @@index([createdAt])
+  @@map("email_logs")
+}
+
 model AdminDeviceSession {
   id               String    @id @default(cuid())
   adminUserId      Int       @map("admin_user_id")

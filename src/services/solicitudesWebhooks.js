@@ -3,7 +3,8 @@
 const crypto = require('crypto');
 const db = require('./database');
 const { audit } = require('./audit');
-const { sendEmail } = require('./emailService');
+const { enqueueEmail } = require('./emailService');
+const { createAssignmentEmail } = require('./emailTemplates');
 
 const WEBHOOK_EVENTS = new Set([
   'solicitud.created',
@@ -44,16 +45,6 @@ function sanitizeHeaders(inputHeaders = {}) {
   return out;
 }
 
-function buildAssignmentEmailText({ solicitudId, agenteNombre, tenantNombre, loginUrl }) {
-  const safeAgentName = String(agenteNombre || 'agente').trim();
-  const safeTenantName = String(tenantNombre || 'tu empresa').trim();
-  return [
-    `Hola ${safeAgentName}, se te asignó la solicitud #${solicitudId} en ${safeTenantName}.`,
-    'Ingresa al portal para revisar la solicitud y responder:',
-    loginUrl,
-  ].join('\n');
-}
-
 async function notifyAssignedAgentEmail({
   tenant,
   solicitudId,
@@ -68,8 +59,7 @@ async function notifyAssignedAgentEmail({
     return { ok: false, skipped: true, reason: 'missing-email' };
   }
 
-  const subject = `Se te asignó la solicitud #${solicitudId}`;
-  const text = buildAssignmentEmailText({
+  const emailContent = createAssignmentEmail({
     solicitudId,
     agenteNombre: assignedAgente?.nombre,
     tenantNombre: tenant?.nombre,
@@ -77,10 +67,9 @@ async function notifyAssignedAgentEmail({
   });
 
   try {
-    const result = await sendEmail({
+    const result = await enqueueEmail({
       to: email,
-      subject,
-      text,
+      ...emailContent,
       tenantId: tenant?.id || null,
       metadata: {
         event: 'solicitud.assigned',
@@ -95,7 +84,7 @@ async function notifyAssignedAgentEmail({
     audit({
       adminUserId,
       tenantId: tenant?.id || null,
-      accion: 'AGENT_ASSIGNMENT_EMAIL_SENT',
+      accion: result?.queued ? 'AGENT_ASSIGNMENT_EMAIL_QUEUED' : 'AGENT_ASSIGNMENT_EMAIL_SENT',
       entidad: 'solicitud',
       entidadId: String(solicitudId),
       ip,
@@ -112,7 +101,7 @@ async function notifyAssignedAgentEmail({
     audit({
       adminUserId,
       tenantId: tenant?.id || null,
-      accion: 'SOLICITUD_WEBHOOK_DELIVERED',
+      accion: result?.queued ? 'SOLICITUD_WEBHOOK_QUEUED' : 'SOLICITUD_WEBHOOK_DELIVERED',
       entidad: 'email_notification',
       entidadId: String(solicitudId),
       ip,
@@ -123,7 +112,7 @@ async function notifyAssignedAgentEmail({
         solicitudId,
         agenteId: assignedAgente?.id ?? null,
         email,
-        status: 200,
+        status: result?.queued ? null : 200,
         durationMs: 0,
         url: `mailto:${email}`,
         error: null,
