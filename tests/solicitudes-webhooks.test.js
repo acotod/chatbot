@@ -1,5 +1,5 @@
 jest.mock('../src/services/emailService', () => ({
-  sendEmail: jest.fn(),
+  enqueueEmail: jest.fn(),
 }));
 
 jest.mock('../src/services/audit', () => ({
@@ -7,17 +7,12 @@ jest.mock('../src/services/audit', () => ({
 }));
 
 const { notifyAssignedAgentEmail } = require('../src/services/solicitudesWebhooks');
-const { sendEmail } = require('../src/services/emailService');
+const { enqueueEmail } = require('../src/services/emailService');
 
 describe('notifyAssignedAgentEmail', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    sendEmail.mockResolvedValue({
-      ok: true,
-      messageId: 'mail-1',
-      accepted: ['agente@example.com'],
-      rejected: [],
-    });
+    enqueueEmail.mockResolvedValue({ ok: true, queued: true });
   });
 
   test('envía un correo cuando el agente tiene correo configurado', async () => {
@@ -32,7 +27,7 @@ describe('notifyAssignedAgentEmail', () => {
     });
 
     expect(result.ok).toBe(true);
-    expect(sendEmail).toHaveBeenCalledWith(expect.objectContaining({
+    expect(enqueueEmail).toHaveBeenCalledWith(expect.objectContaining({
       to: 'ana@example.com',
       subject: 'Se te asignó la solicitud #42',
       tenantId: 'tenant-1',
@@ -57,6 +52,6 @@ describe('notifyAssignedAgentEmail', () => {
 
     expect(result.ok).toBe(false);
     expect(result.skipped).toBe(true);
-    expect(sendEmail).not.toHaveBeenCalled();
+    expect(enqueueEmail).not.toHaveBeenCalled();
   });
 });

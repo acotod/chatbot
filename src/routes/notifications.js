@@ -24,7 +24,6 @@ router.post('/send', async (req, res, next) => {
     const htmlRaw = req.body?.html;
     const html = typeof htmlRaw === 'string' ? htmlRaw.trim() : '';
     const replyTo = String(req.body?.replyTo ?? '').trim() || undefined;
-    const from = String(req.body?.from ?? '').trim() || undefined;
 
     if (!to) {
       return res.status(400).json({ error: 'to is required for email notifications' });
@@ -41,7 +40,6 @@ router.post('/send', async (req, res, next) => {
       subject,
       text: text || undefined,
       html: html || undefined,
-      from,
       replyTo,
       tenantId: req.tenant?.id ?? null,
       metadata: {

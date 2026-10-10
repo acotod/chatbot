@@ -44,7 +44,7 @@ jest.mock('../src/services/chatbotRouter', () => ({
 }));
 
 jest.mock('../src/services/emailService', () => ({
-  sendEmail: jest.fn().mockResolvedValue({ ok: true, messageId: 'mail_1', accepted: [], rejected: [] }),
+  enqueueEmail: jest.fn().mockResolvedValue({ ok: true, queued: true }),
 }));
 
 jest.mock('../src/services/flowNavigation', () => ({
@@ -436,10 +436,10 @@ describe('POST /whatsapp dual-write UEG', () => {
       expect.any(String),
       'token-123',
     );
-    expect(emailService.sendEmail).toHaveBeenCalledWith(expect.objectContaining({
+    expect(emailService.enqueueEmail).toHaveBeenCalledWith(expect.objectContaining({
       to: 'andres.coto@pmc-dev.com',
       tenantId: 'tenant-1',
-      subject: expect.stringContaining('Nueva solicitud asignada #999'),
+      subject: expect.stringContaining('Nuevo mensaje en solicitud #999'),
     }));
     expect(socketService.emit).toHaveBeenCalledWith(
       'tenant-1',

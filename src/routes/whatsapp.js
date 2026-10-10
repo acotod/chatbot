@@ -15,7 +15,8 @@ const logger = require('../utils/logger');
 const db = require('../services/database');
 const socketService = require('../services/socketService');
 const wa = require('../services/whatsapp');
-const { sendEmail } = require('../services/emailService');
+const { enqueueEmail } = require('../services/emailService');
+const { createInternalForwardEmail } = require('../services/emailTemplates');
 const chatbotRouter = require('../services/chatbotRouter');
 const requireJwt = require('../middleware/requireJwt');
 const { getRedisClient } = require('../services/redis');
@@ -1405,17 +1406,15 @@ async function _handleIncomingMessage({ msg, contacts, tenant, phoneNumberId, ac
         const agentEmail = String(fullSolicitud?.agente?.email ?? '').trim();
         if (agentEmail) {
           try {
-            await sendEmail({
+            const emailContent = createInternalForwardEmail({
+              solicitudId: openSolicitud.id,
+              userName,
+              phone,
+              message: incomingAgentText,
+            });
+            await enqueueEmail({
               to: agentEmail,
-              subject: `Nueva solicitud asignada #${openSolicitud.id}`,
-              text: [
-                'Se registro un nuevo mensaje de cliente en tu solicitud asignada.',
-                `Solicitud ID: ${openSolicitud.id}`,
-                userName ? `Cliente: ${userName}` : '',
-                `Telefono cliente: ${phone}`,
-                `Mensaje cliente: ${incomingAgentText}`,
-                'Canal: chat interno de agente + notificacion por correo.',
-              ].filter(Boolean).join('\n'),
+              ...emailContent,
               tenantId: tenant.id,
               metadata: {
                 route: '/whatsapp',

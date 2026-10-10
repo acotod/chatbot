@@ -188,13 +188,19 @@ function _hashApiKey(rawKey) {
 function _getConfigEncryptionKey() {
   const configuredKey = process.env.CONFIG_ENCRYPTION_KEY || process.env.WA_TOKEN_ENCRYPTION_KEY;
   const fallbackKey = process.env.JWT_SECRET;
-  const secret = configuredKey || fallbackKey || 'dev-secret';
 
-  if (!configuredKey && !fallbackKey && !warnedMissingConfigEncryptionKey) {
-    warnedMissingConfigEncryptionKey = true;
-    logger.warn('CONFIG_ENCRYPTION_KEY is not set; using dev fallback for config secret encryption');
+  if (!configuredKey && process.env.NODE_ENV === 'production') {
+    throw new Error('CONFIG_ENCRYPTION_KEY or WA_TOKEN_ENCRYPTION_KEY must be set in production to encrypt tenant secrets');
   }
 
+  if (!configuredKey && !fallbackKey) {
+    if (!warnedMissingConfigEncryptionKey) {
+      warnedMissingConfigEncryptionKey = true;
+      logger.warn('CONFIG_ENCRYPTION_KEY is not set; using dev fallback for config secret encryption');
+    }
+  }
+
+  const secret = configuredKey || fallbackKey || 'dev-secret';
   return crypto.createHash('sha256').update(String(secret)).digest();
 }
 
@@ -488,6 +494,37 @@ async function getEmailSettings(tenantId) {
     emailFrom: String(raw.emailFrom ?? '').trim(),
     adminBaseUrl: String(raw.adminBaseUrl ?? '').trim(),
   };
+}
+
+async function createEmailLog(data) {
+  const client = getPrismaClient();
+  if (!client) return null;
+
+  return client.emailLog.create({
+    data: {
+      tenantId: data.tenantId ?? null,
+      to: String(data.to),
+      subject: String(data.subject).slice(0, 500),
+      status: data.status || 'pending',
+      attempts: Number(data.attempts || 0),
+      metadata: data.metadata ?? undefined,
+    },
+  });
+}
+
+async function updateEmailLogStatus(id, status, data = {}) {
+  const client = getPrismaClient();
+  if (!client || !id) return null;
+
+  return client.emailLog.update({
+    where: { id: Number(id) },
+    data: {
+      status,
+      ...(data.attempts !== undefined ? { attempts: Number(data.attempts) } : {}),
+      ...(data.messageId !== undefined ? { messageId: data.messageId } : {}),
+      ...(data.lastError !== undefined ? { lastError: data.lastError ? String(data.lastError).slice(0, 4000) : null } : {}),
+    },
+  });
 }
 
 async function getWaAppSecret(tenantId) {
@@ -2437,6 +2474,8 @@ module.exports = {
   getConfig,
   setConfig,
   getEmailSettings,
+  createEmailLog,
+  updateEmailLogStatus,
   getWaCredentials,
   getWaAppSecret,
   CONFIG_SECRET_SENTINEL,
