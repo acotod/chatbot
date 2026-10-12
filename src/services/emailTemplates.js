@@ -112,9 +112,20 @@ function createInternalForwardEmail({ solicitudId, userName, phone, message }) {
   };
 }
 
+function createAppointmentReminderEmail({ message }) {
+  const text = String(message ?? '').trim();
+  const htmlContent = escapeHtml(text).replace(/\r?\n/g, '<br>');
+  return {
+    subject: 'Recordatorio de cita',
+    text,
+    html: wrapEmail(`<p>${htmlContent}</p>`),
+  };
+}
+
 module.exports = {
   escapeHtml,
   createPasswordResetEmail,
   createAssignmentEmail,
   createInternalForwardEmail,
+  createAppointmentReminderEmail,
 };

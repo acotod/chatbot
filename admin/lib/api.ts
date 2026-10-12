@@ -637,6 +637,15 @@ export const wabaFlowsApi = {
     apiClient.post(`/waba-flows/${id}/versions/${vId}/rollback`, tenantSlug ? { tenantSlug } : {}),
   importLogs: (params?: { page?: number; limit?: number; tenantSlug?: string }) =>
     apiClient.get("/waba-flows/import-logs", { params }),
+  getOutboundReminderFlow: (tenantSlug?: string) =>
+    apiClient.get("/waba-flows/outbound-reminder-flow", {
+      params: tenantSlug ? { tenantSlug } : undefined,
+    }),
+  setOutboundReminderFlow: (flowId: number | null, tenantSlug?: string) =>
+    apiClient.put("/waba-flows/outbound-reminder-flow", {
+      flowId,
+      ...(tenantSlug ? { tenantSlug } : {}),
+    }),
   flowsApi: (id: number) => apiClient.get(`/waba-flows/${id}`),
 };
 

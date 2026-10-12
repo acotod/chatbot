@@ -27,6 +27,7 @@ import {
   ArrowUp,
   ArrowDown,
   Zap,
+  CalendarClock,
   Lock,
   Unlock,
 } from "lucide-react";
@@ -3294,6 +3295,9 @@ function FlowBuilder({
   const [jsonError, setJsonError] = useState("");
   const [flowMode, setFlowMode] = useState<FlowMode>("inbound");
   const [outboundRules, setOutboundRules] = useState<OutboundTriggerRule[]>([createOutboundRule()]);
+  const [outboundReminderFlowId, setOutboundReminderFlowId] = useState<number | null>(null);
+  const [savingReminderFlow, setSavingReminderFlow] = useState(false);
+  const [outboundReminderFlowError, setOutboundReminderFlowError] = useState("");
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
   const [validating, setValidating] = useState(false);
@@ -3414,6 +3418,18 @@ function FlowBuilder({
       })
       .catch(() => setAgentePuestos([]));
   }, [loadLatestVersion, tenantSlug]);
+
+  useEffect(() => {
+    let active = true;
+    wabaFlowsApi.getOutboundReminderFlow(tenantSlug)
+      .then(({ data }) => {
+        if (active) setOutboundReminderFlowId(Number(data?.flowId) || null);
+      })
+      .catch(() => {
+        if (active) setOutboundReminderFlowId(null);
+      });
+    return () => { active = false; };
+  }, [tenantSlug]);
 
   function handleAddNode() {
     const ids = definition ? flattenNodes(definition.nodes).map((n) => n.id) : [];
@@ -3625,6 +3641,20 @@ function FlowBuilder({
     URL.revokeObjectURL(url);
   }
 
+  async function handleDesignateReminderFlow() {
+    setSavingReminderFlow(true);
+    setOutboundReminderFlowError("");
+    try {
+      const { data } = await wabaFlowsApi.setOutboundReminderFlow(flow.id, tenantSlug);
+      setOutboundReminderFlowId(Number(data?.flowId) || null);
+    } catch (error: unknown) {
+      const message = (error as { response?: { data?: { error?: string } } })?.response?.data?.error;
+      setOutboundReminderFlowError(message || "No se pudo designar el flow. Publica una versión outbound con destinatarios.");
+    } finally {
+      setSavingReminderFlow(false);
+    }
+  }
+
   return (
     <div className="flex flex-col h-full gap-4">
       {/* Header */}
@@ -3639,6 +3669,18 @@ function FlowBuilder({
           )}
         </div>
         <div className="flex items-center gap-2">
+          {flowMode === "outbound" && (
+            <button
+              type="button"
+              onClick={handleDesignateReminderFlow}
+              disabled={savingReminderFlow || outboundReminderFlowId === flow.id}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium border disabled:opacity-60 ${outboundReminderFlowId === flow.id ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50"}`}
+              title="El worker usa únicamente el flow outbound designado para este tenant"
+            >
+              {savingReminderFlow ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <CalendarClock className="w-3.5 h-3.5" />}
+              {outboundReminderFlowId === flow.id ? "Flow de recordatorios" : "Designar recordatorios"}
+            </button>
+          )}
           <button
             onClick={() => setJsonView((v) => !v)}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium border transition ${
@@ -3673,6 +3715,11 @@ function FlowBuilder({
           </button>
         </div>
       </div>
+      {outboundReminderFlowError && (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+          {outboundReminderFlowError}
+        </div>
+      )}
 
       {/* Validation results */}
       {validation && (
@@ -4044,7 +4091,7 @@ function FlowBuilder({
                     <div className="space-y-1.5">
                       <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide">Destinatarios</p>
                       <div className="flex gap-2">
-                        {([["customer","Cliente"],["agent","Agente"]] as [string,string][]).map(([val, label]) => {
+                        {([ ["customer","Cliente"], ["agent","Agente (WhatsApp + email)"] ] as [OutboundRecipient,string][]).map(([val, label]) => {
                           const active = rule.recipients.includes(val);
                           const blocked = rule.triggerType === "daily_agent_summary" && val === "customer";
                           return (

@@ -6,14 +6,19 @@ const { PrismaClient } = require('@prisma/client');
 const logger = require('../utils/logger');
 const db = require('../services/database');
 const wa = require('../services/whatsapp');
+const { enqueueEmail } = require('../services/emailService');
+const { createAppointmentReminderEmail } = require('../services/emailTemplates');
 const calendarService = require('../services/calendarService');
 const { getRedisClient } = require('../services/redis');
-const { loadFlowDefinition } = require('../engine/flowLoader');
+const { loadFlowDefinitionForFlow } = require('../engine/flowLoader');
 const {
   normalizeFlowAutomationMetadata,
   buildReminderContext,
   renderTemplate,
+  hasReminderDeliveryBeenHandled,
   hasReminderBeenSent,
+  markReminderQueued,
+  markReminderFailed,
   markReminderSent,
   isRuleDue,
   isDailySummaryDue,
@@ -27,6 +32,7 @@ const prisma = new PrismaClient();
 const DEFAULT_POLL_MS = Number(process.env.OUTBOUND_REMINDER_POLL_MS || 60_000);
 const DEFAULT_SCAN_WINDOW_MINUTES = Number(process.env.OUTBOUND_REMINDER_SCAN_WINDOW_MINUTES || 5);
 const DAILY_SUMMARY_LOCK_TTL_SECONDS = Number(process.env.OUTBOUND_DAILY_SUMMARY_LOCK_TTL_SECONDS || 172800);
+const EMAIL_REMINDER_LOCK_TTL_SECONDS = 7 * 24 * 60 * 60;
 
 const inMemoryDailySummaryLock = new Map();
 
@@ -109,16 +115,19 @@ function buildDailySummaryMessage({ tenantName, flowName, rule, appointments, ti
   return renderTemplate(rule.messageTemplate, context);
 }
 
-async function sendReminderMessage({ tenant, flowName, appointment, rule, recipientKey, recipientPhone }) {
+async function sendReminderMessage({ tenant, flowName, flowId, flowVersionId, appointment, rule, recipientKey, recipientPhone }) {
   if (!recipientPhone) {
     logger.info(
-      { tenantId: tenant.id, appointmentId: appointment.id, ruleId: rule.id, recipient: recipientKey },
+      { tenantId: tenant.id, flowId, flowVersionId, appointmentId: appointment.id, ruleId: rule.id, recipient: recipientKey, channel: 'whatsapp', reason: 'missing_phone' },
       'outboundReminderWorker: skipping recipient without phone'
     );
     return { sent: false, reason: 'missing_phone' };
   }
 
-  if (hasReminderBeenSent(appointment, rule.id, recipientKey)) {
+  if (
+    hasReminderBeenSent(appointment, rule.id, recipientKey)
+    || (recipientKey === 'agent_whatsapp' && hasReminderBeenSent(appointment, rule.id, 'agent'))
+  ) {
     return { sent: false, reason: 'already_sent' };
   }
 
@@ -151,14 +160,17 @@ async function sendReminderMessage({ tenant, flowName, appointment, rule, recipi
     where: { id: appointment.id },
     data: { metadata: nextMetadata },
   });
+  appointment.metadata = nextMetadata;
 
   logger.info(
     {
       tenantId: tenant.id,
+      flowId,
+      flowVersionId,
       appointmentId: appointment.id,
       ruleId: rule.id,
       recipient: recipientKey,
-      recipientPhone,
+      channel: 'whatsapp',
     },
     'outboundReminderWorker: reminder sent'
   );
@@ -166,26 +178,169 @@ async function sendReminderMessage({ tenant, flowName, appointment, rule, recipi
   return { sent: true };
 }
 
+async function sendReminderEmail({ tenant, flow, flowDefinition, appointment, rule, recipientEmail, message }) {
+  if (!recipientEmail) {
+    logger.warn(
+      { tenantId: tenant.id, flowId: flow.id, appointmentId: appointment.id, ruleId: rule.id, recipient: 'agent', channel: 'email', reason: 'missing_agent_email' },
+      'outboundReminderWorker: skipping email reminder without agent email'
+    );
+    return { queued: false, reason: 'missing_agent_email' };
+  }
+
+  const previousEmailState = appointment.metadata?.outbound_reminders?.[rule.id]?.agent_email;
+  if (previousEmailState?.status === 'queued' && previousEmailState.email_log_id) {
+    let emailLog;
+    try {
+      emailLog = await db.getEmailLogStatus(previousEmailState.email_log_id);
+    } catch (error) {
+      logger.warn(
+        { tenantId: tenant.id, appointmentId: appointment.id, ruleId: rule.id, emailLogId: previousEmailState.email_log_id, message: error.message },
+        'outboundReminderWorker: unable to inspect queued email reminder status'
+      );
+      return { queued: false, reason: 'email_status_unavailable' };
+    }
+
+    if (!emailLog) {
+      const nextMetadata = markReminderFailed(appointment, rule.id, 'agent_email', previousEmailState.email_log_id);
+      await prisma.appointment.update({ where: { id: appointment.id }, data: { metadata: nextMetadata } });
+      appointment.metadata = nextMetadata;
+      logger.error(
+        { tenantId: tenant.id, flowId: flow.id, appointmentId: appointment.id, ruleId: rule.id, emailLogId: previousEmailState.email_log_id, channel: 'email', reason: 'email_log_missing' },
+        'outboundReminderWorker: queued email reminder lost its delivery record'
+      );
+      return { queued: false, reason: 'email_log_missing' };
+    }
+
+    if (emailLog.status === 'pending' || emailLog.status === 'retrying') {
+      return { queued: false, reason: 'already_queued' };
+    }
+
+    const nextMetadata = emailLog.status === 'sent'
+      ? markReminderSent(appointment, rule.id, 'agent_email', emailLog.updatedAt)
+      : markReminderFailed(appointment, rule.id, 'agent_email', emailLog.id, emailLog.updatedAt);
+    await prisma.appointment.update({ where: { id: appointment.id }, data: { metadata: nextMetadata } });
+    appointment.metadata = nextMetadata;
+    if (emailLog.status === 'sent') return { queued: false, reason: 'already_sent' };
+
+    logger.error(
+      { tenantId: tenant.id, flowId: flow.id, appointmentId: appointment.id, ruleId: rule.id, emailLogId: emailLog.id, channel: 'email' },
+      'outboundReminderWorker: email reminder exhausted retries'
+    );
+    return { queued: false, reason: 'delivery_failed' };
+  }
+
+  if (hasReminderDeliveryBeenHandled(appointment, rule.id, 'agent_email')) {
+    return { queued: false, reason: 'already_handled' };
+  }
+
+  const redis = getRedisClient();
+  const lockKey = `outbound:reminder_email:${tenant.id}:${appointment.id}:${rule.id}:agent`;
+  let lockAcquired = false;
+  if (redis) {
+    try {
+      lockAcquired = (await redis.set(lockKey, '1', 'EX', EMAIL_REMINDER_LOCK_TTL_SECONDS, 'NX')) === 'OK';
+      if (!lockAcquired) return { queued: false, reason: 'already_queued' };
+    } catch (error) {
+      logger.warn(
+        { tenantId: tenant.id, appointmentId: appointment.id, ruleId: rule.id, message: error.message },
+        'outboundReminderWorker: email reminder lock unavailable'
+      );
+    }
+  }
+
+  let queueAccepted = false;
+  try {
+    const emailContent = createAppointmentReminderEmail({ message });
+    const result = await enqueueEmail({
+      to: recipientEmail,
+      ...emailContent,
+      tenantId: tenant.id,
+      metadata: {
+        event: 'appointment.reminder',
+        flowId: flow.id,
+        flowVersionId: flowDefinition.versionId,
+        appointmentId: appointment.id,
+        ruleId: rule.id,
+        recipientRole: 'agent',
+        channel: 'email',
+      },
+    });
+    queueAccepted = Boolean(result?.ok);
+    if (!queueAccepted) throw new Error('Email service did not accept the reminder');
+
+    const nextMetadata = result.queued
+      ? markReminderQueued(appointment, rule.id, 'agent_email', result.emailLogId)
+      : markReminderSent(appointment, rule.id, 'agent_email');
+    await prisma.appointment.update({
+      where: { id: appointment.id },
+      data: { metadata: nextMetadata },
+    });
+    appointment.metadata = nextMetadata;
+
+    logger.info(
+      {
+        tenantId: tenant.id,
+        flowId: flow.id,
+        flowVersionId: flowDefinition.versionId,
+        appointmentId: appointment.id,
+        ruleId: rule.id,
+        recipient: 'agent',
+        channel: 'email',
+        delivery: result.queued ? 'queued' : 'sent',
+        emailLogId: result.emailLogId ?? null,
+      },
+      'outboundReminderWorker: email reminder accepted'
+    );
+    return { queued: true, emailLogId: result.emailLogId ?? null };
+  } catch (error) {
+    if (redis && lockAcquired && !queueAccepted) {
+      await redis.del(lockKey).catch(() => {});
+    }
+    logger.error(
+      { tenantId: tenant.id, flowId: flow.id, appointmentId: appointment.id, ruleId: rule.id, recipient: 'agent', channel: 'email', message: error.message },
+      'outboundReminderWorker: failed to queue email reminder'
+    );
+    return { queued: false, reason: 'queue_failed' };
+  }
+}
+
 async function processTenant(tenant) {
-  const flow = await prisma.flow.findFirst({
-    where: { tenantId: tenant.id, activo: true },
-    select: { id: true, nombre: true },
-  });
-
-  if (!flow) return;
-
-  const flowDefinition = await loadFlowDefinition(tenant.id);
-  if (!flowDefinition) return;
-
-  const automation = normalizeFlowAutomationMetadata(flowDefinition.metadata);
-  if (automation.flow_mode !== 'outbound' || automation.outbound_rules.length === 0) return;
-
-  const now = new Date();
-  const waCredentials = await db.getWaCredentials(tenant.id);
-  if (!waCredentials?.phoneNumberId || !waCredentials?.accessToken) {
-    logger.warn({ tenantId: tenant.id }, 'outboundReminderWorker: missing WhatsApp credentials');
+  const flowConfig = await db.getConfig(tenant.id, 'outbound_reminder_flow_id');
+  const configuredFlowId = Number(flowConfig?.valor?.flowId);
+  if (!Number.isInteger(configuredFlowId) || configuredFlowId <= 0) {
+    logger.warn({ tenantId: tenant.id }, 'outboundReminderWorker: no designated reminder flow');
     return;
   }
+
+  const flow = await prisma.flow.findFirst({
+    where: { id: configuredFlowId, tenantId: tenant.id, activo: true },
+    select: { id: true, nombre: true },
+  });
+  if (!flow) {
+    logger.warn({ tenantId: tenant.id, flowId: configuredFlowId }, 'outboundReminderWorker: designated flow is missing or inactive');
+    return;
+  }
+
+  const flowDefinition = await loadFlowDefinitionForFlow(tenant.id, flow.id);
+  if (!flowDefinition) {
+    logger.warn({ tenantId: tenant.id, flowId: flow.id }, 'outboundReminderWorker: designated flow has no published version');
+    return;
+  }
+
+  const automation = normalizeFlowAutomationMetadata(flowDefinition.metadata);
+  if (automation.flow_mode !== 'outbound') {
+    logger.warn({ tenantId: tenant.id, flowId: flow.id, flowVersionId: flowDefinition.versionId }, 'outboundReminderWorker: designated flow is not outbound');
+    return;
+  }
+  if (!automation.outbound_rules.some((rule) => rule.enabled && rule.recipients.length > 0)) {
+    logger.warn({ tenantId: tenant.id, flowId: flow.id, flowVersionId: flowDefinition.versionId }, 'outboundReminderWorker: no enabled outbound rules have recipients');
+    return;
+  }
+  if (!automation.outbound_rules.some((rule) => rule.enabled && rule.triggerType === 'appointment_reminder' && rule.recipients.includes('agent'))) {
+    logger.warn({ tenantId: tenant.id, flowId: flow.id, flowVersionId: flowDefinition.versionId }, 'outboundReminderWorker: no enabled appointment reminder targets the agent');
+  }
+
+  const now = new Date();
 
   for (const rule of automation.outbound_rules) {
     if (!rule.enabled) continue;
@@ -193,6 +348,11 @@ async function processTenant(tenant) {
     if (rule.triggerType === 'daily_agent_summary') {
       const scanWindowMinutes = Math.max(1, DEFAULT_SCAN_WINDOW_MINUTES);
       if (!isDailySummaryDue(rule, now, scanWindowMinutes)) continue;
+      const waCredentials = await db.getWaCredentials(tenant.id);
+      if (!waCredentials?.phoneNumberId || !waCredentials?.accessToken) {
+        logger.warn({ tenantId: tenant.id, flowId: flow.id, ruleId: rule.id, channel: 'whatsapp' }, 'outboundReminderWorker: missing WhatsApp credentials');
+        continue;
+      }
 
       const timezone = String(rule.timezone || '').trim() || 'UTC';
       const dateKey = getDateKeyInTimeZone(now, timezone);
@@ -208,7 +368,7 @@ async function processTenant(tenant) {
           calendar: {
             include: {
               agente: {
-                select: { id: true, nombre: true, whatsapp: true, estado: true },
+                select: { id: true, nombre: true, whatsapp: true, email: true, estado: true },
               },
             },
           },
@@ -225,13 +385,13 @@ async function processTenant(tenant) {
         if (!agentPhone) continue;
         const agentName = targets.agent.name || appointment?.calendar?.agente?.nombre || 'Agente';
         const key = String(appointment?.calendar?.agente?.id || agentPhone);
-        const current = appointmentsByAgent.get(key) || { agentPhone, agentName, appointments: [] };
+        const current = appointmentsByAgent.get(key) || { agentKey: key, agentPhone, agentName, appointments: [] };
         current.appointments.push(appointment);
         appointmentsByAgent.set(key, current);
       }
 
       for (const group of appointmentsByAgent.values()) {
-        const lockKey = `outbound:daily_summary:${tenant.id}:${rule.id}:${dateKey}:${group.agentPhone}`;
+        const lockKey = `outbound:daily_summary:${tenant.id}:${rule.id}:${dateKey}:${group.agentKey}`;
         const lockAcquired = await acquireDailySummaryLock(lockKey);
         if (!lockAcquired) continue;
 
@@ -251,10 +411,12 @@ async function processTenant(tenant) {
           logger.info(
             {
               tenantId: tenant.id,
+              flowId: flow.id,
+              flowVersionId: flowDefinition.versionId,
               ruleId: rule.id,
               triggerType: rule.triggerType,
               recipient: 'agent',
-              recipientPhone: group.agentPhone,
+              channel: 'whatsapp',
               appointmentsCount: group.appointments.length,
             },
             'outboundReminderWorker: daily summary sent'
@@ -263,10 +425,12 @@ async function processTenant(tenant) {
           logger.error(
             {
               tenantId: tenant.id,
+              flowId: flow.id,
+              flowVersionId: flowDefinition.versionId,
               ruleId: rule.id,
               triggerType: rule.triggerType,
               recipient: 'agent',
-              recipientPhone: group.agentPhone,
+              channel: 'whatsapp',
               message: error.message,
             },
             'outboundReminderWorker: failed to send daily summary'
@@ -293,7 +457,7 @@ async function processTenant(tenant) {
         calendar: {
           include: {
             agente: {
-              select: { id: true, nombre: true, whatsapp: true, estado: true },
+              select: { id: true, nombre: true, whatsapp: true, email: true, estado: true },
             },
           },
         },
@@ -306,46 +470,58 @@ async function processTenant(tenant) {
       if (!isRuleDue(rule, appointment, now, scanWindowMinutes)) continue;
 
       const targets = getRecipientTargets(appointment);
-      const recipientTargets = [];
-
       if (rule.recipients.includes('customer')) {
-        recipientTargets.push({
-          recipientKey: 'customer',
-          recipientPhone: targets.customer.phone,
-          recipientName: targets.customer.name,
-        });
-      }
-
-      if (rule.recipients.includes('agent')) {
-        recipientTargets.push({
-          recipientKey: 'agent',
-          recipientPhone: targets.agent.phone,
-          recipientName: targets.agent.name,
-        });
-      }
-
-      for (const recipient of recipientTargets) {
         try {
           await sendReminderMessage({
             tenant,
             flowName: flow.nombre,
+            flowId: flow.id,
+            flowVersionId: flowDefinition.versionId,
             appointment,
             rule,
-            recipientKey: recipient.recipientKey,
-            recipientPhone: recipient.recipientPhone,
-            recipientName: recipient.recipientName,
+            recipientKey: 'customer',
+            recipientPhone: targets.customer.phone,
           });
         } catch (error) {
-          logger.error(
-            {
-              tenantId: tenant.id,
-              appointmentId: appointment.id,
-              ruleId: rule.id,
-              recipient: recipient.recipientKey,
-              message: error.message,
-            },
-            'outboundReminderWorker: failed to send reminder'
-          );
+          logger.error({ tenantId: tenant.id, flowId: flow.id, appointmentId: appointment.id, ruleId: rule.id, recipient: 'customer', channel: 'whatsapp', message: error.message }, 'outboundReminderWorker: failed to send reminder');
+        }
+      }
+
+      if (rule.recipients.includes('agent')) {
+        let message = '';
+        try {
+          const context = buildReminderContext({ appointment, rule, flowName: flow.nombre, tenantName: tenant.nombre });
+          message = renderTemplate(rule.messageTemplate, context);
+          await sendReminderMessage({
+            tenant,
+            flowName: flow.nombre,
+            flowId: flow.id,
+            flowVersionId: flowDefinition.versionId,
+            appointment,
+            rule,
+            recipientKey: 'agent_whatsapp',
+            recipientPhone: targets.agent.phone,
+          });
+        } catch (error) {
+          logger.error({ tenantId: tenant.id, flowId: flow.id, appointmentId: appointment.id, ruleId: rule.id, recipient: 'agent', channel: 'whatsapp', message: error.message }, 'outboundReminderWorker: failed to send reminder');
+        }
+
+        try {
+          if (!message) {
+            const context = buildReminderContext({ appointment, rule, flowName: flow.nombre, tenantName: tenant.nombre });
+            message = renderTemplate(rule.messageTemplate, context);
+          }
+          await sendReminderEmail({
+            tenant,
+            flow,
+            flowDefinition,
+            appointment,
+            rule,
+            recipientEmail: targets.agent.email,
+            message,
+          });
+        } catch (error) {
+          logger.error({ tenantId: tenant.id, flowId: flow.id, appointmentId: appointment.id, ruleId: rule.id, recipient: 'agent', channel: 'email', message: error.message }, 'outboundReminderWorker: failed to send reminder');
         }
       }
     }
@@ -404,4 +580,5 @@ module.exports = {
   start,
   processTenant,
   sendReminderMessage,
+  sendReminderEmail,
 };

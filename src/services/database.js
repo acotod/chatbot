@@ -527,6 +527,16 @@ async function updateEmailLogStatus(id, status, data = {}) {
   });
 }
 
+async function getEmailLogStatus(id) {
+  const client = getPrismaClient();
+  if (!client || !id) return null;
+
+  return client.emailLog.findUnique({
+    where: { id: Number(id) },
+    select: { id: true, status: true, attempts: true, updatedAt: true },
+  });
+}
+
 async function getWaAppSecret(tenantId) {
   const primary = await getConfig(tenantId, 'wa_app_secret');
   const primarySecret = _decryptSecret(primary?.valor);
@@ -2476,6 +2486,7 @@ module.exports = {
   getEmailSettings,
   createEmailLog,
   updateEmailLogStatus,
+  getEmailLogStatus,
   getWaCredentials,
   getWaAppSecret,
   CONFIG_SECRET_SENTINEL,

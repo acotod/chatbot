@@ -4,9 +4,13 @@ const {
   isRuleDue,
   isDailySummaryDue,
   getDateKeyInTimeZone,
+  hasReminderDeliveryBeenHandled,
   hasReminderBeenSent,
+  markReminderFailed,
+  markReminderQueued,
   markReminderSent,
   getRecipientTargets,
+  normalizeEmail,
 } = require('../src/services/outboundFlowService');
 
 describe('outboundFlowService', () => {
@@ -93,6 +97,61 @@ describe('outboundFlowService', () => {
 
     expect(recipients.customer.phone).toBe('521234567890');
     expect(recipients.agent.phone).toBe('522223334444');
+  });
+
+  test('normalizes the assigned agent email and skips invalid addresses', () => {
+    expect(normalizeEmail('  AGENTE@Example.com ')).toBe('agente@example.com');
+    expect(normalizeEmail('not-an-email')).toBe('');
+
+    const targets = getRecipientTargets({
+      calendar: { agente: { email: '  AGENTE@Example.com ', whatsapp: '50612345678' } },
+    });
+    expect(targets.agent.email).toBe('agente@example.com');
+  });
+
+  test('tracks a queued email separately and prevents duplicate queueing', () => {
+    const appointment = { metadata: {} };
+    expect(hasReminderDeliveryBeenHandled(appointment, 'rule_1', 'agent_email')).toBe(false);
+
+    const metadata = markReminderQueued(appointment, 'rule_1', 'agent_email', 45, new Date('2026-10-12T10:00:00Z'));
+    const queuedAppointment = { metadata };
+
+    expect(metadata.outbound_reminders.rule_1.agent_email).toMatchObject({
+      status: 'queued',
+      email_log_id: 45,
+      queued_at: '2026-10-12T10:00:00.000Z',
+    });
+    expect(hasReminderDeliveryBeenHandled(queuedAppointment, 'rule_1', 'agent_email')).toBe(true);
+    expect(hasReminderBeenSent(queuedAppointment, 'rule_1', 'agent_email')).toBe(false);
+  });
+
+  test('records successful channel delivery without overwriting other channel state', () => {
+    const appointment = {
+      metadata: {
+        outbound_reminders: {
+          rule_1: { agent_email: { status: 'queued', email_log_id: 45 } },
+        },
+      },
+    };
+
+    const metadata = markReminderSent(appointment, 'rule_1', 'agent_whatsapp', new Date('2026-10-12T10:05:00Z'));
+
+    expect(metadata.outbound_reminders.rule_1.agent_whatsapp).toMatchObject({ status: 'sent' });
+    expect(metadata.outbound_reminders.rule_1.agent_email).toMatchObject({ status: 'queued', email_log_id: 45 });
+  });
+
+  test('records a terminal email failure without treating it as sent', () => {
+    const appointment = { metadata: {} };
+    const metadata = markReminderFailed(appointment, 'rule_1', 'agent_email', 45, new Date('2026-10-12T10:01:00Z'));
+    const failedAppointment = { metadata };
+
+    expect(metadata.outbound_reminders.rule_1.agent_email).toMatchObject({
+      status: 'failed',
+      email_log_id: 45,
+      failed_at: '2026-10-12T10:01:00.000Z',
+    });
+    expect(hasReminderDeliveryBeenHandled(failedAppointment, 'rule_1', 'agent_email')).toBe(true);
+    expect(hasReminderBeenSent(failedAppointment, 'rule_1', 'agent_email')).toBe(false);
   });
 
   test('normalizes daily summary trigger and forces agent recipient', () => {
