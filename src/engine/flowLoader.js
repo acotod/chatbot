@@ -88,6 +88,24 @@ async function loadFlowDefinition(tenantId) {
   }
 }
 
+async function loadFlowDefinitionForFlow(tenantId, flowId) {
+  const normalizedTenantId = String(tenantId ?? '').trim();
+  const normalizedFlowId = Number(flowId);
+  if (!normalizedTenantId || !Number.isInteger(normalizedFlowId) || normalizedFlowId <= 0) return null;
+
+  const flowVersion = await prisma.flowVersion.findFirst({
+    where: {
+      flowId: normalizedFlowId,
+      published: true,
+      flow: { tenantId: normalizedTenantId, activo: true },
+    },
+    orderBy: { versionNumber: 'desc' },
+    include: { flow: { select: { id: true } } },
+  });
+
+  return flowVersion ? _buildFromVersion(flowVersion) : null;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Private helpers
 // ─────────────────────────────────────────────────────────────────────────────
@@ -170,4 +188,4 @@ function _buildFromLegacy(flow) {
   };
 }
 
-module.exports = { loadFlowDefinition };
+module.exports = { loadFlowDefinition, loadFlowDefinitionForFlow };

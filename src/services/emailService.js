@@ -232,7 +232,7 @@ async function sendEmail({
       const emailLog = await db.createEmailLog({ to, subject, tenantId, metadata });
       currentEmailLogId = emailLog?.id ?? null;
     } catch (err) {
-      logger.warn({ tenantId, to, subject, message: err.message }, 'emailService: failed to create email log');
+      logger.warn({ tenantId, message: err.message }, 'emailService: failed to create email log');
     }
   }
 
@@ -258,27 +258,26 @@ async function sendEmail({
 
     logger.info({
       tenantId,
-      to: String(to).trim(),
-      subject: String(subject).trim(),
+      emailLogId: currentEmailLogId,
       messageId: result.messageId,
       metadata,
     }, 'emailService: email sent');
 
     return {
       ok: true,
+      emailLogId: currentEmailLogId,
       messageId: result.messageId || null,
       accepted: Array.isArray(result.accepted) ? result.accepted : [],
       rejected: Array.isArray(result.rejected) ? result.rejected : [],
     };
   } catch (err) {
-    logger.error({ tenantId, to, subject, message: err.message, metadata }, 'emailService: send failed');
+    logger.error({ tenantId, emailLogId: currentEmailLogId, message: err.message, metadata }, 'emailService: send failed');
     if (manageLogState) {
       await updateEmailLog(currentEmailLogId, 'failed', {
         attempts: Number(attempts) + 1,
         lastError: err.message,
       });
     }
-    if (err instanceof EmailServiceError) throw err;
     if (err instanceof EmailServiceError) throw err;
     throw new EmailServiceError(err.message, 'EMAIL_SEND_FAILED');
   }
@@ -306,7 +305,7 @@ async function enqueueEmail({
       const emailLog = await db.createEmailLog({ to, subject, tenantId, metadata });
       emailLogId = emailLog?.id ?? null;
     } catch (err) {
-      logger.warn({ tenantId, to, subject, message: err.message }, 'emailService: failed to create email log');
+      logger.warn({ tenantId, message: err.message }, 'emailService: failed to create email log');
     }
   }
 
@@ -314,7 +313,7 @@ async function enqueueEmail({
   const redis = getRedisClient();
 
   if (!redis) {
-    logger.warn({ tenantId, to, subject }, 'emailService: Redis unavailable, sending email synchronously');
+    logger.warn({ tenantId }, 'emailService: Redis unavailable, sending email synchronously');
     try {
       return await sendEmail(payload);
     } catch (err) {
@@ -325,10 +324,10 @@ async function enqueueEmail({
 
   try {
     await redis.lpush(EMAIL_QUEUE_KEY, JSON.stringify(payload));
-    logger.info({ tenantId, to, subject, metadata }, 'emailService: email queued');
-    return { ok: true, queued: true };
+    logger.info({ tenantId, emailLogId, metadata }, 'emailService: email queued');
+    return { ok: true, queued: true, emailLogId };
   } catch (err) {
-    logger.warn({ tenantId, to, subject, message: err.message }, 'emailService: failed to queue email, sending synchronously');
+    logger.warn({ tenantId, message: err.message }, 'emailService: failed to queue email, sending synchronously');
     try {
       return await sendEmail(payload);
     } catch (sendErr) {

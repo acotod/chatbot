@@ -2,6 +2,7 @@ const {
   createPasswordResetEmail,
   createAssignmentEmail,
   createInternalForwardEmail,
+  createAppointmentReminderEmail,
   escapeHtml,
 } = require('../src/services/emailTemplates');
 
@@ -38,5 +39,15 @@ describe('emailTemplates', () => {
 
     expect(assignment.html).not.toContain('href=');
     expect(reset.html).toContain('href="https://portal.example/reset?token=a&amp;next=b"');
+  });
+
+  test('keeps reminder text identical and escapes it in the HTML email', () => {
+    const message = 'Recordatorio: <b>tu cita</b> es mañana.';
+    const email = createAppointmentReminderEmail({ message });
+
+    expect(email.subject).toBe('Recordatorio de cita');
+    expect(email.text).toBe(message);
+    expect(email.html).toContain('Recordatorio: &lt;b&gt;tu cita&lt;/b&gt; es mañana.');
+    expect(email.html).not.toContain('<b>tu cita</b>');
   });
 });

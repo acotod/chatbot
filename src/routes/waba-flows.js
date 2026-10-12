@@ -43,6 +43,7 @@ const conversationLogger = require('../engine/conversationLogger');
 const router = express.Router();
 const prisma = new PrismaClient();
 const CONV_EVENT = conversationLogger.EVENT;
+const OUTBOUND_REMINDER_FLOW_CONFIG_KEY = 'outbound_reminder_flow_id';
 
 router.use(requireJwt);
 
@@ -324,6 +325,81 @@ router.get('/', async (req, res, next) => {
     ]);
 
     res.json({ total, page: Number(page), limit: Number(limit), flows });
+  } catch (err) { next(err); }
+});
+
+router.get('/outbound-reminder-flow', async (req, res, next) => {
+  try {
+    const tenantId = await resolveTenantId(req, req.query.tenantSlug);
+    if (!tenantId) return res.status(400).json({ error: 'tenantSlug is required for outbound reminder flow' });
+
+    const config = await prisma.configuracion.findUnique({
+      where: { tenantId_clave: { tenantId, clave: OUTBOUND_REMINDER_FLOW_CONFIG_KEY } },
+      select: { valor: true },
+    });
+    const flowId = Number(config?.valor?.flowId);
+    if (!Number.isInteger(flowId) || flowId <= 0) return res.json({ flowId: null, flow: null });
+
+    const flow = await prisma.flow.findFirst({
+      where: { id: flowId, tenantId },
+      select: { id: true, nombre: true, activo: true },
+    });
+    if (!flow || !flow.activo) return res.json({ flowId: null, flow: null, stale: true });
+
+    return res.json({ flowId, flow });
+  } catch (err) { next(err); }
+});
+
+router.put('/outbound-reminder-flow', async (req, res, next) => {
+  try {
+    const tenantId = await resolveTenantId(req, req.body?.tenantSlug);
+    if (!tenantId) return res.status(400).json({ error: 'tenantSlug is required for outbound reminder flow' });
+
+    if (req.body?.flowId === null) {
+      await prisma.configuracion.deleteMany({
+        where: { tenantId, clave: OUTBOUND_REMINDER_FLOW_CONFIG_KEY },
+      });
+      return res.json({ flowId: null, flow: null });
+    }
+
+    const flowId = Number(req.body?.flowId);
+    if (!Number.isInteger(flowId) || flowId <= 0) {
+      return res.status(400).json({ error: 'A valid flowId is required' });
+    }
+
+    const flow = await prisma.flow.findFirst({
+      where: { id: flowId, tenantId, activo: true },
+      select: { id: true, nombre: true },
+    });
+    if (!flow) return notFound(res, 'Active flow');
+
+    const publishedVersion = await prisma.flowVersion.findFirst({
+      where: { flowId, tenantId, published: true },
+      orderBy: { versionNumber: 'desc' },
+      select: { definition: true, versionNumber: true },
+    });
+    const metadata = publishedVersion?.definition?.metadata;
+    const rules = Array.isArray(metadata?.outbound_rules) ? metadata.outbound_rules : [];
+    const hasEnabledAgentReminderRule = rules.some((rule) => (
+      rule?.enabled !== false
+      && (rule?.triggerType ?? rule?.trigger_type ?? 'appointment_reminder') === 'appointment_reminder'
+      && Array.isArray(rule?.recipients)
+      && rule.recipients.includes('agent')
+    ));
+
+    if (metadata?.flow_mode !== 'outbound' || !hasEnabledAgentReminderRule) {
+      return res.status(400).json({
+        error: 'The flow must have a published outbound appointment reminder with the agent selected as recipient',
+      });
+    }
+
+    await prisma.configuracion.upsert({
+      where: { tenantId_clave: { tenantId, clave: OUTBOUND_REMINDER_FLOW_CONFIG_KEY } },
+      update: { valor: { flowId } },
+      create: { tenantId, clave: OUTBOUND_REMINDER_FLOW_CONFIG_KEY, valor: { flowId } },
+    });
+
+    return res.json({ flowId, flow, versionNumber: publishedVersion.versionNumber });
   } catch (err) { next(err); }
 });
 

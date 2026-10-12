@@ -108,6 +108,11 @@ function normalizePhone(value) {
   return raw.replace(/[^\d+]/g, '').replace(/^\+/, '');
 }
 
+function normalizeEmail(value) {
+  const email = String(value ?? '').trim().toLowerCase();
+  return /^[^\s@<>\r\n]+@[^\s@<>\r\n]+\.[^\s@<>\r\n]+$/.test(email) ? email : '';
+}
+
 function pickFirstNonEmpty(...values) {
   for (const value of values) {
     const normalized = String(value ?? '').trim();
@@ -316,6 +321,8 @@ function markReminderSent(appointment, ruleId, recipient, sentAt = new Date()) {
       [ruleId]: {
         ...asObject(outboundReminders[ruleId]),
         [recipient]: {
+          ...asObject(outboundReminders[ruleId]?.[recipient]),
+          status: 'sent',
           sent_at: sentAt instanceof Date ? sentAt.toISOString() : new Date(sentAt).toISOString(),
         },
       },
@@ -323,6 +330,50 @@ function markReminderSent(appointment, ruleId, recipient, sentAt = new Date()) {
   };
 
   return nextMetadata;
+}
+
+function markReminderQueued(appointment, ruleId, recipient, emailLogId, queuedAt = new Date()) {
+  const { metadata, outboundReminders } = getAppointmentReminderMetadata(appointment);
+  return {
+    ...metadata,
+    outbound_reminders: {
+      ...outboundReminders,
+      [ruleId]: {
+        ...asObject(outboundReminders[ruleId]),
+        [recipient]: {
+          ...asObject(outboundReminders[ruleId]?.[recipient]),
+          status: 'queued',
+          email_log_id: emailLogId ?? null,
+          queued_at: queuedAt instanceof Date ? queuedAt.toISOString() : new Date(queuedAt).toISOString(),
+        },
+      },
+    },
+  };
+}
+
+function markReminderFailed(appointment, ruleId, recipient, emailLogId, failedAt = new Date()) {
+  const { metadata, outboundReminders } = getAppointmentReminderMetadata(appointment);
+  return {
+    ...metadata,
+    outbound_reminders: {
+      ...outboundReminders,
+      [ruleId]: {
+        ...asObject(outboundReminders[ruleId]),
+        [recipient]: {
+          ...asObject(outboundReminders[ruleId]?.[recipient]),
+          status: 'failed',
+          email_log_id: emailLogId ?? outboundReminders[ruleId]?.[recipient]?.email_log_id ?? null,
+          failed_at: failedAt instanceof Date ? failedAt.toISOString() : new Date(failedAt).toISOString(),
+        },
+      },
+    },
+  };
+}
+
+function hasReminderDeliveryBeenHandled(appointment, ruleId, recipient) {
+  const { outboundReminders } = getAppointmentReminderMetadata(appointment);
+  const state = asObject(outboundReminders?.[ruleId]?.[recipient]);
+  return Boolean(state.sent_at || state.status === 'queued' || state.status === 'sent' || state.status === 'failed');
 }
 
 function isRuleDue(rule, appointment, now = new Date(), scanWindowMinutes = 5) {
@@ -376,6 +427,7 @@ function getRecipientTargets(appointment) {
     ),
   );
   const agentPhone = normalizePhone(appointment?.calendar?.agente?.whatsapp);
+  const agentEmail = normalizeEmail(appointment?.calendar?.agente?.email);
 
   return {
     customer: {
@@ -384,6 +436,7 @@ function getRecipientTargets(appointment) {
     },
     agent: {
       phone: agentPhone,
+      email: agentEmail,
       name: pickFirstNonEmpty(appointment?.calendar?.agente?.nombre, metadata.agent_name, metadata.agente_nombre),
     },
   };
@@ -412,9 +465,13 @@ module.exports = {
   renderTemplate,
   getAppointmentReminderMetadata,
   hasReminderBeenSent,
+  hasReminderDeliveryBeenHandled,
+  markReminderQueued,
+  markReminderFailed,
   markReminderSent,
   isRuleDue,
   isDailySummaryDue,
   getRecipientTargets,
+  normalizeEmail,
   normalizePhone,
 };

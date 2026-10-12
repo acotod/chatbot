@@ -6,6 +6,7 @@ jest.mock('../src/services/database', () => ({
   getEmailSettings: jest.fn(),
   createEmailLog: jest.fn(),
   updateEmailLogStatus: jest.fn(),
+  getEmailLogStatus: jest.fn(),
 }));
 
 jest.mock('../src/utils/logger', () => ({
@@ -198,7 +199,7 @@ describe('emailService', () => {
         tenantId: 'tenant-1',
       });
 
-      expect(result).toEqual({ ok: true, queued: true });
+      expect(result).toEqual({ ok: true, queued: true, emailLogId: 55 });
       expect(lpush).toHaveBeenCalledWith('queue:email_send', expect.any(String));
       const [, raw] = lpush.mock.calls[0];
       expect(JSON.parse(raw)).toMatchObject({
